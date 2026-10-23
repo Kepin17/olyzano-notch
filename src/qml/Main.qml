@@ -887,6 +887,9 @@ Window {
                                 special: modelData.special || ""
                                 locked: modelData.locked || false
                                 onDropHoverChanged: root.chipDragOver = dropHover
+                                // The chip row is rebuilt whenever categories change (e.g. right after a
+                                // drop); a chip destroyed mid-hover would otherwise leave Notch stuck open.
+                                Component.onDestruction: if (dropHover) root.chipDragOver = false
                                 onMenuRequested: {
                                     categoryMenu.catId = catId
                                     categoryMenu.catName = text
@@ -1789,7 +1792,11 @@ Window {
             text: "Remove lock"
             onTriggered: notch.setCategoryLocked(categoryMenu.catId, false)
         }
-        Action { text: "Delete category"; onTriggered: notch.deleteCategory(categoryMenu.catId) }
+        Action {
+            enabled: !notch.categories.some(c => c.id === categoryMenu.catId && c.locked) // remove the lock first
+            text: "Delete category"
+            onTriggered: notch.deleteCategory(categoryMenu.catId)
+        }
         DarkSeparator {}
         Action { enabled: false; text: "Its files stay in Notch" }
     }
