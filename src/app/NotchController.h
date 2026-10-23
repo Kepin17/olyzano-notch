@@ -135,6 +135,12 @@ public:
     // create (id empty) or overwrite/rename one. Returns false on failure.
     Q_INVOKABLE QString readText(const QString &id);
     Q_INVOKABLE bool saveNote(const QString &id, const QString &name, const QString &text);
+    // Document/image tools (DocTools) on stored files; results become new items in the current
+    // category, originals stay. kind: merge | images-pdf | compress | split | extract (option: page
+    // ranges) | ocr-copy | ocr-note | convert (option: png/jpg/webp) | resize (option: max width).
+    Q_INVOKABLE void runTool(const QString &kind, const QStringList &ids, const QString &option = {});
+    Q_INVOKABLE QStringList mimeTypes(const QStringList &ids) const;
+    Q_INVOKABLE int pageCount(const QString &id) const;
     // Note editor toolkit (see TextTools.h): {ok, text, error}.
     Q_INVOKABLE QVariantMap transformText(const QString &kind, const QString &text) const;
 
@@ -189,6 +195,8 @@ private:
     void addLink(const QUrl &url, const QString &categoryId);
     bool addBytes(const QString &name, const QString &mimeType, const QByteArray &bytes, const QString &source,
                   const QString &categoryId);
+    // Moves a finished file (e.g. a tool's output) into managed storage as a new item.
+    bool adoptFile(const QString &path, const QString &name, const QString &source, const QString &categoryId);
     void deleteNow(const FileItem &item);
     void updateWatchers();
     void onWatchedFile(const QString &path, const QString &settingKey, const QString &categoryName, const QString &title);

@@ -3,6 +3,7 @@
 #include "services/CleanupService.h"
 #include "services/FileService.h"
 #include "services/TextTools.h"
+#include "services/DocTools.h"
 
 #include <QBuffer>
 #include <QClipboard>
@@ -1017,6 +1018,169 @@ void NotchController::indexContents()
             m_contents.insert(item.id, QString::fromUtf8(f.readAll()));
     }
     m_contentsStale = false;
+}
+
+bool NotchController::adoptFile(const QString &path, const QString &name, const QString &source, const QString &categoryId)
+{
+    FileItem item = newItem(name, categoryId);
+    item.mimeType = QMimeDatabase().mimeTypeForFile(path).name();
+    item.sizeBytes = QFileInfo(path).size();
+    item.sourcePath = source;
+    item.status = Status::Available;
+    const QString dir = m_filesDir + u'/' + item.id;
+    const QString target = dir + u'/' + item.originalName;
+    // Rename when on the same filesystem, else copy (a custom storage folder may live elsewhere).
+    if (!QDir().mkpath(dir) || !(QFile::rename(path, target) || QFile::copy(path, target)) || !m_repo.insert(item)) {
+        FileService::removeManaged(m_filesDir, item.storedName);
+        setError(tr("%1: cannot save").arg(name));
+        return false;
+    }
+    m_model.upsert(item);
+    return true;
+}
+
+QStringList NotchController::mimeTypes(const QStringList &ids) const
+{
+    QStringList out;
+    for (const QString &id : ids)
+        if (const FileItem *item = m_model.find(id))
+            out << item->mimeType;
+    return out;
+}
+
+int NotchController::pageCount(const QString &id) const
+{
+    const FileItem *item = m_model.find(id);
+    return item ? DocTools::pdfPageCount(FileService::storedPath(m_filesDir, item->storedName)) : -1;
+}
+
+void NotchController::runTool(const QString &kind, const QStringList &ids, const QString &option)
+{
+    struct Input {
+        QString path;
+        QString base; // name without extension
+        QString name;
+    };
+    QList<Input> inputs;
+    for (const QString &id : ids)
+        if (const FileItem *item = m_model.find(id); item && item->status == Status::Available)
+            inputs << Input{FileService::storedPath(m_filesDir, item->storedName), QFileInfo(item->originalName).completeBaseName(),
+                            item->originalName};
+    if (inputs.isEmpty())
+        return;
+    const QString category = m_categoryFilter == QLatin1String(RemovedView) ? QString() : m_categoryFilter;
+    const QString work = m_dataDir + QStringLiteral("/tools/") + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    QDir().mkpath(work);
+
+    struct Result {
+        QString error;
+        QList<QPair<QString, QString>> outputs; // path, display name
+        QString text;                           // OCR
+        QString summary;                        // for the notice
+    };
+    auto job = [kind, inputs, option, work]() -> Result {
+        Result r;
+        const auto out = [&](const QString &name) {
+            const QString path = work + u'/' + FileService::uniqueName(work, name);
+            r.outputs << qMakePair(path, QFileInfo(path).fileName());
+            return path;
+        };
+        QStringList paths;
+        for (const Input &in : inputs)
+            paths << in.path;
+        if (kind == QLatin1String("merge")) {
+            r.error = DocTools::mergePdfs(paths, out(QStringLiteral("Merged (%1 PDFs).pdf").arg(paths.size())));
+            r.summary = QStringLiteral("Merged %1 PDFs").arg(paths.size());
+        } else if (kind == QLatin1String("images-pdf")) {
+            const QString name = paths.size() == 1 ? inputs.first().base + QStringLiteral(".pdf")
+                                                   : QStringLiteral("Images (%1 pages).pdf").arg(paths.size());
+            r.error = DocTools::imagesToPdf(paths, out(name));
+            r.summary = QStringLiteral("Made a %1-page PDF").arg(paths.size());
+        } else if (kind == QLatin1String("compress")) {
+            qint64 before = 0, after = 0;
+            for (const Input &in : inputs) {
+                const QString target = out(in.base + QStringLiteral(" (compressed).pdf"));
+                if (const QString err = DocTools::compressPdf(in.path, target); !err.isEmpty()) {
+                    r.outputs.removeLast();
+                    r.error = in.name + QStringLiteral(": ") + err;
+                    continue;
+                }
+                before += QFileInfo(in.path).size();
+                after += QFileInfo(target).size();
+            }
+            if (!r.outputs.isEmpty())
+                r.summary = QStringLiteral("Compressed: %1 → %2")
+                                .arg(QLocale().formattedDataSize(before), QLocale().formattedDataSize(after));
+        } else if (kind == QLatin1String("split")) {
+            QStringList pages;
+            r.error = DocTools::splitPdf(inputs.first().path, work, inputs.first().base, &pages);
+            for (const QString &page : pages)
+                r.outputs << qMakePair(page, QFileInfo(page).fileName());
+            r.summary = QStringLiteral("Split into %1 pages").arg(pages.size());
+        } else if (kind == QLatin1String("extract")) {
+            QString err;
+            const QList<int> pages = DocTools::parsePageRanges(option, DocTools::pdfPageCount(inputs.first().path), &err);
+            r.error = pages.isEmpty() ? err
+                                      : DocTools::extractPages(inputs.first().path, pages,
+                                                               out(inputs.first().base + QStringLiteral(" (pages %1).pdf").arg(option.simplified())));
+            r.summary = QStringLiteral("Extracted %1 pages").arg(pages.size());
+        } else if (kind == QLatin1String("ocr-copy") || kind == QLatin1String("ocr-note")) {
+            const bool pdf = inputs.first().name.endsWith(QLatin1String(".pdf"), Qt::CaseInsensitive);
+            r.error = DocTools::recognizeText(inputs.first().path, pdf, &r.text);
+        } else if (kind == QLatin1String("convert") || kind == QLatin1String("resize")) {
+            for (const Input &in : inputs) {
+                QString format = option, suffix;
+                int width = 0;
+                if (kind == QLatin1String("resize")) {
+                    width = option.toInt();
+                    const QString ext = QFileInfo(in.name).suffix().toLower();
+                    format = ext == QLatin1String("jpeg") ? QStringLiteral("jpg")
+                           : (ext == QLatin1String("jpg") || ext == QLatin1String("webp")) ? ext : QStringLiteral("png");
+                    suffix = QStringLiteral(" (%1px)").arg(width);
+                }
+                const QString target = out(in.base + suffix + u'.' + format);
+                if (const QString err = DocTools::convertImage(in.path, format, width, target); !err.isEmpty()) {
+                    r.outputs.removeLast();
+                    r.error = in.name + QStringLiteral(": ") + err;
+                }
+            }
+            r.summary = QStringLiteral("%1 %2 image%3").arg(kind == QLatin1String("resize") ? QStringLiteral("Resized") : QStringLiteral("Converted"))
+                            .arg(r.outputs.size()).arg(r.outputs.size() == 1 ? QString() : QStringLiteral("s"));
+        } else {
+            r.error = QStringLiteral("unknown tool %1").arg(kind);
+        }
+        return r;
+    };
+
+    ++m_copying; // shows the busy pill while the tool runs
+    emit copyingChanged();
+    auto *watcher = new QFutureWatcher<Result>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, kind, category, work, inputs] {
+        const Result r = watcher->result();
+        watcher->deleteLater();
+        --m_copying;
+        emit copyingChanged();
+        int added = 0;
+        for (const auto &[path, name] : r.outputs)
+            if (QFileInfo::exists(path) && adoptFile(path, name, tr("Made in Notch"), category))
+                ++added;
+        if (kind.startsWith(QLatin1String("ocr")) && r.error.isEmpty()) {
+            if (kind == QLatin1String("ocr-copy")) {
+                copyText(r.text);
+                emit notice(tr("Text copied"), tr("%n characters", nullptr, int(r.text.size())), QStringLiteral("edit-copy"), QString());
+            } else if (addBytes(inputs.first().base + QStringLiteral(" (text).txt"), QStringLiteral("text/plain"), r.text.toUtf8(),
+                                tr("Text from %1").arg(inputs.first().name), category)) {
+                emit notice(tr("Text saved as a note"), inputs.first().base + QStringLiteral(" (text).txt"),
+                            QStringLiteral("text-plain"), QString());
+            }
+        }
+        QDir(work).removeRecursively(); // our scratch folder inside Notch's data dir
+        if (!r.error.isEmpty())
+            setError(r.error);
+        else if (added > 0)
+            emit notice(r.summary, QString(), QStringLiteral("application-pdf"), QString());
+    });
+    watcher->setFuture(QtConcurrent::run(job));
 }
 
 QVariantMap NotchController::transformText(const QString &kind, const QString &text) const

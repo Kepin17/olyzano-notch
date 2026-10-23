@@ -1,0 +1,212 @@
+#include "DocTools.h"
+
+#include <QDir>
+#include <QFileInfo>
+#include <QImageReader>
+#include <QPageSize>
+#include <QPainter>
+#include <QPdfWriter>
+#include <QProcess>
+#include <QRegularExpression>
+#include <QSet>
+#include <QTemporaryDir>
+
+namespace DocTools {
+
+namespace {
+// Runs a program to completion; empty string on success.
+QString run(const QString &program, const QStringList &args, QByteArray *stdOut = nullptr, int timeoutMs = 120000)
+{
+    QProcess p;
+    p.start(program, args);
+    if (!p.waitForStarted(5000))
+        return QStringLiteral("%1 is not installed").arg(program);
+    if (!p.waitForFinished(timeoutMs)) {
+        p.kill();
+        return QStringLiteral("%1 took too long").arg(program);
+    }
+    if (stdOut)
+        *stdOut = p.readAllStandardOutput();
+    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
+        const QString err = QString::fromLocal8Bit(p.readAllStandardError()).trimmed().section(u'\n', 0, 0);
+        return err.isEmpty() ? QStringLiteral("%1 failed (exit %2)").arg(program).arg(p.exitCode()) : err;
+    }
+    return {};
+}
+}
+
+QString mergePdfs(const QStringList &pdfs, const QString &out)
+{
+    if (pdfs.size() < 2)
+        return QStringLiteral("choose at least two PDFs");
+    return run(QStringLiteral("pdfunite"), QStringList(pdfs) << out);
+}
+
+QString imagesToPdf(const QStringList &images, const QString &out)
+{
+    if (images.isEmpty())
+        return QStringLiteral("choose at least one image");
+    QPdfWriter writer(out);
+    writer.setResolution(150);
+    writer.setPageSize(QPageSize(QPageSize::A4));
+    writer.setPageMargins(QMarginsF(10, 10, 10, 10), QPageLayout::Millimeter);
+    QPainter painter;
+    for (int i = 0; i < images.size(); ++i) {
+        QImageReader reader(images.at(i));
+        reader.setAutoTransform(true); // respect phone photos' EXIF rotation
+        const QImage image = reader.read();
+        if (image.isNull())
+            return QStringLiteral("%1: %2").arg(QFileInfo(images.at(i)).fileName(), reader.errorString());
+        // Landscape pictures get a landscape page. Orientation applies to the page started next.
+        writer.setPageOrientation(image.width() > image.height() ? QPageLayout::Landscape : QPageLayout::Portrait);
+        if (i == 0) {
+            if (!painter.begin(&writer))
+                return QStringLiteral("cannot write the PDF");
+        } else {
+            writer.newPage();
+        }
+        const QRect page = painter.viewport();
+        const QSize fitted = image.size().scaled(page.size(), Qt::KeepAspectRatio);
+        const QRect target(page.x() + (page.width() - fitted.width()) / 2, page.y() + (page.height() - fitted.height()) / 2,
+                           fitted.width(), fitted.height());
+        painter.drawImage(target, image);
+    }
+    painter.end();
+    return {};
+}
+
+QString compressPdf(const QString &pdf, const QString &out)
+{
+    const QString err = run(QStringLiteral("gs"),
+                            {QStringLiteral("-sDEVICE=pdfwrite"), QStringLiteral("-dCompatibilityLevel=1.5"),
+                             QStringLiteral("-dPDFSETTINGS=/ebook"), QStringLiteral("-dNOPAUSE"), QStringLiteral("-dBATCH"),
+                             QStringLiteral("-dQUIET"), QStringLiteral("-sOutputFile=") + out, pdf},
+                            nullptr, 600000);
+    if (!err.isEmpty())
+        return err;
+    if (QFileInfo(out).size() >= QFileInfo(pdf).size()) {
+        QFile::remove(out);
+        return QStringLiteral("already as small as it gets");
+    }
+    return {};
+}
+
+int pdfPageCount(const QString &pdf)
+{
+    QByteArray info;
+    if (!run(QStringLiteral("pdfinfo"), {pdf}, &info, 20000).isEmpty())
+        return -1;
+    static const QRegularExpression pages(QStringLiteral(R"(^Pages:\s+(\d+))"), QRegularExpression::MultilineOption);
+    const auto m = pages.match(QString::fromUtf8(info));
+    return m.hasMatch() ? m.captured(1).toInt() : -1;
+}
+
+QString splitPdf(const QString &pdf, const QString &outDir, const QString &baseName, QStringList *written)
+{
+    const QString pattern = outDir + u'/' + baseName + QStringLiteral(" - page %d.pdf");
+    if (const QString err = run(QStringLiteral("pdfseparate"), {pdf, pattern}); !err.isEmpty())
+        return err;
+    const int count = pdfPageCount(pdf);
+    for (int i = 1; i <= count; ++i)
+        if (written)
+            *written << QString(pattern).replace(QStringLiteral("%d"), QString::number(i));
+    return {};
+}
+
+QString extractPages(const QString &pdf, const QList<int> &pages, const QString &out)
+{
+    if (pages.isEmpty())
+        return QStringLiteral("no pages chosen");
+    QTemporaryDir tmp;
+    QStringList parts;
+    for (int page : pages) {
+        const QString part = tmp.filePath(QStringLiteral("p%1.pdf").arg(page));
+        if (const QString err = run(QStringLiteral("pdfseparate"),
+                                    {QStringLiteral("-f"), QString::number(page), QStringLiteral("-l"), QString::number(page), pdf, part});
+            !err.isEmpty())
+            return err;
+        parts << part;
+    }
+    if (parts.size() == 1)
+        return QFile::copy(parts.first(), out) ? QString() : QStringLiteral("cannot write the PDF");
+    return run(QStringLiteral("pdfunite"), QStringList(parts) << out);
+}
+
+QString recognizeText(const QString &file, bool isPdf, QString *text)
+{
+    QStringList images{file};
+    QTemporaryDir tmp;
+    if (isPdf) {
+        if (const QString err = run(QStringLiteral("pdftoppm"),
+                                    {QStringLiteral("-r"), QStringLiteral("300"), QStringLiteral("-png"), file, tmp.filePath(QStringLiteral("page"))},
+                                    nullptr, 300000);
+            !err.isEmpty())
+            return err;
+        images.clear();
+        const QStringList rendered = QDir(tmp.path()).entryList({QStringLiteral("page*.png")}, QDir::Files, QDir::Name);
+        for (const QString &name : rendered)
+            images << tmp.filePath(name);
+    }
+    QStringList pages;
+    for (const QString &image : images) {
+        QByteArray out;
+        if (const QString err = run(QStringLiteral("tesseract"), {image, QStringLiteral("stdout")}, &out, 120000); !err.isEmpty())
+            return err;
+        pages << QString::fromUtf8(out).trimmed();
+    }
+    *text = pages.join(QStringLiteral("\n\n"));
+    return text->isEmpty() ? QStringLiteral("no text found") : QString();
+}
+
+QString convertImage(const QString &image, const QString &format, int maxWidth, const QString &out)
+{
+    QImageReader reader(image);
+    reader.setAutoTransform(true);
+    QImage img = reader.read();
+    if (img.isNull())
+        return reader.errorString();
+    if (maxWidth > 0 && img.width() > maxWidth)
+        img = img.scaledToWidth(maxWidth, Qt::SmoothTransformation);
+    if (format == QLatin1String("jpg") && img.hasAlphaChannel()) { // JPEG has no transparency: put it on white
+        QImage flat(img.size(), QImage::Format_RGB32);
+        flat.fill(Qt::white);
+        QPainter(&flat).drawImage(0, 0, img);
+        img = flat;
+    }
+    // For PNG Qt reads "quality" as (inverse) compression: keep its default, which compresses well.
+    const int quality = format == QLatin1String("png") ? -1 : 90;
+    return img.save(out, format.toLatin1().constData(), quality) ? QString() : QStringLiteral("cannot write %1").arg(format);
+}
+
+QList<int> parsePageRanges(const QString &text, int pageCount, QString *error)
+{
+    QList<int> pages;
+    QSet<int> seen;
+    static const QRegularExpression part(QStringLiteral(R"(^\s*(\d*)\s*(-)?\s*(\d*)\s*$)"));
+    for (const QString &chunk : text.split(u',', Qt::SkipEmptyParts)) {
+        const auto m = part.match(chunk);
+        if (!m.hasMatch() || (m.captured(1).isEmpty() && m.captured(3).isEmpty())) {
+            if (error)
+                *error = QStringLiteral("“%1” is not a page or range").arg(chunk.trimmed());
+            return {};
+        }
+        const bool range = !m.captured(2).isEmpty();
+        const int from = m.captured(1).isEmpty() ? 1 : m.captured(1).toInt();
+        const int to = range ? (m.captured(3).isEmpty() ? pageCount : m.captured(3).toInt()) : from;
+        if (from < 1 || to > pageCount || from > to) {
+            if (error)
+                *error = QStringLiteral("pages must be within 1–%1").arg(pageCount);
+            return {};
+        }
+        for (int p = from; p <= to; ++p)
+            if (!seen.contains(p)) {
+                seen.insert(p);
+                pages << p;
+            }
+    }
+    if (pages.isEmpty() && error)
+        *error = QStringLiteral("no pages chosen");
+    return pages;
+}
+
+}

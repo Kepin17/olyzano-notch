@@ -44,6 +44,7 @@ Window {
     readonly property bool selecting: page === "shelf" && selection.length > 0
     readonly property bool inRemoved: notch.categoryFilter === "__removed__" // Recently removed view
     readonly property bool anyMenu: menu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible
+                                    || toolsMenu.visible || extractPopup.visible
                                     || sortMenu.visible || removedMenu.visible
                                     || removedChipMenu.visible
     readonly property bool dragOver: edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver
@@ -167,6 +168,17 @@ Window {
     function clearSelection() {
         selection = []
         selectionAnchor = -1
+    }
+
+    function openTools(ids) {
+        toolsMenu.targets = ids
+        toolsMenu.mimes = notch.mimeTypes(ids)
+        toolsMenu.popup()
+    }
+
+    function runTool(kind, option) {
+        notch.runTool(kind, toolsMenu.targets, option || "")
+        clearSelection()
     }
 
     function saveFiles(ids) {
@@ -879,11 +891,8 @@ Window {
                     }
                     PillButton {
                         visible: root.selecting && !root.inRemoved
-                        text: "Zip"
-                        onClicked: {
-                            notch.zipItems(root.selection)
-                            root.clearSelection()
-                        }
+                        text: "Tools"
+                        onClicked: root.openTools(root.selection)
                     }
                     PillButton {
                         visible: root.selecting && !root.inRemoved
@@ -1809,13 +1818,7 @@ Window {
                 background: null
             }
         }
-        Action {
-            text: "Compress to .zip"
-            onTriggered: {
-                notch.zipItems(menu.targets)
-                root.clearSelection()
-            }
-        }
+        Action { text: "Tools…"; onTriggered: root.openTools(menu.targets) }
         Action {
             text: menu.itemPinned ? "Allow auto-delete" : "Keep (never auto-delete)"
             onTriggered: notch.setPinned(menu.targets, !menu.itemPinned)
@@ -1836,6 +1839,104 @@ Window {
         }
         DarkSeparator {}
         Action { enabled: false; text: "From: " + (menu.sourcePath || "unknown") }
+    }
+
+    // PDF & image tools. Items enable only for files they apply to; order = selection order.
+    DarkMenu {
+        id: toolsMenu
+        property var targets: []
+        property var mimes: []
+        readonly property int n: mimes.length
+        readonly property bool allPdf: n > 0 && mimes.every(m => m === "application/pdf")
+        readonly property bool allImages: n > 0 && mimes.every(m => m.startsWith("image/"))
+        Action { text: "Merge PDFs"; enabled: toolsMenu.allPdf && toolsMenu.n >= 2; onTriggered: root.runTool("merge") }
+        Action { text: "Images → PDF"; enabled: toolsMenu.allImages; onTriggered: root.runTool("images-pdf") }
+        Action { text: "Compress PDF"; enabled: toolsMenu.allPdf; onTriggered: root.runTool("compress") }
+        Action { text: "Split into pages"; enabled: toolsMenu.allPdf && toolsMenu.n === 1; onTriggered: root.runTool("split") }
+        Action {
+            text: "Extract pages…"
+            enabled: toolsMenu.allPdf && toolsMenu.n === 1
+            onTriggered: {
+                extractPopup.itemId = toolsMenu.targets[0]
+                extractPopup.pages = notch.pageCount(extractPopup.itemId)
+                extractPopup.open()
+            }
+        }
+        DarkSeparator {}
+        Action {
+            text: "Copy text (OCR)"
+            enabled: toolsMenu.n === 1 && (toolsMenu.allImages || toolsMenu.allPdf)
+            onTriggered: root.runTool("ocr-copy")
+        }
+        Action {
+            text: "Text to note (OCR)"
+            enabled: toolsMenu.n === 1 && (toolsMenu.allImages || toolsMenu.allPdf)
+            onTriggered: root.runTool("ocr-note")
+        }
+        DarkSeparator {}
+        Action { text: "Convert to PNG"; enabled: toolsMenu.allImages; onTriggered: root.runTool("convert", "png") }
+        Action { text: "Convert to JPG"; enabled: toolsMenu.allImages; onTriggered: root.runTool("convert", "jpg") }
+        Action { text: "Convert to WebP"; enabled: toolsMenu.allImages; onTriggered: root.runTool("convert", "webp") }
+        Action { text: "Resize to 1920 px wide"; enabled: toolsMenu.allImages; onTriggered: root.runTool("resize", "1920") }
+        Action { text: "Resize to 1280 px wide"; enabled: toolsMenu.allImages; onTriggered: root.runTool("resize", "1280") }
+        Action { text: "Resize to 800 px wide"; enabled: toolsMenu.allImages; onTriggered: root.runTool("resize", "800") }
+        DarkSeparator {}
+        Action {
+            text: "Compress to .zip"
+            onTriggered: {
+                notch.zipItems(toolsMenu.targets)
+                root.clearSelection()
+            }
+        }
+    }
+
+    Popup {
+        id: extractPopup
+        property string itemId
+        property int pages: 0
+        x: (root.width - width) / 2
+        y: 90
+        width: 320
+        padding: 16
+        focus: true
+        function go() {
+            notch.runTool("extract", [itemId], rangeField.text)
+            close()
+        }
+        onOpened: {
+            rangeField.text = ""
+            rangeField.forceActiveFocus()
+        }
+        background: Rectangle { radius: 16; color: theme.surface; border.color: theme.outline }
+        contentItem: ColumnLayout {
+            spacing: 10
+            SectionLabel { text: "Extract pages" }
+            Caption {
+                Layout.fillWidth: true
+                text: (extractPopup.pages > 0 ? "This PDF has " + extractPopup.pages + " pages. " : "")
+                      + "Example: 1-3, 5, 8-"
+            }
+            TextField {
+                id: rangeField
+                Layout.fillWidth: true
+                implicitHeight: 30
+                leftPadding: 12
+                placeholderText: "Pages"
+                placeholderTextColor: theme.placeholder
+                color: theme.text
+                selectionColor: theme.accent
+                font.pixelSize: 13
+                background: Rectangle { radius: 15; color: theme.well; border.width: 1; border.color: theme.accent }
+                onAccepted: extractPopup.go()
+                Keys.onEscapePressed: extractPopup.close()
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                PillButton { text: "Cancel"; onClicked: extractPopup.close() }
+                PillButton { text: "Extract"; checked: true; onClicked: extractPopup.go() }
+            }
+        }
     }
 
     DarkMenu {

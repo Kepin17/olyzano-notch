@@ -106,6 +106,15 @@ To try it without touching your real shelf or settings:
   **Save** / Ctrl+S stores it as a regular file in the category being viewed, ready to drag anywhere.
   Esc goes back and keeps the draft. Clicking any text file (≤ 1 MB) opens it in the same editor;
   saving updates Notch's copy (and renames it if you changed the name). Right-click → **Edit** too.
+- **Tools** (right-click → **Tools…**, or **Tools** while selecting; new files are added next to
+  the originals, which stay untouched):
+  - **Merge PDFs** in the order you selected them; **Images → PDF** (one A4 page per image, landscape
+    pictures get landscape pages, phone photos keep their rotation);
+  - **Compress PDF** (Ghostscript, 150 dpi), **Split into pages**, **Extract pages…** ("1-3, 5, 8-");
+  - **Copy text (OCR)** / **Text to note (OCR)** from an image or a scanned PDF (Tesseract; English
+    data installed by default, add `tesseract-ocr-ind` for Indonesian);
+  - **Convert to PNG / JPG / WebP** and **Resize to 1920 / 1280 / 800 px** wide (never upscales);
+  - **Compress to .zip**.
 - **Search** matches file names and the text inside notes and text files (up to 512 KB).
 - **Duplicate names:** a file whose name is already on the shelf is added as "name (1).ext".
 - **Note toolkit:** buttons in the note editor format JSON (key order kept), encode/decode Base64 and
@@ -139,8 +148,8 @@ If the database is unreadable, Notch shows an error and deletes nothing.
 ## Package, install, uninstall
 
 ```bash
-cd build && cpack          # produces notch_0.1.2_amd64.deb
-sudo apt install ./notch_0.1.2_amd64.deb
+cd build && cpack          # produces notch_0.1.3_amd64.deb
+sudo apt install ./notch_0.1.3_amd64.deb
 ```
 
 Autostart: turn on **Start at login** in settings.

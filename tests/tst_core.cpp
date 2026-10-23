@@ -3,11 +3,18 @@
 #include "services/FileService.h"
 #include "services/FolderWatcher.h"
 #include "services/TextTools.h"
+#include "services/DocTools.h"
 #include "platform/BatteryThreshold.h"
 #include "platform/PlayerSelection.h"
 #include "platform/AudioBands.h"
 
 #include <QDir>
+#include <QGuiApplication>
+#include <QImage>
+#include <QImageReader>
+#include <QPainter>
+#include <QRandomGenerator>
+#include <QStandardPaths>
 #include <QFile>
 #include <QSqlDatabase>
 #include <QSignalSpy>
@@ -467,6 +474,102 @@ private slots:
         QCOMPARE(transformText(QStringLiteral("lower"), QStringLiteral("Notch É")).text, QStringLiteral("notch é"));
     }
 
+    void pageRanges()
+    {
+        QCOMPARE(DocTools::parsePageRanges(QStringLiteral("2-5, 8, 10-"), 12), (QList<int>{2, 3, 4, 5, 8, 10, 11, 12}));
+        QCOMPARE(DocTools::parsePageRanges(QStringLiteral("3,3,1"), 5), (QList<int>{3, 1}));
+        QCOMPARE(DocTools::parsePageRanges(QStringLiteral("-2"), 5), (QList<int>{1, 2}));
+        QString err;
+        QVERIFY(DocTools::parsePageRanges(QStringLiteral("0-2"), 5, &err).isEmpty());
+        QVERIFY(!err.isEmpty());
+        QVERIFY(DocTools::parsePageRanges(QStringLiteral("abc"), 5).isEmpty());
+        QVERIFY(DocTools::parsePageRanges(QStringLiteral("7"), 5).isEmpty());
+    }
+
+    void pdfTools()
+    {
+        if (QStandardPaths::findExecutable(QStringLiteral("pdfunite")).isEmpty())
+            QSKIP("poppler-utils not installed");
+        // Two pictures (one landscape) -> 2-page PDF.
+        QImage portrait(600, 900, QImage::Format_RGB32), landscape(900, 600, QImage::Format_RGB32);
+        portrait.fill(Qt::red);
+        landscape.fill(Qt::blue);
+        const QString a = m_tmp.filePath(QStringLiteral("a.png")), b = m_tmp.filePath(QStringLiteral("b.jpg"));
+        QVERIFY(portrait.save(a) && landscape.save(b));
+        const QString two = m_tmp.filePath(QStringLiteral("two.pdf"));
+        QCOMPARE(DocTools::imagesToPdf({a, b}, two), QString());
+        QCOMPARE(DocTools::pdfPageCount(two), 2);
+
+        const QString four = m_tmp.filePath(QStringLiteral("four.pdf"));
+        QCOMPARE(DocTools::mergePdfs({two, two}, four), QString());
+        QCOMPARE(DocTools::pdfPageCount(four), 4);
+        QVERIFY(!DocTools::mergePdfs({two}, four).isEmpty()); // needs two
+
+        const QString some = m_tmp.filePath(QStringLiteral("some.pdf"));
+        QCOMPARE(DocTools::extractPages(four, {4, 1}, some), QString());
+        QCOMPARE(DocTools::pdfPageCount(some), 2);
+
+        const QString dir = m_tmp.filePath(QStringLiteral("split"));
+        QDir().mkpath(dir);
+        QStringList pages;
+        QCOMPARE(DocTools::splitPdf(two, dir, QStringLiteral("two"), &pages), QString());
+        QCOMPARE(pages.size(), 2);
+        for (const QString &page : pages)
+            QCOMPARE(DocTools::pdfPageCount(page), 1);
+    }
+
+    void compressPdf()
+    {
+        if (QStandardPaths::findExecutable(QStringLiteral("gs")).isEmpty())
+            QSKIP("ghostscript not installed");
+        QImage noise(1800, 1800, QImage::Format_RGB32); // incompressible enough to be large
+        for (int y = 0; y < noise.height(); ++y)
+            for (int x = 0; x < noise.width(); ++x)
+                noise.setPixel(x, y, QRandomGenerator::global()->generate());
+        const QString img = m_tmp.filePath(QStringLiteral("noise.png"));
+        QVERIFY(noise.save(img));
+        const QString big = m_tmp.filePath(QStringLiteral("big.pdf")), small = m_tmp.filePath(QStringLiteral("small.pdf"));
+        QCOMPARE(DocTools::imagesToPdf({img}, big), QString());
+        QCOMPARE(DocTools::compressPdf(big, small), QString());
+        QVERIFY(QFileInfo(small).size() < QFileInfo(big).size());
+    }
+
+    void convertAndOcr()
+    {
+        QImage text(1400, 300, QImage::Format_ARGB32);
+        text.fill(Qt::transparent);
+        {
+            QPainter p(&text);
+            p.fillRect(text.rect(), Qt::white);
+            QFont f;
+            f.setPixelSize(90);
+            p.setFont(f);
+            p.setPen(Qt::black);
+            p.drawText(text.rect(), Qt::AlignCenter, QStringLiteral("HELLO NOTCH"));
+        }
+        const QString png = m_tmp.filePath(QStringLiteral("text.png"));
+        QVERIFY(text.save(png));
+
+        const QString webp = m_tmp.filePath(QStringLiteral("small.webp"));
+        QCOMPARE(DocTools::convertImage(png, QStringLiteral("webp"), 700, webp), QString());
+        QImageReader back(webp);
+        QCOMPARE(back.format(), QByteArray("webp"));
+        QCOMPARE(back.size().width(), 700);
+        const QString jpg = m_tmp.filePath(QStringLiteral("same.jpg"));
+        QCOMPARE(DocTools::convertImage(png, QStringLiteral("jpg"), 5000, jpg), QString()); // never upscales
+        QCOMPARE(QImageReader(jpg).size().width(), 1400);
+        const QString smallerPng = m_tmp.filePath(QStringLiteral("smaller.png")); // resizing must not bloat a PNG
+        QCOMPARE(DocTools::convertImage(png, QStringLiteral("png"), 700, smallerPng), QString());
+        QVERIFY2(QFileInfo(smallerPng).size() <= QFileInfo(png).size(),
+                 qPrintable(QStringLiteral("%1 > %2").arg(QFileInfo(smallerPng).size()).arg(QFileInfo(png).size())));
+
+        if (QStandardPaths::findExecutable(QStringLiteral("tesseract")).isEmpty())
+            QSKIP("tesseract not installed");
+        QString ocr;
+        QCOMPARE(DocTools::recognizeText(png, false, &ocr), QString());
+        QVERIFY2(ocr.contains(QStringLiteral("HELLO")), qPrintable(ocr));
+    }
+
     void removeManagedGuards()
     {
         QVERIFY(!FileService::removeManaged(m_files, QStringLiteral("../escape")));
@@ -535,5 +638,12 @@ private slots:
     }
 };
 
-QTEST_GUILESS_MAIN(TestCore)
+// DocTools paints with QPdfWriter/QImage: needs a GUI app, offscreen so tests run anywhere.
+int main(int argc, char *argv[])
+{
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    QGuiApplication app(argc, argv);
+    TestCore test;
+    return QTest::qExec(&test, argc, argv);
+}
 #include "tst_core.moc"

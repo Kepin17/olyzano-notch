@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(notch VERSION 0.1.2 LANGUAGES CXX)
+project(notch VERSION 0.1.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -19,6 +19,7 @@ qt_add_library(notch_core STATIC
     src/services/CleanupService.h src/services/CleanupService.cpp
     src/services/FolderWatcher.h src/services/FolderWatcher.cpp
     src/services/TextTools.h
+    src/services/DocTools.h src/services/DocTools.cpp
 )
 qt_add_resources(notch_core migrations PREFIX "/" BASE database FILES
     database/migrations/001_initial.sql
@@ -27,7 +28,7 @@ qt_add_resources(notch_core migrations PREFIX "/" BASE database FILES
     database/migrations/004_recently_removed.sql
 )
 target_include_directories(notch_core PUBLIC src)
-target_link_libraries(notch_core PUBLIC Qt6::Core Qt6::Sql)
+target_link_libraries(notch_core PUBLIC Qt6::Core Qt6::Gui Qt6::Sql) # Gui: QImage/QPdfWriter in DocTools
 
 qt_add_executable(notch
     src/main.cpp
@@ -71,6 +72,7 @@ set(CPACK_PACKAGE_NAME notch)
 set(CPACK_PACKAGE_CONTACT "kevien.oj@gmail.com")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Temporary file shelf for KDE Plasma")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libqt6sql6-sqlite, layer-shell-qt, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-window, qml6-module-qtqml-workerscript, qml6-module-qtquick-templates, qml6-module-qtquick-shapes, qml6-module-qtquick-effects, qml6-module-qtquick-dialogs, qml6-module-qt-labs-platform, qml6-module-qtcore, pulseaudio-utils, zip")
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libqt6sql6-sqlite, layer-shell-qt, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-window, qml6-module-qtqml-workerscript, qml6-module-qtquick-templates, qml6-module-qtquick-shapes, qml6-module-qtquick-effects, qml6-module-qtquick-dialogs, qml6-module-qt-labs-platform, qml6-module-qtcore, pulseaudio-utils, zip, poppler-utils, ghostscript")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "tesseract-ocr")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 include(CPack)
