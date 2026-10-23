@@ -121,6 +121,8 @@ public:
     Q_INVOKABLE void deleteForever(const QStringList &ids);
     Q_INVOKABLE void emptyRecentlyRemoved();
     Q_INVOKABLE void pasteClipboard(const QString &categoryId = {});
+    // Text dropped on Notch (no file): saved as a note named after its first line.
+    Q_INVOKABLE void addTextNote(const QString &text, const QString &categoryId = {});
     Q_INVOKABLE void copyFiles(const QStringList &ids);
     Q_INVOKABLE void copyContents(const QString &id); // text files: their text
     Q_INVOKABLE void copyPaths(const QStringList &ids);
@@ -170,6 +172,10 @@ public:
     Q_INVOKABLE bool setStorageDir(const QUrl &folder);
     // First 64 KiB of a text item; empty if unavailable or binary.
     Q_INVOKABLE QString previewText(const QString &id) const;
+    // Quick Look picture: the image itself, a PDF's first page (rendered once, cached), else "".
+    Q_INVOKABLE QString quickLookImage(const QString &id);
+    // {name, sizeText, addedText, iconName, isText} of one item, for overlays like Quick Look.
+    Q_INVOKABLE QVariantMap itemInfo(const QString &id) const;
 
 signals:
     void countChanged();

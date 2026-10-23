@@ -71,7 +71,18 @@ Item {
         border.color: theme.accentSoft
         Behavior on color { ColorAnimation { duration: 120 } }
     }
-    HoverHandler { id: hover }
+    HoverHandler {
+        id: hover
+        // Lets Main know which tile is under the cursor (Space = Quick Look).
+        onHoveredChanged: {
+            if (!tile.view)
+                return
+            if (hovered)
+                tile.view.hoveredId = tile.itemId
+            else if (tile.view.hoveredId === tile.itemId)
+                tile.view.hoveredId = ""
+        }
+    }
 
     Rectangle {
         id: thumb
@@ -324,6 +335,10 @@ Item {
     TapHandler {
         acceptedModifiers: Qt.NoModifier
         enabled: tile.available || (tile.view && tile.view.selectedIds.length > 0)
+        // Press and hold: Quick Look until released.
+        longPressThreshold: 0.35
+        onLongPressed: tile.view.quickLook(tile.itemId)
+        onPressedChanged: if (!pressed) tile.view.endQuickLook()
         onTapped: {
             if (tile.view.selectedIds.length > 0) {
                 tile.selectRequested(tile.index, tile.itemId, "toggle")

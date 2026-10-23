@@ -503,6 +503,27 @@ void NotchController::pasteClipboard(const QString &categoryId)
     setError(tr("The clipboard has nothing Notch can keep."));
 }
 
+void NotchController::addTextNote(const QString &text, const QString &categoryId)
+{
+    if (text.trimmed().isEmpty())
+        return;
+    QString title;
+    for (const QString &line : text.split(u'\n'))
+        if (!line.trimmed().isEmpty()) {
+            title = line.simplified().left(40);
+            break;
+        }
+    const QString ext = FileService::textExtension(text);
+    // Prose is named by its first line; code/JSON make poor titles, so those get a dated name.
+    const QString base = ext == QLatin1String("txt")
+                             ? FileService::safeFileName(title, QStringLiteral("Note"))
+                             : QStringLiteral("Snippet ") + QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH.mm"));
+    const QString name = base + u'.' + ext;
+    const QString mime = QMimeDatabase().mimeTypeForFile(QStringLiteral("x.") + ext, QMimeDatabase::MatchExtension).name();
+    if (addBytes(name, mime, text.toUtf8(), tr("Dropped text"), categoryId))
+        emit notice(tr("Text saved as a note"), name, QStringLiteral("text-plain"), QString());
+}
+
 // Files as files (file managers and chat apps attach them). A single image also goes on the
 // clipboard as image data, so pasting into a chat sends the picture itself.
 void NotchController::copyFiles(const QStringList &ids)
@@ -857,6 +878,45 @@ void NotchController::setAutostart(bool enabled)
         return;
     }
     emit autostartChanged();
+}
+
+QVariantMap NotchController::itemInfo(const QString &id) const
+{
+    QVariantMap info;
+    for (int row = 0; row < m_model.rowCount(); ++row) {
+        const QModelIndex i = m_model.index(row);
+        if (i.data(FileItemModel::IdRole).toString() != id)
+            continue;
+        for (const auto &[role, key] : {std::pair{FileItemModel::NameRole, "name"}, {FileItemModel::SizeTextRole, "sizeText"},
+                                        {FileItemModel::AddedTextRole, "addedText"}, {FileItemModel::IconNameRole, "iconName"},
+                                        {FileItemModel::IsTextRole, "isText"}})
+            info.insert(QLatin1String(key), i.data(role));
+    }
+    return info;
+}
+
+QString NotchController::quickLookImage(const QString &id)
+{
+    const FileItem *item = available(id);
+    if (!item)
+        return {};
+    const QString path = FileService::storedPath(m_filesDir, item->storedName);
+    if (item->mimeType.startsWith(QLatin1String("image/")))
+        return QUrl::fromLocalFile(path).toString();
+    if (item->mimeType != QLatin1String("application/pdf"))
+        return {};
+    const QString cache = m_dataDir + QStringLiteral("/cache/") + id + QStringLiteral(".png");
+    if (!QFileInfo::exists(cache) || QFileInfo(cache).lastModified() < QFileInfo(path).lastModified()) {
+        QDir().mkpath(m_dataDir + QStringLiteral("/cache"));
+        // pdftoppm -singlefile writes <prefix>.png
+        const int rc = QProcess::execute(QStringLiteral("pdftoppm"),
+                                         {QStringLiteral("-f"), QStringLiteral("1"), QStringLiteral("-l"), QStringLiteral("1"),
+                                          QStringLiteral("-r"), QStringLiteral("110"), QStringLiteral("-png"),
+                                          QStringLiteral("-singlefile"), path, cache.chopped(4)});
+        if (rc != 0)
+            return {};
+    }
+    return QUrl::fromLocalFile(cache).toString();
 }
 
 QString NotchController::previewText(const QString &id) const

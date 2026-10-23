@@ -8,7 +8,7 @@ AbstractButton {
     implicitHeight: 26
     background: Rectangle {
         radius: 13
-        color: ib.down ? theme.surfacePressed : ib.hovered ? theme.surfaceHover : theme.surface
+        color: ib.checked ? theme.accentSoft : ib.down ? theme.surfacePressed : ib.hovered ? theme.surfaceHover : theme.surface
     }
     contentItem: Text {
         text: ib.text

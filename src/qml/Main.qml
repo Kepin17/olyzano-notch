@@ -45,6 +45,7 @@ Window {
     readonly property bool inRemoved: notch.categoryFilter === "__removed__" // Recently removed view
     readonly property bool anyMenu: menu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible
                                     || toolsMenu.visible || extractPopup.visible || settingsPage.overlayOpen
+                                    || quickLookCard.visible
                                     || sortMenu.visible || removedMenu.visible
                                     || removedChipMenu.visible
     readonly property bool dragOver: edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver
@@ -140,13 +141,16 @@ Window {
     onVisibleChanged: updateMask()
     onModeChanged: updateMask()
 
-    // Files from outside Notch; drags of Notch's own tiles/chips carry a source and are ignored.
+    // Files or text from outside Notch; drags of Notch's own tiles/chips carry a source and are ignored.
     function isFileDrop(drag) {
-        return drag.hasUrls && !drag.source
+        return (drag.hasUrls || drag.hasText) && !drag.source
     }
 
     function acceptDrop(d) {
-        if (isFileDrop(d)) {
+        if (!d.source && !d.hasUrls && d.hasText) { // a text selection, not a file
+            notch.addTextNote(d.text, notch.categoryFilter)
+            d.acceptProposedAction()
+        } else if (isFileDrop(d)) {
             notch.addDrop(d.urls, d.html, notch.categoryFilter) // into the category being viewed
             d.acceptProposedAction()
         }
@@ -320,6 +324,12 @@ Window {
         onWidthChanged: root.updateMask()
         onHeightChanged: root.updateMask()
 
+        Keys.onReleased: (e) => {
+            if (e.key === Qt.Key_Space && !e.isAutoRepeat && quickLookCard.visible) {
+                quickLookCard.hide()
+                e.accepted = true
+            }
+        }
         Keys.onPressed: (e) => {
             if (e.key === Qt.Key_A && (e.modifiers & Qt.ControlModifier) && root.page === "shelf") {
                 root.selection = notch.visibleIds()
@@ -339,6 +349,10 @@ Window {
             } else if (e.key === Qt.Key_Delete && root.selecting && !root.inRemoved) {
                 notch.removeItems(root.selection)
                 root.clearSelection()
+                e.accepted = true
+            } else if (e.key === Qt.Key_Space && list.hoveredId !== "" && root.page === "shelf") {
+                if (!e.isAutoRepeat)
+                    quickLookCard.show(list.hoveredId) // held Space: Quick Look until released
                 e.accepted = true
             } else if (e.key === Qt.Key_Space || e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
                 root.pinned = !root.pinned
@@ -702,6 +716,43 @@ Window {
                         Accessible.name: "Save note"
                         onClicked: root.saveNote()
                     }
+                    // Recently removed: a header button (with count) rather than a chip at the far end.
+                    IconButton {
+                        id: trashButton
+                        visible: root.page === "shelf" && !root.selecting && (notch.removedCount > 0 || root.inRemoved)
+                        text: "🗑"
+                        checked: root.inRemoved
+                        Accessible.name: "Recently removed"
+                        onClicked: notch.categoryFilter = root.inRemoved ? "" : "__removed__"
+                        TapHandler {
+                            acceptedButtons: Qt.RightButton
+                            onTapped: removedChipMenu.popup()
+                        }
+                        Rectangle {
+                            visible: notch.removedCount > 0
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: -4
+                            width: Math.max(16, trashCount.implicitWidth + 8)
+                            height: 16
+                            radius: 8
+                            color: "#ff453a"
+                            Text {
+                                id: trashCount
+                                anchors.centerIn: parent
+                                text: notch.removedCount
+                                color: "white"
+                                font.pixelSize: 9
+                                font.bold: true
+                            }
+                        }
+                        // Drop tiles on it to remove them.
+                        DropArea {
+                            anchors.fill: parent
+                            onEntered: (drag) => { drag.accepted = drag.source && drag.source.draggedIds !== undefined }
+                            onDropped: (d) => notch.removeItems(d.source.draggedIds)
+                        }
+                    }
                     IconButton {
                         visible: root.page === "shelf" && !root.selecting
                         text: "🎨"
@@ -793,10 +844,7 @@ Window {
                             spacing: 6
                             clip: true
                             boundsBehavior: Flickable.StopAtBounds
-                            model: [{ id: "", name: "All", count: notch.count }].concat(notch.categories).concat(
-                                       notch.removedCount > 0
-                                       ? [{ id: "__removed__", name: "Recently removed", count: notch.removedCount, special: "removed" }]
-                                       : [])
+                            model: [{ id: "", name: "All", count: notch.count }].concat(notch.categories)
                             delegate: Chip {
                                 required property var modelData
                                 catId: modelData.id
@@ -805,8 +853,6 @@ Window {
                                 special: modelData.special || ""
                                 onDropHoverChanged: root.chipDragOver = dropHover
                                 onMenuRequested: {
-                                    if (catId === "__removed__")
-                                        return removedChipMenu.popup()
                                     categoryMenu.catId = catId
                                     categoryMenu.catName = text
                                     categoryMenu.popup()
@@ -1009,6 +1055,9 @@ Window {
                     boundsBehavior: Flickable.StopAtBounds
                     model: notch.items
                     property var selectedIds: root.selection
+                    property string hoveredId: ""
+                    function quickLook(id) { quickLookCard.show(id) }
+                    function endQuickLook() { quickLookCard.hide() }
                     property string renamingId: ""
                     function commitRename(id, name) {
                         renamingId = ""
@@ -1319,6 +1368,82 @@ Window {
         }
         DarkSeparator {}
         Action { enabled: false; text: "From: " + (menu.sourcePath || "unknown") }
+    }
+
+    // Quick Look: a large preview over the island while Space / the mouse button is held.
+    Rectangle {
+        id: quickLookCard
+        property string itemId
+        property var info: ({})
+        property string picture: ""
+        property string text: ""
+        function show(id) {
+            info = notch.itemInfo(id)
+            itemId = id
+            picture = notch.quickLookImage(id)
+            text = picture === "" && info.isText ? notch.previewText(id) : ""
+            visible = true
+        }
+        function hide() { visible = false }
+        visible: false
+        z: 100
+        x: (root.width - width) / 2
+        y: 8
+        width: Math.min(root.width - 40, 640)
+        height: root.height - 24
+        radius: 22
+        color: theme.card
+        border.color: theme.outline
+        scale: visible ? 1 : 0.92
+        opacity: visible ? 1 : 0
+        Behavior on scale { SpringAnimation { spring: 5; damping: 0.4 } }
+        Behavior on opacity { NumberAnimation { duration: 120 } }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 10
+            Item {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Image {
+                    anchors.fill: parent
+                    visible: quickLookCard.picture !== ""
+                    source: quickLookCard.picture
+                    fillMode: Image.PreserveAspectFit
+                    sourceSize.width: 1280
+                    asynchronous: true
+                    cache: false
+                }
+                Text {
+                    anchors.fill: parent
+                    visible: quickLookCard.text !== ""
+                    text: quickLookCard.text
+                    color: theme.textSoft
+                    font.family: "monospace"
+                    font.pixelSize: 12
+                    wrapMode: Text.WrapAnywhere
+                    clip: true
+                }
+                Image {
+                    anchors.centerIn: parent
+                    visible: quickLookCard.picture === "" && quickLookCard.text === ""
+                    width: 128
+                    height: 128
+                    source: quickLookCard.visible && quickLookCard.info.iconName ? "image://mime/" + quickLookCard.info.iconName : ""
+                    sourceSize: Qt.size(256, 256)
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: (quickLookCard.info.name || "") + "  ·  " + (quickLookCard.info.sizeText || "") + "  ·  "
+                      + (quickLookCard.info.addedText || "")
+                color: theme.textDim
+                font.pixelSize: 12
+                elide: Text.ElideMiddle
+                horizontalAlignment: Text.AlignHCenter
+            }
+        }
     }
 
     // PDF & image tools. Items enable only for files they apply to; order = selection order.

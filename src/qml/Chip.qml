@@ -7,7 +7,7 @@ AbstractButton {
     id: chip
     property string catId
     property int itemCount
-    property string special // "screenshots" | "downloads" | "kdeconnect" | "removed" | ""
+    property string special // "screenshots" | "downloads" | "kdeconnect" | ""
     readonly property bool active: notch.categoryFilter === catId
     readonly property bool dropHover: chipDrop.containsDrag
     signal menuRequested()
@@ -27,7 +27,7 @@ AbstractButton {
             spacing: 5
             Text {
                 text: (chip.special === "screenshots" ? "📷 " : chip.special === "downloads" ? "⬇ "
-                     : chip.special === "kdeconnect" ? "📱 " : chip.special === "removed" ? "🗑 " : "") + chip.text
+                     : chip.special === "kdeconnect" ? "📱 " : "") + chip.text
                 color: chip.active ? "white" : theme.text
                 font.pixelSize: 12
                 font.weight: Font.Medium
@@ -53,7 +53,7 @@ AbstractButton {
     DragHandler {
         id: chipDragHandler
         target: null
-        enabled: chip.special !== "removed" && chip.itemCount > 0
+        enabled: chip.itemCount > 0
         onActiveChanged: {
             if (!active)
                 return
@@ -76,17 +76,18 @@ AbstractButton {
         // From inside Notch only tiles/chips carrying draggedIds count (never this chip itself);
         // from outside, files.
         onEntered: (drag) => {
-            drag.accepted = drag.source ? drag.source.draggedIds !== undefined && drag.source !== chip : drag.hasUrls
+            drag.accepted = drag.source ? drag.source.draggedIds !== undefined && drag.source !== chip
+                                        : drag.hasUrls || drag.hasText
         }
         onDropped: (d) => {
             if (d.source === chip)
                 return
             if (d.source && d.source.draggedIds !== undefined) {
-                if (chip.catId === "__removed__")
-                    notch.removeItems(d.source.draggedIds)
-                else
-                    notch.setCategory(d.source.draggedIds, chip.catId)
+                notch.setCategory(d.source.draggedIds, chip.catId)
                 d.accept(Qt.CopyAction)
+            } else if (!d.hasUrls && d.hasText) { // a text selection: becomes a note here
+                notch.addTextNote(d.text, chip.catId)
+                d.acceptProposedAction()
             } else if (d.hasUrls) {
                 notch.addDrop(d.urls, d.html, chip.catId)
                 d.acceptProposedAction()
