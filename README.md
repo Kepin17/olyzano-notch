@@ -12,7 +12,7 @@ sudo apt install cmake ninja-build g++ qt6-base-dev qt6-declarative-dev liblayer
 ```
 
 Runtime: Qt 6 (Core, Gui, Widgets, Network, Sql + `libqt6sql6-sqlite`, Quick, Controls, Layouts, Shapes, Effects,
-Dialogs, `Qt.labs.platform`), `layer-shell-qt`.
+Dialogs, `Qt.labs.platform`), `layer-shell-qt`; `gocryptfs` + `fuse3` for locked categories.
 Without `liblayershellqtinterface-dev` it still builds, but on Wayland the pill can't be pinned to
 the top edge. See [docs/wayland-limitations.md](docs/wayland-limitations.md).
 
@@ -61,10 +61,21 @@ To try it without touching your real shelf or settings:
 - **Copy** (right-click, or Ctrl+C on a selection) puts the files on the clipboard as files, so file
   managers and chat apps attach them; a single image also goes as image data. **Copy contents**
   (text files) copies the text, **Copy path** the stored path.
-- **Recently removed:** removing a file moves it to **🗑 Recently removed** (at the end of the category
-  row) for 24 hours, then it is deleted for good. **Undo** in the toast (or Ctrl+Z) brings the last
-  removal back; in Recently removed, ↺ restores and ✕ deletes now; right-click the chip to restore all
-  or empty it. Drop tiles on the 🗑 chip to remove them.
+- **Recently removed:** removing a file moves it to **Recently removed** (the 🗑 button in the header,
+  with a count) for 24 hours, then it is deleted for good. **Undo** in the toast (or Ctrl+Z) brings the
+  last removal back; in Recently removed, ↺ restores and ✕ deletes now; right-click 🗑 to restore all
+  or empty it. Drop tiles on 🗑 to remove them.
+- **Quick Look:** hover a tile and hold **Space** (or press and hold the tile) for a large preview;
+  release to close.
+- **Drop text:** text dragged from any app onto Notch (or onto a chip) becomes a note.
+- **Locked categories:** right-click a chip → **Lock with password…** for sensitive files (ID cards,
+  pay slips). The first time sets the password (at least 8 characters; **forget it and the files are
+  gone**, there is no recovery). Files in locked categories are encrypted on disk with
+  [gocryptfs](https://nuetzlich.net/gocryptfs/), never expire, and are hidden until you click the 🔒 chip
+  and unlock. Unlocking opens all locked categories; they lock again a few seconds after Notch closes,
+  when Notch quits, or with the 🔓 header button / **Lock now**. **Remove lock** moves the files back
+  to normal storage. Removing a locked file deletes it at once (after a confirmation), it skips
+  Recently removed.
 - **Expiring soon:** files that will be auto-deleted within a day get an orange ⏳ badge; click
   "· Keep" under the name to keep them.
 - **Keep:** right-click → **Keep (never auto-delete)** marks files with ★; cleanup skips them until
@@ -139,6 +150,7 @@ To try it without touching your real shelf or settings:
 | What | Where |
 |---|---|
 | Files | `~/.local/share/notch/files/<uuid>/<original name>` |
+| Locked files | `~/.local/share/notch/vault/` (gocryptfs, encrypted); while unlocked, plain view at `$XDG_RUNTIME_DIR/notch-vault-*` (RAM only) |
 | Metadata | `~/.local/share/notch/notch.db` (SQLite, schema version in `PRAGMA user_version`) |
 | Settings | `~/.config/notch/notch.conf` (`retentionDays`, `storageDir`) |
 | Start at login | `~/.config/autostart/notch.desktop`, written/removed by the settings toggle |

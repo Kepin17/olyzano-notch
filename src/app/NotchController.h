@@ -3,6 +3,7 @@
 #include "models/FileItemModel.h"
 #include "repositories/FileRepository.h"
 #include "services/FolderWatcher.h"
+#include "services/Vault.h"
 
 #include <QObject>
 #include <QSet>
@@ -26,6 +27,7 @@ public:
     void setCategory(const QString &categoryId);
     void setSortMode(const QString &mode);
     void setContents(const QHash<QString, QString> *contents) { m_contents = contents; }
+    void setVaultUnlocked(bool unlocked);
 
 protected:
     bool filterAcceptsRow(int row, const QModelIndex &parent) const override;
@@ -36,6 +38,7 @@ private:
     QString m_category;
     QString m_sort = QStringLiteral("date");
     const QHash<QString, QString> *m_contents = nullptr; // id -> text of text files, for search
+    bool m_vaultUnlocked = false;
 };
 
 // Bridge between QML and the services. Owns the repository (main thread), dispatches copies
@@ -62,6 +65,9 @@ class NotchController : public QObject
     Q_PROPERTY(QStringList recentColors READ recentColors NOTIFY recentColorsChanged) // picked, newest first
     // Automatic category per file type (FileService::typeGroup): {group: categoryId}.
     Q_PROPERTY(QVariantMap typeRules READ typeRules NOTIFY typeRulesChanged)
+    // Encrypted vault for locked categories (gocryptfs). Unlocked = mounted in $XDG_RUNTIME_DIR.
+    Q_PROPERTY(bool vaultExists READ vaultExists NOTIFY vaultChanged)
+    Q_PROPERTY(bool vaultUnlocked READ vaultUnlocked NOTIFY vaultChanged)
     Q_PROPERTY(bool autoScreenshots READ autoScreenshots WRITE setAutoScreenshots NOTIFY autoScreenshotsChanged)
     Q_PROPERTY(bool autoDownloads READ autoDownloads WRITE setAutoDownloads NOTIFY autoDownloadsChanged)
     Q_PROPERTY(bool autoKdeConnect READ autoKdeConnect WRITE setAutoKdeConnect NOTIFY autoKdeConnectChanged)
@@ -97,6 +103,8 @@ public:
     void setThemeMode(const QString &mode);
     QStringList recentColors() const { return m_settings.value(QStringLiteral("colors")).toStringList(); }
     QVariantMap typeRules() const;
+    bool vaultExists() const { return m_vault.exists(); }
+    bool vaultUnlocked() const { return m_vault.isUnlocked(); }
     bool autoScreenshots() const { return m_settings.value(QStringLiteral("autoScreenshots"), true).toBool(); }
     void setAutoScreenshots(bool enabled);
     bool autoDownloads() const { return m_settings.value(QStringLiteral("autoDownloads"), false).toBool(); }
@@ -134,6 +142,12 @@ public:
     Q_INVOKABLE QStringList fileUrls(const QStringList &ids) const; // file:// of the stored copies
     Q_INVOKABLE void copyText(const QString &text);
     Q_INVOKABLE void setTypeRule(const QString &group, const QString &categoryId); // empty = no rule
+    // Vault. Passwords go straight to gocryptfs and are not kept. Return "" or a reason.
+    Q_INVOKABLE QString createVault(const QString &password);
+    Q_INVOKABLE QString unlockVault(const QString &password);
+    Q_INVOKABLE void lockVault();
+    // Locks (moves the category's files into the vault) or unlocks it for good. Vault must be open.
+    Q_INVOKABLE void setCategoryLocked(const QString &categoryId, bool locked);
     Q_INVOKABLE int applyRulesToExisting(); // uncategorized files only; returns how many moved
     Q_INVOKABLE void removeColor(const QString &hex);
     // User-confirmed (Settings button): sets Spectacle's [General] autoSaveImage=true via kwriteconfig6.
@@ -193,6 +207,7 @@ signals:
     void themeModeChanged();
     void recentColorsChanged();
     void typeRulesChanged();
+    void vaultChanged();
     void autoScreenshotsChanged();
     void autoDownloadsChanged();
     void autoKdeConnectChanged();
@@ -218,6 +233,13 @@ private:
     FileItem newItem(const QString &name, const QString &categoryId) const;
     QString freeName(const QString &name, const QString &exceptId = {}) const;
     const FileItem *available(const QString &id) const; // the item if it is ready to use, else nullptr
+    QString baseDir(const FileItem &item) const; // files dir or vault mount
+    QString pathOf(const FileItem &item) const;
+    QString scratchDir(bool forVault) const;
+    bool isLockedCategory(const QString &categoryId) const;
+    bool assignStorage(FileItem &item, QString *why); // vault or files dir, by category
+    bool relocate(const FileItem &item, bool toVault);
+    void vaultStateChanged();
     void reloadCategories();  // after a category is created/renamed/deleted
     void refreshCategories(); // recount; emits categoriesChanged only if something changed
     bool storeSetting(const QString &key, const QVariant &value); // true if it changed
@@ -229,6 +251,8 @@ private:
     void setError(const QString &message);
 
     QSettings m_settings;
+    QString m_runtimeDir; // tmpfs: vault mount + decrypted scratch
+    Vault m_vault;
     QString m_dataDir;
     QString m_filesDir;
     int m_retentionDays;

@@ -8,6 +8,7 @@
 #include <QBuffer>
 #include <QClipboard>
 #include <QCollator>
+#include <QCryptographicHash>
 #include <QProcess>
 #include <QCoreApplication>
 #include <QDesktopServices>
@@ -47,6 +48,13 @@ void FileFilter::setCategory(const QString &categoryId)
     endFilterChange(Direction::Rows);
 }
 
+void FileFilter::setVaultUnlocked(bool unlocked)
+{
+    beginFilterChange();
+    m_vaultUnlocked = unlocked;
+    endFilterChange(Direction::Rows);
+}
+
 void FileFilter::setSortMode(const QString &mode)
 {
     m_sort = mode;
@@ -83,6 +91,9 @@ bool FileFilter::filterAcceptsRow(int row, const QModelIndex &parent) const
                            && m_contents->value(i.data(FileItemModel::IdRole).toString()).contains(m_text, Qt::CaseInsensitive));
     if (!match)
         return false;
+    // Vault files: only inside their own (locked) category, and only while the vault is open.
+    if (i.data(FileItemModel::VaultRole).toBool())
+        return m_vaultUnlocked && m_category == i.data(FileItemModel::CategoryIdRole).toString();
     const bool removed = i.data(FileItemModel::RemovedRole).toBool();
     if (m_category == QLatin1String(RemovedView))
         return removed;
@@ -108,6 +119,11 @@ static QString autostartPath()
 NotchController::NotchController(const QString &dataDir, QObject *parent)
     : QObject(parent)
     , m_settings(configDir() + QStringLiteral("/notch/notch.conf"), QSettings::IniFormat)
+    , m_runtimeDir(QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation))
+    // The mount name includes a hash of the data dir: separate Notch instances never share it.
+    , m_vault(dataDir + QStringLiteral("/vault"),
+              m_runtimeDir + QStringLiteral("/notch-vault-")
+                  + QString::fromLatin1(QCryptographicHash::hash(dataDir.toUtf8(), QCryptographicHash::Sha1).toHex().left(8)))
     , m_dataDir(dataDir)
     , m_filesDir(m_settings.value(QStringLiteral("storageDir"), dataDir + QStringLiteral("/files")).toString())
     , m_retentionDays(qBound(1, m_settings.value(QStringLiteral("retentionDays"), DefaultRetentionDays).toInt(), 365))
@@ -169,6 +185,10 @@ bool NotchController::start()
     CleanupService::recover(m_repo, m_filesDir);
     CleanupService::purge(m_repo, m_filesDir, QDateTime::currentDateTimeUtc(), m_retentionDays);
     m_categoryList = m_repo.categories();
+    lockVault(); // a mount left behind by a crash: start locked
+    m_model.setVaultDir(m_vault.mountDir());
+    vaultStateChanged();
+    connect(qApp, &QCoreApplication::aboutToQuit, this, &NotchController::lockVault);
     m_model.setItems(m_repo.visible());
     updateWatchers();
     m_clock.start();
@@ -179,6 +199,8 @@ bool NotchController::start()
 const FileItem *NotchController::available(const QString &id) const
 {
     const FileItem *item = m_model.find(id);
+    if (item && item->vault && !m_vault.isUnlocked())
+        return nullptr; // locked away
     return item && item->status == Status::Available ? item : nullptr;
 }
 
@@ -187,6 +209,58 @@ bool NotchController::storeSetting(const QString &key, const QVariant &value)
     if (m_settings.contains(key) && m_settings.value(key) == value)
         return false;
     m_settings.setValue(key, value);
+    return true;
+}
+
+QString NotchController::baseDir(const FileItem &item) const
+{
+    return item.vault ? m_vault.mountDir() : m_filesDir;
+}
+
+QString NotchController::pathOf(const FileItem &item) const
+{
+    return baseDir(item) + u'/' + item.storedName;
+}
+
+// Scratch space for derived plaintext (Quick Look renders, tool output): tmpfs when the source
+// is a vault file, so nothing decrypted ever lands on disk.
+QString NotchController::scratchDir(bool forVault) const
+{
+    return forVault ? m_runtimeDir + QStringLiteral("/notch-scratch") : m_dataDir;
+}
+
+bool NotchController::isLockedCategory(const QString &categoryId) const
+{
+    return !categoryId.isEmpty() && m_settings.value(QStringLiteral("lockedCategories")).toStringList().contains(categoryId);
+}
+
+bool NotchController::assignStorage(FileItem &item, QString *why)
+{
+    item.vault = isLockedCategory(item.categoryId);
+    if (item.vault && !m_vault.isUnlocked()) {
+        *why = tr("unlock the category first");
+        return false;
+    }
+    return true;
+}
+
+// Moves one file between the files dir and the vault. Copy, then delete the source: a failure
+// leaves the original where it was.
+bool NotchController::relocate(const FileItem &item, bool toVault)
+{
+    if (item.vault == toVault)
+        return true;
+    FileItem moved = item;
+    moved.vault = toVault;
+    const QString dir = baseDir(moved) + u'/' + item.id;
+    if (!QDir().mkpath(dir) || !QFile::copy(pathOf(item), pathOf(moved)) || !m_repo.setVault(item.id, toVault)) {
+        QFile::remove(pathOf(moved));
+        QDir().rmdir(dir);
+        setError(tr("Could not move %1 %2 the locked category").arg(item.originalName, toVault ? tr("into") : tr("out of")));
+        return false;
+    }
+    FileService::removeManaged(baseDir(item), item.storedName);
+    m_model.upsert(moved);
     return true;
 }
 
@@ -270,7 +344,8 @@ void NotchController::addLocalFile(const QString &path, const QString &categoryI
         errors << fi.fileName() + QStringLiteral(": ") + err;
         return;
     }
-    if (fi.canonicalFilePath().startsWith(QDir(m_filesDir).canonicalPath() + u'/'))
+    if (fi.canonicalFilePath().startsWith(QDir(m_filesDir).canonicalPath() + u'/')
+        || (m_vault.isUnlocked() && fi.canonicalFilePath().startsWith(QDir(m_vault.mountDir()).canonicalPath() + u'/')))
         return; // dropped back from Notch itself
 
     FileItem item = newItem(fi.fileName(), categoryId);
@@ -278,6 +353,10 @@ void NotchController::addLocalFile(const QString &path, const QString &categoryI
     item.categoryId = ruledCategory(item.categoryId, item.mimeType);
     item.sizeBytes = fi.size();
     item.sourcePath = fi.absoluteFilePath();
+    if (QString why; !assignStorage(item, &why)) {
+        errors << item.originalName + QStringLiteral(": ") + why;
+        return;
+    }
     if (!m_repo.insert(item)) {
         errors << item.originalName + QStringLiteral(": ") + m_repo.errorString();
         return;
@@ -305,12 +384,12 @@ void NotchController::startCopy(const FileItem &item)
         }
         const QString reason = r.ok ? m_repo.errorString() : r.error;
         if (r.ok)
-            FileService::removeManaged(m_filesDir, item.storedName);
+            FileService::removeManaged(baseDir(item), item.storedName);
         m_repo.remove(item.id);
         m_model.removeId(item.id);
         setError(item.originalName + QStringLiteral(": ") + reason);
     });
-    const QString src = item.sourcePath, dir = m_filesDir + u'/' + item.id, name = item.originalName;
+    const QString src = item.sourcePath, dir = baseDir(item) + u'/' + item.id, name = item.originalName;
     watcher->setFuture(QtConcurrent::run([src, dir, name] { return FileService::copyInto(src, dir, name); }));
 }
 
@@ -357,7 +436,12 @@ void NotchController::startDownload(const QUrl &url, const QString &categoryId)
         item.categoryId = ruledCategory(item.categoryId, item.mimeType);
         item.sizeBytes = qMax<qint64>(0, reply->header(QNetworkRequest::ContentLengthHeader).toLongLong());
         item.sourcePath = reply->url().scheme() == QLatin1String("data") ? QStringLiteral("data URL") : reply->url().toDisplayString();
-        const QString dir = m_filesDir + u'/' + item.id;
+        if (QString why; !assignStorage(item, &why)) {
+            d->error = why;
+            reply->abort();
+            return;
+        }
+        const QString dir = baseDir(item) + u'/' + item.id;
         const QStorageInfo storage(m_filesDir);
         if (storage.isValid() && storage.bytesAvailable() >= 0 && storage.bytesAvailable() < item.sizeBytes) {
             d->error = tr("not enough disk space");
@@ -402,7 +486,7 @@ void NotchController::startDownload(const QUrl &url, const QString &categoryId)
             ok = d->out->flush() && ::fsync(d->out->handle()) == 0;
             bytes = d->out->size();
             d->out->close();
-            ok = ok && QFile::rename(d->out->fileName(), FileService::storedPath(m_filesDir, d->item.storedName))
+            ok = ok && QFile::rename(d->out->fileName(), pathOf(d->item))
                  && m_repo.markAvailable(d->item.id, bytes);
         }
         if (ok) {
@@ -414,7 +498,7 @@ void NotchController::startDownload(const QUrl &url, const QString &categoryId)
         if (d->out) {
             d->out->close();
             d->out->remove();
-            FileService::removeManaged(m_filesDir, d->item.storedName);
+            FileService::removeManaged(baseDir(d->item), d->item.storedName);
             m_repo.remove(d->item.id);
             m_model.removeId(d->item.id);
         }
@@ -438,11 +522,15 @@ bool NotchController::addBytes(const QString &name, const QString &mimeType, con
     FileItem item = newItem(FileService::safeFileName(name), categoryId);
     item.mimeType = mimeType;
     item.categoryId = ruledCategory(item.categoryId, mimeType);
+    if (QString why; !assignStorage(item, &why)) {
+        setError(item.originalName + QStringLiteral(": ") + why);
+        return false;
+    }
     item.sizeBytes = bytes.size();
     item.sourcePath = source;
     item.status = Status::Available;
-    if (!FileService::writeFile(m_filesDir + u'/' + item.id, item.originalName, bytes) || !m_repo.insert(item)) {
-        FileService::removeManaged(m_filesDir, item.storedName);
+    if (!FileService::writeFile(baseDir(item) + u'/' + item.id, item.originalName, bytes) || !m_repo.insert(item)) {
+        FileService::removeManaged(baseDir(item), item.storedName);
         setError(tr("%1: cannot save").arg(item.originalName));
         return false;
     }
@@ -535,7 +623,7 @@ void NotchController::copyFiles(const QStringList &ids)
         const FileItem *item = available(id);
         if (!item)
             continue;
-        const QUrl url = QUrl::fromLocalFile(FileService::storedPath(m_filesDir, item->storedName));
+        const QUrl url = QUrl::fromLocalFile(pathOf(*item));
         urls << url;
         gnome += '\n' + url.toEncoded();
         single = item;
@@ -563,7 +651,7 @@ void NotchController::copyContents(const QString &id)
     const FileItem *item = available(id);
     if (!item)
         return;
-    QFile f(FileService::storedPath(m_filesDir, item->storedName));
+    QFile f(pathOf(*item));
     constexpr qint64 Limit = 16 << 20;
     if (f.size() > Limit || !f.open(QIODevice::ReadOnly)) {
         setError(tr("%1: too large to copy as text").arg(item->originalName));
@@ -577,7 +665,7 @@ void NotchController::copyPaths(const QStringList &ids)
     QStringList paths;
     for (const QString &id : ids)
         if (const FileItem *item = available(id))
-            paths << FileService::storedPath(m_filesDir, item->storedName);
+            paths << pathOf(*item);
     if (!paths.isEmpty())
         QGuiApplication::clipboard()->setText(paths.join(u'\n'));
 }
@@ -596,7 +684,7 @@ void NotchController::open(const QString &id)
     const FileItem *item = available(id);
     if (!item)
         return;
-    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(FileService::storedPath(m_filesDir, item->storedName))))
+    if (!QDesktopServices::openUrl(QUrl::fromLocalFile(pathOf(*item))))
         setError(tr("%1: no application could open this file").arg(item->originalName));
 }
 
@@ -608,10 +696,15 @@ void NotchController::remove(const QString &id)
 void NotchController::removeItems(const QStringList &ids)
 {
     const QDateTime now = QDateTime::currentDateTimeUtc();
-    QStringList moved;
+    QStringList moved, vaultIds;
+    for (const QString &id : ids)
+        if (const FileItem *item = m_model.find(id); item && item->vault)
+            vaultIds << id;
+    if (!vaultIds.isEmpty()) // locked files skip Recently removed: no plain copy should linger there
+        deleteForever(vaultIds);
     for (const QString &id : ids) {
         const FileItem *item = m_model.find(id);
-        if (!item || item->status == Status::Copying || item->removedAt.isValid())
+        if (!item || item->vault || item->status == Status::Copying || item->removedAt.isValid())
             continue;
         if (m_repo.setRemoved(id, now))
             moved << id;
@@ -672,7 +765,7 @@ void NotchController::deleteNow(const FileItem &item)
         setError(tr("Database error: %1").arg(m_repo.errorString()));
         return;
     }
-    if (FileService::removeManaged(m_filesDir, item.storedName))
+    if (FileService::removeManaged(baseDir(item), item.storedName))
         m_repo.remove(item.id);
     else
         setError(tr("Could not delete the stored copy yet; cleanup will retry."));
@@ -694,7 +787,7 @@ QString NotchController::uriList(const QStringList &ids) const
     for (const QString &id : ids) {
         const FileItem *item = available(id);
         if (item)
-            uris << QString::fromUtf8(QUrl::fromLocalFile(FileService::storedPath(m_filesDir, item->storedName)).toEncoded());
+            uris << QString::fromUtf8(QUrl::fromLocalFile(pathOf(*item)).toEncoded());
     }
     return uris.join(QStringLiteral("\r\n"));
 }
@@ -723,7 +816,8 @@ void NotchController::refreshCategories()
                                 : c.id == phone     ? QStringLiteral("kdeconnect")
                                                     : QString();
         const QVariantMap entry{{QStringLiteral("id"), c.id}, {QStringLiteral("name"), c.name},
-                                {QStringLiteral("count"), counts.value(c.id)}, {QStringLiteral("special"), special}};
+                                {QStringLiteral("count"), counts.value(c.id)}, {QStringLiteral("special"), special},
+                                {QStringLiteral("locked"), isLockedCategory(c.id)}};
         if (special == QLatin1String("screenshots"))
             out.prepend(entry); // Screenshots always sits right after "All"
         else
@@ -783,6 +877,10 @@ void NotchController::renameCategory(const QString &id, const QString &name)
 
 void NotchController::deleteCategory(const QString &id)
 {
+    if (isLockedCategory(id)) {
+        setError(tr("Remove the lock first (right-click the category)"));
+        return;
+    }
     if (!m_repo.deleteCategory(id)) {
         setError(tr("Cannot delete category: %1").arg(m_repo.errorString()));
         return;
@@ -795,10 +893,21 @@ void NotchController::deleteCategory(const QString &id)
 
 void NotchController::setCategory(const QStringList &ids, const QString &categoryId)
 {
+    const bool toVault = isLockedCategory(categoryId);
+    if (toVault && !m_vault.isUnlocked()) {
+        setError(tr("Unlock the category first"));
+        return;
+    }
     QStringList done;
-    for (const QString &id : ids)
+    for (const QString &id : ids) {
+        const FileItem *item = m_model.find(id);
+        if (!item)
+            continue;
+        if (item->vault != toVault && (!m_vault.isUnlocked() || !relocate(*item, toVault)))
+            continue; // a vault file can only leave while the vault is open
         if (m_repo.setCategory(id, categoryId))
             done << id;
+    }
     m_model.setCategory(done, categoryId);
     if (done.size() != ids.size())
         setError(tr("Some files could not be moved: %1").arg(m_repo.errorString()));
@@ -889,7 +998,7 @@ QVariantMap NotchController::itemInfo(const QString &id) const
             continue;
         for (const auto &[role, key] : {std::pair{FileItemModel::NameRole, "name"}, {FileItemModel::SizeTextRole, "sizeText"},
                                         {FileItemModel::AddedTextRole, "addedText"}, {FileItemModel::IconNameRole, "iconName"},
-                                        {FileItemModel::IsTextRole, "isText"}})
+                                        {FileItemModel::IsTextRole, "isText"}, {FileItemModel::VaultRole, "vault"}})
             info.insert(QLatin1String(key), i.data(role));
     }
     return info;
@@ -900,14 +1009,15 @@ QString NotchController::quickLookImage(const QString &id)
     const FileItem *item = available(id);
     if (!item)
         return {};
-    const QString path = FileService::storedPath(m_filesDir, item->storedName);
+    const QString path = pathOf(*item);
     if (item->mimeType.startsWith(QLatin1String("image/")))
         return QUrl::fromLocalFile(path).toString();
     if (item->mimeType != QLatin1String("application/pdf"))
         return {};
-    const QString cache = m_dataDir + QStringLiteral("/cache/") + id + QStringLiteral(".png");
+    const QString cacheDir = scratchDir(item->vault) + QStringLiteral("/cache");
+    const QString cache = cacheDir + u'/' + id + QStringLiteral(".png");
     if (!QFileInfo::exists(cache) || QFileInfo(cache).lastModified() < QFileInfo(path).lastModified()) {
-        QDir().mkpath(m_dataDir + QStringLiteral("/cache"));
+        QDir().mkpath(cacheDir);
         // pdftoppm -singlefile writes <prefix>.png
         const int rc = QProcess::execute(QStringLiteral("pdftoppm"),
                                          {QStringLiteral("-f"), QStringLiteral("1"), QStringLiteral("-l"), QStringLiteral("1"),
@@ -924,7 +1034,7 @@ QString NotchController::previewText(const QString &id) const
     const FileItem *item = available(id);
     if (!item)
         return {};
-    QFile f(FileService::storedPath(m_filesDir, item->storedName));
+    QFile f(pathOf(*item));
     if (!f.open(QIODevice::ReadOnly))
         return {};
     constexpr qint64 Limit = 64 * 1024;
@@ -979,6 +1089,8 @@ QString NotchController::ruledCategory(const QString &categoryId, const QString 
     if (group.isEmpty())
         return {};
     const QString target = m_settings.value(QStringLiteral("typeRules/") + group).toString();
+    if (isLockedCategory(target) && !m_vault.isUnlocked())
+        return {}; // can't file into a closed vault
     for (const Category &c : std::as_const(m_categoryList)) // the category may have been deleted since
         if (c.id == target)
             return target;
@@ -1106,7 +1218,7 @@ QString NotchController::readText(const QString &id)
     const FileItem *item = available(id);
     if (!item)
         return {};
-    QFile f(FileService::storedPath(m_filesDir, item->storedName));
+    QFile f(pathOf(*item));
     constexpr qint64 Limit = 1 << 20;
     if (f.size() > Limit || !f.open(QIODevice::ReadOnly)) {
         setError(tr("%1 is too large to edit here").arg(item->originalName));
@@ -1126,7 +1238,7 @@ bool NotchController::saveNote(const QString &id, const QString &name, const QSt
     const FileItem *item = available(id);
     if (!item)
         return false;
-    if (!FileService::writeFile(m_filesDir + u'/' + id, item->originalName, bytes) || !m_repo.markAvailable(id, bytes.size())) {
+    if (!FileService::writeFile(baseDir(*item) + u'/' + id, item->originalName, bytes) || !m_repo.markAvailable(id, bytes.size())) {
         setError(tr("Could not save %1").arg(item->originalName));
         return false;
     }
@@ -1145,11 +1257,11 @@ void NotchController::indexContents()
     m_contents.clear();
     QMimeDatabase db;
     for (const FileItem &item : m_model.items()) {
-        if (item.status != Status::Available || item.sizeBytes > (512 << 10)
+        if (item.status != Status::Available || item.vault || item.sizeBytes > (512 << 10) // never index vault text
             || !db.mimeTypeForName(item.mimeType).inherits(QStringLiteral("text/plain"))
             || item.mimeType == QLatin1String("application/x-desktop"))
             continue;
-        QFile f(FileService::storedPath(m_filesDir, item.storedName));
+        QFile f(pathOf(item));
         if (f.open(QIODevice::ReadOnly))
             m_contents.insert(item.id, QString::fromUtf8(f.readAll()));
     }
@@ -1161,14 +1273,18 @@ bool NotchController::adoptFile(const QString &path, const QString &name, const 
     FileItem item = newItem(name, categoryId);
     item.mimeType = QMimeDatabase().mimeTypeForFile(path).name();
     item.categoryId = ruledCategory(item.categoryId, item.mimeType);
+    if (QString why; !assignStorage(item, &why)) {
+        setError(name + QStringLiteral(": ") + why);
+        return false;
+    }
     item.sizeBytes = QFileInfo(path).size();
     item.sourcePath = source;
     item.status = Status::Available;
-    const QString dir = m_filesDir + u'/' + item.id;
+    const QString dir = baseDir(item) + u'/' + item.id;
     const QString target = dir + u'/' + item.originalName;
     // Rename when on the same filesystem, else copy (a custom storage folder may live elsewhere).
     if (!QDir().mkpath(dir) || !(QFile::rename(path, target) || QFile::copy(path, target)) || !m_repo.insert(item)) {
-        FileService::removeManaged(m_filesDir, item.storedName);
+        FileService::removeManaged(baseDir(item), item.storedName);
         setError(tr("%1: cannot save").arg(name));
         return false;
     }
@@ -1188,20 +1304,23 @@ QStringList NotchController::mimeTypes(const QStringList &ids) const
 int NotchController::pageCount(const QString &id) const
 {
     const FileItem *item = m_model.find(id);
-    return item ? DocTools::pdfPageCount(FileService::storedPath(m_filesDir, item->storedName)) : -1;
+    return item ? DocTools::pdfPageCount(pathOf(*item)) : -1;
 }
 
 void NotchController::runTool(const QString &kind, const QStringList &ids, const QString &option)
 {
     QList<DocTools::ToolInput> inputs;
+    bool fromVault = false;
     for (const QString &id : ids)
-        if (const FileItem *item = available(id))
-            inputs << DocTools::ToolInput{FileService::storedPath(m_filesDir, item->storedName), QFileInfo(item->originalName).completeBaseName(),
-                            item->originalName};
+        if (const FileItem *item = available(id)) {
+            inputs << DocTools::ToolInput{pathOf(*item), QFileInfo(item->originalName).completeBaseName(),
+                                          item->originalName};
+            fromVault = fromVault || item->vault;
+        }
     if (inputs.isEmpty())
         return;
     const QString category = m_categoryFilter == QLatin1String(RemovedView) ? QString() : m_categoryFilter;
-    const QString work = m_dataDir + QStringLiteral("/tools/") + QUuid::createUuid().toString(QUuid::WithoutBraces);
+    const QString work = scratchDir(fromVault) + QStringLiteral("/tools/") + QUuid::createUuid().toString(QUuid::WithoutBraces);
     QDir().mkpath(work);
 
     auto job = [kind, inputs, option, work] { return DocTools::runTool(kind, inputs, option, work); };
@@ -1243,6 +1362,75 @@ QVariantMap NotchController::transformText(const QString &kind, const QString &t
     return {{QStringLiteral("ok"), r.ok}, {QStringLiteral("text"), r.text}, {QStringLiteral("error"), r.error}};
 }
 
+QString NotchController::createVault(const QString &password)
+{
+    const QString err = m_vault.create(password);
+    if (err.isEmpty())
+        emit vaultChanged();
+    return err;
+}
+
+QString NotchController::unlockVault(const QString &password)
+{
+    const QString err = m_vault.unlock(password);
+    if (!err.isEmpty())
+        return err;
+    // Finish deletions of vault files that were interrupted while it was closed.
+    for (const FileItem &item : m_repo.withStatus(Status::PendingCleanup))
+        if (item.vault && FileService::removeManaged(m_vault.mountDir(), item.storedName))
+            m_repo.remove(item.id);
+    vaultStateChanged();
+    return {};
+}
+
+void NotchController::lockVault()
+{
+    if (!m_vault.isUnlocked())
+        return;
+    if (const QString err = m_vault.lock(); !err.isEmpty())
+        setError(tr("Could not lock: %1").arg(err));
+    QDir(scratchDir(true)).removeRecursively(); // decrypted previews/tool files, on tmpfs anyway
+    vaultStateChanged();
+}
+
+void NotchController::vaultStateChanged()
+{
+    const bool open = m_vault.isUnlocked();
+    m_model.vaultStateChanged();
+    m_proxy.setVaultUnlocked(open);
+    m_contentsStale = true;
+    emit vaultChanged();
+    emit countChanged();
+}
+
+void NotchController::setCategoryLocked(const QString &categoryId, bool locked)
+{
+    if (!m_vault.exists() || !m_vault.isUnlocked()) {
+        setError(tr("Unlock first"));
+        return;
+    }
+    QStringList list = m_settings.value(QStringLiteral("lockedCategories")).toStringList();
+    list.removeAll(categoryId);
+    if (locked)
+        list << categoryId;
+    m_settings.setValue(QStringLiteral("lockedCategories"), list);
+    // Move the category's files across; removed ones come back (the vault has no Recently removed).
+    int moved = 0;
+    const QList<FileItem> items = m_model.items();
+    for (const FileItem &item : items) {
+        if (item.categoryId != categoryId || item.status != Status::Available)
+            continue;
+        if (item.removedAt.isValid() && m_repo.setRemoved(item.id, QDateTime()))
+            m_model.setRemoved({item.id}, QDateTime());
+        if (const FileItem *current = m_model.find(item.id); current && relocate(*current, locked))
+            ++moved;
+    }
+    refreshCategories();
+    emit countChanged();
+    emit notice(locked ? tr("Category locked") : tr("Lock removed"), tr("%n file(s) moved", nullptr, moved),
+                locked ? QStringLiteral("object-locked") : QStringLiteral("object-unlocked"), QString());
+}
+
 bool NotchController::spectacleAutoSave() const
 {
     return QSettings(spectacleConfig(), QSettings::IniFormat).value(QStringLiteral("General/autoSaveImage"), false).toBool();
@@ -1265,7 +1453,7 @@ QStringList NotchController::fileUrls(const QStringList &ids) const
     QStringList urls;
     for (const QString &id : ids)
         if (const FileItem *item = available(id))
-            urls << QUrl::fromLocalFile(FileService::storedPath(m_filesDir, item->storedName)).toString();
+            urls << QUrl::fromLocalFile(pathOf(*item)).toString();
     return urls;
 }
 
@@ -1330,8 +1518,8 @@ void NotchController::renameItem(const QString &id, const QString &name)
         return;
     const QString clean = freeName(wanted, id);
     const QString storedName = id + u'/' + clean;
-    const QString from = FileService::storedPath(m_filesDir, item->storedName);
-    const QString to = FileService::storedPath(m_filesDir, storedName);
+    const QString from = pathOf(*item);
+    const QString to = baseDir(*item) + u'/' + storedName;
     if (!FileService::isValidStoredName(storedName) || !QFile::rename(from, to)) {
         setError(tr("Cannot rename %1").arg(item->originalName));
         return;
@@ -1355,7 +1543,7 @@ void NotchController::saveTo(const QStringList &ids, const QUrl &folder)
     QList<QPair<QString, QString>> jobs; // stored path, name
     for (const QString &id : ids)
         if (const FileItem *item = available(id))
-            jobs << qMakePair(FileService::storedPath(m_filesDir, item->storedName), item->originalName);
+            jobs << qMakePair(pathOf(*item), item->originalName);
     if (dir.isEmpty() || jobs.isEmpty())
         return;
     auto *watcher = new QFutureWatcher<QStringList>(this);
@@ -1400,7 +1588,11 @@ void NotchController::zipItems(const QStringList &ids)
                            m_categoryFilter);
     zip.mimeType = QStringLiteral("application/zip");
     zip.sourcePath = tr("Compressed in Notch");
-    const QString itemDir = m_filesDir + u'/' + zip.id;
+    if (QString why; !assignStorage(zip, &why)) {
+        setError(why);
+        return;
+    }
+    const QString itemDir = baseDir(zip) + u'/' + zip.id;
     const QString stage = itemDir + QStringLiteral("/stage"); // links under unique names
     const QString out = itemDir + QStringLiteral("/archive.zip");
     if (!QDir().mkpath(stage) || !m_repo.insert(zip)) {
@@ -1409,7 +1601,7 @@ void NotchController::zipItems(const QStringList &ids)
         return;
     }
     for (const FileItem *item : items)
-        QFile::link(FileService::storedPath(m_filesDir, item->storedName),
+        QFile::link(pathOf(*item),
                     stage + u'/' + FileService::uniqueName(stage, item->originalName));
     m_model.upsert(zip);
     ++m_copying;
@@ -1422,7 +1614,7 @@ void NotchController::zipItems(const QStringList &ids)
         --m_copying;
         emit copyingChanged();
         QDir(stage).removeRecursively(); // only our symlinks: their targets are untouched
-        const QString final = FileService::storedPath(m_filesDir, zip.storedName);
+        const QString final = pathOf(zip);
         const qint64 size = QFileInfo(out).size();
         if (ok && QFile::rename(out, final) && m_repo.markAvailable(zip.id, size)) {
             FileItem ready = zip;
@@ -1433,7 +1625,7 @@ void NotchController::zipItems(const QStringList &ids)
             return;
         }
         QFile::remove(out);
-        FileService::removeManaged(m_filesDir, zip.storedName);
+        FileService::removeManaged(baseDir(zip), zip.storedName);
         m_repo.remove(zip.id);
         m_model.removeId(zip.id);
         setError(tr("Could not create zip: %1").arg(why));

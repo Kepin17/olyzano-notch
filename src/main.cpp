@@ -17,7 +17,12 @@
 #include <QQuickImageProvider>
 #include <QQuickWindow>
 #include <QScreen>
+#include <QSocketNotifier>
 #include <QStandardPaths>
+
+#include <csignal>
+#include <sys/socket.h>
+#include <unistd.h>
 
 // image://mime/<icon-name> -> themed icon for a MIME type.
 class MimeIconProvider : public QQuickImageProvider
@@ -33,6 +38,20 @@ public:
     }
 };
 
+// SIGTERM/SIGINT/SIGHUP (logout, `kill`, Ctrl+C) quit through the event loop, so aboutToQuit
+// runs and locked categories are unmounted. Self-pipe: the handler itself only write()s.
+static int quitPipe[2];
+
+static void quitOnSignals(QCoreApplication &app)
+{
+    if (::socketpair(AF_UNIX, SOCK_STREAM, 0, quitPipe) != 0)
+        return;
+    auto *notifier = new QSocketNotifier(quitPipe[1], QSocketNotifier::Read, &app);
+    QObject::connect(notifier, &QSocketNotifier::activated, &app, &QCoreApplication::quit);
+    for (int sig : {SIGTERM, SIGINT, SIGHUP})
+        std::signal(sig, [](int) { if (::write(quitPipe[0], "q", 1) < 0) {} });
+}
+
 int main(int argc, char *argv[])
 {
     QQuickWindow::setDefaultAlphaBuffer(true);
@@ -40,6 +59,7 @@ int main(int argc, char *argv[])
     app.setApplicationName(QStringLiteral("notch"));
     app.setDesktopFileName(QStringLiteral("notch"));
     app.setApplicationVersion(QStringLiteral(NOTCH_VERSION));
+    quitOnSignals(app);
 
     const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
                             + QStringLiteral("/notch");

@@ -40,7 +40,7 @@ Item {
     readonly property bool failed: status === "error"
     readonly property bool showThumbnail: isImage && available
 
-    width: 96
+    width: view ? view.tileWidth : 96
     height: 136
 
     component CircleButton: AbstractButton {
@@ -234,7 +234,7 @@ Item {
             text: "✕"
             visible: hover.hovered && !tile.copying
             Accessible.name: tile.removed ? "Delete now" : "Remove from Notch"
-            onClicked: tile.removed ? notch.deleteForever([tile.itemId]) : notch.remove(tile.itemId)
+            onClicked: tile.removed ? notch.deleteForever([tile.itemId]) : tile.view.requestRemove([tile.itemId])
         }
     }
 

@@ -44,12 +44,13 @@ QVariant FileItemModel::data(const QModelIndex &index, int role) const
         const QMimeType mt = QMimeDatabase().mimeTypeForName(i.mimeType);
         return mt.isValid() ? mt.iconName() : QStringLiteral("text-x-generic");
     }
-    case FileUrlRole: return QUrl::fromLocalFile(FileService::storedPath(m_filesDir, i.storedName));
+    case FileUrlRole: return QUrl::fromLocalFile(FileService::storedPath(i.vault ? m_vaultDir : m_filesDir, i.storedName));
     case SourcePathRole: return i.sourcePath;
     case IsImageRole: return i.mimeType.startsWith(QLatin1String("image/"));
     case IsTextRole: return QMimeDatabase().mimeTypeForName(i.mimeType).inherits(QStringLiteral("text/plain"));
     case CategoryIdRole: return i.categoryId;
     case PinnedRole: return i.pinned;
+    case VaultRole: return i.vault;
     case AddedAtRole: return i.addedAt;
     case SizeRole: return i.sizeBytes;
     case MimeTypeRole: return i.mimeType;
@@ -83,6 +84,7 @@ QHash<int, QByteArray> FileItemModel::roleNames() const
         {IsTextRole, "isText"},
         {CategoryIdRole, "categoryId"},
         {PinnedRole, "pinned"},
+        {VaultRole, "vault"},
         {AddedAtRole, "addedAt"},
         {SizeRole, "sizeBytes"},
         {MimeTypeRole, "mimeType"},
@@ -157,12 +159,13 @@ void FileItemModel::setRemoved(const QStringList &ids, const QDateTime &at)
 
 int FileItemModel::shelfCount() const
 {
-    return int(std::count_if(m_items.cbegin(), m_items.cend(), [](const FileItem &i) { return !i.removedAt.isValid(); }));
+    return int(std::count_if(m_items.cbegin(), m_items.cend(),
+                             [](const FileItem &i) { return !i.removedAt.isValid() && !i.vault; }));
 }
 
 int FileItemModel::removedCount() const
 {
-    return m_items.size() - shelfCount();
+    return int(std::count_if(m_items.cbegin(), m_items.cend(), [](const FileItem &i) { return i.removedAt.isValid(); }));
 }
 
 void FileItemModel::setFilesDir(const QString &filesDir)
@@ -204,4 +207,10 @@ void FileItemModel::setPinned(const QStringList &ids, bool pinned)
             emit dataChanged(index(row), index(row), {PinnedRole, ExpiresTextRole, ExpiringSoonRole});
         }
     }
+}
+
+void FileItemModel::vaultStateChanged()
+{
+    if (!m_items.isEmpty())
+        emit dataChanged(index(0), index(m_items.size() - 1), {VaultRole, FileUrlRole});
 }

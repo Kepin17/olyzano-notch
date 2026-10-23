@@ -8,6 +8,7 @@ AbstractButton {
     property string catId
     property int itemCount
     property string special // "screenshots" | "downloads" | "kdeconnect" | ""
+    property bool locked    // a locked (vault) category
     readonly property bool active: notch.categoryFilter === catId
     readonly property bool dropHover: chipDrop.containsDrag
     signal menuRequested()
@@ -26,7 +27,8 @@ AbstractButton {
             anchors.centerIn: parent
             spacing: 5
             Text {
-                text: (chip.special === "screenshots" ? "📷 " : chip.special === "downloads" ? "⬇ "
+                text: (chip.locked ? (notch.vaultUnlocked ? "🔓 " : "🔒 ") : "")
+                    + (chip.special === "screenshots" ? "📷 " : chip.special === "downloads" ? "⬇ "
                      : chip.special === "kdeconnect" ? "📱 " : "") + chip.text
                 color: chip.active ? "white" : theme.text
                 font.pixelSize: 12

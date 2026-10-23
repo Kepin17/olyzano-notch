@@ -30,6 +30,7 @@ public:
         RemovedRole,     // in Recently removed
         RemovedTextRole, // "deleted in 21h"
         ExpiringSoonRole,
+        VaultRole,
     };
 
     explicit FileItemModel(const QString &filesDir, QObject *parent = nullptr);
@@ -51,13 +52,16 @@ public:
     void clearCategory(const QString &from);
     void setPinned(const QStringList &ids, bool pinned);
     void setRemoved(const QStringList &ids, const QDateTime &at); // invalid at = restore
-    int shelfCount() const;   // items not in Recently removed
+    void setVaultDir(const QString &dir) { m_vaultDir = dir; }
+    void vaultStateChanged(); // file URLs of vault items become (in)valid
+    int shelfCount() const;   // items on the shelf: not in Recently removed, not in the vault
     int removedCount() const;
 
 private:
     int indexOf(const QString &id) const;
 
     QString m_filesDir;
+    QString m_vaultDir;
     int m_retentionDays = DefaultRetentionDays;
     QList<FileItem> m_items;
 };

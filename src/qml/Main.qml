@@ -45,7 +45,7 @@ Window {
     readonly property bool inRemoved: notch.categoryFilter === "__removed__" // Recently removed view
     readonly property bool anyMenu: menu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible
                                     || toolsMenu.visible || extractPopup.visible || settingsPage.overlayOpen
-                                    || quickLookCard.visible
+                                    || quickLookCard.visible || vaultPopup.visible || confirmDelete.visible
                                     || sortMenu.visible || removedMenu.visible
                                     || removedChipMenu.visible
     readonly property bool dragOver: edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver
@@ -123,6 +123,14 @@ Window {
         editingCategory = ""
         playerExpanded = false
         clearSelection()
+        vaultLockTimer.restart()
+    }
+    // Locked categories close with Notch, after a short grace so a file just dragged out or opened
+    // can still be read by the other app.
+    Timer {
+        id: vaultLockTimer
+        interval: 5000
+        onTriggered: if (!root.open) notch.lockVault()
     }
     onAnyMenuChanged: updateMask()
     Timer { id: closeTimer; interval: 380; onTriggered: root.open = false }
@@ -195,6 +203,26 @@ Window {
             if (c.id === id)
                 return c.name
         return ""
+    }
+
+    // Files in a locked category are deleted for good (no Recently removed): ask first.
+    function removeWithConfirm(ids) {
+        if (ids.some(id => notch.itemInfo(id).vault)) {
+            confirmDelete.ids = ids.slice()
+            confirmDelete.open()
+        } else {
+            notch.removeItems(ids)
+        }
+    }
+
+    readonly property bool lockedClosed: !notch.vaultUnlocked
+        && notch.categories.some(c => c.id === notch.categoryFilter && c.locked)
+
+    // Unlock (or create the vault first), then run `then`, e.g. locking a category.
+    function askPassword(mode, then) {
+        vaultPopup.mode = mode
+        vaultPopup.then = then || null
+        vaultPopup.open()
     }
 
     function saveFiles(ids) {
@@ -347,7 +375,7 @@ Window {
                 list.renamingId = root.selection[0]
                 e.accepted = true
             } else if (e.key === Qt.Key_Delete && root.selecting && !root.inRemoved) {
-                notch.removeItems(root.selection)
+                root.removeWithConfirm(root.selection)
                 root.clearSelection()
                 e.accepted = true
             } else if (e.key === Qt.Key_Space && list.hoveredId !== "" && root.page === "shelf") {
@@ -675,7 +703,7 @@ Window {
                         visible: root.selecting && !root.inRemoved
                         text: "Remove"
                         onClicked: {
-                            notch.removeItems(root.selection)
+                            root.removeWithConfirm(root.selection)
                             root.clearSelection()
                         }
                     }
@@ -716,6 +744,12 @@ Window {
                         Accessible.name: "Save note"
                         onClicked: root.saveNote()
                     }
+                    IconButton {
+                        visible: root.page === "shelf" && !root.selecting && notch.vaultUnlocked
+                        text: "🔓"
+                        Accessible.name: "Lock locked categories now"
+                        onClicked: notch.lockVault()
+                    }
                     // Recently removed: a header button (with count) rather than a chip at the far end.
                     IconButton {
                         id: trashButton
@@ -750,7 +784,7 @@ Window {
                         DropArea {
                             anchors.fill: parent
                             onEntered: (drag) => { drag.accepted = drag.source && drag.source.draggedIds !== undefined }
-                            onDropped: (d) => notch.removeItems(d.source.draggedIds)
+                            onDropped: (d) => root.removeWithConfirm(d.source.draggedIds)
                         }
                     }
                     IconButton {
@@ -851,6 +885,7 @@ Window {
                                 text: modelData.name
                                 itemCount: modelData.count
                                 special: modelData.special || ""
+                                locked: modelData.locked || false
                                 onDropHoverChanged: root.chipDragOver = dropHover
                                 onMenuRequested: {
                                     categoryMenu.catId = catId
@@ -982,10 +1017,34 @@ Window {
                     }
                 }
 
+                // ---- Locked category, vault closed ----
+                Item {
+                    visible: root.page === "shelf" && root.lockedClosed
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 144
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 8
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "🔒"; font.pixelSize: 24 }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "This category is locked"
+                            color: root.textSecondary
+                            font.pixelSize: 13
+                        }
+                        PillButton {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "Unlock…"
+                            checked: true
+                            onClicked: root.askPassword("unlock")
+                        }
+                    }
+                }
+
                 // ---- Shelf ----
                 Item {
                     id: emptyState
-                    visible: root.page === "shelf" && notch.count === 0
+                    visible: root.page === "shelf" && notch.count === 0 && !root.lockedClosed
                     Layout.fillWidth: true
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
@@ -1030,7 +1089,7 @@ Window {
                 }
 
                 Text {
-                    visible: root.page === "shelf" && notch.count > 0 && list.count === 0
+                    visible: root.page === "shelf" && notch.count > 0 && list.count === 0 && !root.lockedClosed
                     Layout.fillWidth: true
                     Layout.preferredHeight: 144
                     horizontalAlignment: Text.AlignHCenter
@@ -1055,6 +1114,9 @@ Window {
                     boundsBehavior: Flickable.StopAtBounds
                     model: notch.items
                     property var selectedIds: root.selection
+                    // Tiles share the row exactly: as many whole tiles (≥ 96 px) as fit, never a cut-off one.
+                    readonly property int tilesPerRow: Math.max(1, Math.floor((width + spacing) / (96 + spacing)))
+                    readonly property real tileWidth: (width - (tilesPerRow - 1) * spacing) / tilesPerRow
                     property string hoveredId: ""
                     function quickLook(id) { quickLookCard.show(id) }
                     function endQuickLook() { quickLookCard.hide() }
@@ -1064,12 +1126,14 @@ Window {
                         notch.renameItem(id, name)
                         island.forceActiveFocus()
                     }
+                    function requestRemove(ids) { root.removeWithConfirm(ids) }
                     function dragIds(id) { return root.selection.indexOf(id) >= 0 ? root.selection : [id] }
                     // Flick-dragging would fight the tiles' drag-out, so scrolling is wheel/touchpad + scrollbar.
                     interactive: false
-                    WheelScroller { id: tileScroller; flickable: list }
+                    WheelScroller { id: tileScroller; flickable: list; step: list.tileWidth + list.spacing }
                     ScrollBar.horizontal: ScrollBar {
                         id: tileBar
+                        onPressedChanged: if (!pressed) tileScroller.snap() // land on a whole tile
                         policy: list.contentWidth > list.width ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
                         padding: 2
                         contentItem: Rectangle {
@@ -1362,7 +1426,7 @@ Window {
         Action {
             text: menu.targets.length > 1 ? "Remove " + menu.targets.length + " files" : "Remove from Notch"
             onTriggered: {
-                notch.removeItems(menu.targets)
+                root.removeWithConfirm(menu.targets)
                 root.clearSelection()
             }
         }
@@ -1544,6 +1608,126 @@ Window {
         }
     }
 
+    // Vault password: create (typed twice, with the no-recovery warning) or unlock.
+    Popup {
+        id: vaultPopup
+        property string mode: "unlock" // "create" | "unlock"
+        property var then: null
+        property string error: ""
+        x: (root.width - width) / 2
+        y: 64
+        width: 340
+        padding: 16
+        focus: true
+        function go() {
+            if (mode === "create" && pass1.text !== pass2.text) {
+                error = "The passwords don't match"
+                return
+            }
+            // ponytail: gocryptfs runs synchronously (~1 s of key stretching); move to a worker if it ever feels stuck.
+            let err = mode === "create" ? notch.createVault(pass1.text) : ""
+            if (err === "")
+                err = notch.unlockVault(pass1.text)
+            if (err !== "") {
+                error = err.charAt(0).toUpperCase() + err.slice(1)
+                pass1.selectAll()
+                return
+            }
+            const next = then
+            close()
+            if (next)
+                next()
+        }
+        onOpened: {
+            error = ""
+            pass1.forceActiveFocus()
+        }
+        onClosed: {
+            pass1.clear()
+            pass2.clear()
+            then = null
+        }
+        background: Rectangle { radius: 16; color: theme.surface; border.color: theme.outline }
+        contentItem: ColumnLayout {
+            spacing: 10
+            SectionLabel { text: vaultPopup.mode === "create" ? "Lock with a password" : "Unlock locked categories" }
+            Caption {
+                Layout.fillWidth: true
+                visible: vaultPopup.mode === "create"
+                text: "Files here are encrypted with this password (at least 8 characters). Forget it and nobody can recover them."
+            }
+            TextField {
+                id: pass1
+                Layout.fillWidth: true
+                implicitHeight: 30
+                leftPadding: 12
+                echoMode: TextInput.Password
+                placeholderText: "Password"
+                placeholderTextColor: theme.placeholder
+                color: theme.text
+                selectionColor: theme.accent
+                font.pixelSize: 13
+                background: Rectangle { radius: 15; color: theme.well; border.width: 1; border.color: theme.accent }
+                onAccepted: vaultPopup.mode === "create" ? pass2.forceActiveFocus() : vaultPopup.go()
+                Keys.onEscapePressed: vaultPopup.close()
+            }
+            TextField {
+                id: pass2
+                visible: vaultPopup.mode === "create"
+                Layout.fillWidth: true
+                implicitHeight: 30
+                leftPadding: 12
+                echoMode: TextInput.Password
+                placeholderText: "Repeat password"
+                placeholderTextColor: theme.placeholder
+                color: theme.text
+                selectionColor: theme.accent
+                font.pixelSize: 13
+                background: Rectangle { radius: 15; color: theme.well; border.width: 1; border.color: theme.accent }
+                onAccepted: vaultPopup.go()
+                Keys.onEscapePressed: vaultPopup.close()
+            }
+            Caption { Layout.fillWidth: true; visible: vaultPopup.error !== ""; color: "#ff453a"; text: vaultPopup.error }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                PillButton { text: "Cancel"; onClicked: vaultPopup.close() }
+                PillButton { text: vaultPopup.mode === "create" ? "Lock" : "Unlock"; checked: true; onClicked: vaultPopup.go() }
+            }
+        }
+    }
+
+    Popup {
+        id: confirmDelete
+        property var ids: []
+        x: (root.width - width) / 2
+        y: 64
+        width: 320
+        padding: 16
+        background: Rectangle { radius: 16; color: theme.surface; border.color: theme.outline }
+        contentItem: ColumnLayout {
+            spacing: 10
+            SectionLabel { text: "Delete permanently?" }
+            Caption {
+                Layout.fillWidth: true
+                text: "Locked files skip Recently removed, so this can't be undone."
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                PillButton { text: "Cancel"; onClicked: confirmDelete.close() }
+                PillButton {
+                    text: "Delete"
+                    checked: true
+                    onClicked: {
+                        notch.removeItems(confirmDelete.ids)
+                        confirmDelete.close()
+                    }
+                }
+            }
+        }
+    }
+
     DarkMenu {
         id: removedMenu
         readonly property var targets: menu.targets
@@ -1584,6 +1768,27 @@ Window {
         Action { text: "Rename…"; onTriggered: root.beginCategoryEdit(categoryMenu.catId, categoryMenu.catName, []) }
         Action { text: "Save category to…"; onTriggered: root.saveFiles(notch.categoryItemIds(categoryMenu.catId)) }
         Action { text: "Zip category"; onTriggered: notch.zipItems(notch.categoryItemIds(categoryMenu.catId)) }
+        Action {
+            readonly property bool locked: notch.categories.some(c => c.id === categoryMenu.catId && c.locked)
+            text: locked ? (notch.vaultUnlocked ? "Lock now" : "Unlock…") : "Lock with password…"
+            onTriggered: {
+                const id = categoryMenu.catId
+                if (locked)
+                    return notch.vaultUnlocked ? notch.lockVault() : root.askPassword("unlock")
+                const lockIt = () => notch.setCategoryLocked(id, true)
+                if (!notch.vaultExists)
+                    root.askPassword("create", lockIt)
+                else if (!notch.vaultUnlocked)
+                    root.askPassword("unlock", lockIt)
+                else
+                    lockIt()
+            }
+        }
+        Action {
+            enabled: notch.vaultUnlocked && notch.categories.some(c => c.id === categoryMenu.catId && c.locked)
+            text: "Remove lock"
+            onTriggered: notch.setCategoryLocked(categoryMenu.catId, false)
+        }
         Action { text: "Delete category"; onTriggered: notch.deleteCategory(categoryMenu.catId) }
         DarkSeparator {}
         Action { enabled: false; text: "Its files stay in Notch" }

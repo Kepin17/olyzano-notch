@@ -4,11 +4,13 @@
 #include "services/FolderWatcher.h"
 #include "services/TextTools.h"
 #include "services/DocTools.h"
+#include "services/Vault.h"
 #include "platform/BatteryThreshold.h"
 #include "platform/PlayerSelection.h"
 #include "platform/AudioBands.h"
 
 #include <QDir>
+#include <QDirIterator>
 #include <QGuiApplication>
 #include <QImage>
 #include <QImageReader>
@@ -94,7 +96,7 @@ private slots:
         QVERIFY(db.open());
         QSqlQuery q(db);
         QVERIFY(q.exec(QStringLiteral("PRAGMA user_version")) && q.next());
-        QCOMPARE(q.value(0).toInt(), 4);
+        QCOMPARE(q.value(0).toInt(), 5);
         q = QSqlQuery();
         db.close();
         db = QSqlDatabase();
@@ -616,6 +618,64 @@ private slots:
         QCOMPARE(FileService::typeGroup(QStringLiteral("application/json")), QStringLiteral("text"));
         QCOMPARE(FileService::typeGroup(QStringLiteral("application/x-desktop")), QString()); // link shortcuts: no rule
         QCOMPARE(FileService::typeGroup(QStringLiteral("application/octet-stream")), QString());
+    }
+
+    void vaultLifecycle()
+    {
+        if (QStandardPaths::findExecutable(QStringLiteral("gocryptfs")).isEmpty())
+            QSKIP("gocryptfs not installed");
+        const QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
+        if (runtime.isEmpty())
+            QSKIP("no XDG_RUNTIME_DIR");
+        Vault vault(m_tmp.filePath(QStringLiteral("cipher")),
+                    runtime + QStringLiteral("/notch-test-vault-") + QString::number(QCoreApplication::applicationPid()));
+        QVERIFY(!vault.exists());
+        QVERIFY(!vault.create(QStringLiteral("short")).isEmpty()); // too short
+        QCOMPARE(vault.create(QStringLiteral("correct horse battery")), QString());
+        QVERIFY(vault.exists());
+        QVERIFY(!vault.isUnlocked());
+
+        QCOMPARE(vault.unlock(QStringLiteral("wrong password!")), QStringLiteral("wrong password"));
+        QVERIFY(!vault.isUnlocked());
+        QCOMPARE(vault.unlock(QStringLiteral("correct horse battery")), QString());
+        QVERIFY(vault.isUnlocked());
+
+        QFile secret(vault.mountDir() + QStringLiteral("/ktp.txt"));
+        QVERIFY(secret.open(QIODevice::WriteOnly));
+        secret.write("NIK 3201234567890001");
+        secret.close();
+        // Nothing readable on disk: neither the content nor the file name.
+        QDirIterator it(vault.cipherDir(), QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            QFile f(it.next());
+            QVERIFY(f.open(QIODevice::ReadOnly));
+            QVERIFY(!f.readAll().contains("NIK 3201234567890001"));
+            QVERIFY(!f.fileName().contains(QStringLiteral("ktp")));
+        }
+
+        QCOMPARE(vault.lock(), QString());
+        QVERIFY(!vault.isUnlocked());
+        QVERIFY(!QFile::exists(vault.mountDir() + QStringLiteral("/ktp.txt")));
+        QCOMPARE(vault.unlock(QStringLiteral("correct horse battery")), QString()); // still there after relock
+        QVERIFY(QFile::exists(vault.mountDir() + QStringLiteral("/ktp.txt")));
+        QCOMPARE(vault.lock(), QString());
+        QDir().rmdir(vault.mountDir());
+    }
+
+    void vaultItemsNeverExpire()
+    {
+        const QDateTime now = QDateTime::currentDateTimeUtc();
+        const FileItem secret = addItem(writeSource(QStringLiteral("ktp.jpg"), "k"), now.addDays(-60));
+        const FileItem plain = addItem(writeSource(QStringLiteral("plain.txt"), "p"), now.addDays(-60));
+        QVERIFY(m_repo->setVault(secret.id, true));
+        QVERIFY(m_repo->setRemoved(secret.id, now.addDays(-5))); // even "removed" long ago
+        QFile::remove(path(secret));                              // and not visible in filesDir (vault closed)
+
+        CleanupService::recover(*m_repo, m_files);
+        QCOMPARE(CleanupService::purge(*m_repo, m_files, now, DefaultRetentionDays), QStringList{plain.id});
+        const QList<FileItem> left = m_repo->withStatus(Status::Available);
+        QCOMPARE(left.size(), 1); // not flagged as error, not expired, not emptied
+        QVERIFY(left.first().vault);
     }
 
     void removeManagedGuards()

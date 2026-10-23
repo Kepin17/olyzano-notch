@@ -28,4 +28,5 @@ struct FileItem {
     QString categoryId;   // empty = uncategorized
     bool pinned = false;  // "kept": never auto-deleted
     QDateTime removedAt;  // set (UTC) while in Recently removed; invalid otherwise
+    bool vault = false;   // stored in the encrypted vault (a locked category), not in the files dir
 };
