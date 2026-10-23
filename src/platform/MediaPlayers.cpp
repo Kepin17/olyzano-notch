@@ -151,7 +151,13 @@ QString MediaPlayers::artUrl() const
 qint64 MediaPlayers::lengthMs() const
 {
     const Player *p = current();
-    return p ? p->metadata.value(QStringLiteral("mpris:length")).toLongLong() / 1000 : 0;
+    if (!p)
+        return 0;
+    // Browsers report "not known yet" (e.g. right after Next) as INT64_MAX; anything that long or
+    // non-positive means unknown, which hides the progress bar until the real length arrives.
+    constexpr qint64 Week = 7LL * 24 * 3600 * 1000;
+    const qint64 ms = p->metadata.value(QStringLiteral("mpris:length")).toLongLong() / 1000;
+    return ms > 0 && ms < Week ? ms : 0;
 }
 
 bool MediaPlayers::canSeek() const { return current() && current()->canSeek; }

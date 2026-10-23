@@ -254,6 +254,7 @@ void NotchController::addLocalFile(const QString &path, const QString &categoryI
 
     FileItem item = newItem(fi.fileName(), categoryId);
     item.mimeType = QMimeDatabase().mimeTypeForFile(fi).name();
+    item.categoryId = ruledCategory(item.categoryId, item.mimeType);
     item.sizeBytes = fi.size();
     item.sourcePath = fi.absoluteFilePath();
     if (!m_repo.insert(item)) {
@@ -332,6 +333,7 @@ void NotchController::startDownload(const QUrl &url, const QString &categoryId)
         const QMimeType mt = QMimeDatabase().mimeTypeForName(type);
         item.mimeType = mt.isValid() && !mt.isDefault() ? mt.name()
                                                         : QMimeDatabase().mimeTypeForFile(item.originalName, QMimeDatabase::MatchExtension).name();
+        item.categoryId = ruledCategory(item.categoryId, item.mimeType);
         item.sizeBytes = qMax<qint64>(0, reply->header(QNetworkRequest::ContentLengthHeader).toLongLong());
         item.sourcePath = reply->url().scheme() == QLatin1String("data") ? QStringLiteral("data URL") : reply->url().toDisplayString();
         const QString dir = m_filesDir + u'/' + item.id;
@@ -414,6 +416,7 @@ bool NotchController::addBytes(const QString &name, const QString &mimeType, con
 {
     FileItem item = newItem(FileService::safeFileName(name), categoryId);
     item.mimeType = mimeType;
+    item.categoryId = ruledCategory(item.categoryId, mimeType);
     item.sizeBytes = bytes.size();
     item.sourcePath = source;
     item.status = Status::Available;
@@ -861,6 +864,54 @@ void NotchController::setSortMode(const QString &mode)
     emit sortModeChanged();
 }
 
+QVariantMap NotchController::typeRules() const
+{
+    QVariantMap rules;
+    for (const QString &group : {QStringLiteral("pdf"), QStringLiteral("image"), QStringLiteral("video"), QStringLiteral("audio"),
+                                 QStringLiteral("document"), QStringLiteral("archive"), QStringLiteral("text")})
+        rules.insert(group, m_settings.value(QStringLiteral("typeRules/") + group).toString());
+    return rules;
+}
+
+void NotchController::setTypeRule(const QString &group, const QString &categoryId)
+{
+    if (categoryId.isEmpty())
+        m_settings.remove(QStringLiteral("typeRules/") + group);
+    else
+        m_settings.setValue(QStringLiteral("typeRules/") + group, categoryId);
+    emit typeRulesChanged();
+}
+
+QString NotchController::ruledCategory(const QString &categoryId, const QString &mimeType)
+{
+    if (!categoryId.isEmpty())
+        return categoryId;
+    const QString group = FileService::typeGroup(mimeType);
+    if (group.isEmpty())
+        return {};
+    const QString target = m_settings.value(QStringLiteral("typeRules/") + group).toString();
+    for (const Category &c : m_repo.categories()) // the category may have been deleted since
+        if (c.id == target)
+            return target;
+    return {};
+}
+
+int NotchController::applyRulesToExisting()
+{
+    QHash<QString, QStringList> moves; // category -> ids
+    for (const FileItem &item : m_model.items())
+        if (item.categoryId.isEmpty() && !item.removedAt.isValid())
+            if (const QString target = ruledCategory({}, item.mimeType); !target.isEmpty())
+                moves[target] << item.id;
+    int moved = 0;
+    for (auto it = moves.cbegin(); it != moves.cend(); ++it) {
+        setCategory(it.value(), it.key());
+        moved += it.value().size();
+    }
+    emit notice(moved == 1 ? tr("Sorted 1 file") : tr("Sorted %1 files").arg(moved), QString(), QStringLiteral("view-sort"), QString());
+    return moved;
+}
+
 void NotchController::copyText(const QString &text)
 {
     QGuiApplication::clipboard()->setText(text);
@@ -1024,6 +1075,7 @@ bool NotchController::adoptFile(const QString &path, const QString &name, const 
 {
     FileItem item = newItem(name, categoryId);
     item.mimeType = QMimeDatabase().mimeTypeForFile(path).name();
+    item.categoryId = ruledCategory(item.categoryId, item.mimeType);
     item.sizeBytes = QFileInfo(path).size();
     item.sourcePath = source;
     item.status = Status::Available;

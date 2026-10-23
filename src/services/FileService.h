@@ -59,6 +59,10 @@ QString uniqueAmong(const QString &name, const std::function<bool(const QString 
 // A name not yet taken in dir.
 QString uniqueName(const QString &dir, const QString &name);
 
+// Coarse file type for automatic category rules: pdf | image | video | audio | document |
+// archive | text, or empty for anything else.
+QString typeGroup(const QString &mimeType);
+
 // Browsers' in-progress download names (.crdownload, .part, …): not a finished file yet.
 bool isPartialDownload(const QString &name);
 

@@ -60,6 +60,8 @@ class NotchController : public QObject
     Q_PROPERTY(QString sortMode READ sortMode WRITE setSortMode NOTIFY sortModeChanged) // date|name|size|type
     Q_PROPERTY(QString themeMode READ themeMode WRITE setThemeMode NOTIFY themeModeChanged) // dark|light|system
     Q_PROPERTY(QStringList recentColors READ recentColors NOTIFY recentColorsChanged) // picked, newest first
+    // Automatic category per file type (FileService::typeGroup): {group: categoryId}.
+    Q_PROPERTY(QVariantMap typeRules READ typeRules NOTIFY typeRulesChanged)
     Q_PROPERTY(bool autoScreenshots READ autoScreenshots WRITE setAutoScreenshots NOTIFY autoScreenshotsChanged)
     Q_PROPERTY(bool autoDownloads READ autoDownloads WRITE setAutoDownloads NOTIFY autoDownloadsChanged)
     Q_PROPERTY(bool autoKdeConnect READ autoKdeConnect WRITE setAutoKdeConnect NOTIFY autoKdeConnectChanged)
@@ -94,6 +96,7 @@ public:
     QString themeMode() const { return m_settings.value(QStringLiteral("theme"), QStringLiteral("dark")).toString(); }
     void setThemeMode(const QString &mode);
     QStringList recentColors() const { return m_settings.value(QStringLiteral("colors")).toStringList(); }
+    QVariantMap typeRules() const;
     bool autoScreenshots() const { return m_settings.value(QStringLiteral("autoScreenshots"), true).toBool(); }
     void setAutoScreenshots(bool enabled);
     bool autoDownloads() const { return m_settings.value(QStringLiteral("autoDownloads"), false).toBool(); }
@@ -128,6 +131,8 @@ public:
     Q_INVOKABLE QStringList categoryItemIds(const QString &categoryId) const;
     Q_INVOKABLE QStringList fileUrls(const QStringList &ids) const; // file:// of the stored copies
     Q_INVOKABLE void copyText(const QString &text);
+    Q_INVOKABLE void setTypeRule(const QString &group, const QString &categoryId); // empty = no rule
+    Q_INVOKABLE int applyRulesToExisting(); // uncategorized files only; returns how many moved
     Q_INVOKABLE void removeColor(const QString &hex);
     // User-confirmed (Settings button): sets Spectacle's [General] autoSaveImage=true via kwriteconfig6.
     Q_INVOKABLE void enableSpectacleAutoSave();
@@ -181,6 +186,7 @@ signals:
     void sortModeChanged();
     void themeModeChanged();
     void recentColorsChanged();
+    void typeRulesChanged();
     void autoScreenshotsChanged();
     void autoDownloadsChanged();
     void autoKdeConnectChanged();
@@ -205,6 +211,9 @@ private:
     bool claimAutoAdd(const QString &path); // false if another source just added this path
     FileItem newItem(const QString &name, const QString &categoryId) const;
     QString freeName(const QString &name, const QString &exceptId = {}) const;
+    // A new file's category: the explicit one if any (open category, folder, auto source),
+    // else the rule for its type, else none.
+    QString ruledCategory(const QString &categoryId, const QString &mimeType);
     void indexContents(); // text of the shelf's text files, so search also matches inside them
     void runCleanup();
     void setError(const QString &message);

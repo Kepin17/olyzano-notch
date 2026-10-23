@@ -206,6 +206,36 @@ QString uniqueName(const QString &dir, const QString &name)
     return uniqueAmong(name, [&dir](const QString &n) { return QFileInfo::exists(dir + u'/' + n); });
 }
 
+QString typeGroup(const QString &mimeType)
+{
+    const QMimeType mt = QMimeDatabase().mimeTypeForName(mimeType);
+    const auto is = [&mt](const char *name) { return mt.isValid() && mt.inherits(QLatin1String(name)); };
+    if (mimeType == QLatin1String("application/pdf"))
+        return QStringLiteral("pdf");
+    for (const auto &[prefix, group] : {std::pair{"image/", "image"}, {"video/", "video"}, {"audio/", "audio"}})
+        if (mimeType.startsWith(QLatin1String(prefix)))
+            return QLatin1String(group);
+    static const QStringList documents = {
+        QStringLiteral("application/msword"), QStringLiteral("application/rtf"),
+        QStringLiteral("application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+        QStringLiteral("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"),
+        QStringLiteral("application/vnd.openxmlformats-officedocument.presentationml.presentation"),
+        QStringLiteral("application/vnd.ms-excel"), QStringLiteral("application/vnd.ms-powerpoint"),
+        QStringLiteral("text/csv"), QStringLiteral("application/epub+zip")};
+    if (documents.contains(mimeType) || mimeType.startsWith(QLatin1String("application/vnd.oasis.opendocument")))
+        return QStringLiteral("document");
+    static const QStringList archives = {
+        QStringLiteral("application/zip"), QStringLiteral("application/x-7z-compressed"), QStringLiteral("application/vnd.rar"),
+        QStringLiteral("application/x-rar"), QStringLiteral("application/gzip"), QStringLiteral("application/x-xz"),
+        QStringLiteral("application/x-bzip2"), QStringLiteral("application/zstd"), QStringLiteral("application/x-iso9660-image"),
+        QStringLiteral("application/vnd.debian.binary-package")};
+    if (archives.contains(mimeType) || is("application/x-tar") || mimeType.startsWith(QLatin1String("application/x-compressed")))
+        return QStringLiteral("archive");
+    if (mimeType != QLatin1String("application/x-desktop") && (is("text/plain") || mimeType == QLatin1String("application/json")))
+        return QStringLiteral("text");
+    return {};
+}
+
 bool isPartialDownload(const QString &name)
 {
     static const QStringList partial = {QStringLiteral("crdownload"), QStringLiteral("part"), QStringLiteral("tmp"),

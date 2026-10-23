@@ -570,6 +570,23 @@ private slots:
         QVERIFY2(ocr.contains(QStringLiteral("HELLO")), qPrintable(ocr));
     }
 
+    void typeGroups()
+    {
+        QCOMPARE(FileService::typeGroup(QStringLiteral("application/pdf")), QStringLiteral("pdf"));
+        QCOMPARE(FileService::typeGroup(QStringLiteral("image/webp")), QStringLiteral("image"));
+        QCOMPARE(FileService::typeGroup(QStringLiteral("video/mp4")), QStringLiteral("video"));
+        QCOMPARE(FileService::typeGroup(QStringLiteral("audio/mpeg")), QStringLiteral("audio"));
+        QCOMPARE(FileService::typeGroup(QStringLiteral("application/vnd.openxmlformats-officedocument.wordprocessingml.document")),
+                 QStringLiteral("document"));
+        QCOMPARE(FileService::typeGroup(QStringLiteral("application/vnd.oasis.opendocument.spreadsheet")), QStringLiteral("document"));
+        QCOMPARE(FileService::typeGroup(QStringLiteral("application/zip")), QStringLiteral("archive"));
+        QCOMPARE(FileService::typeGroup(QStringLiteral("application/x-compressed-tar")), QStringLiteral("archive"));
+        QCOMPARE(FileService::typeGroup(QStringLiteral("text/x-c++src")), QStringLiteral("text")); // code inherits text/plain
+        QCOMPARE(FileService::typeGroup(QStringLiteral("application/json")), QStringLiteral("text"));
+        QCOMPARE(FileService::typeGroup(QStringLiteral("application/x-desktop")), QString()); // link shortcuts: no rule
+        QCOMPARE(FileService::typeGroup(QStringLiteral("application/octet-stream")), QString());
+    }
+
     void removeManagedGuards()
     {
         QVERIFY(!FileService::removeManaged(m_files, QStringLiteral("../escape")));
