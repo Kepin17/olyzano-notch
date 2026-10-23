@@ -21,6 +21,14 @@ void Theme::setMode(const QString &mode)
     emit changed();
 }
 
+void Theme::setStyle(const QString &style)
+{
+    if (style == m_style)
+        return;
+    m_style = style;
+    emit changed();
+}
+
 bool Theme::dark() const
 {
     if (m_mode == QLatin1String("light"))

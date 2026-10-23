@@ -1144,6 +1144,13 @@ void NotchController::setThemeMode(const QString &mode)
     emit themeModeChanged();
 }
 
+void NotchController::setUiStyle(const QString &style)
+{
+    if (!storeSetting(QStringLiteral("style"), style))
+        return;
+    emit uiStyleChanged();
+}
+
 void NotchController::setAutoScreenshots(bool enabled)
 {
     if (!storeSetting(QStringLiteral("autoScreenshots"), enabled))

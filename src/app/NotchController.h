@@ -62,6 +62,7 @@ class NotchController : public QObject
     Q_PROPERTY(int removedCount READ removedCount NOTIFY countChanged) // in Recently removed
     Q_PROPERTY(QString sortMode READ sortMode WRITE setSortMode NOTIFY sortModeChanged) // date|name|size|type
     Q_PROPERTY(QString themeMode READ themeMode WRITE setThemeMode NOTIFY themeModeChanged) // dark|light|system
+    Q_PROPERTY(QString uiStyle READ uiStyle WRITE setUiStyle NOTIFY uiStyleChanged)         // classic|washi
     Q_PROPERTY(QStringList recentColors READ recentColors NOTIFY recentColorsChanged) // picked, newest first
     // Automatic category per file type (FileService::typeGroup): {group: categoryId}.
     Q_PROPERTY(QVariantMap typeRules READ typeRules NOTIFY typeRulesChanged)
@@ -101,6 +102,8 @@ public:
     void setSortMode(const QString &mode);
     QString themeMode() const { return m_settings.value(QStringLiteral("theme"), QStringLiteral("dark")).toString(); }
     void setThemeMode(const QString &mode);
+    QString uiStyle() const { return m_settings.value(QStringLiteral("style"), QStringLiteral("classic")).toString(); }
+    void setUiStyle(const QString &style);
     QStringList recentColors() const { return m_settings.value(QStringLiteral("colors")).toStringList(); }
     QVariantMap typeRules() const;
     bool vaultExists() const { return m_vault.exists(); }
@@ -205,6 +208,7 @@ signals:
     void alertsChanged();
     void sortModeChanged();
     void themeModeChanged();
+    void uiStyleChanged();
     void recentColorsChanged();
     void typeRulesChanged();
     void vaultChanged();

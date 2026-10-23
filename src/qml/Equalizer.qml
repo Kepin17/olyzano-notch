@@ -7,7 +7,7 @@ Row {
     property int bars: 5
     property real barWidth: 3
     property real maxHeight: 16
-    property color color: "#7fb5cf"
+    property color color: theme.media
     readonly property bool live: visible && media.playing
     property bool holding: false
 

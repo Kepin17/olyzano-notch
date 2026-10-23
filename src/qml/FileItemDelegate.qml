@@ -65,10 +65,10 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        radius: 18
+        radius: theme.washi ? 8 : 18
         color: tile.selected ? theme.accentFaint : hover.hovered ? theme.surface : "transparent"
-        border.width: tile.selected ? 1 : 0
-        border.color: theme.accentSoft
+        border.width: tile.selected || (theme.washi && hover.hovered) ? 1 : 0
+        border.color: tile.selected && theme.washi ? theme.accent : theme.washi ? theme.outline : theme.accentSoft
         Behavior on color { ColorAnimation { duration: 120 } }
     }
     HoverHandler {
@@ -90,10 +90,10 @@ Item {
         y: 10
         width: 64
         height: 64
-        radius: 16
+        radius: theme.washi ? 6 : 16
         color: theme.surface
-        border.width: tile.selected ? 2 : 0
-        border.color: theme.accent
+        border.width: tile.selected ? 2 : theme.washi ? 1 : 0
+        border.color: tile.selected ? theme.accent : theme.outline
         scale: hover.hovered && !tile.copying ? 1.05 : 1
         Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
 
@@ -170,7 +170,7 @@ Item {
             width: 18
             height: 18
             radius: 9
-            color: "#ff9f0a"
+            color: theme.warn
             border.color: theme.island
             border.width: 1.5
             Text { anchors.centerIn: parent; text: "★"; color: "black"; font.pixelSize: 10 }
@@ -198,7 +198,7 @@ Item {
             width: 18
             height: 18
             radius: 9
-            color: "#ff453a"
+            color: theme.danger
             border.color: theme.island
             border.width: 1.5
             Text { anchors.centerIn: parent; text: "!"; color: "white"; font.pixelSize: 11; font.bold: true }
@@ -212,7 +212,7 @@ Item {
             width: 18
             height: 18
             radius: 9
-            color: "#ff9f0a"
+            color: theme.warn
             border.color: theme.island
             border.width: 1.5
             Text { anchors.centerIn: parent; text: "⏳"; font.pixelSize: 9 }
@@ -293,7 +293,7 @@ Item {
         width: parent.width - 8
         text: tile.copying ? "Copying…" : tile.failed ? "Missing" : tile.removed ? tile.removedText
             : tile.expiringSoon ? "⏳ " + tile.expiresText.replace(" left", "") + " · Keep" : tile.sizeText
-        color: tile.failed ? "#ff6961" : tile.expiringSoon && !tile.removed ? "#ff9f0a" : theme.textDim
+        color: tile.failed ? theme.danger : tile.expiringSoon && !tile.removed ? theme.warn : theme.textDim
         // One click on "· Keep" saves a file that is about to expire.
         TapHandler {
             enabled: tile.expiringSoon && !tile.removed

@@ -11,7 +11,7 @@ Rectangle {
     color: theme.card
     implicitHeight: content.implicitHeight + 28
 
-    readonly property color tint: "#7fb5cf"
+    readonly property color tint: theme.media
     property real position: 0 // ms, interpolated between D-Bus reads
     property bool scrubbing: false
     // The user did something with the card: keep it open (Main stops the auto-hide).

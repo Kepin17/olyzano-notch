@@ -44,6 +44,18 @@ ScrollView {
             Row {
                 spacing: 6
                 Repeater {
+                    model: [["classic", "Classic"], ["washi", "Washi 和紙"]]
+                    PillButton {
+                        required property var modelData
+                        text: modelData[1]
+                        checked: notch.uiStyle === modelData[0]
+                        onClicked: notch.uiStyle = modelData[0]
+                    }
+                }
+            }
+            Row {
+                spacing: 6
+                Repeater {
                     model: [["dark", "Dark"], ["light", "Light"], ["system", "Follow system"]]
                     PillButton {
                         required property var modelData
@@ -53,7 +65,10 @@ ScrollView {
                     }
                 }
             }
-            Caption { text: "Highlights use your KDE accent color." }
+            Caption {
+                text: theme.washi ? "Sumi ink and washi paper, with a vermilion (shu) accent."
+                                  : "Highlights use your KDE accent color."
+            }
         }
 
         ColumnLayout {
@@ -124,7 +139,7 @@ ScrollView {
                 property bool warn: false
                 visible: notch.count > 0 || notch.copying > 0
                 onVisibleChanged: warn = false
-                color: warn ? "#ff6961" : theme.textDim
+                color: warn ? theme.danger : theme.textDim
                 text: "Remove all files from the shelf first, then change the folder."
             }
         }
@@ -165,7 +180,7 @@ ScrollView {
                 spacing: 10
                 Caption {
                     Layout.fillWidth: true
-                    color: "#ff9f0a"
+                    color: theme.warn
                     text: "Spectacle doesn't save screenshots automatically, so they never reach a folder Notch can see."
                 }
                 PillButton {

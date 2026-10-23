@@ -9,7 +9,7 @@ AbstractButton {
     padding: 0
     background: Rectangle {
         radius: 12
-        color: tg.checked ? "#30d158" : theme.surfacePressed
+        color: tg.checked ? theme.success : theme.surfacePressed
         Behavior on color { ColorAnimation { duration: 150 } }
     }
     contentItem: Item {

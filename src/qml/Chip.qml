@@ -15,11 +15,15 @@ AbstractButton {
     signal dropDone()
     implicitHeight: 26
     implicitWidth: chipRow.implicitWidth + 22
+    // Washi: the active chip is a vermilion outline (hanko-like) rather than a filled pill.
+    readonly property bool filled: chip.active && !theme.washi
+    readonly property color ink: chip.filled ? "white" : chip.active ? theme.accent : theme.text
     background: Rectangle {
-        radius: 13
-        color: chip.active ? theme.accent : chip.dropHover ? theme.surfaceHover : chip.hovered ? theme.surfaceHover : theme.surface
-        border.width: chip.dropHover ? 1 : 0
-        border.color: theme.accent
+        radius: theme.chipRadius
+        color: chip.filled ? theme.accent : chip.dropHover ? theme.surfaceHover : chip.hovered ? theme.surfaceHover
+             : chip.active ? theme.accentFaint : theme.surface
+        border.width: chip.dropHover || chip.active ? 1 : theme.washi ? 1 : 0
+        border.color: chip.dropHover || chip.active ? theme.accent : theme.outline
         Behavior on color { ColorAnimation { duration: 120 } }
     }
     contentItem: Item {
@@ -27,18 +31,26 @@ AbstractButton {
             id: chipRow
             anchors.centerIn: parent
             spacing: 5
+            LineIcon {
+                anchors.verticalCenter: parent.verticalCenter
+                glyph: chip.locked ? (notch.vaultUnlocked ? "unlock" : "lock")
+                    : chip.special === "screenshots" ? "camera" : chip.special === "downloads" ? "download"
+                    : chip.special === "kdeconnect" ? "phone" : ""
+                visible: glyph !== ""
+                sourceSize: Qt.size(13, 13)
+                color: chip.ink
+            }
             Text {
-                text: (chip.locked ? (notch.vaultUnlocked ? "🔓 " : "🔒 ") : "")
-                    + (chip.special === "screenshots" ? "📷 " : chip.special === "downloads" ? "⬇ "
-                     : chip.special === "kdeconnect" ? "📱 " : "") + chip.text
-                color: chip.active ? "white" : theme.text
+                anchors.verticalCenter: parent.verticalCenter
+                text: chip.text
+                color: chip.ink
                 font.pixelSize: 12
                 font.weight: Font.Medium
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: chip.itemCount
-                color: chip.active ? "#d0e4ff" : theme.textDim
+                color: chip.filled ? "#d0e4ff" : chip.active ? theme.accent : theme.textDim
                 font.pixelSize: 11
             }
         }

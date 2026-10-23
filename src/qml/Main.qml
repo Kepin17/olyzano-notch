@@ -59,11 +59,11 @@ Window {
     // toast: a short system alert (charger, Bluetooth). Shown even while hidden, like Dynamic Island.
     property var toast: null // {kind, title, detail, icon, level}
     readonly property color toastColor: !toast ? theme.outline
-                                      : toast.kind === "charging" ? "#30d158"
+                                      : toast.kind === "charging" ? theme.success
                                       : toast.kind === "bluetooth" ? accent
-                                      : toast.kind === "lowbattery" ? "#ff453a"
-                                      : toast.kind === "media" ? "#7fb5cf"
-                                      : toast.kind === "file" ? "#5ac8fa"
+                                      : toast.kind === "lowbattery" ? theme.danger
+                                      : toast.kind === "media" ? theme.media
+                                      : toast.kind === "file" ? theme.info
                                       : toast.kind === "color" ? toast.detail : theme.textDim
     readonly property string mode: open ? "open" : toast ? "toast" : notch.copying > 0 ? "peek" : "hidden"
 
@@ -475,7 +475,7 @@ Window {
                         y: 2
                         height: parent.height - 4
                         radius: 2
-                        color: toastRow.t.kind === "charging" ? "#30d158" : toastRow.t.level <= 20 ? "#ff453a" : theme.text
+                        color: toastRow.t.kind === "charging" ? theme.success : toastRow.t.level <= 20 ? theme.danger : theme.text
                         // Starts empty each time the toast appears and fills to the level.
                         width: toastRow.visible ? Math.max(2, (shell.width - 4) * Math.max(0, toastRow.t.level) / 100) : 0
                         Behavior on width { NumberAnimation { duration: 700; easing.type: Easing.OutCubic } }
@@ -546,8 +546,8 @@ Window {
                 elide: Text.ElideRight
                 text: toastRow.t.kind === "bluetooth" && toastRow.t.level >= 0
                       ? toastRow.t.detail + " · " + toastRow.t.level + "%" : toastRow.t.detail
-                color: toastRow.t.kind === "charging" ? "#30d158"
-                     : toastRow.t.kind === "lowbattery" ? "#ff453a"
+                color: toastRow.t.kind === "charging" ? theme.success
+                     : toastRow.t.kind === "lowbattery" ? theme.danger
                      : toastRow.t.kind === "media" || toastRow.t.kind === "file" ? root.textSecondary
                      : toastRow.t.detail === "Disconnected" ? root.textSecondary
                      : toastRow.t.kind === "bluetooth" ? root.accent : root.textPrimary
@@ -607,7 +607,7 @@ Window {
 
                     IconButton {
                         visible: root.page !== "shelf"
-                        text: "‹"
+                        iconName: "back"
                         Accessible.name: "Back"
                         onClicked: root.page = "shelf"
                     }
@@ -617,21 +617,30 @@ Window {
                             : root.page === "settings" ? "Settings" : root.page === "preview" ? root.preview.name
                             : root.page === "note" ? (root.noteId !== "" ? "Edit note" : "New note") : "Notch"
                         color: root.textPrimary
+                        font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
                         font.pixelSize: 15
                         font.weight: Font.DemiBold
                         elide: Text.ElideMiddle
+                    }
+                    Text { // washi: 通知 ("notice"), a quiet subtitle
+                        visible: theme.washi && root.page === "shelf" && !root.selecting
+                        text: "通知"
+                        color: theme.textFaint
+                        font.family: theme.displayFont
+                        font.pixelSize: 11
                     }
                     Rectangle {
                         visible: root.page === "shelf" && !root.selecting
                         implicitWidth: Math.max(20, countLabel.implicitWidth + 12)
                         implicitHeight: 20
-                        radius: 10
-                        color: theme.surface
+                        radius: theme.washi ? 3 : 10 // washi: a small vermilion hanko seal
+                        color: theme.washi ? theme.accent : theme.surface
+                        rotation: theme.washi ? -4 : 0
                         Text {
                             id: countLabel
                             anchors.centerIn: parent
                             text: notch.count
-                            color: root.textSecondary
+                            color: theme.washi ? "white" : root.textSecondary
                             font.pixelSize: 11
                             font.weight: Font.Medium
                         }
@@ -655,7 +664,7 @@ Window {
                         selectionColor: root.accent
                         font.pixelSize: 12
                         background: Rectangle {
-                            radius: 13
+                            radius: theme.chipRadius
                             color: theme.surface
                             border.width: 1
                             border.color: search.activeFocus ? root.accent : "transparent"
@@ -717,7 +726,7 @@ Window {
                     }
                     IconButton {
                         visible: root.selecting
-                        text: "✕"
+                        iconName: "close"
                         Accessible.name: "Clear selection"
                         onClicked: root.clearSelection()
                     }
@@ -754,7 +763,7 @@ Window {
                     }
                     IconButton {
                         visible: root.page === "shelf" && !root.selecting && notch.vaultUnlocked
-                        text: "🔓"
+                        iconName: "unlock"
                         Accessible.name: "Lock locked categories now"
                         onClicked: notch.lockVault()
                     }
@@ -762,7 +771,7 @@ Window {
                     IconButton {
                         id: trashButton
                         visible: root.page === "shelf" && !root.selecting && (notch.removedCount > 0 || root.inRemoved)
-                        text: "🗑"
+                        iconName: "trash"
                         checked: root.inRemoved
                         Accessible.name: "Recently removed"
                         onClicked: notch.categoryFilter = root.inRemoved ? "" : "__removed__"
@@ -778,7 +787,7 @@ Window {
                             width: Math.max(16, trashCount.implicitWidth + 8)
                             height: 16
                             radius: 8
-                            color: "#ff453a"
+                            color: theme.danger
                             Text {
                                 id: trashCount
                                 anchors.centerIn: parent
@@ -797,7 +806,7 @@ Window {
                     }
                     IconButton {
                         visible: root.page === "shelf" && !root.selecting
-                        text: "🎨"
+                        iconName: "palette"
                         Accessible.name: "Pick a color from the screen"
                         onClicked: {
                             // Get out of the way so anything on screen (even under Notch) can be picked.
@@ -808,13 +817,13 @@ Window {
                     }
                     IconButton {
                         visible: root.page === "shelf" && !root.selecting
-                        text: "✎"
+                        iconName: "pen"
                         Accessible.name: "New note"
                         onClicked: root.newNote()
                     }
                     IconButton {
                         visible: root.page === "shelf" && !root.selecting
-                        text: "⚙"
+                        iconName: "gear"
                         Accessible.name: "Settings"
                         onClicked: root.page = "settings"
                     }
@@ -852,7 +861,7 @@ Window {
                         anchors.margins: 8
                         anchors.rightMargin: 28
                         text: notch.errorMessage
-                        color: "#ff6961"
+                        color: theme.danger
                         font.pixelSize: 12
                         wrapMode: Text.Wrap
                     }
@@ -861,10 +870,20 @@ Window {
                         anchors.verticalCenter: parent.verticalCenter
                         anchors.rightMargin: 10
                         text: "✕"
-                        color: "#ff6961"
+                        color: theme.danger
                         font.pixelSize: 11
                     }
                     TapHandler { onTapped: notch.clearError() }
+                }
+
+                // Washi: a hairline under the header, like a brush rule.
+                Rectangle {
+                    visible: theme.washi && root.page === "shelf"
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 12
+                    implicitHeight: 1
+                    color: theme.outline
                 }
 
                 // ---- Categories ----
@@ -976,14 +995,15 @@ Window {
                     }
                     IconButton {
                         visible: root.editingCategory === ""
-                        text: "+"
+                        iconName: "plus"
                         Accessible.name: "New category"
                         onClicked: root.beginCategoryEdit("new", "", [])
                     }
 
                     PillButton {
                         visible: notch.count > 1
-                        text: "↕ " + ({ date: "Date", name: "Name", size: "Size", type: "Type" })[notch.sortMode]
+                        iconName: "sort"
+                        text: ({ date: "Date", name: "Name", size: "Size", type: "Type" })[notch.sortMode]
                         Accessible.name: "Sort files"
                         onClicked: sortMenu.popup()
                     }
@@ -1041,7 +1061,7 @@ Window {
                     Column {
                         anchors.centerIn: parent
                         spacing: 8
-                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: "🔒"; font.pixelSize: 24 }
+                        LineIcon { anchors.horizontalCenter: parent.horizontalCenter; glyph: "lock"; sourceSize: Qt.size(28, 28); color: theme.textDim }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "This category is locked"
@@ -1291,7 +1311,7 @@ Window {
                         verticalAlignment: Text.AlignVCenter
                         readonly property bool warning: root.infoText.startsWith("⚠")
                         text: (warning ? "" : "✓  ") + root.infoText
-                        color: warning ? "#ff9f0a" : "#5ac8fa"
+                        color: warning ? theme.warn : theme.info
                         font.pixelSize: 12
                         elide: Text.ElideMiddle
                     }
@@ -1345,7 +1365,7 @@ Window {
         width: 44
         height: 3
         radius: 1.5
-        color: notch.errorMessage !== "" ? "#ff453a" : theme.dark ? "#ffffff" : "#000000"
+        color: notch.errorMessage !== "" ? theme.danger : theme.dark ? "#ffffff" : "#000000"
         opacity: root.mode !== "hidden" ? 0 : edgeHover.hovered ? 0.7 : 0.18
         Behavior on opacity { NumberAnimation { duration: 200 } }
     }
@@ -1718,7 +1738,7 @@ Window {
                 onAccepted: vaultPopup.go()
                 Keys.onEscapePressed: vaultPopup.close()
             }
-            Caption { Layout.fillWidth: true; visible: vaultPopup.error !== ""; color: "#ff453a"; text: vaultPopup.error }
+            Caption { Layout.fillWidth: true; visible: vaultPopup.error !== ""; color: theme.danger; text: vaultPopup.error }
             RowLayout {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }

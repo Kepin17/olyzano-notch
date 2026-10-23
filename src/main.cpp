@@ -82,6 +82,8 @@ int main(int argc, char *argv[])
     ColorPicker colorPicker;
     QObject::connect(&colorPicker, &ColorPicker::picked, &controller, &NotchController::addColor);
     theme.setMode(controller.themeMode());
+    theme.setStyle(controller.uiStyle());
+    QObject::connect(&controller, &NotchController::uiStyleChanged, &theme, [&] { theme.setStyle(controller.uiStyle()); });
     QObject::connect(&controller, &NotchController::themeModeChanged, &theme, [&] { theme.setMode(controller.themeMode()); });
     QObject::connect(&kdeconnect, &KdeConnect::received, &controller, &NotchController::addReceived);
     QQmlApplicationEngine engine;

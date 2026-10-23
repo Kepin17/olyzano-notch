@@ -139,7 +139,9 @@ To try it without touching your real shelf or settings:
 - **Color picker:** 🎨 hides Notch and lets you click any pixel on screen (desktop portal, KWin's
   picker). The hex code is copied and kept in a swatch row; click a swatch to copy again,
   right-click to remove.
-- **Appearance:** Dark (default), Light or Follow system; highlights use your KDE accent color.
+- **Appearance:** style **Classic** (highlights use your KDE accent color) or **Washi 和紙** (Japanese:
+  sumi ink when dark, washi paper when light, vermilion *shu* accent, hanko-style count, Noto Serif JP
+  headings); each in Dark (default), Light or Follow system.
 - **⚙ Settings**: how long files are kept (1–30 days; shortening it removes older files right away),
   storage folder (changeable while the shelf is empty), start at login, quit.
 - Tray icon: click toggles the panel; menu has Show/Hide, Settings, Quit.
