@@ -518,6 +518,37 @@ private slots:
             QCOMPARE(DocTools::pdfPageCount(page), 1);
     }
 
+    void toolRunner()
+    {
+        if (QStandardPaths::findExecutable(QStringLiteral("pdfunite")).isEmpty())
+            QSKIP("poppler-utils not installed");
+        QImage img(800, 400, QImage::Format_RGB32);
+        img.fill(Qt::darkGreen);
+        const QString png = m_tmp.filePath(QStringLiteral("card.png"));
+        QVERIFY(img.save(png));
+        const QString work = m_tmp.filePath(QStringLiteral("work"));
+        QDir().mkpath(work);
+        const DocTools::ToolInput card{png, QStringLiteral("card"), QStringLiteral("card.png")};
+
+        auto pdf = DocTools::runTool(QStringLiteral("images-pdf"), {card}, {}, work);
+        QCOMPARE(pdf.error, QString());
+        QCOMPARE(pdf.outputs.size(), 1);
+        QCOMPARE(pdf.outputs.first().second, QStringLiteral("card.pdf"));
+
+        const DocTools::ToolInput doc{pdf.outputs.first().first, QStringLiteral("card"), QStringLiteral("card.pdf")};
+        auto merged = DocTools::runTool(QStringLiteral("merge"), {doc, doc}, {}, work);
+        QCOMPARE(merged.error, QString());
+        QCOMPARE(DocTools::pdfPageCount(merged.outputs.first().first), 2);
+        QCOMPARE(merged.summary, QStringLiteral("Merged 2 PDFs"));
+
+        auto resized = DocTools::runTool(QStringLiteral("resize"), {card}, QStringLiteral("400"), work);
+        QCOMPARE(resized.outputs.first().second, QStringLiteral("card (400px).png"));
+        QCOMPARE(QImageReader(resized.outputs.first().first).size().width(), 400);
+
+        QVERIFY(!DocTools::runTool(QStringLiteral("nonsense"), {card}, {}, work).error.isEmpty());
+        QVERIFY(!DocTools::runTool(QStringLiteral("extract"), {doc}, QStringLiteral("9"), work).error.isEmpty()); // 1 page only
+    }
+
     void compressPdf()
     {
         if (QStandardPaths::findExecutable(QStringLiteral("gs")).isEmpty())

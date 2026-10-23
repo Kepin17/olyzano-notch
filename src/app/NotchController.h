@@ -80,7 +80,7 @@ public:
     QString errorMessage() const { return m_error; }
     QString filter() const { return m_filter; }
     void setFilter(const QString &text);
-    QVariantList categories();
+    QVariantList categories() const { return m_categories; }
     QString categoryFilter() const { return m_categoryFilter; }
     void setCategoryFilter(const QString &categoryId);
     int retentionDays() const { return m_retentionDays; }
@@ -211,6 +211,10 @@ private:
     bool claimAutoAdd(const QString &path); // false if another source just added this path
     FileItem newItem(const QString &name, const QString &categoryId) const;
     QString freeName(const QString &name, const QString &exceptId = {}) const;
+    const FileItem *available(const QString &id) const; // the item if it is ready to use, else nullptr
+    void reloadCategories();  // after a category is created/renamed/deleted
+    void refreshCategories(); // recount; emits categoriesChanged only if something changed
+    bool storeSetting(const QString &key, const QVariant &value); // true if it changed
     // A new file's category: the explicit one if any (open category, folder, auto source),
     // else the rule for its type, else none.
     QString ruledCategory(const QString &categoryId, const QString &mimeType);
@@ -232,6 +236,8 @@ private:
     QTimer m_clock;   // refreshes "expires in" labels
     QTimer m_cleanup;
     QStringList m_lastRemoved; // what the Undo toast restores
+    QList<Category> m_categoryList; // from the database, see reloadCategories()
+    QVariantList m_categories;      // what QML sees: [{id, name, count, special}]
     QHash<QString, QString> m_contents; // see indexContents()
     bool m_contentsStale = true;
     FolderWatcher m_screenshots;

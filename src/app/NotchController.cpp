@@ -128,13 +128,19 @@ NotchController::NotchController(const QString &dataDir, QObject *parent)
         onWatchedFile(path, QStringLiteral("downloadCategory"), tr("Downloads"), tr("Downloaded"));
     });
 
+    // Per-category counts only change when files come, go, move or get removed; not on the
+    // minute tick or a copy's status change. refreshCategories() also skips no-op updates.
     for (auto signal : {&QAbstractItemModel::rowsInserted, &QAbstractItemModel::rowsRemoved}) {
         connect(&m_model, signal, this, &NotchController::countChanged);
-        connect(&m_model, signal, this, &NotchController::categoriesChanged); // per-category counts
+        connect(&m_model, signal, this, &NotchController::refreshCategories);
     }
     connect(&m_model, &QAbstractItemModel::modelReset, this, &NotchController::countChanged);
-    connect(&m_model, &QAbstractItemModel::modelReset, this, &NotchController::categoriesChanged);
-    connect(&m_model, &QAbstractItemModel::dataChanged, this, &NotchController::categoriesChanged);
+    connect(&m_model, &QAbstractItemModel::modelReset, this, &NotchController::refreshCategories);
+    connect(&m_model, &QAbstractItemModel::dataChanged, this,
+            [this](const QModelIndex &, const QModelIndex &, const QList<int> &roles) {
+                if (roles.isEmpty() || roles.contains(FileItemModel::CategoryIdRole) || roles.contains(FileItemModel::RemovedRole))
+                    refreshCategories();
+            });
 
     m_clock.setInterval(60 * 1000);
     connect(&m_clock, &QTimer::timeout, &m_model, &FileItemModel::refreshTimes);
@@ -162,10 +168,25 @@ bool NotchController::start()
     m_ready = true;
     CleanupService::recover(m_repo, m_filesDir);
     CleanupService::purge(m_repo, m_filesDir, QDateTime::currentDateTimeUtc(), m_retentionDays);
+    m_categoryList = m_repo.categories();
     m_model.setItems(m_repo.visible());
     updateWatchers();
     m_clock.start();
     m_cleanup.start();
+    return true;
+}
+
+const FileItem *NotchController::available(const QString &id) const
+{
+    const FileItem *item = m_model.find(id);
+    return item && item->status == Status::Available ? item : nullptr;
+}
+
+bool NotchController::storeSetting(const QString &key, const QVariant &value)
+{
+    if (m_settings.contains(key) && m_settings.value(key) == value)
+        return false;
+    m_settings.setValue(key, value);
     return true;
 }
 
@@ -490,8 +511,8 @@ void NotchController::copyFiles(const QStringList &ids)
     QByteArray gnome("copy");
     const FileItem *single = nullptr;
     for (const QString &id : ids) {
-        const FileItem *item = m_model.find(id);
-        if (!item || item->status != Status::Available)
+        const FileItem *item = available(id);
+        if (!item)
             continue;
         const QUrl url = QUrl::fromLocalFile(FileService::storedPath(m_filesDir, item->storedName));
         urls << url;
@@ -518,8 +539,8 @@ void NotchController::copyFiles(const QStringList &ids)
 
 void NotchController::copyContents(const QString &id)
 {
-    const FileItem *item = m_model.find(id);
-    if (!item || item->status != Status::Available)
+    const FileItem *item = available(id);
+    if (!item)
         return;
     QFile f(FileService::storedPath(m_filesDir, item->storedName));
     constexpr qint64 Limit = 16 << 20;
@@ -534,7 +555,7 @@ void NotchController::copyPaths(const QStringList &ids)
 {
     QStringList paths;
     for (const QString &id : ids)
-        if (const FileItem *item = m_model.find(id); item && item->status == Status::Available)
+        if (const FileItem *item = available(id))
             paths << FileService::storedPath(m_filesDir, item->storedName);
     if (!paths.isEmpty())
         QGuiApplication::clipboard()->setText(paths.join(u'\n'));
@@ -551,8 +572,8 @@ void NotchController::setPinned(const QStringList &ids, bool pinned)
 
 void NotchController::open(const QString &id)
 {
-    const FileItem *item = m_model.find(id);
-    if (!item || item->status != Status::Available)
+    const FileItem *item = available(id);
+    if (!item)
         return;
     if (!QDesktopServices::openUrl(QUrl::fromLocalFile(FileService::storedPath(m_filesDir, item->storedName))))
         setError(tr("%1: no application could open this file").arg(item->originalName));
@@ -650,8 +671,8 @@ QString NotchController::uriList(const QStringList &ids) const
 {
     QStringList uris;
     for (const QString &id : ids) {
-        const FileItem *item = m_model.find(id);
-        if (item && item->status == Status::Available)
+        const FileItem *item = available(id);
+        if (item)
             uris << QString::fromUtf8(QUrl::fromLocalFile(FileService::storedPath(m_filesDir, item->storedName)).toEncoded());
     }
     return uris.join(QStringLiteral("\r\n"));
@@ -665,7 +686,7 @@ QStringList NotchController::visibleIds() const
     return ids;
 }
 
-QVariantList NotchController::categories()
+void NotchController::refreshCategories()
 {
     QHash<QString, int> counts;
     for (const FileItem &item : m_model.items())
@@ -675,7 +696,7 @@ QVariantList NotchController::categories()
     const QString downloads = m_settings.value(QStringLiteral("downloadCategory")).toString();
     const QString phone = m_settings.value(QStringLiteral("kdeconnectCategory")).toString();
     QVariantList out;
-    for (const Category &c : m_repo.categories()) {
+    for (const Category &c : std::as_const(m_categoryList)) {
         const QString special = c.id == shots       ? QStringLiteral("screenshots")
                                 : c.id == downloads ? QStringLiteral("downloads")
                                 : c.id == phone     ? QStringLiteral("kdeconnect")
@@ -687,7 +708,16 @@ QVariantList NotchController::categories()
         else
             out << entry;
     }
-    return out;
+    if (out == m_categories)
+        return;
+    m_categories = out;
+    emit categoriesChanged();
+}
+
+void NotchController::reloadCategories()
+{
+    m_categoryList = m_repo.categories();
+    refreshCategories();
 }
 
 void NotchController::setCategoryFilter(const QString &categoryId)
@@ -711,7 +741,7 @@ QString NotchController::createCategory(const QString &name)
         setError(tr("Cannot create category: %1").arg(m_repo.errorString()));
         return {};
     }
-    emit categoriesChanged();
+    reloadCategories();
     return c.id;
 }
 
@@ -727,7 +757,7 @@ void NotchController::renameCategory(const QString &id, const QString &name)
     }
     if (!m_repo.renameCategory(id, clean))
         setError(tr("Cannot rename category: %1").arg(m_repo.errorString()));
-    emit categoriesChanged();
+    reloadCategories();
 }
 
 void NotchController::deleteCategory(const QString &id)
@@ -739,7 +769,7 @@ void NotchController::deleteCategory(const QString &id)
     m_model.clearCategory(id);
     if (m_categoryFilter == id)
         setCategoryFilter({});
-    emit categoriesChanged();
+    reloadCategories();
 }
 
 void NotchController::setCategory(const QStringList &ids, const QString &categoryId)
@@ -831,8 +861,8 @@ void NotchController::setAutostart(bool enabled)
 
 QString NotchController::previewText(const QString &id) const
 {
-    const FileItem *item = m_model.find(id);
-    if (!item || item->status != Status::Available)
+    const FileItem *item = available(id);
+    if (!item)
         return {};
     QFile f(FileService::storedPath(m_filesDir, item->storedName));
     if (!f.open(QIODevice::ReadOnly))
@@ -849,9 +879,8 @@ QString NotchController::previewText(const QString &id) const
 
 void NotchController::setAlerts(bool enabled)
 {
-    if (enabled == alerts())
+    if (!storeSetting(QStringLiteral("alerts"), enabled))
         return;
-    m_settings.setValue(QStringLiteral("alerts"), enabled);
     emit alertsChanged();
 }
 
@@ -890,7 +919,7 @@ QString NotchController::ruledCategory(const QString &categoryId, const QString 
     if (group.isEmpty())
         return {};
     const QString target = m_settings.value(QStringLiteral("typeRules/") + group).toString();
-    for (const Category &c : m_repo.categories()) // the category may have been deleted since
+    for (const Category &c : std::as_const(m_categoryList)) // the category may have been deleted since
         if (c.id == target)
             return target;
     return {};
@@ -938,26 +967,23 @@ void NotchController::removeColor(const QString &hex)
 
 void NotchController::setThemeMode(const QString &mode)
 {
-    if (mode == themeMode())
+    if (!storeSetting(QStringLiteral("theme"), mode))
         return;
-    m_settings.setValue(QStringLiteral("theme"), mode);
     emit themeModeChanged();
 }
 
 void NotchController::setAutoScreenshots(bool enabled)
 {
-    if (enabled == autoScreenshots())
+    if (!storeSetting(QStringLiteral("autoScreenshots"), enabled))
         return;
-    m_settings.setValue(QStringLiteral("autoScreenshots"), enabled);
     updateWatchers();
     emit autoScreenshotsChanged();
 }
 
 void NotchController::setAutoDownloads(bool enabled)
 {
-    if (enabled == autoDownloads())
+    if (!storeSetting(QStringLiteral("autoDownloads"), enabled))
         return;
-    m_settings.setValue(QStringLiteral("autoDownloads"), enabled);
     updateWatchers();
     emit autoDownloadsChanged();
 }
@@ -987,12 +1013,12 @@ void NotchController::updateWatchers()
 QString NotchController::autoCategory(const QString &settingKey, const QString &name)
 {
     const QString remembered = m_settings.value(settingKey).toString();
-    for (const Category &c : m_repo.categories())
+    for (const Category &c : std::as_const(m_categoryList))
         if (c.id == remembered)
             return remembered; // may have been renamed: still the target
     const QString id = createCategory(name);
     m_settings.setValue(settingKey, id);
-    emit categoriesChanged();
+    refreshCategories(); // its "special" mark (📷, ⬇, 📱) depends on the setting just stored
     return id;
 }
 
@@ -1010,16 +1036,15 @@ bool NotchController::claimAutoAdd(const QString &path)
 
 void NotchController::setAutoKdeConnect(bool enabled)
 {
-    if (enabled == autoKdeConnect())
+    if (!storeSetting(QStringLiteral("autoKdeConnect"), enabled))
         return;
-    m_settings.setValue(QStringLiteral("autoKdeConnect"), enabled);
     emit autoKdeConnectChanged();
 }
 
 QString NotchController::readText(const QString &id)
 {
-    const FileItem *item = m_model.find(id);
-    if (!item || item->status != Status::Available)
+    const FileItem *item = available(id);
+    if (!item)
         return {};
     QFile f(FileService::storedPath(m_filesDir, item->storedName));
     constexpr qint64 Limit = 1 << 20;
@@ -1038,8 +1063,8 @@ bool NotchController::saveNote(const QString &id, const QString &name, const QSt
         const QString mime = QMimeDatabase().mimeTypeForFile(clean, QMimeDatabase::MatchExtension).name();
         return addBytes(clean, mime, bytes, tr("Note"), m_categoryFilter);
     }
-    const FileItem *item = m_model.find(id);
-    if (!item || item->status != Status::Available)
+    const FileItem *item = available(id);
+    if (!item)
         return false;
     if (!FileService::writeFile(m_filesDir + u'/' + id, item->originalName, bytes) || !m_repo.markAvailable(id, bytes.size())) {
         setError(tr("Could not save %1").arg(item->originalName));
@@ -1108,15 +1133,10 @@ int NotchController::pageCount(const QString &id) const
 
 void NotchController::runTool(const QString &kind, const QStringList &ids, const QString &option)
 {
-    struct Input {
-        QString path;
-        QString base; // name without extension
-        QString name;
-    };
-    QList<Input> inputs;
+    QList<DocTools::ToolInput> inputs;
     for (const QString &id : ids)
-        if (const FileItem *item = m_model.find(id); item && item->status == Status::Available)
-            inputs << Input{FileService::storedPath(m_filesDir, item->storedName), QFileInfo(item->originalName).completeBaseName(),
+        if (const FileItem *item = available(id))
+            inputs << DocTools::ToolInput{FileService::storedPath(m_filesDir, item->storedName), QFileInfo(item->originalName).completeBaseName(),
                             item->originalName};
     if (inputs.isEmpty())
         return;
@@ -1124,91 +1144,13 @@ void NotchController::runTool(const QString &kind, const QStringList &ids, const
     const QString work = m_dataDir + QStringLiteral("/tools/") + QUuid::createUuid().toString(QUuid::WithoutBraces);
     QDir().mkpath(work);
 
-    struct Result {
-        QString error;
-        QList<QPair<QString, QString>> outputs; // path, display name
-        QString text;                           // OCR
-        QString summary;                        // for the notice
-    };
-    auto job = [kind, inputs, option, work]() -> Result {
-        Result r;
-        const auto out = [&](const QString &name) {
-            const QString path = work + u'/' + FileService::uniqueName(work, name);
-            r.outputs << qMakePair(path, QFileInfo(path).fileName());
-            return path;
-        };
-        QStringList paths;
-        for (const Input &in : inputs)
-            paths << in.path;
-        if (kind == QLatin1String("merge")) {
-            r.error = DocTools::mergePdfs(paths, out(QStringLiteral("Merged (%1 PDFs).pdf").arg(paths.size())));
-            r.summary = QStringLiteral("Merged %1 PDFs").arg(paths.size());
-        } else if (kind == QLatin1String("images-pdf")) {
-            const QString name = paths.size() == 1 ? inputs.first().base + QStringLiteral(".pdf")
-                                                   : QStringLiteral("Images (%1 pages).pdf").arg(paths.size());
-            r.error = DocTools::imagesToPdf(paths, out(name));
-            r.summary = QStringLiteral("Made a %1-page PDF").arg(paths.size());
-        } else if (kind == QLatin1String("compress")) {
-            qint64 before = 0, after = 0;
-            for (const Input &in : inputs) {
-                const QString target = out(in.base + QStringLiteral(" (compressed).pdf"));
-                if (const QString err = DocTools::compressPdf(in.path, target); !err.isEmpty()) {
-                    r.outputs.removeLast();
-                    r.error = in.name + QStringLiteral(": ") + err;
-                    continue;
-                }
-                before += QFileInfo(in.path).size();
-                after += QFileInfo(target).size();
-            }
-            if (!r.outputs.isEmpty())
-                r.summary = QStringLiteral("Compressed: %1 → %2")
-                                .arg(QLocale().formattedDataSize(before), QLocale().formattedDataSize(after));
-        } else if (kind == QLatin1String("split")) {
-            QStringList pages;
-            r.error = DocTools::splitPdf(inputs.first().path, work, inputs.first().base, &pages);
-            for (const QString &page : pages)
-                r.outputs << qMakePair(page, QFileInfo(page).fileName());
-            r.summary = QStringLiteral("Split into %1 pages").arg(pages.size());
-        } else if (kind == QLatin1String("extract")) {
-            QString err;
-            const QList<int> pages = DocTools::parsePageRanges(option, DocTools::pdfPageCount(inputs.first().path), &err);
-            r.error = pages.isEmpty() ? err
-                                      : DocTools::extractPages(inputs.first().path, pages,
-                                                               out(inputs.first().base + QStringLiteral(" (pages %1).pdf").arg(option.simplified())));
-            r.summary = QStringLiteral("Extracted %1 pages").arg(pages.size());
-        } else if (kind == QLatin1String("ocr-copy") || kind == QLatin1String("ocr-note")) {
-            const bool pdf = inputs.first().name.endsWith(QLatin1String(".pdf"), Qt::CaseInsensitive);
-            r.error = DocTools::recognizeText(inputs.first().path, pdf, &r.text);
-        } else if (kind == QLatin1String("convert") || kind == QLatin1String("resize")) {
-            for (const Input &in : inputs) {
-                QString format = option, suffix;
-                int width = 0;
-                if (kind == QLatin1String("resize")) {
-                    width = option.toInt();
-                    const QString ext = QFileInfo(in.name).suffix().toLower();
-                    format = ext == QLatin1String("jpeg") ? QStringLiteral("jpg")
-                           : (ext == QLatin1String("jpg") || ext == QLatin1String("webp")) ? ext : QStringLiteral("png");
-                    suffix = QStringLiteral(" (%1px)").arg(width);
-                }
-                const QString target = out(in.base + suffix + u'.' + format);
-                if (const QString err = DocTools::convertImage(in.path, format, width, target); !err.isEmpty()) {
-                    r.outputs.removeLast();
-                    r.error = in.name + QStringLiteral(": ") + err;
-                }
-            }
-            r.summary = QStringLiteral("%1 %2 image%3").arg(kind == QLatin1String("resize") ? QStringLiteral("Resized") : QStringLiteral("Converted"))
-                            .arg(r.outputs.size()).arg(r.outputs.size() == 1 ? QString() : QStringLiteral("s"));
-        } else {
-            r.error = QStringLiteral("unknown tool %1").arg(kind);
-        }
-        return r;
-    };
+    auto job = [kind, inputs, option, work] { return DocTools::runTool(kind, inputs, option, work); };
 
     ++m_copying; // shows the busy pill while the tool runs
     emit copyingChanged();
-    auto *watcher = new QFutureWatcher<Result>(this);
+    auto *watcher = new QFutureWatcher<DocTools::ToolResult>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, kind, category, work, inputs] {
-        const Result r = watcher->result();
+        const DocTools::ToolResult r = watcher->result();
         watcher->deleteLater();
         --m_copying;
         emit copyingChanged();
@@ -1262,7 +1204,7 @@ QStringList NotchController::fileUrls(const QStringList &ids) const
 {
     QStringList urls;
     for (const QString &id : ids)
-        if (const FileItem *item = m_model.find(id); item && item->status == Status::Available)
+        if (const FileItem *item = available(id))
             urls << QUrl::fromLocalFile(FileService::storedPath(m_filesDir, item->storedName)).toString();
     return urls;
 }
@@ -1320,8 +1262,8 @@ QStringList NotchController::categoryItemIds(const QString &categoryId) const
 
 void NotchController::renameItem(const QString &id, const QString &name)
 {
-    const FileItem *item = m_model.find(id);
-    if (!item || item->status != Status::Available)
+    const FileItem *item = available(id);
+    if (!item)
         return;
     const QString wanted = FileService::safeFileName(name.trimmed(), QString());
     if (wanted.isEmpty() || wanted == item->originalName)
@@ -1352,7 +1294,7 @@ void NotchController::saveTo(const QStringList &ids, const QUrl &folder)
     const QString dir = folder.toLocalFile();
     QList<QPair<QString, QString>> jobs; // stored path, name
     for (const QString &id : ids)
-        if (const FileItem *item = m_model.find(id); item && item->status == Status::Available)
+        if (const FileItem *item = available(id))
             jobs << qMakePair(FileService::storedPath(m_filesDir, item->storedName), item->originalName);
     if (dir.isEmpty() || jobs.isEmpty())
         return;
@@ -1385,12 +1327,12 @@ void NotchController::zipItems(const QStringList &ids)
 {
     QList<const FileItem *> items;
     for (const QString &id : ids)
-        if (const FileItem *item = m_model.find(id); item && item->status == Status::Available)
+        if (const FileItem *item = available(id))
             items << item;
     if (items.isEmpty())
         return;
     QString base = QStringLiteral("Notch");
-    for (const Category &c : m_repo.categories())
+    for (const Category &c : std::as_const(m_categoryList))
         if (c.id == m_categoryFilter)
             base = c.name;
     FileItem zip = newItem(QStringLiteral("%1 (%2 %3).zip").arg(base).arg(items.size())

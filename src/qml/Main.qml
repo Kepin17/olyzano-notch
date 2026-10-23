@@ -44,12 +44,12 @@ Window {
     readonly property bool selecting: page === "shelf" && selection.length > 0
     readonly property bool inRemoved: notch.categoryFilter === "__removed__" // Recently removed view
     readonly property bool anyMenu: menu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible
-                                    || toolsMenu.visible || extractPopup.visible || ruleMenu.visible
+                                    || toolsMenu.visible || extractPopup.visible || settingsPage.overlayOpen
                                     || sortMenu.visible || removedMenu.visible
                                     || removedChipMenu.visible
     readonly property bool dragOver: edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver
     readonly property bool engaged: pinned || dwelled || islandHover.hovered || dragOver || anyMenu
-                                    || folderDialog.visible || saveDialog.visible
+                                    || saveDialog.visible
     // hidden: only the top-edge strip is live. peek: copy in progress. open: full panel.
     // toast: a short system alert (charger, Bluetooth). Shown even while hidden, like Dynamic Island.
     property var toast: null // {kind, title, detail, icon, level}
@@ -140,8 +140,13 @@ Window {
     onVisibleChanged: updateMask()
     onModeChanged: updateMask()
 
+    // Files from outside Notch; drags of Notch's own tiles/chips carry a source and are ignored.
+    function isFileDrop(drag) {
+        return drag.hasUrls && !drag.source
+    }
+
     function acceptDrop(d) {
-        if (d.hasUrls && !d.source) {
+        if (isFileDrop(d)) {
             notch.addDrop(d.urls, d.html, notch.categoryFilter) // into the category being viewed
             d.acceptProposedAction()
         }
@@ -265,26 +270,6 @@ Window {
         return /\.[A-Za-z0-9]{1,8}$/.test(base) ? base : base + "." + noteFormat
     }
 
-    // Note toolkit: transforms the selection, or the whole note when nothing is selected.
-    function applyTransform(kind) {
-        const start = noteEditor.selectionStart, end = noteEditor.selectionEnd
-        const partial = end > start
-        const r = notch.transformText(kind, partial ? noteEditor.text.substring(start, end) : noteEditor.text)
-        if (!r.ok) {
-            infoText = "⚠ " + r.error
-            infoTimer.restart()
-            return
-        }
-        if (partial) {
-            noteEditor.remove(start, end)
-            noteEditor.insert(start, r.text)
-            noteEditor.select(start, start + r.text.length)
-        } else {
-            noteEditor.text = r.text
-        }
-        noteEditor.forceActiveFocus()
-    }
-
     function saveNote() {
         if (!notch.saveNote(noteId, noteFileName(), noteText))
             return
@@ -294,13 +279,8 @@ Window {
         page = "shelf"
     }
 
-    onPageChanged: {
-        if (page !== "note")
-            return
-        noteNameField.text = noteName
-        noteEditor.text = noteText
-        noteEditor.forceActiveFocus()
-    }
+    onPageChanged: if (page === "note") notePage.load()
+    function restartInfo() { infoTimer.restart() }
 
     function showPreview(item) {
         if (isEditable(item)) {
@@ -312,244 +292,15 @@ Window {
         page = "preview"
     }
 
-    component PillButton: AbstractButton {
-        id: pb
-        implicitWidth: pbLabel.implicitWidth + 22
-        implicitHeight: 26
-        opacity: enabled ? 1 : 0.4
-        background: Rectangle {
-            radius: height / 2
-            color: pb.checked ? theme.accent : pb.down ? theme.surfacePressed : pb.hovered ? theme.surfaceHover : theme.surface
-            Behavior on color { ColorAnimation { duration: 120 } }
-        }
-        contentItem: Text {
-            id: pbLabel
-            text: pb.text
-            color: pb.checked ? "white" : theme.text // on the accent fill, always white
-            font.pixelSize: 12
-            font.weight: Font.Medium
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-    }
 
-    component IconButton: AbstractButton {
-        id: ib
-        implicitWidth: 26
-        implicitHeight: 26
-        background: Rectangle {
-            radius: 13
-            color: ib.down ? theme.surfacePressed : ib.hovered ? theme.surfaceHover : theme.surface
-        }
-        contentItem: Text {
-            text: ib.text
-            color: theme.text
-            font.pixelSize: 14
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-        }
-    }
 
-    component Toggle: AbstractButton {
-        id: tg
-        implicitWidth: 42
-        implicitHeight: 24
-        padding: 0
-        background: Rectangle {
-            radius: 12
-            color: tg.checked ? "#30d158" : theme.surfacePressed
-            Behavior on color { ColorAnimation { duration: 150 } }
-        }
-        contentItem: Item {
-            Rectangle {
-                y: 2
-                x: tg.checked ? parent.width - width - 2 : 2
-                width: 20
-                height: 20
-                radius: 10
-                color: "white"
-                Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
-            }
-        }
-    }
 
-    component PulseDot: Rectangle {
-        implicitWidth: 8
-        implicitHeight: 8
-        radius: 4
-        color: theme.accent
-        SequentialAnimation on opacity {
-            running: visible
-            loops: Animation.Infinite
-            NumberAnimation { to: 0.25; duration: 550; easing.type: Easing.InOutSine }
-            NumberAnimation { to: 1; duration: 550; easing.type: Easing.InOutSine }
-        }
-    }
 
-    component SectionLabel: Text {
-        color: theme.text
-        font.pixelSize: 13
-        font.weight: Font.Medium
-    }
 
-    component DarkMenu: Menu {
-        padding: 6
-        background: Rectangle {
-            implicitWidth: 220
-            radius: 12
-            color: theme.surface
-            border.color: theme.surfaceHover
-        }
-        delegate: MenuItem {
-            id: mi
-            implicitHeight: 30
-            contentItem: Text {
-                text: mi.text
-                color: mi.enabled ? theme.text : theme.textDim
-                font.pixelSize: 12
-                elide: Text.ElideMiddle
-                verticalAlignment: Text.AlignVCenter
-                leftPadding: 4
-            }
-            background: Rectangle {
-                radius: 8
-                color: mi.highlighted && mi.enabled ? theme.surfaceHover : "transparent"
-            }
-        }
-    }
 
-    component DarkSeparator: MenuSeparator {
-        contentItem: Rectangle { implicitHeight: 1; color: theme.surfaceHover }
-    }
 
-    // Category filter chip. Drop tiles on it to move them in, or files to add them into it.
-    component Chip: AbstractButton {
-        id: chip
-        property string catId
-        property int itemCount
-        property string special // "screenshots" | "downloads" | ""
-        readonly property bool active: notch.categoryFilter === catId
-        readonly property bool dropHover: chipDrop.containsDrag
-        signal menuRequested()
-        implicitHeight: 26
-        implicitWidth: chipRow.implicitWidth + 22
-        background: Rectangle {
-            radius: 13
-            color: chip.active ? theme.accent : chip.dropHover ? theme.surfaceHover : chip.hovered ? theme.surfaceHover : theme.surface
-            border.width: chip.dropHover ? 1 : 0
-            border.color: theme.accent
-            Behavior on color { ColorAnimation { duration: 120 } }
-        }
-        contentItem: Item {
-            Row {
-                id: chipRow
-                anchors.centerIn: parent
-                spacing: 5
-                Text {
-                    text: (chip.special === "screenshots" ? "📷 " : chip.special === "downloads" ? "⬇ "
-                         : chip.special === "kdeconnect" ? "📱 " : chip.special === "removed" ? "🗑 " : "") + chip.text
-                    color: chip.active ? "white" : theme.text
-                    font.pixelSize: 12
-                    font.weight: Font.Medium
-                }
-                Text {
-                    anchors.verticalCenter: parent.verticalCenter
-                    text: chip.itemCount
-                    color: chip.active ? "#d0e4ff" : theme.textDim
-                    font.pixelSize: 11
-                }
-            }
-        }
-        onClicked: notch.categoryFilter = catId
-        TapHandler {
-            acceptedButtons: Qt.RightButton
-            enabled: chip.catId !== ""
-            onTapped: chip.menuRequested()
-        }
 
-        // Drag the chip out: all files of the category go along (to Dolphin, a chat, …);
-        // dropped on another chip they move into that category.
-        property var draggedIds: []
-        DragHandler {
-            id: chipDragHandler
-            target: null
-            enabled: chip.special !== "removed" && chip.itemCount > 0
-            onActiveChanged: {
-                if (!active)
-                    return
-                chip.draggedIds = notch.categoryItemIds(chip.catId)
-                chip.Drag.mimeData = { "text/uri-list": notch.uriList(chip.draggedIds) }
-                notch.setDragging(chip.draggedIds, true)
-                chip.Drag.active = true
-            }
-        }
-        Drag.dragType: Drag.Automatic
-        Drag.supportedActions: Qt.CopyAction
-        Drag.onDragFinished: {
-            chip.Drag.active = false
-            notch.setDragging(chip.draggedIds, false)
-        }
 
-        DropArea {
-            id: chipDrop
-            anchors.fill: parent
-            // From inside Notch only tiles/chips carrying draggedIds count (never this chip itself);
-            // from outside, files.
-            onEntered: (drag) => {
-                drag.accepted = drag.source ? drag.source.draggedIds !== undefined && drag.source !== chip : drag.hasUrls
-            }
-            onDropped: (d) => {
-                if (d.source === chip)
-                    return
-                if (d.source && d.source.draggedIds !== undefined) {
-                    if (chip.catId === "__removed__")
-                        notch.removeItems(d.source.draggedIds)
-                    else
-                        notch.setCategory(d.source.draggedIds, chip.catId)
-                    d.accept(Qt.CopyAction)
-                } else if (d.hasUrls) {
-                    notch.addDrop(d.urls, d.html, chip.catId)
-                    d.acceptProposedAction()
-                }
-            }
-        }
-    }
-
-    // One settings row: title + optional description on the left, switch pinned to the right edge.
-    component SettingToggle: RowLayout {
-        id: st
-        property string title
-        property string caption
-        property bool checked
-        signal toggled()
-        Layout.fillWidth: true
-        spacing: 16
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: 2
-            SectionLabel {
-                Layout.fillWidth: true
-                text: st.title
-            }
-            Caption {
-                Layout.fillWidth: true
-                visible: st.caption !== ""
-                text: st.caption
-            }
-        }
-        Toggle {
-            Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
-            checked: st.checked
-            onClicked: st.toggled()
-            Accessible.name: st.title
-        }
-    }
-
-    component Caption: Text {
-        color: theme.textDim
-        font.pixelSize: 11
-        wrapMode: Text.Wrap
-    }
 
     Item {
         id: island
@@ -610,7 +361,7 @@ Window {
             id: islandDrop
             anchors.fill: parent
             enabled: root.mode !== "hidden"
-            onEntered: (drag) => { drag.accepted = drag.hasUrls && !drag.source }
+            onEntered: (drag) => { drag.accepted = root.isFileDrop(drag) }
             onDropped: (d) => root.acceptDrop(d)
         }
 
@@ -1062,21 +813,7 @@ Window {
                                 }
                             }
                             anchors.fill: parent
-                            // Wheel / touchpad scroll the chips sideways (they would otherwise only drag).
-                            function scrollBy(dx) {
-                                const max = Math.max(originX, originX + contentWidth - width)
-                                contentX = Math.max(originX, Math.min(max, contentX + dx))
-                            }
-                            WheelHandler {
-                                target: null
-                                acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                                onWheel: (event) => {
-                                    const p = event.pixelDelta, a = event.angleDelta
-                                    const d = (p.x !== 0 || p.y !== 0) ? (Math.abs(p.x) > Math.abs(p.y) ? p.x : p.y)
-                                                                       : (Math.abs(a.x) > Math.abs(a.y) ? a.x : a.y)
-                                    chips.scrollBy(-d)
-                                }
-                            }
+                            WheelScroller { flickable: chips }
                             // Keep the chosen category in view.
                             Connections {
                                 target: notch
@@ -1281,21 +1018,7 @@ Window {
                     function dragIds(id) { return root.selection.indexOf(id) >= 0 ? root.selection : [id] }
                     // Flick-dragging would fight the tiles' drag-out, so scrolling is wheel/touchpad + scrollbar.
                     interactive: false
-                    function scrollBy(dx) {
-                        const max = Math.max(originX, originX + contentWidth - width)
-                        contentX = Math.max(originX, Math.min(max, contentX + dx))
-                    }
-                    WheelHandler {
-                        target: null
-                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                        onWheel: (event) => {
-                            // Touchpads report pixels, wheels report angle (120 per notch); either axis scrolls sideways.
-                            const p = event.pixelDelta, a = event.angleDelta
-                            const d = (p.x !== 0 || p.y !== 0) ? (Math.abs(p.x) > Math.abs(p.y) ? p.x : p.y)
-                                                               : (Math.abs(a.x) > Math.abs(a.y) ? a.x : a.y)
-                            list.scrollBy(-d)
-                        }
-                    }
+                    WheelScroller { id: tileScroller; flickable: list }
                     ScrollBar.horizontal: ScrollBar {
                         id: tileBar
                         policy: list.contentWidth > list.width ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
@@ -1414,310 +1137,14 @@ Window {
                     maximumLineCount: 2
                 }
 
-                // ---- Note ----
-                ColumnLayout {
-                    visible: root.page === "note"
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 8
-                    Layout.rightMargin: 8
-                    spacing: 8
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-                        TextField {
-                            id: noteNameField
-                            Layout.fillWidth: true
-                            implicitHeight: 28
-                            leftPadding: 12
-                            rightPadding: 12
-                            topPadding: 0
-                            bottomPadding: 0
-                            verticalAlignment: TextInput.AlignVCenter
-                            placeholderText: "Name (optional)"
-                            placeholderTextColor: theme.placeholder
-                            color: root.textPrimary
-                            selectionColor: root.accent
-                            font.pixelSize: 12
-                            background: Rectangle {
-                                radius: 14
-                                color: theme.surface
-                                border.width: 1
-                                border.color: noteNameField.activeFocus ? root.accent : "transparent"
-                            }
-                            onTextChanged: root.noteName = text
-                            Keys.onPressed: (e) => {
-                                if (e.key === Qt.Key_S && (e.modifiers & Qt.ControlModifier)) {
-                                    root.saveNote()
-                                    e.accepted = true
-                                }
-                            }
-                            Keys.onEscapePressed: root.page = "shelf"
-                        }
-                        PillButton {
-                            visible: root.noteId === ""
-                            text: ".txt"
-                            checked: root.noteFormat === "txt"
-                            onClicked: root.noteFormat = "txt"
-                        }
-                        PillButton {
-                            visible: root.noteId === ""
-                            text: ".md"
-                            checked: root.noteFormat === "md"
-                            onClicked: root.noteFormat = "md"
-                        }
-                    }
-
-                    Row {
-                        Layout.fillWidth: true
-                        spacing: 5
-                        Repeater {
-                            model: [["json", "{ } JSON"], ["base64-encode", "Base64 ↑"], ["base64-decode", "Base64 ↓"],
-                                    ["url-encode", "URL ↑"], ["url-decode", "URL ↓"], ["upper", "ABC"], ["lower", "abc"]]
-                            PillButton {
-                                required property var modelData
-                                implicitHeight: 24
-                                text: modelData[1]
-                                Accessible.name: modelData[0]
-                                onClicked: root.applyTransform(modelData[0])
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 260
-                        radius: 14
-                        color: theme.well
-                        border.width: 1
-                        border.color: noteEditor.activeFocus ? theme.accentSoft : theme.surface
-                        ScrollView {
-                            id: noteScroll
-                            anchors.fill: parent
-                            anchors.margins: 10
-                            contentWidth: availableWidth
-                            TextArea {
-                                id: noteEditor
-                                width: noteScroll.availableWidth
-                                wrapMode: TextArea.Wrap
-                                color: theme.textSoft
-                                selectionColor: root.accent
-                                font.family: "monospace"
-                                font.pixelSize: 12
-                                placeholderText: "Write a note or paste a snippet…"
-                                placeholderTextColor: theme.textFaint
-                                background: null
-                                padding: 0
-                                onTextChanged: root.noteText = text
-                                Keys.onPressed: (e) => {
-                                    if (e.key === Qt.Key_S && (e.modifiers & Qt.ControlModifier)) {
-                                        root.saveNote()
-                                        e.accepted = true
-                                    }
-                                }
-                                Keys.onEscapePressed: root.page = "shelf"
-                            }
-                        }
-                    }
-
-                    Caption {
-                        Layout.fillWidth: true
-                        text: (root.noteId !== "" ? "Saving updates this file in Notch" : "Saved as " + root.noteFileName())
-                              + " · Ctrl+S to save · Esc to go back (draft is kept)"
-                    }
+                NotePage {
+                    id: notePage
+                    shell: root
                 }
 
-                // ---- Settings ---- (scrolls: taller than the window can show)
-                ScrollView {
-                    id: settingsScroll
-                    visible: root.page === "settings"
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: Math.min(settingsColumn.implicitHeight, 470)
-                    contentWidth: availableWidth
-                    clip: true
-                    ColumnLayout {
-                        id: settingsColumn
-                        width: settingsScroll.availableWidth - 24
-                        x: 12
-                        spacing: 16
-
-                        ColumnLayout {
-                            spacing: 6
-                            SectionLabel { text: "Keep files for" }
-                            Row {
-                                spacing: 6
-                                Repeater {
-                                    model: [1, 3, 7, 14, 30]
-                                    PillButton {
-                                        required property int modelData
-                                        text: modelData + (modelData === 1 ? " day" : " days")
-                                        checked: notch.retentionDays === modelData
-                                        onClicked: notch.retentionDays = modelData
-                                    }
-                                }
-                            }
-                            Caption { text: "Files older than this are removed right away." }
-                        }
-
-                        ColumnLayout {
-                            spacing: 6
-                            SectionLabel { text: "Appearance" }
-                            Row {
-                                spacing: 6
-                                Repeater {
-                                    model: [["dark", "Dark"], ["light", "Light"], ["system", "Follow system"]]
-                                    PillButton {
-                                        required property var modelData
-                                        text: modelData[1]
-                                        checked: notch.themeMode === modelData[0]
-                                        onClicked: notch.themeMode = modelData[0]
-                                    }
-                                }
-                            }
-                            Caption { text: "Highlights use your KDE accent color." }
-                        }
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 6
-                            SectionLabel { text: "Sort new files by type" }
-                            Caption {
-                                Layout.fillWidth: true
-                                text: "New files go to these categories unless you drop them into an open category. Create categories with + on the shelf."
-                            }
-                            Repeater {
-                                model: [["pdf", "📄  PDF"], ["image", "🖼  Images"], ["video", "🎬  Video"], ["audio", "🎵  Audio"],
-                                        ["document", "📝  Documents"], ["archive", "🗜  Archives"], ["text", "⌨  Code & text"]]
-                                RowLayout {
-                                    required property var modelData
-                                    Layout.fillWidth: true
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: modelData[1]
-                                        color: theme.text
-                                        font.pixelSize: 12
-                                    }
-                                    PillButton {
-                                        implicitHeight: 24
-                                        text: (root.categoryName(notch.typeRules[modelData[0]]) || "No category") + "  ▾"
-                                        checked: root.categoryName(notch.typeRules[modelData[0]]) !== ""
-                                        onClicked: {
-                                            ruleMenu.group = modelData[0]
-                                            ruleMenu.popup()
-                                        }
-                                    }
-                                }
-                            }
-                            PillButton {
-                                Layout.alignment: Qt.AlignRight
-                                text: "Apply to existing files"
-                                Accessible.name: "Sort uncategorized files by these rules"
-                                onClicked: notch.applyRulesToExisting()
-                            }
-                        }
-
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 6
-                            SectionLabel { text: "Storage folder" }
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: notch.storageDir
-                                    color: root.textSecondary
-                                    font.pixelSize: 12
-                                    elide: Text.ElideMiddle
-                                }
-                                PillButton {
-                                    text: "Change…"
-                                    onClicked: {
-                                        if (storageHint.visible)
-                                            storageHint.warn = true
-                                        else
-                                            folderDialog.open()
-                                    }
-                                }
-                            }
-                            Caption {
-                                id: storageHint
-                                property bool warn: false
-                                visible: notch.count > 0 || notch.copying > 0
-                                onVisibleChanged: warn = false
-                                color: warn ? "#ff6961" : theme.textDim
-                                text: "Remove all files from the shelf first, then change the folder."
-                            }
-                        }
-
-                        SettingToggle {
-                            title: "Start at login"
-                            checked: notch.autostart
-                            onToggled: notch.autostart = !notch.autostart
-                        }
-
-                        SettingToggle {
-                            title: "Charger & Bluetooth alerts"
-                            caption: "Notch peeks out when you plug in, a device connects, or a battery runs low."
-                            checked: notch.alerts
-                            onToggled: notch.alerts = !notch.alerts
-                        }
-
-                        SettingToggle {
-                            title: "Add new screenshots"
-                            caption: "Spectacle screenshots land in the 📷 Screenshots category."
-                            checked: notch.autoScreenshots
-                            onToggled: notch.autoScreenshots = !notch.autoScreenshots
-                        }
-
-                        // Shown under its toggle while Spectacle isn't writing files.
-                        Rectangle {
-                            visible: notch.autoScreenshots && !notch.spectacleAutoSave
-                            Layout.fillWidth: true
-                            Layout.topMargin: -6
-                            implicitHeight: warnRow.implicitHeight + 16
-                            radius: 12
-                            color: theme.warnBg
-                            RowLayout {
-                                id: warnRow
-                                anchors.fill: parent
-                                anchors.margins: 8
-                                anchors.leftMargin: 12
-                                spacing: 10
-                                Caption {
-                                    Layout.fillWidth: true
-                                    color: "#ff9f0a"
-                                    text: "Spectacle doesn't save screenshots automatically, so they never reach a folder Notch can see."
-                                }
-                                PillButton {
-                                    Layout.alignment: Qt.AlignVCenter
-                                    text: "Turn on in Spectacle"
-                                    Accessible.name: "Turn on automatic saving in Spectacle"
-                                    onClicked: notch.enableSpectacleAutoSave()
-                                }
-                            }
-                        }
-
-                        SettingToggle {
-                            title: "Add new downloads"
-                            caption: "Finished files in Downloads land in the ⬇ Downloads category."
-                            checked: notch.autoDownloads
-                            onToggled: notch.autoDownloads = !notch.autoDownloads
-                        }
-
-                        SettingToggle {
-                            title: "Add files from KDE Connect"
-                            caption: "Files your phone or tablet sends land in the 📱 KDE Connect category."
-                            checked: notch.autoKdeConnect
-                            onToggled: notch.autoKdeConnect = !notch.autoKdeConnect
-                        }
-
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Caption { Layout.fillWidth: true; text: "Notch " + Qt.application.version }
-                            PillButton { text: "Quit Notch"; onClicked: Qt.quit() }
-                        }
-                    }
+                SettingsPage {
+                    id: settingsPage
+                    shell: root
                 }
 
                 Rectangle {
@@ -1802,7 +1229,7 @@ Window {
         DropArea {
             id: edgeDrop
             anchors.fill: parent
-            onEntered: (drag) => { drag.accepted = drag.hasUrls && !drag.source }
+            onEntered: (drag) => { drag.accepted = root.isFileDrop(drag) }
             onDropped: (d) => root.acceptDrop(d)
         }
     }
@@ -1993,23 +1420,6 @@ Window {
     }
 
     DarkMenu {
-        id: ruleMenu
-        property string group
-        Instantiator {
-            model: notch.categories
-            delegate: Action {
-                required property var modelData
-                text: modelData.name
-                onTriggered: notch.setTypeRule(ruleMenu.group, modelData.id)
-            }
-            onObjectAdded: (index, object) => ruleMenu.insertAction(index, object)
-            onObjectRemoved: (index, object) => ruleMenu.removeAction(object)
-        }
-        DarkSeparator {}
-        Action { text: "No category"; onTriggered: notch.setTypeRule(ruleMenu.group, "") }
-    }
-
-    DarkMenu {
         id: removedMenu
         readonly property var targets: menu.targets
         Action { text: "Restore"; onTriggered: { notch.restoreItems(removedMenu.targets); root.clearSelection() } }
@@ -2082,12 +1492,5 @@ Window {
         title: "Save to folder"
         currentFolder: StandardPaths.writableLocation(StandardPaths.DownloadLocation)
         onAccepted: notch.saveTo(targetIds, selectedFolder)
-    }
-
-    FolderDialog {
-        id: folderDialog
-        title: "Choose where Notch stores files"
-        currentFolder: "file://" + notch.storageDir
-        onAccepted: notch.setStorageDir(selectedFolder)
     }
 }

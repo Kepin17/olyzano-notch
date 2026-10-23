@@ -1,8 +1,11 @@
 #include "DocTools.h"
 
+#include "services/FileService.h"
+
 #include <QDir>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QLocale>
 #include <QPageSize>
 #include <QPainter>
 #include <QPdfWriter>
@@ -207,6 +210,82 @@ QList<int> parsePageRanges(const QString &text, int pageCount, QString *error)
     if (pages.isEmpty() && error)
         *error = QStringLiteral("no pages chosen");
     return pages;
+}
+
+
+ToolResult runTool(const QString &kind, const QList<ToolInput> &inputs, const QString &option, const QString &workDir)
+{
+    ToolResult r;
+    const auto out = [&](const QString &name) {
+        const QString path = workDir + u'/' + FileService::uniqueName(workDir, name);
+        r.outputs << qMakePair(path, QFileInfo(path).fileName());
+        return path;
+    };
+    QStringList paths;
+    for (const ToolInput &in : inputs)
+        paths << in.path;
+    if (kind == QLatin1String("merge")) {
+        r.error = mergePdfs(paths, out(QStringLiteral("Merged (%1 PDFs).pdf").arg(paths.size())));
+        r.summary = QStringLiteral("Merged %1 PDFs").arg(paths.size());
+    } else if (kind == QLatin1String("images-pdf")) {
+        const QString name = paths.size() == 1 ? inputs.first().base + QStringLiteral(".pdf")
+                                               : QStringLiteral("Images (%1 pages).pdf").arg(paths.size());
+        r.error = imagesToPdf(paths, out(name));
+        r.summary = QStringLiteral("Made a %1-page PDF").arg(paths.size());
+    } else if (kind == QLatin1String("compress")) {
+        qint64 before = 0, after = 0;
+        for (const ToolInput &in : inputs) {
+            const QString target = out(in.base + QStringLiteral(" (compressed).pdf"));
+            if (const QString err = compressPdf(in.path, target); !err.isEmpty()) {
+                r.outputs.removeLast();
+                r.error = in.name + QStringLiteral(": ") + err;
+                continue;
+            }
+            before += QFileInfo(in.path).size();
+            after += QFileInfo(target).size();
+        }
+        if (!r.outputs.isEmpty())
+            r.summary = QStringLiteral("Compressed: %1 → %2")
+                            .arg(QLocale().formattedDataSize(before), QLocale().formattedDataSize(after));
+    } else if (kind == QLatin1String("split")) {
+        QStringList pages;
+        r.error = splitPdf(inputs.first().path, workDir, inputs.first().base, &pages);
+        for (const QString &page : pages)
+            r.outputs << qMakePair(page, QFileInfo(page).fileName());
+        r.summary = QStringLiteral("Split into %1 pages").arg(pages.size());
+    } else if (kind == QLatin1String("extract")) {
+        QString err;
+        const QList<int> pages = parsePageRanges(option, pdfPageCount(inputs.first().path), &err);
+        r.error = pages.isEmpty() ? err
+                                  : extractPages(inputs.first().path, pages,
+                                                           out(inputs.first().base + QStringLiteral(" (pages %1).pdf").arg(option.simplified())));
+        r.summary = QStringLiteral("Extracted %1 pages").arg(pages.size());
+    } else if (kind == QLatin1String("ocr-copy") || kind == QLatin1String("ocr-note")) {
+        const bool pdf = inputs.first().name.endsWith(QLatin1String(".pdf"), Qt::CaseInsensitive);
+        r.error = recognizeText(inputs.first().path, pdf, &r.text);
+    } else if (kind == QLatin1String("convert") || kind == QLatin1String("resize")) {
+        for (const ToolInput &in : inputs) {
+            QString format = option, suffix;
+            int width = 0;
+            if (kind == QLatin1String("resize")) {
+                width = option.toInt();
+                const QString ext = QFileInfo(in.name).suffix().toLower();
+                format = ext == QLatin1String("jpeg") ? QStringLiteral("jpg")
+                       : (ext == QLatin1String("jpg") || ext == QLatin1String("webp")) ? ext : QStringLiteral("png");
+                suffix = QStringLiteral(" (%1px)").arg(width);
+            }
+            const QString target = out(in.base + suffix + u'.' + format);
+            if (const QString err = convertImage(in.path, format, width, target); !err.isEmpty()) {
+                r.outputs.removeLast();
+                r.error = in.name + QStringLiteral(": ") + err;
+            }
+        }
+        r.summary = QStringLiteral("%1 %2 image%3").arg(kind == QLatin1String("resize") ? QStringLiteral("Resized") : QStringLiteral("Converted"))
+                        .arg(r.outputs.size()).arg(r.outputs.size() == 1 ? QString() : QStringLiteral("s"));
+    } else {
+        r.error = QStringLiteral("unknown tool %1").arg(kind);
+    }
+    return r;
 }
 
 }

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(notch VERSION 0.1.3 LANGUAGES CXX)
+project(notch VERSION 0.1.4 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -45,7 +45,13 @@ qt_add_executable(notch
 qt_add_qml_module(notch
     URI Notch
     VERSION 1.0
-    QML_FILES src/qml/Main.qml src/qml/FileItemDelegate.qml src/qml/Tray.qml src/qml/MediaCard.qml src/qml/Equalizer.qml
+    QML_FILES
+        src/qml/Main.qml src/qml/FileItemDelegate.qml src/qml/Tray.qml src/qml/MediaCard.qml src/qml/Equalizer.qml
+        # shared controls
+        src/qml/PillButton.qml src/qml/IconButton.qml src/qml/Toggle.qml src/qml/PulseDot.qml
+        src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkSeparator.qml
+        src/qml/SettingToggle.qml src/qml/Chip.qml src/qml/WheelScroller.qml
+        src/qml/NotePage.qml src/qml/SettingsPage.qml
 )
 # Widgets: QApplication backs the tray icon (Qt.labs.platform falls back to QSystemTrayIcon).
 target_link_libraries(notch PRIVATE notch_core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::Concurrent Qt6::Network Qt6::DBus)

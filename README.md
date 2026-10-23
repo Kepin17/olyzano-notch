@@ -115,6 +115,10 @@ To try it without touching your real shelf or settings:
     data installed by default, add `tesseract-ocr-ind` for Indonesian);
   - **Convert to PNG / JPG / WebP** and **Resize to 1920 / 1280 / 800 px** wide (never upscales);
   - **Compress to .zip**.
+- **Sort by type:** Settings → **Sort new files by type** sends new PDFs, images, video, audio,
+  documents, archives or code/text into the categories you pick. Dropping into an open category,
+  folder drops and the Screenshots/Downloads/KDE Connect categories still win. **Apply to existing
+  files** sorts files that have no category yet.
 - **Search** matches file names and the text inside notes and text files (up to 512 KB).
 - **Duplicate names:** a file whose name is already on the shelf is added as "name (1).ext".
 - **Note toolkit:** buttons in the note editor format JSON (key order kept), encode/decode Base64 and
@@ -148,8 +152,8 @@ If the database is unreadable, Notch shows an error and deletes nothing.
 ## Package, install, uninstall
 
 ```bash
-cd build && cpack          # produces notch_0.1.3_amd64.deb
-sudo apt install ./notch_0.1.3_amd64.deb
+cd build && cpack          # produces notch_0.1.4_amd64.deb
+sudo apt install ./notch_0.1.4_amd64.deb
 ```
 
 Autostart: turn on **Start at login** in settings.
@@ -165,6 +169,8 @@ src/repositories   FileRepository: SQLite, migrations (database/migrations)
 src/services       FileService (copy/delete), CleanupService (retention, crash recovery)
 src/app            NotchController: QML bridge, async copies
 src/platform       DesktopIntegration: layer-shell / X11 window placement, input region
-src/qml            Main.qml (hot edge, island, panel), FileItemDelegate.qml (tile)
+src/qml            Main.qml (hot edge, island, shelf, menus), NotePage.qml, SettingsPage.qml,
+                   FileItemDelegate.qml (tile), MediaCard.qml, shared controls (PillButton,
+                   Toggle, DarkMenu, Chip, SettingToggle, WheelScroller, …)
 tests              tst_core: storage, copy, cleanup, guards, recovery
 ```
