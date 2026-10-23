@@ -1,0 +1,143 @@
+# Notch
+
+Temporary file shelf for KDE Plasma. It stays hidden at the top center of the screen and slides
+out when the mouse (or a dragged file) reaches the top edge. Drop files on it, they are copied into
+Notch's own storage, and removed automatically after 7 days. Source files are never modified or
+deleted.
+
+## Dependencies (Kubuntu 26.04)
+
+```bash
+sudo apt install cmake ninja-build g++ qt6-base-dev qt6-declarative-dev liblayershellqtinterface-dev
+```
+
+Runtime: Qt 6 (Core, Gui, Widgets, Network, Sql + `libqt6sql6-sqlite`, Quick, Controls, Layouts, Shapes, Effects,
+Dialogs, `Qt.labs.platform`), `layer-shell-qt`.
+Without `liblayershellqtinterface-dev` it still builds, but on Wayland the pill can't be pinned to
+the top edge. See [docs/wayland-limitations.md](docs/wayland-limitations.md).
+
+## Build, test, run
+
+```bash
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+ctest --test-dir build --output-on-failure
+./build/notch
+```
+
+To try it without touching your real shelf or settings:
+`XDG_DATA_HOME=/tmp/notch-test XDG_CONFIG_HOME=/tmp/notch-test-config ./build/notch`.
+
+## Use
+
+- Move the mouse to the top edge, center (a faint line marks the spot) and rest a moment; or drag
+  files there. The panel closes when the mouse leaves; **Pin** keeps it open. Esc closes.
+- Click a tile to preview it (images, text/source files up to 64 KiB; other types show their details).
+  **Open** in the preview header opens it with the default app.
+- Hover a tile: **↗** opens, **✕** removes it (deletes Notch's copy only). Hovering shows
+  size/added/expiry/source, right-click for more.
+- Drag a tile out to a folder or app to copy it there.
+- **Select several:** Ctrl+click toggles, Shift+click selects a range, Ctrl+A selects all in view.
+  While selecting, clicks toggle. The header then offers **Move to…** / **Remove** / ✕; Delete
+  removes, Esc clears. Dragging a selected tile drags the whole selection.
+- **Categories:** chips under the header filter the shelf (**All** shows everything). **+** creates
+  one; right-click a chip to rename or delete it (its files stay, uncategorized). Move files by
+  dragging tiles onto a chip, or right-click → **Move to category…**. Files dropped while a category
+  is shown, or dropped onto a chip, go into that category.
+- **Folders:** dropping a folder adds every file inside (hidden files/folders skipped, up to 1000
+  files). Each file goes into a category named after the folder it sits in, e.g. dropping `Proj`
+  puts `Proj/a.txt` in **Proj** and `Proj/sub/b.txt` in **sub**. Same-named categories merge.
+- **From the browser:** dragging an image (also one wrapped in a link, e.g. Google Images) or a file
+  link downloads it into Notch. Dragging a web page link stores a link shortcut (`.desktop`) that
+  opens the page in your browser.
+- **Multiple monitors:** every monitor has its own Notch at its top edge; it appears wherever you
+  move the mouse. Plugging a monitor in or out adds or removes its Notch. Tray actions open the
+  Notch on the primary monitor.
+- **Paste (Ctrl+V)** after clicking Notch: copied files are added; an image on the clipboard
+  (Spectacle, "Copy image" in a browser) is saved in its own format; a copied link is downloaded;
+  other text becomes a file named after its language when the editor reports one (VS Code), `.json`
+  for JSON, else `.txt`. Pasted items go into the category being viewed.
+- **Copy** (right-click, or Ctrl+C on a selection) puts the files on the clipboard as files, so file
+  managers and chat apps attach them; a single image also goes as image data. **Copy contents**
+  (text files) copies the text, **Copy path** the stored path.
+- **Undo:** removed files wait 6 seconds before being deleted. Click **Undo** in the toast or press
+  Ctrl+Z.
+- **Keep:** right-click → **Keep (never auto-delete)** marks files with ★; cleanup skips them until
+  you choose **Allow auto-delete**.
+- **Now playing:** when YouTube (any browser tab), Spotify, Elisa or another MPRIS player is playing
+  or paused, an equalizer button appears next to ⚙. Click it to open the player: cover, title,
+  artist, a seekable progress bar, previous / play-pause / next, ↗ to bring the player to front and
+  ⇄ to switch when several are active. The player also pops open for 6 s when playback starts or the
+  track changes, then folds back into the button. While Notch is hidden, a new track shows a short
+  toast (follows the alerts setting). The equalizer bars follow the real sound: Notch reads the
+  output's monitor with `parec` only while bars are on screen and something is playing (Plasma may
+  show its recording indicator meanwhile); only levels are computed, nothing is stored.
+- **Charger & Bluetooth alerts:** plugging the charger in or out, or a Bluetooth device connecting
+  or disconnecting, makes Notch peek out for ~3 seconds (battery level for the laptop and, when the
+  device reports it, the headset). **Low battery:** the laptop (while unplugged) and Bluetooth devices
+  that report their battery get a red warning when they drop to 20%, 10% and 5%. Turn off in settings. Read from UPower and BlueZ on the system
+  D-Bus; nothing is polled.
+- **Rename:** right-click → **Rename…** (or F2 on one selected tile) edits the name in place; the
+  extension stays unless you change it.
+- **Sort:** the **↕** pill at the end of the category row sorts by date added (newest first),
+  name, size (largest first) or type. Remembered.
+- **Save to folder:** right-click → **Save to…**, **Save…** while selecting, or right-click a category
+  chip → **Save category to…**. Copies out, never overwrites ("name (1).ext").
+- **Zip:** **Zip** while selecting, right-click → **Compress to .zip**, or **Zip category**. The archive
+  becomes a new Notch item (needs `zip`).
+- **Screenshots:** new Spectacle screenshots (its save folder, default `~/Pictures/Screenshots`) are
+  added automatically into the **📷 Screenshots** category, shown right after **All**. This needs
+  Spectacle to save files automatically (off by default); Settings shows a **Turn on in Spectacle**
+  button when it isn't (sets `[General] autoSaveImage=true` in `~/.config/spectaclerc`). Screenshots
+  that only go to the clipboard can still be pasted with Ctrl+V. Optional, same
+  for **⬇ Downloads** (finished files only, off by default). Both in settings.
+- **KDE Connect:** right-click → **Send to device ▸** lists your paired devices that are reachable
+  right now and sends the file(s) (or the selection) to it. Files a phone/tablet sends to this
+  computer are added to the **📱 KDE Connect** category with a toast (setting, on by default); with
+  Downloads watching on as well, a received file is still added only once.
+- **Many categories:** the chip row scrolls sideways with the mouse wheel/touchpad, fades at the
+  edges when more are hidden, and keeps the selected one in view; **+** and **↕** stay put.
+- **Search** in the header filters tiles by name.
+- **⚙ Settings**: how long files are kept (1–30 days; shortening it removes older files right away),
+  storage folder (changeable while the shelf is empty), start at login, quit.
+- Tray icon: click toggles the panel; menu has Show/Hide, Settings, Quit.
+- Plain-text drops are not supported.
+
+## Storage
+
+| What | Where |
+|---|---|
+| Files | `~/.local/share/notch/files/<uuid>/<original name>` |
+| Metadata | `~/.local/share/notch/notch.db` (SQLite, schema version in `PRAGMA user_version`) |
+| Settings | `~/.config/notch/notch.conf` (`retentionDays`, `storageDir`) |
+| Start at login | `~/.config/autostart/notch.desktop`, written/removed by the settings toggle |
+
+The files row is the default; a storage folder chosen in settings replaces it. Cleanup runs at
+startup, hourly, and when retention changes, and removes items whose `added_at` (UTC) is at least the
+retention period old (default 7 days).
+Deletion is crash-safe (mark → delete file → delete row) and restricted to the files directory.
+If the database is unreadable, Notch shows an error and deletes nothing.
+
+## Package, install, uninstall
+
+```bash
+cd build && cpack          # produces notch_0.1.0_amd64.deb
+sudo apt install ./notch_0.1.0_amd64.deb
+```
+
+Autostart: turn on **Start at login** in settings.
+
+Uninstall: `sudo apt remove notch`. Your shelf data is kept; delete it explicitly with
+`rm -r ~/.local/share/notch` if you no longer want it.
+
+## Layout
+
+```
+src/models         FileItem, FileItemModel (QAbstractListModel for QML)
+src/repositories   FileRepository: SQLite, migrations (database/migrations)
+src/services       FileService (copy/delete), CleanupService (retention, crash recovery)
+src/app            NotchController: QML bridge, async copies
+src/platform       DesktopIntegration: layer-shell / X11 window placement, input region
+src/qml            Main.qml (hot edge, island, panel), FileItemDelegate.qml (tile)
+tests              tst_core: storage, copy, cleanup, guards, recovery
+```

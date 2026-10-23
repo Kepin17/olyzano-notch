@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Notch
+Comment=Temporary file shelf
+Exec=notch
+Icon=folder-download
+Categories=Utility;

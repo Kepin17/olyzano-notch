@@ -1,0 +1,57 @@
+#pragma once
+
+#include "FileItem.h"
+
+#include <QAbstractListModel>
+
+// Updated incrementally (never reset after load) so a delegate being dragged out
+// is not destroyed when another item changes.
+class FileItemModel : public QAbstractListModel
+{
+    Q_OBJECT
+public:
+    enum Role {
+        IdRole = Qt::UserRole + 1,
+        NameRole,
+        SizeTextRole,
+        AddedTextRole,
+        ExpiresTextRole,
+        StatusRole,
+        IconNameRole,
+        FileUrlRole,
+        SourcePathRole,
+        IsImageRole,
+        IsTextRole,
+        CategoryIdRole,
+        PinnedRole,
+        AddedAtRole,
+        SizeRole,
+        MimeTypeRole,
+    };
+
+    explicit FileItemModel(const QString &filesDir, QObject *parent = nullptr);
+
+    int rowCount(const QModelIndex &parent = {}) const override;
+    QVariant data(const QModelIndex &index, int role) const override;
+    QHash<int, QByteArray> roleNames() const override;
+
+    void setItems(const QList<FileItem> &items);
+    void upsert(const FileItem &item);
+    void removeId(const QString &id);
+    const FileItem *find(const QString &id) const;
+    void refreshTimes();
+    void setFilesDir(const QString &filesDir); // only while empty
+    void setRetentionDays(int days);
+    const QList<FileItem> &items() const { return m_items; }
+    // Sets categoryId on every item whose id is in ids.
+    void setCategory(const QStringList &ids, const QString &categoryId);
+    void clearCategory(const QString &from);
+    void setPinned(const QStringList &ids, bool pinned);
+
+private:
+    int indexOf(const QString &id) const;
+
+    QString m_filesDir;
+    int m_retentionDays = DefaultRetentionDays;
+    QList<FileItem> m_items;
+};

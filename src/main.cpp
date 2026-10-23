@@ -1,0 +1,94 @@
+#include "app/NotchController.h"
+#include "platform/DesktopIntegration.h"
+#include "platform/AudioLevels.h"
+#include "platform/KdeConnect.h"
+#include "platform/MediaPlayers.h"
+#include "platform/SystemEvents.h"
+
+#include <QDir>
+#include <QApplication>
+#include <QIcon>
+#include <QLockFile>
+#include <QQmlApplicationEngine>
+#include <QQmlComponent>
+#include <QQmlContext>
+#include <QQuickImageProvider>
+#include <QQuickWindow>
+#include <QScreen>
+#include <QStandardPaths>
+
+// image://mime/<icon-name> -> themed icon for a MIME type.
+class MimeIconProvider : public QQuickImageProvider
+{
+public:
+    MimeIconProvider() : QQuickImageProvider(Pixmap) {}
+    QPixmap requestPixmap(const QString &id, QSize *size, const QSize &requested) override
+    {
+        const QSize s = requested.isValid() ? requested : QSize(32, 32);
+        if (size)
+            *size = s;
+        return QIcon::fromTheme(id, QIcon::fromTheme(QStringLiteral("text-x-generic"))).pixmap(s);
+    }
+};
+
+int main(int argc, char *argv[])
+{
+    QQuickWindow::setDefaultAlphaBuffer(true);
+    QApplication app(argc, argv);
+    app.setApplicationName(QStringLiteral("notch"));
+    app.setDesktopFileName(QStringLiteral("notch"));
+    app.setApplicationVersion(QStringLiteral(NOTCH_VERSION));
+
+    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
+                            + QStringLiteral("/notch");
+    QDir().mkpath(dataDir);
+    QLockFile lock(dataDir + QStringLiteral("/notch.lock"));
+    if (!lock.tryLock(100)) {
+        qWarning("Notch is already running");
+        return 0;
+    }
+
+    NotchController controller(dataDir);
+    controller.start(); // failures surface in the UI via errorMessage
+
+    DesktopIntegration desktop;
+    SystemEvents systemEvents;
+    MediaPlayers media;
+    AudioLevels audio;
+    KdeConnect kdeconnect;
+    QObject::connect(&kdeconnect, &KdeConnect::received, &controller, &NotchController::addReceived);
+    QQmlApplicationEngine engine;
+    engine.addImageProvider(QStringLiteral("mime"), new MimeIconProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("notch"), &controller);
+    engine.rootContext()->setContextProperty(QStringLiteral("desktop"), &desktop);
+    engine.rootContext()->setContextProperty(QStringLiteral("systemEvents"), &systemEvents);
+    engine.rootContext()->setContextProperty(QStringLiteral("media"), &media);
+    engine.rootContext()->setContextProperty(QStringLiteral("audio"), &audio);
+    engine.rootContext()->setContextProperty(QStringLiteral("kdeconnect"), &kdeconnect);
+
+    // One Notch per monitor, following hotplug.
+    QQmlComponent notchWindow(&engine, "Notch", "Main");
+    QHash<QScreen *, QQuickWindow *> windows;
+    auto addScreen = [&](QScreen *screen) {
+        auto *window = qobject_cast<QQuickWindow *>(notchWindow.create());
+        if (!window) {
+            qCritical().noquote() << notchWindow.errorString();
+            return;
+        }
+        window->setScreen(screen);
+        desktop.attach(window);
+        window->show();
+        windows.insert(screen, window);
+    };
+    for (QScreen *screen : app.screens())
+        addScreen(screen);
+    if (windows.isEmpty())
+        return 1;
+    QObject::connect(&app, &QGuiApplication::screenAdded, addScreen);
+    QObject::connect(&app, &QGuiApplication::screenRemoved, [&](QScreen *screen) { delete windows.take(screen); });
+
+    engine.loadFromModule("Notch", "Tray");
+    const int rc = app.exec();
+    qDeleteAll(windows); // before the engine and controller they bind to
+    return rc;
+}
