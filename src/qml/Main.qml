@@ -36,6 +36,10 @@ Window {
     property string editingName: ""
     property var pendingAssign: []      // ids to move into the category being created
     property bool chipDragOver: false
+    // Set when a drag enters Notch, cleared on drop or when the pointer moves normally again. On
+    // Wayland a DropArea can keep containsDrag after a drop that rebuilt the items under it
+    // (e.g. a tile moved into a category), which would leave Notch stuck open.
+    property bool dragLive: false
     property string infoText: ""        // short confirmation shown in the panel (saved, zip ready)
     Timer { id: infoTimer; interval: 3500; onTriggered: root.infoText = "" }
     property bool playerExpanded: false // toggled by the equalizer button in the header
@@ -48,7 +52,7 @@ Window {
                                     || quickLookCard.visible || vaultPopup.visible || confirmDelete.visible
                                     || sortMenu.visible || removedMenu.visible
                                     || removedChipMenu.visible
-    readonly property bool dragOver: edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver
+    readonly property bool dragOver: dragLive && (edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver)
     readonly property bool engaged: pinned || dwelled || islandHover.hovered || dragOver || anyMenu
                                     || saveDialog.visible
     // hidden: only the top-edge strip is live. peek: copy in progress. open: full panel.
@@ -155,6 +159,7 @@ Window {
     }
 
     function acceptDrop(d) {
+        dragLive = false
         if (!d.source && !d.hasUrls && d.hasText) { // a text selection, not a file
             notch.addTextNote(d.text, notch.categoryFilter)
             d.acceptProposedAction()
@@ -403,7 +408,10 @@ Window {
             id: islandDrop
             anchors.fill: parent
             enabled: root.mode !== "hidden"
-            onEntered: (drag) => { drag.accepted = root.isFileDrop(drag) }
+            onEntered: (drag) => {
+                drag.accepted = root.isFileDrop(drag)
+                root.dragLive = root.dragLive || drag.accepted
+            }
             onDropped: (d) => root.acceptDrop(d)
         }
 
@@ -886,7 +894,12 @@ Window {
                                 itemCount: modelData.count
                                 special: modelData.special || ""
                                 locked: modelData.locked || false
-                                onDropHoverChanged: root.chipDragOver = dropHover
+                                onDropDone: root.dragLive = false
+                                onDropHoverChanged: {
+                                    root.chipDragOver = dropHover
+                                    if (dropHover)
+                                        root.dragLive = true
+                                }
                                 // The chip row is rebuilt whenever categories change (e.g. right after a
                                 // drop); a chip destroyed mid-hover would otherwise leave Notch stuck open.
                                 Component.onDestruction: if (dropHover) root.chipDragOver = false
@@ -1310,7 +1323,19 @@ Window {
             }
         }
 
-        HoverHandler { id: islandHover }
+        // Real pointer motion means no drag is in progress (a drag delivers drag events instead).
+        // Synthetic hovers (sent while animating) repeat the last position, so they don't count.
+        HoverHandler {
+            id: islandHover
+            property point last
+            onPointChanged: {
+                const p = point.position
+                if (p.x !== last.x || p.y !== last.y) {
+                    last = p
+                    root.dragLive = false
+                }
+            }
+        }
     }
 
     // Faint handle hinting where Notch lives; red when there's an unread error. Visual only.
@@ -1345,7 +1370,10 @@ Window {
         DropArea {
             id: edgeDrop
             anchors.fill: parent
-            onEntered: (drag) => { drag.accepted = root.isFileDrop(drag) }
+            onEntered: (drag) => {
+                drag.accepted = root.isFileDrop(drag)
+                root.dragLive = root.dragLive || drag.accepted
+            }
             onDropped: (d) => root.acceptDrop(d)
         }
     }

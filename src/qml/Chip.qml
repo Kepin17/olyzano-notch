@@ -12,6 +12,7 @@ AbstractButton {
     readonly property bool active: notch.categoryFilter === catId
     readonly property bool dropHover: chipDrop.containsDrag
     signal menuRequested()
+    signal dropDone()
     implicitHeight: 26
     implicitWidth: chipRow.implicitWidth + 22
     background: Rectangle {
@@ -82,6 +83,7 @@ AbstractButton {
                                         : drag.hasUrls || drag.hasText
         }
         onDropped: (d) => {
+            chip.dropDone()
             if (d.source === chip)
                 return
             if (d.source && d.source.draggedIds !== undefined) {

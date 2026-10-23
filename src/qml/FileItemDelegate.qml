@@ -337,9 +337,16 @@ Item {
         enabled: tile.available || (tile.view && tile.view.selectedIds.length > 0)
         // Press and hold: Quick Look until released.
         longPressThreshold: 0.35
-        onLongPressed: tile.view.quickLook(tile.itemId)
-        onPressedChanged: if (!pressed) tile.view.endQuickLook()
+        onLongPressed: if (!tile.dragging) tile.view.quickLook(tile.itemId)
+        onPressedChanged: {
+            if (pressed)
+                tile.dragging = false
+            else
+                tile.view.endQuickLook()
+        }
         onTapped: {
+            if (tile.dragging) // the press turned into a drag: no preview
+                return
             if (tile.view.selectedIds.length > 0) {
                 tile.selectRequested(tile.index, tile.itemId, "toggle")
                 return
@@ -355,6 +362,7 @@ Item {
 
     // Drag out: hands the managed copies to the target as file URLs. Dragging a selected tile
     // carries the whole selection; dropping on a category chip moves them there.
+    property bool dragging: false // this press started a drag (cleared on the next press)
     DragHandler {
         id: dragHandler
         target: null
@@ -363,6 +371,8 @@ Item {
         onActiveChanged: {
             if (!active)
                 return
+            tile.dragging = true
+            tile.view.endQuickLook()
             tile.draggedIds = tile.view.dragIds(tile.itemId)
             tile.Drag.mimeData = { "text/uri-list": notch.uriList(tile.draggedIds) }
             notch.setDragging(tile.draggedIds, true)
