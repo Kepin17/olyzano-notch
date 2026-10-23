@@ -2,6 +2,7 @@
 
 #include "services/CleanupService.h"
 #include "services/FileService.h"
+#include "services/TextTools.h"
 
 #include <QBuffer>
 #include <QClipboard>
@@ -76,8 +77,15 @@ bool FileFilter::lessThan(const QModelIndex &left, const QModelIndex &right) con
 bool FileFilter::filterAcceptsRow(int row, const QModelIndex &parent) const
 {
     const QModelIndex i = sourceModel()->index(row, 0, parent);
-    return (m_category.isEmpty() || i.data(FileItemModel::CategoryIdRole).toString() == m_category)
-        && i.data(FileItemModel::NameRole).toString().contains(m_text, Qt::CaseInsensitive);
+    const bool match = i.data(FileItemModel::NameRole).toString().contains(m_text, Qt::CaseInsensitive)
+                       || (m_contents && !m_text.isEmpty()
+                           && m_contents->value(i.data(FileItemModel::IdRole).toString()).contains(m_text, Qt::CaseInsensitive));
+    if (!match)
+        return false;
+    const bool removed = i.data(FileItemModel::RemovedRole).toBool();
+    if (m_category == QLatin1String(RemovedView))
+        return removed;
+    return !removed && (m_category.isEmpty() || i.data(FileItemModel::CategoryIdRole).toString() == m_category);
 }
 
 static QString configDir()
@@ -106,6 +114,11 @@ NotchController::NotchController(const QString &dataDir, QObject *parent)
 {
     m_model.setRetentionDays(m_retentionDays);
     m_proxy.setSourceModel(&m_model);
+    m_proxy.setContents(&m_contents);
+    const auto stale = [this] { m_contentsStale = true; };
+    connect(&m_model, &QAbstractItemModel::rowsInserted, this, stale);
+    connect(&m_model, &QAbstractItemModel::rowsRemoved, this, stale);
+    connect(&m_model, &QAbstractItemModel::modelReset, this, stale);
     m_proxy.setSortMode(sortMode());
     connect(&m_screenshots, &FolderWatcher::fileReady, this, [this](const QString &path) {
         onWatchedFile(path, QStringLiteral("screenshotCategory"), tr("Screenshots"), tr("Screenshot added"));
@@ -128,8 +141,11 @@ NotchController::NotchController(const QString &dataDir, QObject *parent)
     connect(&m_cleanup, &QTimer::timeout, this, &NotchController::runCleanup);
     m_trashTimer.setSingleShot(true);
     m_trashTimer.setInterval(6000);
-    connect(&m_trashTimer, &QTimer::timeout, this, &NotchController::commitRemovals);
-    connect(qApp, &QCoreApplication::aboutToQuit, this, &NotchController::commitRemovals);
+    connect(&m_trashTimer, &QTimer::timeout, this, [this] {
+        m_lastRemoved.clear(); // the files stay in Recently removed; only the toast goes
+        emit undoCountChanged();
+    });
+    connect(&m_model, &QAbstractItemModel::dataChanged, this, &NotchController::countChanged);
 }
 
 bool NotchController::start()
@@ -152,12 +168,23 @@ bool NotchController::start()
     return true;
 }
 
+// Names stay unique on the shelf: a second "report.pdf" becomes "report (1).pdf".
+QString NotchController::freeName(const QString &name, const QString &exceptId) const
+{
+    return FileService::uniqueAmong(name, [this, &exceptId](const QString &candidate) {
+        for (const FileItem &item : m_model.items())
+            if (item.id != exceptId && item.originalName.compare(candidate, Qt::CaseInsensitive) == 0)
+                return true;
+        return false;
+    });
+}
+
 FileItem NotchController::newItem(const QString &name, const QString &categoryId) const
 {
     FileItem item;
     item.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    item.originalName = name;
-    item.storedName = item.id + u'/' + name;
+    item.originalName = freeName(name);
+    item.storedName = item.id + u'/' + item.originalName;
     item.addedAt = QDateTime::currentDateTimeUtc();
     item.status = Status::Copying;
     item.categoryId = categoryId;
@@ -532,43 +559,65 @@ void NotchController::remove(const QString &id)
     removeItems({id});
 }
 
-// Removal is staged for a few seconds so it can be undone; the files are only deleted when the
-// window passes (or the app quits). A crash in between just brings the items back.
-void NotchController::stageRemoval(const QStringList &ids)
+void NotchController::removeItems(const QStringList &ids)
 {
-    bool staged = false;
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    QStringList moved;
     for (const QString &id : ids) {
         const FileItem *item = m_model.find(id);
-        if (!item || item->status == Status::Copying)
+        if (!item || item->status == Status::Copying || item->removedAt.isValid())
             continue;
-        m_trash << *item;
-        m_model.removeId(id);
-        staged = true;
+        if (m_repo.setRemoved(id, now))
+            moved << id;
     }
-    if (!staged)
+    if (moved.isEmpty())
         return;
-    m_trashTimer.start();
+    m_model.setRemoved(moved, now);
+    m_lastRemoved = moved;
+    m_trashTimer.start(); // the Undo toast's lifetime
     emit undoCountChanged();
+    emit countChanged();
 }
 
 void NotchController::undoRemove()
 {
-    m_trashTimer.stop();
-    for (const FileItem &item : std::as_const(m_trash))
-        m_model.upsert(item);
-    m_trash.clear();
-    emit undoCountChanged();
+    restoreItems(m_lastRemoved);
 }
 
-void NotchController::commitRemovals()
+void NotchController::restoreItems(const QStringList &ids)
 {
-    m_trashTimer.stop();
-    if (m_trash.isEmpty())
-        return;
-    for (const FileItem &item : std::as_const(m_trash))
-        deleteNow(item);
-    m_trash.clear();
-    emit undoCountChanged();
+    QStringList back;
+    for (const QString &id : ids)
+        if (m_repo.setRemoved(id, QDateTime()))
+            back << id;
+    m_model.setRemoved(back, QDateTime());
+    if (!m_lastRemoved.isEmpty()) {
+        m_lastRemoved.clear();
+        m_trashTimer.stop();
+        emit undoCountChanged();
+    }
+    emit countChanged();
+}
+
+void NotchController::deleteForever(const QStringList &ids)
+{
+    for (const QString &id : ids) {
+        if (const FileItem *item = m_model.find(id); item && item->status != Status::Copying) {
+            const FileItem copy = *item;
+            m_model.removeId(id);
+            deleteNow(copy);
+        }
+    }
+    emit countChanged();
+}
+
+void NotchController::emptyRecentlyRemoved()
+{
+    QStringList ids;
+    for (const FileItem &item : m_model.items())
+        if (item.removedAt.isValid())
+            ids << item.id;
+    deleteForever(ids);
 }
 
 void NotchController::deleteNow(const FileItem &item)
@@ -581,11 +630,6 @@ void NotchController::deleteNow(const FileItem &item)
         m_repo.remove(item.id);
     else
         setError(tr("Could not delete the stored copy yet; cleanup will retry."));
-}
-
-void NotchController::removeItems(const QStringList &ids)
-{
-    stageRemoval(ids);
 }
 
 void NotchController::setDragging(const QStringList &ids, bool dragging)
@@ -621,7 +665,8 @@ QVariantList NotchController::categories()
 {
     QHash<QString, int> counts;
     for (const FileItem &item : m_model.items())
-        ++counts[item.categoryId];
+        if (!item.removedAt.isValid())
+            ++counts[item.categoryId];
     const QString shots = m_settings.value(QStringLiteral("screenshotCategory")).toString();
     const QString downloads = m_settings.value(QStringLiteral("downloadCategory")).toString();
     const QString phone = m_settings.value(QStringLiteral("kdeconnectCategory")).toString();
@@ -706,10 +751,7 @@ void NotchController::setCategory(const QStringList &ids, const QString &categor
 
 void NotchController::runCleanup()
 {
-    QSet<QString> busy = m_dragging;
-    for (const FileItem &item : std::as_const(m_trash)) // undo must find them intact
-        busy.insert(item.id);
-    for (const QString &id : CleanupService::purge(m_repo, m_filesDir, QDateTime::currentDateTimeUtc(), m_retentionDays, busy))
+    for (const QString &id : CleanupService::purge(m_repo, m_filesDir, QDateTime::currentDateTimeUtc(), m_retentionDays, m_dragging))
         m_model.removeId(id);
 }
 
@@ -718,6 +760,8 @@ void NotchController::setFilter(const QString &text)
     if (text == m_filter)
         return;
     m_filter = text;
+    if (!text.isEmpty() && m_contentsStale)
+        indexContents();
     m_proxy.setText(text);
     emit filterChanged();
 }
@@ -740,7 +784,6 @@ bool NotchController::setStorageDir(const QUrl &folder)
     const QString dir = QDir::cleanPath(folder.toLocalFile());
     if (dir.isEmpty() || dir == m_filesDir)
         return false;
-    commitRemovals(); // staged removals still point at the current folder
     if (m_model.rowCount() > 0 || m_copying > 0 || !m_repo.withStatus(Status::PendingCleanup).isEmpty()) {
         setError(tr("Empty the shelf before changing the storage folder."));
         return false;
@@ -817,6 +860,38 @@ void NotchController::setSortMode(const QString &mode)
     emit sortModeChanged();
 }
 
+void NotchController::copyText(const QString &text)
+{
+    QGuiApplication::clipboard()->setText(text);
+}
+
+void NotchController::addColor(const QString &hex)
+{
+    QStringList colors = recentColors();
+    colors.removeAll(hex);
+    colors.prepend(hex);
+    m_settings.setValue(QStringLiteral("colors"), colors.mid(0, 12));
+    copyText(hex);
+    emit recentColorsChanged();
+    emit notice(tr("Color copied"), hex, QStringLiteral("color"), QString()); // "color" icon: QML shows a swatch
+}
+
+void NotchController::removeColor(const QString &hex)
+{
+    QStringList colors = recentColors();
+    colors.removeAll(hex);
+    m_settings.setValue(QStringLiteral("colors"), colors);
+    emit recentColorsChanged();
+}
+
+void NotchController::setThemeMode(const QString &mode)
+{
+    if (mode == themeMode())
+        return;
+    m_settings.setValue(QStringLiteral("theme"), mode);
+    emit themeModeChanged();
+}
+
 void NotchController::setAutoScreenshots(bool enabled)
 {
     if (enabled == autoScreenshots())
@@ -887,6 +962,67 @@ void NotchController::setAutoKdeConnect(bool enabled)
         return;
     m_settings.setValue(QStringLiteral("autoKdeConnect"), enabled);
     emit autoKdeConnectChanged();
+}
+
+QString NotchController::readText(const QString &id)
+{
+    const FileItem *item = m_model.find(id);
+    if (!item || item->status != Status::Available)
+        return {};
+    QFile f(FileService::storedPath(m_filesDir, item->storedName));
+    constexpr qint64 Limit = 1 << 20;
+    if (f.size() > Limit || !f.open(QIODevice::ReadOnly)) {
+        setError(tr("%1 is too large to edit here").arg(item->originalName));
+        return {};
+    }
+    return QString::fromUtf8(f.readAll());
+}
+
+bool NotchController::saveNote(const QString &id, const QString &name, const QString &text)
+{
+    const QString clean = FileService::safeFileName(name.trimmed(), QStringLiteral("Note.txt"));
+    const QByteArray bytes = text.toUtf8();
+    if (id.isEmpty()) {
+        const QString mime = QMimeDatabase().mimeTypeForFile(clean, QMimeDatabase::MatchExtension).name();
+        return addBytes(clean, mime, bytes, tr("Note"), m_categoryFilter);
+    }
+    const FileItem *item = m_model.find(id);
+    if (!item || item->status != Status::Available)
+        return false;
+    if (!FileService::writeFile(m_filesDir + u'/' + id, item->originalName, bytes) || !m_repo.markAvailable(id, bytes.size())) {
+        setError(tr("Could not save %1").arg(item->originalName));
+        return false;
+    }
+    FileItem saved = *item;
+    saved.sizeBytes = bytes.size();
+    m_model.upsert(saved);
+    m_contentsStale = true;
+    renameItem(id, clean); // no-op when the name is unchanged
+    return true;
+}
+
+// ponytail: re-reads every text file on the first search after a change; fine for a shelf of
+// files that expire within days. An incremental index is the upgrade if shelves get huge.
+void NotchController::indexContents()
+{
+    m_contents.clear();
+    QMimeDatabase db;
+    for (const FileItem &item : m_model.items()) {
+        if (item.status != Status::Available || item.sizeBytes > (512 << 10)
+            || !db.mimeTypeForName(item.mimeType).inherits(QStringLiteral("text/plain"))
+            || item.mimeType == QLatin1String("application/x-desktop"))
+            continue;
+        QFile f(FileService::storedPath(m_filesDir, item.storedName));
+        if (f.open(QIODevice::ReadOnly))
+            m_contents.insert(item.id, QString::fromUtf8(f.readAll()));
+    }
+    m_contentsStale = false;
+}
+
+QVariantMap NotchController::transformText(const QString &kind, const QString &text) const
+{
+    const TextResult r = ::transformText(kind, text);
+    return {{QStringLiteral("ok"), r.ok}, {QStringLiteral("text"), r.text}, {QStringLiteral("error"), r.error}};
 }
 
 bool NotchController::spectacleAutoSave() const
@@ -960,7 +1096,8 @@ QStringList NotchController::categoryItemIds(const QString &categoryId) const
 {
     QStringList ids;
     for (const FileItem &item : m_model.items())
-        if (item.categoryId == categoryId && item.status == Status::Available)
+        if ((categoryId.isEmpty() || item.categoryId == categoryId) && item.status == Status::Available
+            && !item.removedAt.isValid())
             ids << item.id;
     return ids;
 }
@@ -970,9 +1107,10 @@ void NotchController::renameItem(const QString &id, const QString &name)
     const FileItem *item = m_model.find(id);
     if (!item || item->status != Status::Available)
         return;
-    const QString clean = FileService::safeFileName(name.trimmed(), QString());
-    if (clean.isEmpty() || clean == item->originalName)
+    const QString wanted = FileService::safeFileName(name.trimmed(), QString());
+    if (wanted.isEmpty() || wanted == item->originalName)
         return;
+    const QString clean = freeName(wanted, id);
     const QString storedName = id + u'/' + clean;
     const QString from = FileService::storedPath(m_filesDir, item->storedName);
     const QString to = FileService::storedPath(m_filesDir, storedName);

@@ -32,7 +32,8 @@ To try it without touching your real shelf or settings:
 
 - Move the mouse to the top edge, center (a faint line marks the spot) and rest a moment; or drag
   files there. The panel closes when the mouse leaves; **Pin** keeps it open. Esc closes.
-- Click a tile to preview it (images, text/source files up to 64 KiB; other types show their details).
+- Click a tile to preview it (images; other types show their details). Text files open in the note
+  editor instead.
   **Open** in the preview header opens it with the default app.
 - Hover a tile: **↗** opens, **✕** removes it (deletes Notch's copy only). Hovering shows
   size/added/expiry/source, right-click for more.
@@ -60,8 +61,12 @@ To try it without touching your real shelf or settings:
 - **Copy** (right-click, or Ctrl+C on a selection) puts the files on the clipboard as files, so file
   managers and chat apps attach them; a single image also goes as image data. **Copy contents**
   (text files) copies the text, **Copy path** the stored path.
-- **Undo:** removed files wait 6 seconds before being deleted. Click **Undo** in the toast or press
-  Ctrl+Z.
+- **Recently removed:** removing a file moves it to **🗑 Recently removed** (at the end of the category
+  row) for 24 hours, then it is deleted for good. **Undo** in the toast (or Ctrl+Z) brings the last
+  removal back; in Recently removed, ↺ restores and ✕ deletes now; right-click the chip to restore all
+  or empty it. Drop tiles on the 🗑 chip to remove them.
+- **Expiring soon:** files that will be auto-deleted within a day get an orange ⏳ badge; click
+  "· Keep" under the name to keep them.
 - **Keep:** right-click → **Keep (never auto-delete)** marks files with ★; cleanup skips them until
   you choose **Allow auto-delete**.
 - **Now playing:** when YouTube (any browser tab), Spotify, Elisa or another MPRIS player is playing
@@ -97,7 +102,20 @@ To try it without touching your real shelf or settings:
   Downloads watching on as well, a received file is still added only once.
 - **Many categories:** the chip row scrolls sideways with the mouse wheel/touchpad, fades at the
   edges when more are hidden, and keeps the selected one in view; **+** and **↕** stay put.
-- **Search** in the header filters tiles by name.
+- **Quick notes:** **✎** opens an editor for a note or snippet (name, .txt or .md, monospace text);
+  **Save** / Ctrl+S stores it as a regular file in the category being viewed, ready to drag anywhere.
+  Esc goes back and keeps the draft. Clicking any text file (≤ 1 MB) opens it in the same editor;
+  saving updates Notch's copy (and renames it if you changed the name). Right-click → **Edit** too.
+- **Search** matches file names and the text inside notes and text files (up to 512 KB).
+- **Duplicate names:** a file whose name is already on the shelf is added as "name (1).ext".
+- **Note toolkit:** buttons in the note editor format JSON (key order kept), encode/decode Base64 and
+  URLs, and switch to UPPER/lower case — on the selection, or the whole note.
+- **Drag a category:** drag a chip to Dolphin or a chat to send all its files at once; drop it on
+  another chip to move its files there.
+- **Color picker:** 🎨 hides Notch and lets you click any pixel on screen (desktop portal, KWin's
+  picker). The hex code is copied and kept in a swatch row; click a swatch to copy again,
+  right-click to remove.
+- **Appearance:** Dark (default), Light or Follow system; highlights use your KDE accent color.
 - **⚙ Settings**: how long files are kept (1–30 days; shortening it removes older files right away),
   storage folder (changeable while the shelf is empty), start at login, quit.
 - Tray icon: click toggles the panel; menu has Show/Hide, Settings, Quit.
@@ -121,8 +139,8 @@ If the database is unreadable, Notch shows an error and deletes nothing.
 ## Package, install, uninstall
 
 ```bash
-cd build && cpack          # produces notch_0.1.0_amd64.deb
-sudo apt install ./notch_0.1.0_amd64.deb
+cd build && cpack          # produces notch_0.1.2_amd64.deb
+sudo apt install ./notch_0.1.2_amd64.deb
 ```
 
 Autostart: turn on **Start at login** in settings.

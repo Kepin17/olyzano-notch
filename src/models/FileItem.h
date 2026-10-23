@@ -7,6 +7,7 @@
 Q_DECLARE_LOGGING_CATEGORY(lcNotch)
 
 constexpr int DefaultRetentionDays = 7;
+constexpr int TrashHours = 24; // "Recently removed" keeps files this long before deleting them
 
 namespace Status {
 inline const QString Copying = QStringLiteral("copying");
@@ -26,4 +27,5 @@ struct FileItem {
     QString status;
     QString categoryId;   // empty = uncategorized
     bool pinned = false;  // "kept": never auto-deleted
+    QDateTime removedAt;  // set (UTC) while in Recently removed; invalid otherwise
 };

@@ -2,6 +2,7 @@
 #include "services/CleanupService.h"
 #include "services/FileService.h"
 #include "services/FolderWatcher.h"
+#include "services/TextTools.h"
 #include "platform/BatteryThreshold.h"
 #include "platform/PlayerSelection.h"
 #include "platform/AudioBands.h"
@@ -86,7 +87,7 @@ private slots:
         QVERIFY(db.open());
         QSqlQuery q(db);
         QVERIFY(q.exec(QStringLiteral("PRAGMA user_version")) && q.next());
-        QCOMPARE(q.value(0).toInt(), 3);
+        QCOMPARE(q.value(0).toInt(), 4);
         q = QSqlQuery();
         db.close();
         db = QSqlDatabase();
@@ -387,6 +388,11 @@ private slots:
         QVERIFY(QFile(dir + QStringLiteral("/README")).open(QIODevice::WriteOnly));
         QCOMPARE(FileService::uniqueName(dir, QStringLiteral("README")), QStringLiteral("README (1)"));
 
+        const QSet<QString> shelf{QStringLiteral("report.pdf"), QStringLiteral("report (1).pdf")};
+        auto taken = [&](const QString &n) { return shelf.contains(n); };
+        QCOMPARE(FileService::uniqueAmong(QStringLiteral("report.pdf"), taken), QStringLiteral("report (2).pdf"));
+        QCOMPARE(FileService::uniqueAmong(QStringLiteral("other.pdf"), taken), QStringLiteral("other.pdf"));
+
         QVERIFY(FileService::isPartialDownload(QStringLiteral("movie.mp4.crdownload")));
         QVERIFY(FileService::isPartialDownload(QStringLiteral("x.part")));
         QVERIFY(FileService::isPartialDownload(QStringLiteral(".hidden")));
@@ -422,6 +428,43 @@ private slots:
         QCOMPARE(QFileInfo(spy.last().first().toString()).fileName(), QStringLiteral("movie.mp4"));
         QTest::qWait(800);
         QCOMPARE(spy.size(), 2); // reported once each, old.txt never
+    }
+
+    void recentlyRemovedLastsADay()
+    {
+        const QDateTime now = QDateTime::currentDateTimeUtc();
+        const FileItem old = addItem(writeSource(QStringLiteral("old.txt"), "o"), now.addDays(-30)); // past retention
+        const FileItem fresh = addItem(writeSource(QStringLiteral("fresh.txt"), "f"), now);
+        const FileItem gone = addItem(writeSource(QStringLiteral("gone.txt"), "g"), now);
+        QVERIFY(m_repo->setRemoved(old.id, now.addSecs(-3600)));        // removed 1 h ago
+        QVERIFY(m_repo->setRemoved(gone.id, now.addSecs(-25 * 3600)));  // removed 25 h ago
+
+        // Retention skips removed items (old.txt waits for its 24 h), the 25 h one is emptied.
+        QCOMPARE(CleanupService::purge(*m_repo, m_files, now, DefaultRetentionDays), QStringList{gone.id});
+        QVERIFY(QFile::exists(path(old)));
+        QVERIFY(!QFile::exists(path(gone)));
+        QVERIFY(QFile::exists(path(fresh)));
+
+        QVERIFY(m_repo->setRemoved(old.id, QDateTime())); // restore: back under normal retention
+        QCOMPARE(CleanupService::purge(*m_repo, m_files, now, DefaultRetentionDays), QStringList{old.id});
+    }
+
+    void textTools()
+    {
+        QCOMPARE(transformText(QStringLiteral("json"), QStringLiteral("{\"a\":[1,2]}")).text,
+                 QStringLiteral("{\n    \"a\": [\n        1,\n        2\n    ]\n}"));
+        QVERIFY(!transformText(QStringLiteral("json"), QStringLiteral("{oops")).ok);
+        // Key order is kept as written, strings (with : , { and escaped quotes) untouched, {} stays inline.
+        const QString messy = QStringLiteral("{\"z\":1, \"a\":\"x: {y}, \\\"q\\\"\", \"e\":{}, \"l\":[]}");
+        const QString pretty = QStringLiteral("{\n    \"z\": 1,\n    \"a\": \"x: {y}, \\\"q\\\"\",\n    \"e\": {},\n    \"l\": []\n}");
+        QCOMPARE(transformText(QStringLiteral("json"), messy).text, pretty);
+        QCOMPARE(transformText(QStringLiteral("base64-encode"), QStringLiteral("héllo")).text, QStringLiteral("aMOpbGxv"));
+        QCOMPARE(transformText(QStringLiteral("base64-decode"), QStringLiteral("aMOpbGxv")).text, QStringLiteral("héllo"));
+        QVERIFY(!transformText(QStringLiteral("base64-decode"), QStringLiteral("not base64!!")).ok);
+        QCOMPARE(transformText(QStringLiteral("url-encode"), QStringLiteral("a b&c=é")).text, QStringLiteral("a%20b%26c%3D%C3%A9"));
+        QCOMPARE(transformText(QStringLiteral("url-decode"), QStringLiteral("a%20b%26c%3D%C3%A9")).text, QStringLiteral("a b&c=é"));
+        QCOMPARE(transformText(QStringLiteral("upper"), QStringLiteral("Notch é")).text, QStringLiteral("NOTCH É"));
+        QCOMPARE(transformText(QStringLiteral("lower"), QStringLiteral("Notch É")).text, QStringLiteral("notch é"));
     }
 
     void removeManagedGuards()

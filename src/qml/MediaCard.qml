@@ -8,7 +8,7 @@ import QtQuick.Shapes
 Rectangle {
     id: card
     radius: 18
-    color: "#111113"
+    color: theme.card
     implicitHeight: content.implicitHeight + 28
 
     readonly property color tint: "#7fb5cf"
@@ -50,7 +50,7 @@ Rectangle {
     // Solid triangle pointing right; mirror for "previous".
     component Triangle: Shape {
         id: tri
-        property color color: "#f5f5f7"
+        property color color: theme.text
         preferredRendererType: Shape.CurveRenderer
         ShapePath {
             fillColor: tri.color
@@ -78,7 +78,7 @@ Rectangle {
         opacity: enabled ? 1 : 0.35
         background: Rectangle {
             radius: width / 2
-            color: rb.down ? "#2c2c2e" : rb.hovered ? "#1c1c1e" : "transparent"
+            color: rb.down ? theme.surfaceHover : rb.hovered ? theme.surface : "transparent"
             Behavior on color { ColorAnimation { duration: 100 } }
         }
     }
@@ -100,7 +100,7 @@ Rectangle {
                 Layout.preferredWidth: 56
                 Layout.preferredHeight: 56
                 radius: 12
-                color: "#1c1c1e"
+                color: theme.surface
                 Image {
                     id: art
                     anchors.fill: parent
@@ -143,7 +143,7 @@ Rectangle {
                 Text {
                     Layout.fillWidth: true
                     text: media.title || media.identity
-                    color: "#f5f5f7"
+                    color: theme.text
                     font.pixelSize: 14
                     font.weight: Font.DemiBold
                     elide: Text.ElideRight
@@ -151,7 +151,7 @@ Rectangle {
                 Text {
                     Layout.fillWidth: true
                     text: media.artist || media.identity
-                    color: "#8e8e93"
+                    color: theme.textDim
                     font.pixelSize: 12
                     elide: Text.ElideRight
                 }
@@ -170,7 +170,7 @@ Rectangle {
             spacing: 10
             Text {
                 text: card.fmt(card.position)
-                color: "#8e8e93"
+                color: theme.textDim
                 font.pixelSize: 11
                 font.features: { "tnum": 1 }
             }
@@ -184,7 +184,7 @@ Rectangle {
                     width: parent.width
                     height: seekArea.containsMouse || card.scrubbing ? 7 : 5
                     radius: height / 2
-                    color: "#3a3a3c"
+                    color: theme.surfacePressed
                     Behavior on height { NumberAnimation { duration: 100 } }
                     Rectangle {
                         width: parent.width * bar.ratio
@@ -211,7 +211,7 @@ Rectangle {
             }
             Text {
                 text: "-" + card.fmt(media.lengthMs - card.position)
-                color: "#8e8e93"
+                color: theme.textDim
                 font.pixelSize: 11
                 font.features: { "tnum": 1 }
             }
@@ -225,7 +225,7 @@ Rectangle {
                 onClicked: media.raise()
                 contentItem: Text {
                     text: "↗"
-                    color: "#8e8e93"
+                    color: theme.textDim
                     font.pixelSize: 17
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
@@ -248,8 +248,8 @@ Rectangle {
                         anchors.centerIn: parent
                         spacing: 6
                         visible: media.playing
-                        Rectangle { width: 6; height: 22; radius: 2; color: "#f5f5f7" }
-                        Rectangle { width: 6; height: 22; radius: 2; color: "#f5f5f7" }
+                        Rectangle { width: 6; height: 22; radius: 2; color: theme.text }
+                        Rectangle { width: 6; height: 22; radius: 2; color: theme.text }
                     }
                     Triangle {
                         anchors.centerIn: parent
@@ -274,7 +274,7 @@ Rectangle {
                 onClicked: media.cyclePlayer()
                 contentItem: Text {
                     text: "⇄"
-                    color: "#8e8e93"
+                    color: theme.textDim
                     font.pixelSize: 17
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter

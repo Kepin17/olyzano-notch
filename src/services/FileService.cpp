@@ -187,18 +187,23 @@ QString textExtension(const QString &text, const QString &editorLanguage)
     return QStringLiteral("txt");
 }
 
-QString uniqueName(const QString &dir, const QString &name)
+QString uniqueAmong(const QString &name, const std::function<bool(const QString &)> &taken)
 {
-    if (!QFileInfo::exists(dir + u'/' + name))
+    if (!taken(name))
         return name;
     const QFileInfo fi(name);
     const QString base = fi.completeBaseName(), suffix = fi.suffix();
     for (int i = 1;; ++i) {
         const QString candidate = suffix.isEmpty() ? QStringLiteral("%1 (%2)").arg(base).arg(i)
                                                    : QStringLiteral("%1 (%2).%3").arg(base).arg(i).arg(suffix);
-        if (!QFileInfo::exists(dir + u'/' + candidate))
+        if (!taken(candidate))
             return candidate;
     }
+}
+
+QString uniqueName(const QString &dir, const QString &name)
+{
+    return uniqueAmong(name, [&dir](const QString &n) { return QFileInfo::exists(dir + u'/' + n); });
 }
 
 bool isPartialDownload(const QString &name)

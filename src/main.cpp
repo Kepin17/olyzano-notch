@@ -1,7 +1,9 @@
 #include "app/NotchController.h"
 #include "platform/DesktopIntegration.h"
 #include "platform/AudioLevels.h"
+#include "platform/ColorPicker.h"
 #include "platform/KdeConnect.h"
+#include "platform/Theme.h"
 #include "platform/MediaPlayers.h"
 #include "platform/SystemEvents.h"
 
@@ -56,6 +58,11 @@ int main(int argc, char *argv[])
     MediaPlayers media;
     AudioLevels audio;
     KdeConnect kdeconnect;
+    Theme theme;
+    ColorPicker colorPicker;
+    QObject::connect(&colorPicker, &ColorPicker::picked, &controller, &NotchController::addColor);
+    theme.setMode(controller.themeMode());
+    QObject::connect(&controller, &NotchController::themeModeChanged, &theme, [&] { theme.setMode(controller.themeMode()); });
     QObject::connect(&kdeconnect, &KdeConnect::received, &controller, &NotchController::addReceived);
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("mime"), new MimeIconProvider);
@@ -65,6 +72,8 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("media"), &media);
     engine.rootContext()->setContextProperty(QStringLiteral("audio"), &audio);
     engine.rootContext()->setContextProperty(QStringLiteral("kdeconnect"), &kdeconnect);
+    engine.rootContext()->setContextProperty(QStringLiteral("theme"), &theme);
+    engine.rootContext()->setContextProperty(QStringLiteral("colorPicker"), &colorPicker);
 
     // One Notch per monitor, following hotplug.
     QQmlComponent notchWindow(&engine, "Notch", "Main");

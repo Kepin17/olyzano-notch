@@ -53,6 +53,16 @@ QVariant FileItemModel::data(const QModelIndex &index, int role) const
     case AddedAtRole: return i.addedAt;
     case SizeRole: return i.sizeBytes;
     case MimeTypeRole: return i.mimeType;
+    case RemovedRole: return i.removedAt.isValid();
+    case RemovedTextRole: {
+        if (!i.removedAt.isValid())
+            return QString();
+        const qint64 hours = qMax<qint64>(0, QDateTime::currentDateTimeUtc().secsTo(i.removedAt.addSecs(TrashHours * 3600)) / 3600);
+        return hours > 0 ? QStringLiteral("deleted in %1h").arg(hours) : QStringLiteral("deleted soon");
+    }
+    case ExpiringSoonRole:
+        return !i.pinned && !i.removedAt.isValid()
+               && QDateTime::currentDateTimeUtc().secsTo(i.addedAt.addDays(m_retentionDays)) < 24 * 3600;
     }
     return {};
 }
@@ -76,6 +86,9 @@ QHash<int, QByteArray> FileItemModel::roleNames() const
         {AddedAtRole, "addedAt"},
         {SizeRole, "sizeBytes"},
         {MimeTypeRole, "mimeType"},
+        {RemovedRole, "removed"},
+        {RemovedTextRole, "removedText"},
+        {ExpiringSoonRole, "expiringSoon"},
     };
 }
 
@@ -129,7 +142,27 @@ const FileItem *FileItemModel::find(const QString &id) const
 void FileItemModel::refreshTimes()
 {
     if (!m_items.isEmpty())
-        emit dataChanged(index(0), index(m_items.size() - 1), {ExpiresTextRole});
+        emit dataChanged(index(0), index(m_items.size() - 1), {ExpiresTextRole, RemovedTextRole, ExpiringSoonRole});
+}
+
+void FileItemModel::setRemoved(const QStringList &ids, const QDateTime &at)
+{
+    for (int row = 0; row < m_items.size(); ++row) {
+        if (ids.contains(m_items.at(row).id)) {
+            m_items[row].removedAt = at;
+            emit dataChanged(index(row), index(row), {RemovedRole, RemovedTextRole, ExpiringSoonRole});
+        }
+    }
+}
+
+int FileItemModel::shelfCount() const
+{
+    return int(std::count_if(m_items.cbegin(), m_items.cend(), [](const FileItem &i) { return !i.removedAt.isValid(); }));
+}
+
+int FileItemModel::removedCount() const
+{
+    return m_items.size() - shelfCount();
 }
 
 void FileItemModel::setFilesDir(const QString &filesDir)
@@ -168,7 +201,7 @@ void FileItemModel::setPinned(const QStringList &ids, bool pinned)
     for (int row = 0; row < m_items.size(); ++row) {
         if (ids.contains(m_items.at(row).id)) {
             m_items[row].pinned = pinned;
-            emit dataChanged(index(row), index(row), {PinnedRole, ExpiresTextRole});
+            emit dataChanged(index(row), index(row), {PinnedRole, ExpiresTextRole, ExpiringSoonRole});
         }
     }
 }

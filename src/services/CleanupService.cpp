@@ -31,6 +31,12 @@ QStringList purge(FileRepository &repo, const QString &filesDir, const QDateTime
         if (repo.setStatus(item.id, Status::PendingCleanup))
             removed << item.id; // hidden from the shelf from here on
     }
+    for (const FileItem &item : repo.removedBefore(now.addSecs(-TrashHours * 3600))) {
+        if (busy.contains(item.id))
+            continue;
+        if (repo.setStatus(item.id, Status::PendingCleanup))
+            removed << item.id;
+    }
     for (const FileItem &item : repo.withStatus(Status::PendingCleanup)) {
         if (FileService::removeManaged(filesDir, item.storedName))
             repo.remove(item.id);

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(notch VERSION 0.1.0 LANGUAGES CXX)
+project(notch VERSION 0.1.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -18,11 +18,13 @@ qt_add_library(notch_core STATIC
     src/services/FileService.h src/services/FileService.cpp
     src/services/CleanupService.h src/services/CleanupService.cpp
     src/services/FolderWatcher.h src/services/FolderWatcher.cpp
+    src/services/TextTools.h
 )
 qt_add_resources(notch_core migrations PREFIX "/" BASE database FILES
     database/migrations/001_initial.sql
     database/migrations/002_categories.sql
     database/migrations/003_keep.sql
+    database/migrations/004_recently_removed.sql
 )
 target_include_directories(notch_core PUBLIC src)
 target_link_libraries(notch_core PUBLIC Qt6::Core Qt6::Sql)
@@ -36,6 +38,8 @@ qt_add_executable(notch
     src/platform/MediaPlayers.h src/platform/MediaPlayers.cpp
     src/platform/AudioLevels.h src/platform/AudioLevels.cpp
     src/platform/KdeConnect.h src/platform/KdeConnect.cpp
+    src/platform/Theme.h src/platform/Theme.cpp
+    src/platform/ColorPicker.h src/platform/ColorPicker.cpp
 )
 qt_add_qml_module(notch
     URI Notch

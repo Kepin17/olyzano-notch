@@ -28,6 +28,8 @@ public:
     QList<FileItem> withStatus(const QString &status);
     QList<FileItem> expired(const QDateTime &cutoff); // unpinned available/error added at or before cutoff
     bool setPinned(const QString &itemId, bool pinned);
+    bool setRemoved(const QString &itemId, const QDateTime &at); // invalid at = restore
+    QList<FileItem> removedBefore(const QDateTime &cutoff);
     bool renameItem(const QString &itemId, const QString &originalName, const QString &storedName,
                     const QString &mimeType);
 

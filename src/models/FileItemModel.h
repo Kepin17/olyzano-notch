@@ -27,6 +27,9 @@ public:
         AddedAtRole,
         SizeRole,
         MimeTypeRole,
+        RemovedRole,     // in Recently removed
+        RemovedTextRole, // "deleted in 21h"
+        ExpiringSoonRole,
     };
 
     explicit FileItemModel(const QString &filesDir, QObject *parent = nullptr);
@@ -47,6 +50,9 @@ public:
     void setCategory(const QStringList &ids, const QString &categoryId);
     void clearCategory(const QString &from);
     void setPinned(const QStringList &ids, bool pinned);
+    void setRemoved(const QStringList &ids, const QDateTime &at); // invalid at = restore
+    int shelfCount() const;   // items not in Recently removed
+    int removedCount() const;
 
 private:
     int indexOf(const QString &id) const;

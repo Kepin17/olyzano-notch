@@ -13,9 +13,11 @@ const QStringList Migrations = {
     QStringLiteral(":/migrations/001_initial.sql"),
     QStringLiteral(":/migrations/002_categories.sql"),
     QStringLiteral(":/migrations/003_keep.sql"),
+    QStringLiteral(":/migrations/004_recently_removed.sql"),
 };
 const QString Columns = QStringLiteral(
-    "id, original_name, stored_name, mime_type, size_bytes, source_path, added_at, status, category_id, pinned");
+    "id, original_name, stored_name, mime_type, size_bytes, source_path, added_at, status, category_id, pinned, "
+    "removed_at");
 }
 
 // Empty string <-> SQL NULL, so "no category" is stored as NULL.
@@ -139,6 +141,8 @@ QList<FileItem> FileRepository::select(const QString &where, const QVariantList 
         i.status = q.value(7).toString();
         i.categoryId = q.value(8).toString();
         i.pinned = q.value(9).toBool();
+        if (!q.value(10).isNull())
+            i.removedAt = QDateTime::fromString(q.value(10).toString(), Qt::ISODateWithMs);
         items << i;
     }
     return items;
@@ -146,9 +150,10 @@ QList<FileItem> FileRepository::select(const QString &where, const QVariantList 
 
 bool FileRepository::insert(const FileItem &i)
 {
-    return exec(QStringLiteral("INSERT INTO file_items (%1) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").arg(Columns),
+    return exec(QStringLiteral("INSERT INTO file_items (%1) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").arg(Columns),
                 {i.id, i.originalName, i.storedName, i.mimeType, i.sizeBytes, i.sourcePath, toIso(i.addedAt), i.status,
-                 nullable(i.categoryId), i.pinned ? 1 : 0});
+                 nullable(i.categoryId), i.pinned ? 1 : 0,
+                 i.removedAt.isValid() ? QVariant(toIso(i.removedAt)) : QVariant(QMetaType::fromType<QString>())});
 }
 
 bool FileRepository::setStatus(const QString &id, const QString &status)
@@ -179,7 +184,20 @@ QList<FileItem> FileRepository::withStatus(const QString &status)
 
 QList<FileItem> FileRepository::expired(const QDateTime &cutoff)
 {
-    return select(QStringLiteral("status IN (?, ?) AND pinned = 0 AND added_at <= ?"),
+    // Removed items are left to the Recently-removed clock instead.
+    return select(QStringLiteral("status IN (?, ?) AND pinned = 0 AND removed_at IS NULL AND added_at <= ?"),
+                  {Status::Available, Status::Error, toIso(cutoff)});
+}
+
+bool FileRepository::setRemoved(const QString &itemId, const QDateTime &at)
+{
+    return exec(QStringLiteral("UPDATE file_items SET removed_at = ? WHERE id = ?"),
+                {at.isValid() ? QVariant(toIso(at)) : QVariant(QMetaType::fromType<QString>()), itemId});
+}
+
+QList<FileItem> FileRepository::removedBefore(const QDateTime &cutoff)
+{
+    return select(QStringLiteral("status IN (?, ?) AND removed_at IS NOT NULL AND removed_at <= ?"),
                   {Status::Available, Status::Error, toIso(cutoff)});
 }
 

@@ -18,8 +18,13 @@ Item {
     required property bool isText
     required property int index
     required property bool pinned
+    required property var sizeBytes
+    required property string mimeType
+    required property bool removed      // shown in Recently removed
+    required property string removedText
+    required property bool expiringSoon // auto-deleted within a day
 
-    signal contextMenuRequested(var info) // {id, source, pinned, isText}
+    signal contextMenuRequested(var info) // {id, name, source, pinned, isText}
     signal previewRequested(var item)
     // mode: "toggle" (Ctrl+click, or any click while selecting) | "range" (Shift+click)
     signal selectRequested(int index, string id, string mode)
@@ -44,13 +49,13 @@ Item {
         implicitHeight: 22
         background: Rectangle {
             radius: 11
-            color: cb.down ? "#5a5a5e" : cb.hovered ? "#48484a" : "#3a3a3c"
-            border.color: "#000000"
+            color: cb.down ? theme.textFaint : cb.hovered ? theme.textFaint : theme.surfacePressed
+            border.color: theme.island
             border.width: 1.5
         }
         contentItem: Text {
             text: cb.text
-            color: "#f5f5f7"
+            color: theme.text
             font.pixelSize: 11
             font.weight: Font.DemiBold
             horizontalAlignment: Text.AlignHCenter
@@ -61,9 +66,9 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: 18
-        color: tile.selected ? "#1a0a84ff" : hover.hovered ? "#141416" : "transparent"
+        color: tile.selected ? theme.accentFaint : hover.hovered ? theme.surface : "transparent"
         border.width: tile.selected ? 1 : 0
-        border.color: "#660a84ff"
+        border.color: theme.accentSoft
         Behavior on color { ColorAnimation { duration: 120 } }
     }
     HoverHandler { id: hover }
@@ -75,9 +80,9 @@ Item {
         width: 64
         height: 64
         radius: 16
-        color: "#1c1c1e"
+        color: theme.surface
         border.width: tile.selected ? 2 : 0
-        border.color: "#0a84ff"
+        border.color: theme.accent
         scale: hover.hovered && !tile.copying ? 1.05 : 1
         Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
 
@@ -137,7 +142,7 @@ Item {
                     loops: Animation.Infinite
                 }
                 ShapePath {
-                    strokeColor: "#f5f5f7"
+                    strokeColor: theme.text
                     strokeWidth: 2.5
                     fillColor: "transparent"
                     capStyle: ShapePath.RoundCap
@@ -155,7 +160,7 @@ Item {
             height: 18
             radius: 9
             color: "#ff9f0a"
-            border.color: "#000000"
+            border.color: theme.island
             border.width: 1.5
             Text { anchors.centerIn: parent; text: "★"; color: "black"; font.pixelSize: 10 }
         }
@@ -168,8 +173,8 @@ Item {
             width: 18
             height: 18
             radius: 9
-            color: "#0a84ff"
-            border.color: "#000000"
+            color: theme.accent
+            border.color: theme.island
             border.width: 1.5
             Text { anchors.centerIn: parent; text: "✓"; color: "white"; font.pixelSize: 10; font.bold: true }
         }
@@ -183,19 +188,33 @@ Item {
             height: 18
             radius: 9
             color: "#ff453a"
-            border.color: "#000000"
+            border.color: theme.island
             border.width: 1.5
             Text { anchors.centerIn: parent; text: "!"; color: "white"; font.pixelSize: 11; font.bold: true }
+        }
+
+        Rectangle {
+            visible: tile.expiringSoon && !hover.hovered
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.margins: -4
+            width: 18
+            height: 18
+            radius: 9
+            color: "#ff9f0a"
+            border.color: theme.island
+            border.width: 1.5
+            Text { anchors.centerIn: parent; text: "⏳"; font.pixelSize: 9 }
         }
 
         CircleButton {
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.margins: -6
-            text: "↗"
-            visible: hover.hovered && tile.available
-            Accessible.name: "Open"
-            onClicked: notch.open(tile.itemId)
+            text: tile.removed ? "↺" : "↗"
+            visible: hover.hovered && (tile.available || tile.removed)
+            Accessible.name: tile.removed ? "Restore" : "Open"
+            onClicked: tile.removed ? notch.restoreItems([tile.itemId]) : notch.open(tile.itemId)
         }
         CircleButton {
             anchors.right: parent.right
@@ -203,8 +222,8 @@ Item {
             anchors.margins: -6
             text: "✕"
             visible: hover.hovered && !tile.copying
-            Accessible.name: "Remove from Notch"
-            onClicked: notch.remove(tile.itemId)
+            Accessible.name: tile.removed ? "Delete now" : "Remove from Notch"
+            onClicked: tile.removed ? notch.deleteForever([tile.itemId]) : notch.remove(tile.itemId)
         }
     }
 
@@ -223,10 +242,10 @@ Item {
         bottomPadding: 0
         verticalAlignment: TextInput.AlignVCenter
         horizontalAlignment: TextInput.AlignHCenter
-        color: "#f5f5f7"
-        selectionColor: "#0a84ff"
+        color: theme.text
+        selectionColor: theme.accent
         font.pixelSize: 11
-        background: Rectangle { radius: 6; color: "#1c1c1e"; border.width: 1; border.color: "#0a84ff" }
+        background: Rectangle { radius: 6; color: theme.surface; border.width: 1; border.color: theme.accent }
         onVisibleChanged: {
             if (!visible)
                 return
@@ -248,7 +267,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 8
         text: tile.name
-        color: "#f5f5f7"
+        color: theme.text
         font.pixelSize: 11
         font.weight: Font.Medium
         horizontalAlignment: Text.AlignHCenter
@@ -261,8 +280,14 @@ Item {
         anchors.topMargin: 2
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 8
-        text: tile.copying ? "Copying…" : tile.failed ? "Missing" : tile.sizeText
-        color: tile.failed ? "#ff6961" : "#8e8e93"
+        text: tile.copying ? "Copying…" : tile.failed ? "Missing" : tile.removed ? tile.removedText
+            : tile.expiringSoon ? "⏳ " + tile.expiresText.replace(" left", "") + " · Keep" : tile.sizeText
+        color: tile.failed ? "#ff6961" : tile.expiringSoon && !tile.removed ? "#ff9f0a" : theme.textDim
+        // One click on "· Keep" saves a file that is about to expire.
+        TapHandler {
+            enabled: tile.expiringSoon && !tile.removed
+            onTapped: notch.setPinned([tile.itemId], true)
+        }
         font.pixelSize: 10
         horizontalAlignment: Text.AlignHCenter
         elide: Text.ElideRight
@@ -274,10 +299,10 @@ Item {
         delay: 650
         text: tile.name + "\n" + tile.sizeText + " · added " + tile.addedText + "\n" + tile.expiresText
               + (tile.sourcePath ? "\nFrom " + tile.sourcePath : "")
-        background: Rectangle { color: "#1c1c1e"; radius: 10; border.color: "#2c2c2e" }
+        background: Rectangle { color: theme.surface; radius: 10; border.color: theme.surfaceHover }
         contentItem: Text {
             text: tip.text
-            color: "#f5f5f7"
+            color: theme.text
             font.pixelSize: 11
             lineHeight: 1.15
         }
@@ -285,8 +310,8 @@ Item {
 
     TapHandler {
         acceptedButtons: Qt.RightButton
-        onTapped: tile.contextMenuRequested({ id: tile.itemId, source: tile.sourcePath, pinned: tile.pinned,
-                                              isText: tile.isText })
+        onTapped: tile.contextMenuRequested({ id: tile.itemId, name: tile.name, source: tile.sourcePath,
+                                              pinned: tile.pinned, isText: tile.isText && tile.mimeType !== "application/x-desktop" })
     }
     TapHandler {
         acceptedModifiers: Qt.ControlModifier
@@ -306,6 +331,7 @@ Item {
             }
             tile.previewRequested({
             id: tile.itemId, name: tile.name, url: tile.fileUrl, isImage: tile.isImage, isText: tile.isText,
+            sizeBytes: tile.sizeBytes, mimeType: tile.mimeType,
             iconName: tile.iconName, sizeText: tile.sizeText, addedText: tile.addedText,
             expiresText: tile.expiresText, sourcePath: tile.sourcePath
             })

@@ -4,6 +4,8 @@
 #include <QString>
 #include <QUrl>
 
+#include <functional>
+
 // Filesystem operations on managed storage. Thread-safe (no shared state);
 // copyInto is meant to run on a worker thread.
 namespace FileService {
@@ -52,7 +54,9 @@ bool writeFile(const QString &itemDir, const QString &name, const QByteArray &by
 // clipboard), "json" for valid JSON objects/arrays, else "txt".
 QString textExtension(const QString &text, const QString &editorLanguage = {});
 
-// A name not yet taken in dir: "name.ext", else "name (1).ext", "name (2).ext", …
+// First of "name.ext", "name (1).ext", "name (2).ext", … for which taken() is false.
+QString uniqueAmong(const QString &name, const std::function<bool(const QString &)> &taken);
+// A name not yet taken in dir.
 QString uniqueName(const QString &dir, const QString &name);
 
 // Browsers' in-progress download names (.crdownload, .part, …): not a finished file yet.
