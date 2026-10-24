@@ -11,7 +11,6 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QNetworkReply>
-#include <QProcess>
 #include <QSaveFile>
 #include <QUuid>
 #include <QtConcurrent>
@@ -29,6 +28,10 @@ ShareController::ShareController(NotchController *notch, QObject *parent)
     connect(&m_expire, &QTimer::timeout, this, [this] { end(QStringLiteral("expired")); });
     m_poll.setInterval(4000);
     connect(&m_poll, &QTimer::timeout, this, &ShareController::pollRelay);
+    connect(&m_server, &ShareServer::fileDownloaded, this, [this] {
+        ++m_downloads;
+        emit changed();
+    });
     connect(&m_server, &ShareServer::finished, this, [this](const QString &reason) {
         if (reason != QLatin1String("stopped") && m_mode == QLatin1String("local") && m_status == QLatin1String("ready"))
             end(reason);
@@ -236,12 +239,18 @@ void ShareController::start(const QStringList &ids, const QString &mode, int ttl
     m_endReason.clear();
     m_relayId.clear();
     m_progress = -1;
+    m_downloads = 0;
+    m_fileCount = sources.size();
     m_ttl = qBound(60, ttlSeconds, 7 * 86400);
     m_pin = pin.trimmed();
     m_oneDownload = oneDownload;
-    m_name = sources.size() == 1 ? sources.first().name : tr("%1 files (zip)").arg(sources.size());
+    m_name = sources.size() == 1 ? sources.first().name : tr("%1 files").arg(sources.size());
     setLastMode(m_mode);
 
+    if (sources.size() > ShareCrypto::MaxFiles) {
+        fail(tr("A share can hold up to %1 files").arg(ShareCrypto::MaxFiles));
+        return;
+    }
     if (m_mode == QLatin1String("relay") && !relayConfigured()) {
         fail(tr("Set up your server first (Settings → Sharing)"));
         return;
@@ -296,48 +305,27 @@ ShareController::Prepared ShareController::prepare(const QList<NotchController::
         return p;
     }
     QFile::setPermissions(p.workDir, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
-    if (sources.size() == 1) {
-        p.servePath = sources.first().path;
-        p.name = sources.first().name;
-        p.mimeType = sources.first().mimeType;
-    } else { // several files travel as one zip (links under unique names, like "Zip" in the menu)
-        const QString stage = p.workDir + QStringLiteral("/stage");
-        QDir().mkpath(stage);
-        for (const auto &s : sources)
-            QFile::link(s.path, stage + u'/' + FileService::uniqueName(stage, s.name));
-        p.servePath = p.workDir + QStringLiteral("/Notch share.zip");
-        p.name = QStringLiteral("Notch share.zip");
-        p.mimeType = QStringLiteral("application/zip");
-        QProcess zip;
-        zip.setWorkingDirectory(stage);
-        zip.start(QStringLiteral("zip"), {QStringLiteral("-q"), QStringLiteral("-r"), p.servePath, QStringLiteral(".")});
-        if (!zip.waitForStarted(5000)) {
-            p.error = tr("zip is not installed");
-            return p;
-        }
-        zip.waitForFinished(-1);
-        QDir(stage).removeRecursively(); // only our links
-        if (zip.exitCode() != 0) {
-            p.error = tr("Cannot create the zip file");
-            return p;
-        }
+    // Two files may share a name (report.pdf from two folders): the recipient sees "report (1).pdf".
+    QStringList used;
+    QList<ShareCrypto::SourceFile> files;
+    for (const auto &s : sources) {
+        const QString name = FileService::uniqueAmong(s.name, [&](const QString &n) { return used.contains(n); });
+        used << name;
+        const QString mime = s.mimeType.isEmpty() ? QStringLiteral("application/octet-stream") : s.mimeType;
+        p.entries.append({s.path, name, mime, 0});
+        files.append({s.path, name, mime});
     }
     if (encrypt) {
         p.key = ShareCrypto::newKey();
-        const QString enc = p.workDir + QStringLiteral("/share.enc");
-        const QString why = ShareCrypto::encryptFile(p.servePath, enc, p.key, p.name, p.mimeType);
-        if (!why.isEmpty()) {
-            p.error = why;
-            return p;
-        }
-        p.servePath = enc;
+        p.encryptedPath = p.workDir + QStringLiteral("/share.enc");
+        p.error = ShareCrypto::encryptFiles(files, p.encryptedPath, p.key);
     }
     return p;
 }
 
 void ShareController::onPrepared(const Prepared &p)
 {
-    const QString why = m_server.start(m_bindAddress, p.servePath, p.name, p.mimeType, m_ttl);
+    const QString why = m_server.start(m_bindAddress, p.entries, m_ttl);
     if (!why.isEmpty())
         return fail(why);
     m_link = m_server.url().toString();
@@ -348,7 +336,7 @@ void ShareController::onPrepared(const Prepared &p)
 
 void ShareController::upload(const Prepared &p)
 {
-    auto *file = new QFile(p.servePath);
+    auto *file = new QFile(p.encryptedPath);
     if (!file->open(QIODevice::ReadOnly)) {
         delete file;
         return fail(tr("Cannot read the encrypted file"));
@@ -356,7 +344,7 @@ void ShareController::upload(const Prepared &p)
     QNetworkRequest req = relayRequest(QStringLiteral("/api/v1/shares"));
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/octet-stream"));
     req.setRawHeader("X-TTL", QByteArray::number(m_ttl));
-    req.setRawHeader("X-Max-Downloads", m_oneDownload ? "1" : "0");
+    req.setRawHeader("X-Max-Downloads", m_oneDownload && m_fileCount == 1 ? "1" : "0");
     if (!m_pin.isEmpty())
         req.setRawHeader("X-Pin", m_pin.toUtf8());
     m_progress = 0;
@@ -411,7 +399,7 @@ void ShareController::pollRelay()
         if (gen != m_generation || m_status != QLatin1String("ready"))
             return;
         if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 404)
-            end(m_oneDownload && QDateTime::currentSecsSinceEpoch() < m_expiresAt ? QStringLiteral("downloaded")
+            end(m_oneDownload && m_fileCount == 1 && QDateTime::currentSecsSinceEpoch() < m_expiresAt ? QStringLiteral("downloaded")
                                                                                      : QStringLiteral("expired"));
     });
 }

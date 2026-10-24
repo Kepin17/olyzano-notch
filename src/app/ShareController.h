@@ -24,6 +24,8 @@ class ShareController : public QObject
     Q_PROPERTY(QString url READ url NOTIFY changed)
     Q_PROPERTY(double progress READ progress NOTIFY changed)  // upload 0..1, -1 = unknown
     Q_PROPERTY(QString name READ name NOTIFY changed)
+    Q_PROPERTY(int fileCount READ fileCount NOTIFY changed)
+    Q_PROPERTY(int downloads READ downloads NOTIFY changed)   // completed downloads (local shares)
     Q_PROPERTY(qint64 expiresAt READ expiresAt NOTIFY changed) // epoch seconds
     Q_PROPERTY(QString message READ message NOTIFY changed)   // error text, or why it ended
     Q_PROPERTY(QString endReason READ endReason NOTIFY changed) // downloaded | expired | stopped
@@ -41,6 +43,8 @@ public:
     QString url() const { return m_link; }
     double progress() const { return m_progress; }
     QString name() const { return m_name; }
+    int fileCount() const { return m_fileCount; }
+    int downloads() const { return m_downloads; }
     qint64 expiresAt() const { return m_expiresAt; }
     QString message() const { return m_message; }
     QString endReason() const { return m_endReason; }
@@ -53,8 +57,9 @@ public:
     QString lastMode() const { return m_settings.value(QStringLiteral("mode"), QStringLiteral("local")).toString(); }
     void setLastMode(const QString &mode);
 
-    // ttlSeconds: how long the link works. pin / oneDownload apply to relay shares only
-    // (a local share always ends after its first download).
+    // ttlSeconds: how long the link works. pin / oneDownload apply to relay shares only, and
+    // oneDownload only to a single file. A local share of one file ends after its first download;
+    // several files stay available until the time is up or stop().
     Q_INVOKABLE void start(const QStringList &ids, const QString &mode, int ttlSeconds, const QString &pin,
                            bool oneDownload, const QString &address);
     Q_INVOKABLE void stop();  // ends a running share, or clears a finished / failed one
@@ -69,7 +74,8 @@ signals:
 
 private:
     struct Prepared {
-        QString error, workDir, servePath, name, mimeType;
+        QString error, workDir, encryptedPath;
+        QList<ShareServer::Entry> entries; // local: what to serve (names made unique)
         QByteArray key;
     };
     static Prepared prepare(const QList<NotchController::ShareSource> &sources, bool encrypt, const QString &workRoot);
@@ -98,6 +104,7 @@ private:
     QString m_relayId, m_pin;
     QHostAddress m_bindAddress; // local mode: the LAN address the server listens on
     double m_progress = -1;
+    int m_fileCount = 0, m_downloads = 0;
     qint64 m_expiresAt = 0;
     int m_ttl = 3600;
     bool m_oneDownload = true;

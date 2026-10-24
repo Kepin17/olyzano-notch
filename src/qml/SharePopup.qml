@@ -74,7 +74,7 @@ Popup {
             spacing: 10
             Text {
                 Layout.fillWidth: true
-                text: pop.ids.length === 1 ? notch.itemInfo(pop.ids[0]).name : pop.ids.length + " files, sent as one zip"
+                text: pop.ids.length === 1 ? notch.itemInfo(pop.ids[0]).name : pop.ids.length + " files"
                 color: theme.text
                 font.pixelSize: 13
                 elide: Text.ElideMiddle
@@ -87,6 +87,11 @@ Popup {
                     checked: pop.mode === "relay"
                     onClicked: pop.mode = "relay"
                 }
+            }
+            Caption {
+                Layout.fillWidth: true
+                visible: pop.ids.length > 1
+                text: "Whoever scans sees the list and can take one file, a few, or all as a zip."
             }
             Caption {
                 Layout.fillWidth: true
@@ -137,7 +142,7 @@ Popup {
                 Keys.onEscapePressed: pop.close()
             }
             SettingToggle {
-                visible: pop.mode === "relay"
+                visible: pop.mode === "relay" && pop.ids.length === 1
                 Layout.fillWidth: true
                 title: "Single download"
                 caption: "The link stops working after the first download."
@@ -215,6 +220,13 @@ Popup {
                 horizontalAlignment: Text.AlignHCenter
                 text: share.mode === "local" ? "Phone and computer must be on the same WiFi."
                       : "Encrypted: only people with this exact link can open it."
+            }
+            Caption {
+                Layout.fillWidth: true
+                horizontalAlignment: Text.AlignHCenter
+                visible: share.mode === "local" && share.fileCount > 1
+                text: share.downloads === 0 ? "Stays open until it expires or you press Stop."
+                      : "Downloaded " + share.downloads + (share.downloads === 1 ? " time" : " times") + " so far."
             }
             TextField {
                 Layout.fillWidth: true

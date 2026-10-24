@@ -1,7 +1,11 @@
 #include "ShareServer.h"
 
+#include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QNetworkInterface>
 #include <QRandomGenerator>
 #include <QRegularExpression>
@@ -46,13 +50,24 @@ private:
         if ((!head && first.value(0) != QLatin1String("GET")) || first.size() < 2)
             return reply(405, QStringLiteral("Method Not Allowed"), {}, head);
         const QString path = first.value(1).section(u'?', 0, 0);
+        const bool inline_ = first.value(1).section(u'?', 1).split(u'&').contains(QStringLiteral("inline=1"));
         const QString base = QLatin1Char('/') + m_server->m_token + QLatin1Char('/');
         if (path == base)
-            return reply(200, QStringLiteral("OK"), page(), head, QStringLiteral("text/html; charset=utf-8"));
-        if (path != base + QLatin1String("file"))
+            return reply(200, QStringLiteral("OK"), m_server->page(), head, QStringLiteral("text/html; charset=utf-8"),
+                         {{"Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
+                                                      "connect-src 'self'; img-src 'self' blob: data:; frame-ancestors 'none'"}});
+        static const QRegularExpression fileRoute(QStringLiteral(R"(^f/(\d{1,4})$)"));
+        const auto route = path.startsWith(base) ? fileRoute.match(path.mid(base.size())) : QRegularExpressionMatch();
+        const int index = route.hasMatch() ? route.captured(1).toInt() : -1;
+        if (index < 0 || index >= m_server->m_files.size())
             return reply(404, QStringLiteral("Not Found"), {}, head);
+        const ShareServer::Entry &entry = m_server->m_files.at(index);
+        // Previews are only for images, and sandboxed, so a sender's file can never run as a page.
+        if (inline_ && !entry.mimeType.startsWith(QLatin1String("image/")))
+            return reply(404, QStringLiteral("Not Found"), {}, head);
+        const qint64 size = entry.size;
 
-        qint64 start = 0, last = m_server->m_size - 1;
+        qint64 start = 0, last = size - 1;
         bool partial = false;
         for (const QString &line : lines) {
             if (!line.startsWith(QLatin1String("Range:"), Qt::CaseInsensitive))
@@ -62,7 +77,7 @@ private:
             if (!m.hasMatch() || (m.captured(1).isEmpty() && m.captured(2).isEmpty()))
                 break;
             if (m.captured(1).isEmpty()) {
-                start = qMax<qint64>(0, m_server->m_size - m.captured(2).toLongLong());
+                start = qMax<qint64>(0, size - m.captured(2).toLongLong());
             } else {
                 start = m.captured(1).toLongLong();
                 if (!m.captured(2).isEmpty())
@@ -70,45 +85,32 @@ private:
             }
             partial = true;
         }
-        if (start > last || start >= m_server->m_size) {
-            QByteArray none;
-            return reply(416, QStringLiteral("Range Not Satisfiable"), none, head, {},
-                         {{"Content-Range", "bytes */" + QByteArray::number(m_server->m_size)}});
-        }
-        m_file.setFileName(m_server->m_path);
+        if (size > 0 && (start > last || start >= size))
+            return reply(416, QStringLiteral("Range Not Satisfiable"), QByteArray(), head, {},
+                         {{"Content-Range", "bytes */" + QByteArray::number(size)}});
+        m_file.setFileName(entry.path);
         if (!m_file.open(QIODevice::ReadOnly) || !m_file.seek(start))
             return reply(500, QStringLiteral("Internal Server Error"), {}, head);
-        m_left = last - start + 1;
-        m_countsAsDownload = last == m_server->m_size - 1 && !head;
-        const QByteArray disposition = "attachment; filename*=UTF-8''" + QUrl::toPercentEncoding(m_server->m_name);
-        QList<QPair<QByteArray, QByteArray>> extra{{"Content-Disposition", disposition}, {"Accept-Ranges", "bytes"}};
+        m_left = size > 0 ? last - start + 1 : 0;
+        m_index = index;
+        m_countsAsDownload = !inline_ && !head && last == size - 1 && start == 0 && !partial;
+        const QByteArray disposition = (inline_ ? "inline" : "attachment; filename*=UTF-8''" + QUrl::toPercentEncoding(entry.name));
+        QList<QPair<QByteArray, QByteArray>> extra{{"Content-Disposition", disposition}, {"Accept-Ranges", "bytes"},
+                                                   {"Content-Security-Policy", "default-src 'none'; sandbox"}};
         if (partial)
             extra << qMakePair(QByteArray("Content-Range"),
-                               "bytes " + QByteArray::number(start) + "-" + QByteArray::number(last) + "/"
-                                   + QByteArray::number(m_server->m_size));
+                               "bytes " + QByteArray::number(start) + "-" + QByteArray::number(last) + "/" + QByteArray::number(size));
         header(partial ? 206 : 200, partial ? QStringLiteral("Partial Content") : QStringLiteral("OK"), m_left,
-               m_server->m_mime, extra);
-        if (head) {
+               entry.mimeType.isEmpty() ? QStringLiteral("application/octet-stream") : entry.mimeType, extra);
+        if (head || m_left == 0) {
             m_left = 0;
             m_socket->disconnectFromHost();
+            if (!head && m_countsAsDownload) // an empty file: nothing to send, so it is complete
+                m_server->completed(m_index);
+            m_countsAsDownload = false;
         } else {
             pump();
         }
-    }
-
-    QByteArray page() const
-    {
-        const QString name = m_server->m_name.toHtmlEscaped();
-        const double mb = m_server->m_size / 1048576.0;
-        const QString size = mb >= 1 ? QString::number(mb, 'f', 1) + QStringLiteral(" MB")
-                                     : QString::number(m_server->m_size / 1024.0, 'f', 0) + QStringLiteral(" KB");
-        return QStringLiteral("<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'>"
-                              "<title>Notch</title><body style='font:16px system-ui;text-align:center;padding:48px 16px;"
-                              "background:#f3eee2;color:#1c1a17'><p style='color:#6b6355'>NOTCH · 通知</p>"
-                              "<h2 style='word-break:break-all'>%1</h2><p style='color:#6b6355'>%2</p>"
-                              "<p><a href='file' style='display:inline-block;background:#c8372d;color:#fff;padding:12px 28px;"
-                              "border-radius:6px;text-decoration:none'>Download</a></p>")
-            .arg(name, size).toUtf8();
     }
 
     void header(int code, const QString &text, qint64 length, const QString &type,
@@ -154,7 +156,7 @@ private:
     {
         // Counted only when every byte of the file went out (not when the phone gave up midway).
         if (m_countsAsDownload && m_left == 0 && m_socket->bytesToWrite() == 0)
-            m_server->finish(QStringLiteral("downloaded"));
+            m_server->completed(m_index);
         m_socket->deleteLater();
     }
 
@@ -164,6 +166,7 @@ private:
     QByteArray m_request;
     QFile m_file;
     qint64 m_left = 0;
+    int m_index = -1;
     bool m_responded = false;
     bool m_countsAsDownload = false;
 };
@@ -176,25 +179,57 @@ ShareServer::ShareServer(QObject *parent)
     connect(&m_expire, &QTimer::timeout, this, [this] { finish(QStringLiteral("expired")); });
 }
 
-QString ShareServer::start(const QHostAddress &address, const QString &filePath, const QString &fileName,
-                           const QString &mimeType, int ttlSeconds)
+QString ShareServer::start(const QHostAddress &address, const QList<Entry> &files, int ttlSeconds)
 {
     stop();
-    const QFileInfo info(filePath);
-    if (!info.isFile() || !info.isReadable())
-        return tr("Cannot read the file");
+    if (files.isEmpty())
+        return tr("Nothing to share");
+    QList<Entry> list = files;
+    for (Entry &e : list) {
+        const QFileInfo info(e.path);
+        if (!info.isFile() || !info.isReadable())
+            return tr("Cannot read \"%1\"").arg(e.name);
+        e.size = info.size();
+    }
     if (!m_server.listen(address, 0))
         return m_server.errorString();
     QByteArray raw(16, 0);
     QRandomGenerator::system()->fillRange(reinterpret_cast<quint32 *>(raw.data()), raw.size() / 4);
     m_token = QString::fromLatin1(raw.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
-    m_path = filePath;
-    m_name = fileName;
-    m_mime = mimeType.isEmpty() ? QStringLiteral("application/octet-stream") : mimeType;
-    m_size = info.size();
+    m_files = list;
     m_url = QUrl(QStringLiteral("http://%1:%2/%3/").arg(address.toString()).arg(m_server.serverPort()).arg(m_token));
+    m_expiresAt = QDateTime::currentSecsSinceEpoch() + ttlSeconds;
     m_expire.start(ttlSeconds * 1000);
     return {};
+}
+
+// The download page: server/page.html (shared with the relay) with this share's file list filled in.
+QByteArray ShareServer::page() const
+{
+    QFile f(QStringLiteral(":/share/page.html"));
+    if (!f.open(QIODevice::ReadOnly))
+        return "Notch page missing";
+    QJsonArray files;
+    for (const Entry &e : m_files)
+        files.append(QJsonObject{{QStringLiteral("name"), e.name},
+                                 {QStringLiteral("type"), e.mimeType},
+                                 {QStringLiteral("size"), double(e.size)}});
+    const QJsonObject data{{QStringLiteral("mode"), QStringLiteral("local")},
+                           {QStringLiteral("files"), files},
+                           {QStringLiteral("expires_at"), double(m_expiresAt)},
+                           {QStringLiteral("now"), double(QDateTime::currentSecsSinceEpoch())}};
+    // "<" never appears raw inside the tag, so no file name can close the script element.
+    QByteArray json = QJsonDocument(data).toJson(QJsonDocument::Compact).replace('<', "\\u003c");
+    QByteArray html = f.readAll();
+    static const QByteArray marker = R"(<script id="share-data" type="application/json">null</script>)";
+    return html.replace(marker, R"(<script id="share-data" type="application/json">)" + json + "</script>");
+}
+
+void ShareServer::completed(int index)
+{
+    emit fileDownloaded(index);
+    if (m_files.size() == 1)
+        finish(QStringLiteral("downloaded"));
 }
 
 void ShareServer::stop()

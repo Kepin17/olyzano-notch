@@ -22,6 +22,13 @@ so this server can never read the file or even its name. Shares disappear on the
 Update: copy the new files, then `docker compose up -d --build`. Logs: `docker compose logs -f relay`
 (they list methods and status codes only, never links).
 
+## What the recipient sees
+
+One page for single files and for lists: image thumbnails, per-file download, tick several or take all as a
+zip (made in their browser; for very large selections the page suggests downloading one by one). The page
+is `page.html`, the same file Notch serves for "This WiFi" shares, so both look alike. A file picked from a
+multi-file share is fetched with a byte `Range`, so only that file travels, never the whole bundle.
+
 ## Limits and safety
 
 - Upload needs the API key; download needs the long random link (and the PIN, if set).

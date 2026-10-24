@@ -55,8 +55,18 @@ class RelayTest(unittest.TestCase):
         status, page, r = self.call("GET", "/s/%s" % sid, key=None)
         self.assertEqual(status, 200)
         self.assertIn(b"NSH1", page)
+        self.assertIn(b"share-data", page)
         self.assertIn("script-src", r.getheader("Content-Security-Policy"))
         self.assertEqual(r.getheader("Cache-Control"), "no-store")
+
+    def test_meta_has_clock_and_single_use(self):
+        import json
+        sid = self.upload(**{"X-Max-Downloads": "1"})
+        meta = json.loads(self.call("GET", "/s/%s/meta" % sid, key=None)[1])
+        self.assertTrue(meta["single_use"])
+        self.assertLess(abs(meta["now"] - time.time()), 3)
+        meta = json.loads(self.call("GET", "/s/%s/meta" % self.upload(), key=None)[1])
+        self.assertFalse(meta["single_use"])
 
     def test_range(self):
         sid = self.upload(bytes(range(100)))

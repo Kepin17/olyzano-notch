@@ -2,115 +2,572 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
 <title>Notch share</title>
 <style>
-  :root { color-scheme: light dark; --bg:#f3eee2; --fg:#1c1a17; --dim:#6b6355; --card:#e8e1d1; --line:#cdc2ab; --shu:#c8372d; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#14120f; --fg:#efe9dc; --dim:#9b917f; --card:#211e1a; --line:#3b352d; --shu:#d4493b; } }
-  * { box-sizing: border-box; }
-  body { margin:0; min-height:100vh; display:grid; place-items:center; background:var(--bg); color:var(--fg);
-         font:16px/1.5 system-ui, sans-serif; padding:16px; }
-  main { width:100%; max-width:380px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:24px; text-align:center; }
-  h1 { font:600 14px/1 serif; letter-spacing:.08em; margin:0 0 18px; color:var(--dim); }
-  #name { font-weight:600; word-break:break-all; }
-  #info { color:var(--dim); font-size:14px; margin:4px 0 18px; }
-  button, input { font:inherit; border-radius:6px; padding:10px 16px; }
-  button { background:var(--shu); color:#fff; border:0; width:100%; cursor:pointer; }
-  button:disabled { opacity:.5; cursor:default; }
-  input { width:100%; margin-bottom:10px; border:1px solid var(--line); background:var(--bg); color:var(--fg); text-align:center; letter-spacing:.2em; }
-  progress { width:100%; height:6px; margin-top:14px; }
-  #msg { margin-top:14px; font-size:14px; color:var(--dim); min-height:1.4em; }
-  .err { color:var(--shu) !important; }
-  [hidden] { display:none !important; }
+  :root {
+    color-scheme: light dark;
+    --bg: #f3eee2; --paper: #faf6ec; --surface: #ebe4d3; --line: #d6ccb6; --fg: #1c1a17; --dim: #6b6355;
+    --shu: #c8372d; --shu-soft: rgba(200, 55, 45, .12); --ok: #5f7d3f; --on-shu: #fff;
+    --serif: "Noto Serif JP", "Noto Serif CJK JP", "Hiragino Mincho ProN", "Yu Mincho", Georgia, serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14120f; --paper: #1a1714; --surface: #211e1a; --line: #3b352d; --fg: #efe9dc; --dim: #9b917f;
+      --shu: #d4493b; --shu-soft: rgba(212, 73, 59, .16); --ok: #7d9a5a;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { background: var(--bg); }
+  body {
+    margin: 0; min-height: 100vh; min-height: 100dvh; background: var(--bg); color: var(--fg);
+    font: 16px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .app { max-width: 560px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; padding: 0 16px; }
+  [hidden] { display: none !important; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--shu); outline-offset: 2px; }
+
+  /* ---- header ---- */
+  header { padding: calc(env(safe-area-inset-top) + 22px) 4px 14px; }
+  .brand { font: 600 11px/1 var(--serif); letter-spacing: .14em; color: var(--dim); margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .seal { width: 8px; height: 8px; background: var(--shu); border-radius: 2px; transform: rotate(-6deg); }
+  h1 { margin: 0; font: 600 28px/1.15 var(--serif); letter-spacing: -.01em; overflow-wrap: anywhere; }
+  .sub { margin-top: 8px; color: var(--dim); font-size: 14px; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .sub b { font-weight: 600; color: var(--fg); font-variant-numeric: tabular-nums; }
+
+  /* ---- list ---- */
+  main { flex: 1; padding-bottom: 24px; }
+  .tools { display: flex; align-items: center; justify-content: space-between; padding: 6px 4px 8px; color: var(--dim); font-size: 13px; }
+  ul { list-style: none; margin: 0; padding: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  li { display: grid; grid-template-columns: auto 48px 1fr auto; align-items: center; gap: 12px; padding: 10px 12px; min-height: 68px; border-top: 1px solid var(--line); transition: background .15s; }
+  li:first-child { border-top: 0; }
+  li.sel { background: var(--shu-soft); }
+  .thumb { width: 48px; height: 48px; border-radius: 9px; background: var(--surface); display: grid; place-items: center; overflow: hidden; color: var(--dim); position: relative; }
+  .thumb svg { width: 24px; height: 24px; }
+  .thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; transition: opacity .25s; }
+  .thumb img.on { opacity: 1; }
+  .info { min-width: 0; }
+  .name { display: flex; font-weight: 600; font-size: 15px; }
+  .stem { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .ext { flex: none; white-space: nowrap; }
+  .meta { color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .meta.err { color: var(--shu); }
+
+  /* checkbox */
+  .check { position: relative; width: 44px; height: 44px; margin: -8px -10px -8px -12px; display: grid; place-items: center; cursor: pointer; }
+  .check input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .box { width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid var(--dim); display: grid; place-items: center; transition: background .15s, border-color .15s; }
+  .box svg { width: 14px; height: 14px; stroke: var(--on-shu); opacity: 0; transition: opacity .1s; }
+  .check input:checked + .box { background: var(--shu); border-color: var(--shu); }
+  .check input:checked + .box svg { opacity: 1; }
+  .check input:indeterminate + .box { background: var(--shu); border-color: var(--shu); }
+  .box { position: relative; }
+  .check input:indeterminate + .box::after { content: ""; position: absolute; left: 50%; top: 50%; width: 10px; height: 2px; margin: -1px 0 0 -5px; border-radius: 1px; background: var(--on-shu); }
+  .check input:focus-visible + .box { outline: 2px solid var(--shu); outline-offset: 2px; }
+
+  /* round action button with progress ring */
+  .act { position: relative; width: 44px; height: 44px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); display: grid; place-items: center; cursor: pointer; transition: background .15s, border-color .15s; }
+  .act:hover { border-color: var(--shu); }
+  .act:disabled { opacity: .45; cursor: default; }
+  .act svg { width: 20px; height: 20px; }
+  .act .ring { position: absolute; inset: -1px; width: 44px; height: 44px; transform: rotate(-90deg); opacity: 0; transition: opacity .15s; }
+  .act.busy .ring { opacity: 1; }
+  .ring circle { fill: none; stroke: var(--shu); stroke-width: 2.5; stroke-linecap: round; stroke-dasharray: 125.7; stroke-dashoffset: 125.7; transition: stroke-dashoffset .2s; }
+  .act.done { border-color: var(--ok); color: var(--ok); }
+
+  /* ---- buttons ---- */
+  .btn { min-height: 48px; padding: 0 22px; border-radius: 12px; border: 0; background: var(--shu); color: var(--on-shu); font-weight: 600; font-size: 16px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; position: relative; overflow: hidden; }
+  .btn:disabled { opacity: .55; cursor: default; }
+  .btn.ghost { background: var(--surface); color: var(--fg); border: 1px solid var(--line); }
+  .btn .fill { position: absolute; inset: 0 auto 0 0; width: 0; background: rgba(255, 255, 255, .22); transition: width .2s; }
+  .btn > span { position: relative; }
+
+  /* ---- bottom bar ---- */
+  .bar { position: sticky; bottom: 0; margin: 0 -16px; padding: 12px 16px calc(env(safe-area-inset-bottom) + 12px); background: color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 8px; }
+  .bar .row { display: flex; align-items: center; gap: 12px; }
+  .bar .all { display: flex; align-items: center; gap: 8px; font-size: 14px; color: var(--dim); min-height: 44px; cursor: pointer; }
+  .bar .all .check { margin: 0 -6px 0 -10px; }
+  .bar .btn { flex: 1; white-space: nowrap; }
+  .bar .all span:last-child { white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .hint { font-size: 12.5px; color: var(--dim); }
+  .hint.warn { color: var(--shu); }
+
+  /* ---- single file ---- */
+  .solo { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 28px 20px 22px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; }
+  .solo .thumb { width: 96px; height: 96px; border-radius: 16px; margin-bottom: 10px; }
+  .solo .thumb svg { width: 40px; height: 40px; }
+  .solo .name { max-width: 100%; font-size: 17px; }
+  .solo .btn { width: 100%; margin-top: 18px; }
+
+  /* ---- state cards ---- */
+  .card { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 28px 22px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .card h2 { margin: 6px 0 0; font: 600 20px/1.2 var(--serif); }
+  .card p { margin: 0; color: var(--dim); font-size: 14.5px; max-width: 36ch; }
+  .card .badge { width: 56px; height: 56px; border-radius: 50%; background: var(--shu-soft); color: var(--shu); display: grid; place-items: center; }
+  .card .badge svg { width: 26px; height: 26px; }
+  .card .btn { margin-top: 10px; width: 100%; }
+  .pin { width: 100%; max-width: 220px; height: 52px; margin-top: 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); text-align: center; font: 600 22px/1 ui-monospace, monospace; letter-spacing: .4em; padding-left: .4em; }
+  .pin:focus { outline: 2px solid var(--shu); border-color: transparent; }
+  .shake { animation: shake .3s; }
+  @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
+
+  /* ---- loading skeleton ---- */
+  .skel li { min-height: 68px; }
+  .skel .b { background: linear-gradient(90deg, var(--surface), var(--line), var(--surface)); background-size: 200% 100%; animation: sheen 1.2s linear infinite; border-radius: 8px; }
+  @keyframes sheen { to { background-position: -200% 0; } }
+
+  footer { text-align: center; color: var(--dim); font-size: 12px; padding: 8px 0 calc(env(safe-area-inset-bottom) + 14px); }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+  @media (min-width: 600px) { .app { padding-top: 24px; } }
 </style>
 </head>
 <body>
-<main>
-  <h1>NOTCH · 通知</h1>
-  <div id="name">Shared file</div>
-  <div id="info">Checking the link…</div>
-  <input id="pin" type="password" inputmode="numeric" autocomplete="off" placeholder="PIN" hidden>
-  <button id="go" disabled>Download</button>
-  <progress id="bar" max="1" value="0" hidden></progress>
-  <div id="msg"></div>
-</main>
+<div class="app">
+  <header>
+    <div class="brand"><span class="seal"></span>NOTCH · 通知</div>
+    <h1 id="title">Opening the link…</h1>
+    <div class="sub" id="sub"></div>
+  </header>
+  <main id="view" aria-live="polite"></main>
+  <div class="bar" id="bar" hidden>
+    <div class="row">
+      <label class="all"><span class="check"><input type="checkbox" id="all" aria-label="Select all files"><span class="box"><svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span></span><span id="allLabel">Select all</span></label>
+      <button class="btn" id="go"><i class="fill"></i><span id="goLabel">Download all</span></button>
+    </div>
+    <div class="hint" id="hint" hidden></div>
+  </div>
+  <footer>Shared with Notch</footer>
+</div>
+<script id="share-data" type="application/json">null</script>
 <script>
 "use strict";
-// Format (see ShareCrypto.h): "NSH1" | nonce prefix (8) | chunk size u32 | records;
-// record = length u32 | AES-256-GCM ciphertext+tag. Record 0 is the JSON metadata.
-// Nonce = prefix | record index u32; AAD = index u32 | final flag (1 on the last record).
+/* One page for both ways of sharing.
+   local: Notch put the file list in #share-data and serves the plain files at f/<n>.
+   relay: the files are one encrypted blob on the relay; the key is in the #fragment and never sent.
+   Blob format (see src/services/ShareCrypto.h): "NSH1" | prefix(8) | chunk u32 | records;
+   record = len u32 | AES-256-GCM(ciphertext+tag); record 0 = JSON {files:[{name,type,size}]}; then the
+   files' chunks in order. Nonce = prefix | index u32; AAD = index u32 | 1 on the last record. */
+
+const DATA = JSON.parse(document.getElementById("share-data").textContent);
 const $ = id => document.getElementById(id);
-const id = location.pathname.split("/")[2];
-const WARN_BYTES = 300 * 1024 * 1024;
-let meta = null, key = null;
+const WARN_BYTES = 300 * 1024 * 1024, THUMB_MAX = 6 * 1024 * 1024;
 
-function say(text, bad) { $("msg").textContent = text; $("msg").className = bad ? "err" : ""; }
-function size(n) { const u = ["B","KiB","MiB","GiB"]; let i = 0; while (n >= 1024 && i < 3) { n /= 1024; i++; } return n.toFixed(i ? 1 : 0) + " " + u[i]; }
-function b64url(s) { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; return Uint8Array.from(atob(s), c => c.charCodeAt(0)); }
-
-async function init() {
-  const raw = location.hash.slice(1);
-  if (!raw) { $("info").textContent = "This link is incomplete: the key after # is missing."; return; }
-  try { key = await crypto.subtle.importKey("raw", b64url(raw), "AES-GCM", false, ["decrypt"]); }
-  catch (e) { $("info").textContent = "This link is damaged. Ask for a new one."; return; }
-  const r = await fetch("/s/" + id + "/meta");
-  if (!r.ok) { $("info").textContent = "This link has expired or was already used."; return; }
-  meta = await r.json();
-  $("info").textContent = size(meta.size) + " · encrypted";
-  $("pin").hidden = !meta.pin_required;
-  $("go").disabled = false;
-}
-
-async function decrypt(buf) {
-  const v = new DataView(buf), bytes = new Uint8Array(buf);
-  if (buf.byteLength < 16 || String.fromCharCode(...bytes.slice(0, 4)) !== "NSH1") throw new Error("format");
-  const prefix = bytes.slice(4, 12);
-  let off = 16, index = 0, name = "download", type = "application/octet-stream";
-  const parts = [];
-  while (off < buf.byteLength) {
-    const len = v.getUint32(off); off += 4;
-    const ct = bytes.subarray(off, off + len); off += len;
-    const iv = new Uint8Array(12); iv.set(prefix); new DataView(iv.buffer).setUint32(8, index);
-    const aad = new Uint8Array(5); new DataView(aad.buffer).setUint32(0, index); aad[4] = off === buf.byteLength ? 1 : 0;
-    const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: aad }, key, ct);
-    if (index === 0) { const m = JSON.parse(new TextDecoder().decode(plain)); name = m.name || name; type = m.type || type; }
-    else parts.push(plain);
-    index++;
+/* ---------- small helpers ---------- */
+function h(tag, props, ...kids) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === "class") n.className = v;
+    else if (k === "text") n.textContent = v;
+    else if (k === "html") n.innerHTML = v; // only ever static icon markup
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v);
   }
-  return { name, blob: new Blob(parts, { type }) };
+  for (const kid of kids.flat()) if (kid != null) n.append(kid);
+  return n;
 }
+const size = n => { const u = ["B", "KB", "MB", "GB"]; let i = 0; while (n >= 1000 && i < 3) { n /= 1000; i++; } return (i && n < 10 ? n.toFixed(1) : Math.round(n)) + " " + u[i]; };
+const plural = (n, w) => n + " " + w + (n === 1 ? "" : "s");
+const u32 = (b, o) => new DataView(b.buffer, b.byteOffset, b.byteLength).getUint32(o);
+const fail = code => Object.assign(new Error(code), { code });
 
-$("go").onclick = async () => {
-  if (meta.size > WARN_BYTES && !confirm("This file is large (" + size(meta.size) + ") and is held in memory while decrypting. Continue?")) return;
-  $("go").disabled = true; $("bar").hidden = false; $("bar").value = 0; say("Downloading…");
-  try {
-    const r = await fetch("/s/" + id + "/blob", { headers: { "X-Pin": $("pin").value } });
-    if (r.status === 403) { say("Wrong PIN.", true); $("go").disabled = false; return; }
-    if (r.status === 429) { say("Too many tries. Wait a few minutes.", true); $("go").disabled = false; return; }
-    if (!r.ok) { say("This link has expired or was already used.", true); return; }
-    const total = meta.size, buf = new Uint8Array(total); let got = 0;
-    const reader = r.body.getReader();
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf.set(value, got); got += value.length; $("bar").value = got / total;
-    }
-    say("Decrypting…");
-    const { name, blob } = await decrypt(buf.buffer);
-    $("name").textContent = name;
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove();
-    say("Done. The file was saved as " + name + ".");
-    $("bar").hidden = true;
-  } catch (e) {
-    say("Could not decrypt the file. The link may be incomplete or corrupted.", true);
-    $("bar").hidden = true;
-  }
+const ICONS = {
+  file: '<path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10.5a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5z"/><path d="M14 3.5V8h4"/>',
+  text: '<path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10.5a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5z"/><path d="M14 3.5V8h4M9 12h6M9 15h6M9 18h4"/>',
+  pdf: '<path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10.5a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5z"/><path d="M14 3.5V8h4M8.5 17.5v-4h1.4a1.2 1.2 0 0 1 0 2.4H8.5M13 17.5v-4h1a2 2 0 0 1 0 4zM17 17.5v-4h1.5"/>',
+  image: '<rect x="4" y="5" width="16" height="14" rx="2"/><circle cx="9" cy="10" r="1.5"/><path d="M4.5 17l4.5-4.5 3 3 2.5-2.5 5 5"/>',
+  audio: '<path d="M9 17.5V6l9-2v11.5"/><circle cx="7" cy="17.5" r="2.2"/><circle cx="16" cy="15.5" r="2.2"/>',
+  video: '<rect x="4" y="6" width="12" height="12" rx="2"/><path d="M16 10.5l4-2.5v8l-4-2.5z"/>',
+  archive: '<rect x="4.5" y="4" width="15" height="16" rx="2"/><path d="M12 4v10M10.5 6h3M10.5 9h3"/><rect x="10" y="14" width="4" height="3.5" rx="1"/>',
+  code: '<path d="M8.5 8L4.5 12l4 4M15.5 8l4 4-4 4M13.5 6l-3 12"/>',
+  down: '<path d="M12 4.5v11M7.5 11.5l4.5 4.5 4.5-4.5M5 19.5h14"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  retry: '<path d="M19 12a7 7 0 1 1-2.2-5.1M19 4.5v4h-4"/>',
+  lock: '<rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  clock: '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>',
+  alert: '<path d="M12 4l9 15.5H3z"/><path d="M12 10v4.5M12 17.2v.01"/>',
 };
-addEventListener("hashchange", () => location.reload()); // a pasted-over key must be re-read
-init();
+const svg = (name, extra) => h("span", { html: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"' + (extra || "") + ">" + ICONS[name] + "</svg>" }).firstChild;
+
+function kindOf(f) {
+  const t = (f.type || "").toLowerCase(), ext = (f.name.split(".").pop() || "").toLowerCase();
+  if (t.startsWith("image/")) return "image";
+  if (t.startsWith("audio/")) return "audio";
+  if (t.startsWith("video/")) return "video";
+  if (t === "application/pdf" || ext === "pdf") return "pdf";
+  if (/zip|tar|gzip|7z|rar|compressed/.test(t) || /^(zip|tar|gz|tgz|7z|rar|xz|bz2)$/.test(ext)) return "archive";
+  if (/^(js|ts|py|c|cpp|h|hpp|rs|go|java|json|html|css|sh|qml|xml|yml|yaml|sql|php|rb)$/.test(ext)) return "code";
+  if (t.startsWith("text/") || /^(txt|md|csv|log|rtf|doc|docx|odt)$/.test(ext)) return "text";
+  return "file";
+}
+function nameParts(name) {
+  const dot = name.lastIndexOf(".");
+  return dot > 0 && name.length - dot <= 8 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+}
+
+/* ---------- backends: init() -> {files, expiresAt}; fetchFile(i, progress) -> Blob ---------- */
+function localBackend() {
+  return {
+    singleUse: DATA.files.length === 1,
+    async init() { return { files: DATA.files, expiresAt: DATA.expires_at, now: DATA.now }; },
+    thumbURL: i => "f/" + i + "?inline=1",
+    async fetchFile(i, onProgress) {
+      const f = DATA.files[i];
+      if (!f.size) return new Blob([], { type: f.type });
+      const r = await fetch("f/" + i);
+      if (!r.ok) throw fail(r.status === 404 ? "gone" : "net");
+      return new Blob([await readStream(r, f.size, onProgress)], { type: f.type });
+    },
+  };
+}
+
+async function readStream(response, total, onProgress) {
+  const out = new Uint8Array(total); let got = 0;
+  const reader = response.body.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (got + value.length > total) throw fail("net");
+    out.set(value, got); got += value.length;
+    if (onProgress) onProgress(got / total);
+  }
+  if (got !== total) throw fail("net");
+  return out;
+}
+
+function relayBackend() {
+  const id = location.pathname.split("/")[2];
+  let key = null, meta = null, pin = "", total = 0, prefix = null, chunk = 0, files = [], layout = [];
+  const b64 = s => { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; return Uint8Array.from(atob(s), c => c.charCodeAt(0)); };
+
+  async function range(a, z, onProgress) { // inclusive byte range of the blob
+    const r = await fetch("/s/" + id + "/blob", { headers: { "X-Pin": pin, Range: "bytes=" + a + "-" + z } });
+    if (r.status === 403) throw fail("pin");
+    if (r.status === 429) throw fail("locked");
+    if (r.status === 404) throw fail("gone");
+    if (r.status !== 206 && r.status !== 200) throw fail("net");
+    return readStream(r, z - a + 1, onProgress);
+  }
+  async function open(ct, index, last) {
+    const iv = new Uint8Array(12); iv.set(prefix); new DataView(iv.buffer).setUint32(8, index);
+    const aad = new Uint8Array(5); new DataView(aad.buffer).setUint32(0, index); aad[4] = last ? 1 : 0;
+    return new Uint8Array(await crypto.subtle.decrypt({ name: "AES-GCM", iv, additionalData: aad }, key, ct));
+  }
+
+  return {
+    get singleUse() { return !!meta.single_use; },
+    needsPin: () => meta.pin_required,
+    setPin(p) { pin = p; },
+    async init() {
+      const raw = location.hash.slice(1);
+      if (!raw) throw fail("nokey");
+      try { key = await crypto.subtle.importKey("raw", b64(raw), "AES-GCM", false, ["decrypt"]); }
+      catch (e) { throw fail("badkey"); }
+      const r = await fetch("/s/" + id + "/meta");
+      if (!r.ok) throw fail("gone");
+      meta = await r.json();
+      total = meta.size;
+      return { needPin: meta.pin_required, expiresAt: meta.expires_at, now: meta.now };
+    },
+    async load() { // reads the file list (record 0) and works out where every file sits in the blob
+      const head = await range(0, 19);
+      if (String.fromCharCode(...head.slice(0, 4)) !== "NSH1") throw fail("badkey");
+      prefix = head.slice(4, 12); chunk = u32(head, 12);
+      const len = u32(head, 16);
+      if (len < 16 || len > 600 * 1024 || 20 + len > total) throw fail("badkey");
+      let plain;
+      try { plain = await open(await range(20, 19 + len), 0, 20 + len === total); }
+      catch (e) { if (e.code) throw e; throw fail("badkey"); }
+      files = JSON.parse(new TextDecoder().decode(plain)).files;
+      let off = 20 + len, idx = 1;
+      layout = files.map(f => {
+        const n = Math.ceil(f.size / chunk), bytes = f.size + n * 20, at = { start: off, bytes, first: idx, n };
+        off += bytes; idx += n;
+        return at;
+      });
+      if (off !== total) throw fail("badkey");
+      return { files, expiresAt: meta.expires_at, now: meta.now };
+    },
+    thumbURL: null,
+    async fetchFile(i, onProgress) {
+      const f = files[i], at = layout[i];
+      if (!f.size) return new Blob([], { type: f.type });
+      const buf = await range(at.start, at.start + at.bytes - 1, onProgress);
+      const parts = []; let pos = 0;
+      try {
+        for (let k = 0; k < at.n; k++) {
+          const len = u32(buf, pos);
+          const end = pos + 4 + len;
+          parts.push(await open(buf.subarray(pos + 4, end), at.first + k, at.start + end === total));
+          pos = end;
+        }
+      } catch (e) { throw fail("decrypt"); }
+      return new Blob(parts, { type: f.type });
+    },
+  };
+}
+
+/* ---------- zip (store only), built in the browser ---------- */
+const CRC = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xffffffff; for (let i = 0; i < u8.length; i++) c = CRC[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0; }
+function makeZip(entries) { // [{name, blob, size, crc}]
+  const enc = new TextEncoder(), body = [], central = [];
+  const d = new Date(), time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  let offset = 0, cdSize = 0;
+  for (const e of entries) {
+    const nm = enc.encode(e.name);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+    lh.setUint16(10, time, true); lh.setUint16(12, date, true); lh.setUint32(14, e.crc, true);
+    lh.setUint32(18, e.size, true); lh.setUint32(22, e.size, true); lh.setUint16(26, nm.length, true);
+    body.push(lh.buffer, nm, e.blob);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(12, time, true); ch.setUint16(14, date, true); ch.setUint32(16, e.crc, true);
+    ch.setUint32(20, e.size, true); ch.setUint32(24, e.size, true); ch.setUint16(28, nm.length, true);
+    ch.setUint32(42, offset, true);
+    central.push(ch.buffer, nm);
+    offset += 30 + nm.length + e.size; cdSize += 46 + nm.length;
+  }
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, entries.length, true); end.setUint16(10, entries.length, true);
+  end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+  return new Blob([...body, ...central, end.buffer], { type: "application/zip" });
+}
+
+function save(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = h("a", { href: url, download: name });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+/* ---------- state + views ---------- */
+const S = { backend: null, files: [], rows: [], selected: new Set(), cache: new Map(), busy: false, clockSkew: 0, expiresAt: 0, timer: 0 };
+
+function setHead(title, ...sub) {
+  $("title").textContent = title;
+  document.title = "Notch · " + title;
+  $("sub").replaceChildren(...sub.filter(Boolean));
+}
+function show(...nodes) { $("view").replaceChildren(...nodes); $("bar").hidden = true; }
+
+function stateCard(icon, title, text, button) {
+  clearInterval(S.timer);
+  $("title").textContent = "Notch share";
+  document.title = "Notch share";
+  $("sub").replaceChildren();
+  show(h("div", { class: "card" }, h("div", { class: "badge" }, svg(icon)), h("h2", { text: title }), h("p", { text }), button));
+}
+const ERRORS = {
+  gone: ["clock", "This link has ended", "It has expired or was already used. Ask the sender for a new one."],
+  nokey: ["alert", "This link is incomplete", "The part after # is missing. Open the full link, or scan the QR code again."],
+  badkey: ["alert", "This link looks damaged", "The key does not match this share. Ask the sender for a new link."],
+  decrypt: ["alert", "Could not open the file", "It may be damaged. Try again, or ask the sender to share it again."],
+  net: ["alert", "Connection problem", "The file could not be loaded completely. Check your connection and try again."],
+  locked: ["lock", "Too many wrong tries", "Wait a few minutes before trying the PIN again."],
+};
+function showError(code) {
+  const [icon, title, text] = ERRORS[code] || ERRORS.net;
+  stateCard(icon, title, text, code === "net" || code === "decrypt" ? h("button", { class: "btn", text: "Try again", onclick: () => location.reload() }) : null);
+}
+
+function skeleton() {
+  const row = () => h("li", {}, h("span"), h("div", { class: "thumb b" }), h("div", { class: "info" }, h("div", { class: "b", style: "height:14px;width:60%;margin-bottom:8px" }), h("div", { class: "b", style: "height:11px;width:30%" })), h("span"));
+  show(h("ul", { class: "skel", "aria-hidden": "true" }, row(), row(), row()));
+}
+
+function askPin(backend) {
+  stateCard("lock", "Enter the PIN", "The sender protected this share with a PIN.");
+  const input = h("input", { class: "pin", type: "password", inputmode: "numeric", autocomplete: "off", "aria-label": "PIN", maxlength: "12" });
+  const msg = h("p", { class: "meta err", style: "min-height:1.2em" });
+  const go = h("button", { class: "btn", text: "Unlock" });
+  const submit = async () => {
+    if (!input.value) return;
+    backend.setPin(input.value); go.disabled = true; msg.textContent = "";
+    try { start(await backend.load()); }
+    catch (e) {
+      go.disabled = false;
+      if (e.code === "pin") { msg.textContent = "That PIN is not right."; input.classList.remove("shake"); void input.offsetWidth; input.classList.add("shake"); input.select(); }
+      else showError(e.code || "net");
+    }
+  };
+  go.onclick = submit; input.onkeydown = e => { if (e.key === "Enter") submit(); };
+  $("view").querySelector(".card").append(input, msg, go);
+  input.focus();
+}
+
+function clock() {
+  const left = Math.max(0, Math.floor(S.expiresAt - (Date.now() + S.clockSkew) / 1000));
+  const m = Math.floor(left / 60), s = left % 60;
+  const text = left >= 3600 ? Math.floor(left / 3600) + " h " + (Math.floor(left / 60) % 60) + " min" : m + ":" + String(s).padStart(2, "0");
+  S.clockEl.textContent = text;
+  if (left === 0) { clearInterval(S.timer); showError("gone"); }
+}
+
+function start(info) {
+  S.files = info.files;
+  S.clockSkew = info.now ? info.now * 1000 - Date.now() : 0;
+  S.expiresAt = info.expiresAt;
+  const totalBytes = S.files.reduce((a, f) => a + f.size, 0);
+  S.clockEl = h("b", { text: "" });
+  const solo = S.files.length === 1;
+  setHead(solo ? "Your file" : plural(S.files.length, "file"),
+          h("span", { text: size(totalBytes) }), h("span", {}, "Expires in ", S.clockEl));
+  clearInterval(S.timer); clock(); S.timer = setInterval(clock, 1000);
+  solo ? renderSolo() : renderList();
+}
+
+/* one action button: ring + icon, state kept per file */
+function setAct(i, state) { // idle | busy | done | error
+  const r = S.rows[i]; if (!r) return;
+  r.btn.classList.toggle("busy", state === "busy");
+  r.btn.classList.toggle("done", state === "done");
+  r.btn.replaceChildren(r.ring, svg(state === "done" ? "check" : state === "error" ? "retry" : "down"));
+  r.btn.disabled = false;
+  r.meta.className = "meta" + (state === "error" ? " err" : "");
+  r.meta.textContent = state === "error" ? "Could not load · tap to retry" : size(S.files[i].size);
+}
+function progress(i, f) { const r = S.rows[i]; if (r) r.ring.firstChild.style.strokeDashoffset = 125.7 * (1 - f); }
+
+async function getBlob(i, onProgress) {
+  if (S.cache.has(i)) return S.cache.get(i);
+  const blob = await S.backend.fetchFile(i, onProgress);
+  if (S.files[i].size <= THUMB_MAX) S.cache.set(i, blob);
+  return blob;
+}
+
+async function downloadOne(i) {
+  if (S.busy) return;
+  S.busy = true; setAct(i, "busy"); progress(i, 0);
+  try {
+    const blob = await getBlob(i, f => progress(i, f));
+    save(blob, S.files[i].name); setAct(i, "done");
+  } catch (e) { setAct(i, "error"); if (e.code === "gone") showError("gone"); }
+  S.busy = false; refreshBar();
+}
+
+async function downloadMany(indices) {
+  if (indices.length === 1) return downloadOne(indices[0]);
+  if (S.busy) return;
+  const sum = indices.reduce((a, i) => a + S.files[i].size, 0);
+  if (sum >= 0xfffff000) { $("hint").hidden = false; $("hint").className = "hint warn"; $("hint").textContent = "That is too big for one zip. Download the files one by one."; return; }
+  S.busy = true; refreshBar();
+  const entries = [], fill = $("go").firstChild;
+  try {
+    let done = 0;
+    for (const i of indices) {
+      $("goLabel").textContent = "Preparing " + (entries.length + 1) + " of " + indices.length + "…";
+      const blob = await getBlob(i, f => { fill.style.width = (100 * (done + f * S.files[i].size) / Math.max(1, sum)) + "%"; });
+      done += S.files[i].size;
+      entries.push({ name: S.files[i].name, blob, size: blob.size, crc: crc32(new Uint8Array(await blob.arrayBuffer())) });
+    }
+    save(makeZip(entries), "Notch share.zip");
+    for (const i of indices) setAct(i, "done");
+  } catch (e) { if (e.code === "gone") showError("gone"); else { $("hint").hidden = false; $("hint").className = "hint warn"; $("hint").textContent = "Something went wrong. Try again, or download the files one by one."; } }
+  fill.style.width = "0"; S.busy = false; refreshBar();
+}
+
+function renderSolo() {
+  const f = S.files[0], [stem, ext] = nameParts(f.name), kind = kindOf(f);
+  const thumb = h("div", { class: "thumb" }, svg(kind));
+  const btn = h("button", { class: "btn" }, h("i", { class: "fill" }), h("span", { text: "Download · " + size(f.size) }));
+  btn.onclick = async () => {
+    if (S.busy) return;
+    S.busy = true; btn.disabled = true; const fill = btn.firstChild, label = btn.lastChild;
+    try {
+      const blob = await getBlob(0, p => { fill.style.width = (p * 100) + "%"; label.textContent = "Downloading… " + Math.round(p * 100) + "%"; });
+      save(blob, f.name); label.textContent = "Saved ✓";
+    } catch (e) { fill.style.width = "0"; label.textContent = "Try again"; if (e.code === "gone") return showError("gone"); }
+    btn.disabled = false; S.busy = false;
+  };
+  show(h("div", { class: "solo" }, thumb, h("div", { class: "name" }, h("span", { class: "stem", text: stem }), h("span", { class: "ext", text: ext })),
+         h("div", { class: "meta", text: (f.type || "File") + " · " + size(f.size) }), btn));
+  queueThumb(0, thumb);
+}
+
+function renderList() {
+  const list = h("ul", { role: "list" });
+  S.rows = S.files.map((f, i) => {
+    const [stem, ext] = nameParts(f.name), kind = kindOf(f);
+    const input = h("input", { type: "checkbox", "aria-label": "Select " + f.name });
+    const thumb = h("div", { class: "thumb" }, svg(kind));
+    const meta = h("div", { class: "meta", text: size(f.size) });
+    const ring = h("span", { html: '<svg class="ring" viewBox="0 0 44 44"><circle cx="22" cy="22" r="20"/></svg>' }).firstChild;
+    const btn = h("button", { class: "act", "aria-label": "Download " + f.name, onclick: () => downloadOne(i) });
+    const li = h("li", {},
+      h("label", { class: "check" }, input, h("span", { class: "box", html: '<svg viewBox="0 0 24 24" fill="none" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>' })),
+      thumb, h("div", { class: "info" }, h("div", { class: "name" }, h("span", { class: "stem", text: stem }), h("span", { class: "ext", text: ext })), meta), btn);
+    input.onchange = () => { input.checked ? S.selected.add(i) : S.selected.delete(i); li.classList.toggle("sel", input.checked); refreshBar(); };
+    list.append(li);
+    const row = { li, input, btn, ring, meta, thumb };
+    S.rows[i] = row;
+    setAct(i, "idle");
+    queueThumb(i, thumb);
+    return row;
+  });
+  show(list);
+  $("bar").hidden = false;
+  $("all").onchange = () => { S.files.forEach((_, i) => { S.rows[i].input.checked = $("all").checked; S.rows[i].input.onchange(); }); };
+  $("go").onclick = () => downloadMany(S.selected.size ? [...S.selected].sort((a, b) => a - b) : S.files.map((_, i) => i));
+  refreshBar();
+}
+
+function refreshBar() {
+  const n = S.selected.size, all = S.files.length;
+  const idx = n ? [...S.selected] : S.files.map((_, i) => i);
+  const sum = idx.reduce((a, i) => a + S.files[i].size, 0);
+  $("all").checked = n === all; $("all").indeterminate = n > 0 && n < all;
+  $("allLabel").textContent = n ? n + " selected · " + size(sum) : "Select all";
+  if (!S.busy) $("goLabel").textContent = n === 1 ? "Download" : n ? "Download zip" : "Download all (zip)";
+  $("go").disabled = S.busy;
+  const big = idx.length > 1 && sum > WARN_BYTES;
+  $("hint").hidden = !big;
+  $("hint").className = "hint warn";
+  if (big) $("hint").textContent = "Large selection. If your phone runs out of memory, download the files one by one.";
+}
+
+/* thumbnails of small images, loaded as they scroll into view (local: straight from Notch; relay: decrypted here) */
+const thumbQueue = []; let thumbBusy = 0;
+const seen = new IntersectionObserver(entries => {
+  for (const e of entries) if (e.isIntersecting) { seen.unobserve(e.target); thumbQueue.push(e.target); }
+  pump();
+}, { rootMargin: "200px" });
+function queueThumb(i, el) {
+  const f = S.files[i];
+  if (kindOf(f) !== "image" || f.size > THUMB_MAX || f.size === 0) return;
+  if (!S.backend.thumbURL && S.backend.singleUse) return; // a single-use link must not be spent on a preview
+  el.dataset.i = i; seen.observe(el);
+}
+async function pump() {
+  while (thumbBusy < 2 && thumbQueue.length) {
+    const el = thumbQueue.shift(), i = +el.dataset.i; thumbBusy++;
+    (async () => {
+      try {
+        const src = S.backend.thumbURL ? S.backend.thumbURL(i) : URL.createObjectURL(await getBlob(i));
+        const img = h("img", { alt: "", decoding: "async" });
+        img.onload = () => img.classList.add("on");
+        img.src = src; el.append(img);
+      } catch (e) { /* the icon stays */ }
+      thumbBusy--; pump();
+    })();
+  }
+}
+
+/* ---------- go ---------- */
+(async function main() {
+  skeleton();
+  S.backend = DATA ? localBackend() : relayBackend();
+  try {
+    const info = await S.backend.init();
+    if (info.needPin) { S.expiresAt = info.expiresAt; S.clockSkew = info.now ? info.now * 1000 - Date.now() : 0; return askPin(S.backend); }
+    start(info.files ? info : await S.backend.load());
+  } catch (e) { showError(e.code || "net"); }
+})();
+addEventListener("hashchange", () => location.reload());
 </script>
 </body>
 </html>

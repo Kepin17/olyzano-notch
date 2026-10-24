@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(notch VERSION 0.1.8 LANGUAGES CXX)
+project(notch VERSION 0.1.9 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -29,6 +29,7 @@ qt_add_library(notch_core STATIC
 set_source_files_properties(third_party/qrcodegen.cpp PROPERTIES COMPILE_OPTIONS "-w") # vendored (MIT)
 # AES-GCM comes from libcrypto (loaded by Qt Network anyway); ShareCrypto declares what it uses.
 find_library(NOTCH_CRYPTO NAMES crypto libcrypto.so.3 REQUIRED)
+qt_add_resources(notch_core share PREFIX "/share" BASE server FILES server/page.html) # one page for the relay and local shares
 qt_add_resources(notch_core migrations PREFIX "/" BASE database FILES
     database/migrations/001_initial.sql
     database/migrations/002_categories.sql

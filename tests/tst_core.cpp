@@ -59,6 +59,15 @@ static Http httpGet(const QUrl &url, const QByteArray &range = {})
     return h;
 }
 
+static QByteArray pattern(int size, int salt)
+{
+    QByteArray data;
+    data.reserve(size);
+    for (int i = 0; i < size; ++i)
+        data.append(char(i * 31 + i / 251 + salt));
+    return data;
+}
+
 class TestCore : public QObject
 {
     Q_OBJECT
@@ -653,51 +662,64 @@ private slots:
     }
 
     // ---- Share via QR ----
-    void shareCryptoRoundTrip_data()
+    QList<ShareCrypto::SourceFile> sampleFiles(QList<QByteArray> *contents)
     {
-        QTest::addColumn<int>("size");
-        QTest::newRow("empty") << 0;
-        QTest::newRow("tiny") << 5;
-        QTest::newRow("one chunk exactly") << int(ShareCrypto::ChunkSize);
-        QTest::newRow("several chunks") << int(ShareCrypto::ChunkSize) * 2 + 1234;
+        const QList<QPair<QString, int>> spec{{QStringLiteral("empty.txt"), 0},
+                                              {QStringLiteral("Ünï report.pdf"), 5},
+                                              {QStringLiteral("exact.bin"), int(ShareCrypto::ChunkSize)},
+                                              {QStringLiteral("big file.bin"), int(ShareCrypto::ChunkSize) * 2 + 1234}};
+        QList<ShareCrypto::SourceFile> files;
+        int salt = 1;
+        for (const auto &s : spec) {
+            const QByteArray data = pattern(s.second, salt++);
+            contents->append(data);
+            files.append({writeSample(QStringLiteral("src-") + QString::number(salt), data), s.first,
+                          QStringLiteral("application/octet-stream")});
+        }
+        return files;
     }
-    void shareCryptoRoundTrip()
+    void shareCryptoRoundTripsSeveralFiles()
     {
-        QFETCH(int, size);
-        const QByteArray data = QByteArray(size, 'x').replace(0, qMin(size, 4), "abcd");
-        const QString plain = m_tmp.filePath(QStringLiteral("plain.bin")), enc = m_tmp.filePath(QStringLiteral("enc.bin")),
-                      dec = m_tmp.filePath(QStringLiteral("dec.bin"));
-        QFile f(plain);
-        QVERIFY(f.open(QIODevice::WriteOnly));
-        f.write(data);
-        f.close();
+        QList<QByteArray> contents;
+        const auto files = sampleFiles(&contents);
+        const QString enc = m_tmp.filePath(QStringLiteral("enc.bin")), outDir = m_tmp.filePath(QStringLiteral("dec"));
         const QByteArray key = ShareCrypto::newKey();
         QCOMPARE(key.size(), ShareCrypto::KeySize);
-        QCOMPARE(ShareCrypto::encryptFile(plain, enc, key, QStringLiteral("Ünï report.pdf"), QStringLiteral("application/pdf")), QString());
-        QString name;
-        QCOMPARE(ShareCrypto::decryptFile(enc, dec, key, &name), QString());
-        QCOMPARE(name, QStringLiteral("Ünï report.pdf"));
-        QFile d(dec);
-        QVERIFY(d.open(QIODevice::ReadOnly));
-        QCOMPARE(d.readAll(), data);
-        // The server must not see the name or the content.
+        QCOMPARE(ShareCrypto::encryptFiles(files, enc, key), QString());
+        QStringList names;
+        QCOMPARE(ShareCrypto::decryptFiles(enc, outDir, key, &names), QString());
+        QCOMPARE(names.size(), files.size());
+        for (int i = 0; i < files.size(); ++i) {
+            QCOMPARE(names[i], files[i].name);
+            QFile f(QDir(outDir).filePath(names[i]));
+            QVERIFY(f.open(QIODevice::ReadOnly));
+            QCOMPARE(f.readAll(), contents[i]);
+        }
+        // The server must not see names or content.
         QFile e(enc);
         QVERIFY(e.open(QIODevice::ReadOnly));
         const QByteArray raw = e.readAll();
-        QVERIFY(!raw.contains("report"));
-        if (size >= 4)
-            QVERIFY(!raw.contains("abcd"));
+        QVERIFY(!raw.contains("report") && !raw.contains("big file"));
+        QVERIFY(!raw.contains(contents[1]));
+    }
+    void shareCryptoSingleEmptyFile()
+    {
+        const QString enc = m_tmp.filePath(QStringLiteral("enc.bin")), outDir = m_tmp.filePath(QStringLiteral("dec"));
+        const QByteArray key = ShareCrypto::newKey();
+        QCOMPARE(ShareCrypto::encryptFiles({{writeSample(QStringLiteral("z"), {}), QStringLiteral("z.txt"), {}}}, enc, key), QString());
+        QStringList names;
+        QCOMPARE(ShareCrypto::decryptFiles(enc, outDir, key, &names), QString());
+        QCOMPARE(names, QStringList{QStringLiteral("z.txt")});
+        QCOMPARE(QFileInfo(QDir(outDir).filePath(QStringLiteral("z.txt"))).size(), qint64(0));
+        QVERIFY(!ShareCrypto::encryptFiles({}, enc, key).isEmpty());
     }
     void shareCryptoRejectsTampering()
     {
-        const QString plain = m_tmp.filePath(QStringLiteral("plain.bin")), enc = m_tmp.filePath(QStringLiteral("enc.bin")),
-                      dec = m_tmp.filePath(QStringLiteral("dec.bin"));
-        QFile f(plain);
-        QVERIFY(f.open(QIODevice::WriteOnly));
-        f.write(QByteArray(int(ShareCrypto::ChunkSize) * 2 + 10, 'q'));
-        f.close();
+        QList<QByteArray> contents;
+        const auto files = sampleFiles(&contents);
+        const QString enc = m_tmp.filePath(QStringLiteral("enc.bin")), outDir = m_tmp.filePath(QStringLiteral("dec"));
         const QByteArray key = ShareCrypto::newKey();
-        QCOMPARE(ShareCrypto::encryptFile(plain, enc, key, QStringLiteral("a.bin"), QStringLiteral("application/octet-stream")), QString());
+        QCOMPARE(ShareCrypto::encryptFiles(files, enc, key), QString());
         QFile e(enc);
         QVERIFY(e.open(QIODevice::ReadOnly));
         const QByteArray good = e.readAll();
@@ -708,17 +730,18 @@ private slots:
                 return QStringLiteral("test setup failed");
             w.write(bytes);
             w.close();
-            return ShareCrypto::decryptFile(enc, dec, k);
+            return ShareCrypto::decryptFiles(enc, outDir, k);
         };
         QCOMPARE(tryDecrypt(good, key), QString());
-        QVERIFY(!tryDecrypt(good, ShareCrypto::newKey()).isEmpty());                    // wrong key
+        QVERIFY(!tryDecrypt(good, ShareCrypto::newKey()).isEmpty()); // wrong key
         QByteArray flipped = good;
         flipped[flipped.size() / 2] = char(flipped[flipped.size() / 2] ^ 1);
-        QVERIFY(!tryDecrypt(flipped, key).isEmpty());                                   // bit flip
-        QVERIFY(!tryDecrypt(good.left(good.size() - 100), key).isEmpty());              // cut off
-        // Last record removed whole (4-byte length + 10 bytes + 16-byte tag): every remaining record
-        // still authenticates alone, but the new last one was not sealed as "final".
-        QVERIFY(!tryDecrypt(good.left(good.size() - (4 + 10 + 16)), key).isEmpty());
+        QVERIFY(!tryDecrypt(flipped, key).isEmpty());                // bit flip
+        QVERIFY(!tryDecrypt(good.left(good.size() - 100), key).isEmpty()); // cut off
+        // Last record removed whole (4-byte length + (2*chunk+1234 mod chunk = 1234) bytes + 16-byte tag): the
+        // remaining records authenticate alone, but the new last one was not sealed as "final".
+        QVERIFY(!tryDecrypt(good.left(good.size() - (4 + 1234 + 16)), key).isEmpty());
+        QVERIFY(!tryDecrypt(good + good.right(100), key).isEmpty()); // trailing junk
         QVERIFY(!tryDecrypt(QByteArray("NSH1garbage"), key).isEmpty());
     }
     void shareCryptoMatchesReferenceDecryptor()
@@ -727,26 +750,24 @@ private slots:
         probe.start(QStringLiteral("python3"), {QStringLiteral("-c"), QStringLiteral("import cryptography")});
         if (!probe.waitForFinished(10000) || probe.exitCode() != 0)
             QSKIP("python3 with the cryptography package is not available");
-        const QString plain = m_tmp.filePath(QStringLiteral("plain.bin")), enc = m_tmp.filePath(QStringLiteral("enc.bin")),
-                      dec = m_tmp.filePath(QStringLiteral("dec.bin"));
-        QByteArray data;
-        for (int i = 0; i < int(ShareCrypto::ChunkSize) + 777; ++i)
-            data.append(char(i * 31 + i / 251));
-        QFile f(plain);
-        QVERIFY(f.open(QIODevice::WriteOnly));
-        f.write(data);
-        f.close();
+        QList<QByteArray> contents;
+        const auto files = sampleFiles(&contents);
+        const QString enc = m_tmp.filePath(QStringLiteral("enc.bin")), outDir = m_tmp.filePath(QStringLiteral("ref"));
         const QByteArray key = ShareCrypto::newKey();
-        QCOMPARE(ShareCrypto::encryptFile(plain, enc, key, QStringLiteral("ref test.bin"), QStringLiteral("application/octet-stream")), QString());
+        QCOMPARE(ShareCrypto::encryptFiles(files, enc, key), QString());
         QProcess py;
         py.start(QStringLiteral("python3"), {QStringLiteral(NOTCH_SOURCE_DIR "/server/tests/decrypt_share.py"), enc,
-                                            ShareCrypto::keyToFragment(key), dec});
+                                            ShareCrypto::keyToFragment(key), outDir});
         QVERIFY(py.waitForFinished(30000));
         QCOMPARE(QString::fromUtf8(py.readAllStandardError()), QString());
-        QCOMPARE(QString::fromUtf8(py.readAllStandardOutput()).trimmed(), QStringLiteral("ref test.bin"));
-        QFile d(dec);
-        QVERIFY(d.open(QIODevice::ReadOnly));
-        QCOMPARE(d.readAll(), data);
+        QStringList printed = QString::fromUtf8(py.readAllStandardOutput()).split(u'\n', Qt::SkipEmptyParts);
+        QCOMPARE(printed.size(), files.size());
+        for (int i = 0; i < files.size(); ++i) {
+            QCOMPARE(printed[i], files[i].name);
+            QFile f(QDir(outDir).filePath(files[i].name));
+            QVERIFY(f.open(QIODevice::ReadOnly));
+            QCOMPARE(f.readAll(), contents[i]);
+        }
     }
     void qrImageIsRenderedAndScannableSized()
     {
@@ -773,49 +794,89 @@ private slots:
             data.append(char(i * 7 + i / 13)); // several pump rounds
         ShareServer server;
         QSignalSpy done(&server, &ShareServer::finished);
-        QCOMPARE(server.start(QHostAddress::LocalHost, writeSample(QStringLiteral("s.bin"), data),
-                              QStringLiteral("Résumé <x>.bin"), QStringLiteral("application/octet-stream"), 60), QString());
+        QCOMPARE(server.start(QHostAddress::LocalHost, {{writeSample(QStringLiteral("s.bin"), data), QStringLiteral("Résumé <x>.bin"),
+                                                         QStringLiteral("application/octet-stream"), 0}}, 60), QString());
         QVERIFY(server.running());
         const QUrl base = server.url();
         QVERIFY(base.toString().startsWith(QStringLiteral("http://127.0.0.1:")));
 
         const Http page = httpGet(base);
         QCOMPARE(page.status, 200);
-        QVERIFY(page.body.contains("R&eacute;sum") || page.body.contains("Résumé"));
-        QVERIFY(!page.body.contains("<x>")); // the name is escaped
+        QVERIFY(page.body.contains("Résumé"));
+        QVERIFY(page.body.contains("\\u003cx>")); // the name cannot close the script element
+        QVERIFY(!page.body.contains("<x>"));
+        QVERIFY(page.body.contains("\"mode\":\"local\""));
         QCOMPARE(httpGet(QUrl(base.toString() + QStringLiteral("nope"))).status, 404);
         QCOMPARE(httpGet(QUrl(base.toString().replace(base.path(), QStringLiteral("/wrongtoken/")))).status, 404);
         QCOMPARE(done.count(), 0);
 
-        const Http part = httpGet(QUrl(base.toString() + QStringLiteral("file")), "bytes=100-199");
+        const Http part = httpGet(QUrl(base.toString() + QStringLiteral("f/0")), "bytes=100-199");
         QCOMPARE(part.status, 206);
         QCOMPARE(part.body, data.mid(100, 100));
         QCOMPARE(part.contentRange, QByteArray("bytes 100-199/") + QByteArray::number(data.size()));
         QCOMPARE(done.count(), 0); // a partial range is not the download
 
-        const Http whole = httpGet(QUrl(base.toString() + QStringLiteral("file")));
+        const Http whole = httpGet(QUrl(base.toString() + QStringLiteral("f/0")));
         QCOMPARE(whole.status, 200);
         QCOMPARE(whole.body, data);
         QVERIFY(whole.disposition.contains("attachment"));
         QVERIFY(done.count() == 1 || done.wait(5000));
         QCOMPARE(done.first().first().toString(), QStringLiteral("downloaded"));
         QVERIFY(!server.running());
-        QCOMPARE(httpGet(QUrl(base.toString() + QStringLiteral("file"))).status, 0); // closed
+        QCOMPARE(httpGet(QUrl(base.toString() + QStringLiteral("f/0"))).status, 0); // closed
+    }
+    void shareServerServesSeveralFilesAndStaysUp()
+    {
+        const QByteArray a = pattern(1000, 1), b = pattern(300000, 2);
+        ShareServer server;
+        QSignalSpy done(&server, &ShareServer::finished), downloaded(&server, &ShareServer::fileDownloaded);
+        QCOMPARE(server.start(QHostAddress::LocalHost,
+                              {{writeSample(QStringLiteral("a.png"), a), QStringLiteral("a.png"), QStringLiteral("image/png"), 0},
+                               {writeSample(QStringLiteral("b.txt"), b), QStringLiteral("b.txt"), QStringLiteral("text/plain"), 0},
+                               {writeSample(QStringLiteral("c.txt"), {}), QStringLiteral("c.txt"), QStringLiteral("text/plain"), 0}},
+                              60), QString());
+        const QString base = server.url().toString();
+        QCOMPARE(httpGet(QUrl(base + QStringLiteral("f/3"))).status, 404);
+        QCOMPARE(httpGet(QUrl(base + QStringLiteral("f/x"))).status, 404);
+
+        // A preview of an image is not a download; a non-image has none.
+        const Http preview = httpGet(QUrl(base + QStringLiteral("f/0?inline=1")));
+        QCOMPARE(preview.status, 200);
+        QCOMPARE(preview.body, a);
+        QVERIFY(preview.disposition.startsWith("inline"));
+        QCOMPARE(httpGet(QUrl(base + QStringLiteral("f/1?inline=1"))).status, 404);
+        QCOMPARE(downloaded.count(), 0);
+
+        QCOMPARE(httpGet(QUrl(base + QStringLiteral("f/1"))).body, b);
+        QCOMPARE(httpGet(QUrl(base + QStringLiteral("f/1")), "bytes=10-19").body, b.mid(10, 10)); // partial: not counted
+        const Http empty = httpGet(QUrl(base + QStringLiteral("f/2")));
+        QCOMPARE(empty.status, 200);
+        QVERIFY(empty.body.isEmpty());
+        QTRY_COMPARE(downloaded.count(), 2); // b.txt and the empty file
+        QCOMPARE(downloaded.at(0).first().toInt(), 1);
+        QCOMPARE(downloaded.at(1).first().toInt(), 2);
+        QVERIFY(server.running()); // several files: stays up
+        QCOMPARE(done.count(), 0);
+        QCOMPARE(httpGet(QUrl(base + QStringLiteral("f/0"))).body, a);
+        QTRY_COMPARE(downloaded.count(), 3);
+        server.stop();
+        QCOMPARE(done.count(), 1);
     }
     void shareServerExpiresAndStops()
     {
         ShareServer server;
         QSignalSpy done(&server, &ShareServer::finished);
         const QString file = writeSample(QStringLiteral("e.bin"), QByteArray(100, 'e'));
-        QCOMPARE(server.start(QHostAddress::LocalHost, file, QStringLiteral("e.bin"), {}, 1), QString());
+        QCOMPARE(server.start(QHostAddress::LocalHost, {{file, QStringLiteral("e.bin"), {}, 0}}, 1), QString());
         QVERIFY(done.wait(4000));
         QCOMPARE(done.first().first().toString(), QStringLiteral("expired"));
 
-        QCOMPARE(server.start(QHostAddress::LocalHost, file, QStringLiteral("e.bin"), {}, 60), QString());
+        QCOMPARE(server.start(QHostAddress::LocalHost, {{file, QStringLiteral("e.bin"), {}, 0}}, 60), QString());
         server.stop();
         QCOMPARE(done.count(), 2);
         QCOMPARE(done.last().first().toString(), QStringLiteral("stopped"));
-        QVERIFY(!server.start(QHostAddress::LocalHost, m_tmp.filePath(QStringLiteral("missing")), QStringLiteral("m"), {}, 60).isEmpty());
+        QVERIFY(!server.start(QHostAddress::LocalHost, {{m_tmp.filePath(QStringLiteral("missing")), QStringLiteral("m"), {}, 0}}, 60).isEmpty());
+        QVERIFY(!server.start(QHostAddress::LocalHost, {}, 60).isEmpty());
     }
 
     void vaultLifecycle()

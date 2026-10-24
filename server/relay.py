@@ -178,14 +178,16 @@ class Handler(BaseHTTPRequestHandler):
         info = self.store.meta(sid)
         if part is None:
             csp = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
-                   "connect-src 'self'; img-src data:; frame-ancestors 'none'")
+                   "connect-src 'self'; img-src blob: data:; frame-ancestors 'none'")
             return self.reply(200 if info else 404, PAGE, "text/html; charset=utf-8",
                               {"Content-Security-Policy": csp})
         if not info:
             return self.reply(404, {"error": "expired"})
         if part == "/meta":
+            # now: lets the page count down against the server's clock, not the phone's
             return self.reply(200, {"size": info["size"], "pin_required": bool(info["pin_hash"]),
-                                    "expires_at": info["expires_at"]})
+                                    "expires_at": info["expires_at"], "now": int(time.time()),
+                                    "single_use": info["max_downloads"] == 1})
         if self.store.pin_locked(sid, self.ip()):
             return self.reply(429, {"error": "too many tries"})
         if not self.store.pin_ok(sid, self.ip(), self.headers.get("X-Pin", ""), info):
