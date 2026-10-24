@@ -36,23 +36,17 @@ constexpr int MaxFolderFiles = 1000;
 
 void FileFilter::setText(const QString &text)
 {
-    beginFilterChange();
-    m_text = text;
-    endFilterChange(Direction::Rows);
+    changeFilter([&] { m_text = text; });
 }
 
 void FileFilter::setCategory(const QString &categoryId)
 {
-    beginFilterChange();
-    m_category = categoryId;
-    endFilterChange(Direction::Rows);
+    changeFilter([&] { m_category = categoryId; });
 }
 
 void FileFilter::setVaultUnlocked(bool unlocked)
 {
-    beginFilterChange();
-    m_vaultUnlocked = unlocked;
-    endFilterChange(Direction::Rows);
+    changeFilter([&] { m_vaultUnlocked = unlocked; });
 }
 
 void FileFilter::setSortMode(const QString &mode)

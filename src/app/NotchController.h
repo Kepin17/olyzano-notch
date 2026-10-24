@@ -30,6 +30,21 @@ public:
     void setVaultUnlocked(bool unlocked);
 
 protected:
+    // Changes something filterAcceptsRow reads and re-filters. Qt 6.9 added begin/endFilterChange for this;
+    // older Qt (the Windows build uses 6.8) re-filters with invalidateFilter() after the change.
+    template <typename Apply>
+    void changeFilter(Apply apply)
+    {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+        beginFilterChange();
+        apply();
+        endFilterChange(Direction::Rows);
+#else
+        apply();
+        invalidateFilter();
+#endif
+    }
+
     bool filterAcceptsRow(int row, const QModelIndex &parent) const override;
     bool lessThan(const QModelIndex &left, const QModelIndex &right) const override;
 
