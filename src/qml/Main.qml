@@ -772,13 +772,31 @@ Window {
                         Accessible.name: "Save note"
                         onClicked: root.saveNote()
                     }
-                    IconButton { // a share is running while its popup is hidden
-                        visible: root.page === "shelf" && !root.selecting && !sharePopup.visible
-                                 && (share.status === "preparing" || share.status === "uploading" || share.status === "ready")
+                    // Everything being shared (and what just finished): always reachable, even after the popup was closed.
+                    IconButton {
+                        visible: root.page === "shelf" && !root.selecting && share.count > 0
                         iconName: "share"
-                        checked: true
-                        Accessible.name: "Show the running share"
-                        onClicked: sharePopup.openFor([])
+                        checked: sharePopup.visible || share.activeCount > 0
+                        Accessible.name: "Show what is being shared"
+                        onClicked: sharePopup.visible && sharePopup.view === "sessions" ? sharePopup.close() : sharePopup.openSessions()
+                        Rectangle {
+                            visible: share.activeCount > 0
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.margins: -4
+                            width: Math.max(16, shareCount.implicitWidth + 8)
+                            height: 16
+                            radius: 8
+                            color: theme.accent
+                            Text {
+                                id: shareCount
+                                anchors.centerIn: parent
+                                text: share.activeCount
+                                color: "white"
+                                font.pixelSize: 9
+                                font.bold: true
+                            }
+                        }
                     }
                     IconButton {
                         visible: root.page === "shelf" && !root.selecting && notch.vaultUnlocked

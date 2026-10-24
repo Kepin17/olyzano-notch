@@ -39,12 +39,14 @@ struct Http {
     QByteArray body;
     QByteArray contentRange, disposition;
 };
-static Http httpGet(const QUrl &url, const QByteArray &range = {})
+static Http httpGet(const QUrl &url, const QByteArray &range = {}, const QByteArray &pin = {})
 {
     QNetworkAccessManager nam;
     QNetworkRequest req(url);
     if (!range.isEmpty())
         req.setRawHeader("Range", range);
+    if (!pin.isEmpty())
+        req.setRawHeader("X-Pin", pin);
     QNetworkReply *reply = nam.get(req);
     QEventLoop loop;
     QTimer::singleShot(10000, &loop, &QEventLoop::quit);
@@ -769,6 +771,36 @@ private slots:
             QCOMPARE(f.readAll(), contents[i]);
         }
     }
+    void shareCryptoPasswordWrapsTheKey()
+    {
+        const QByteArray key = ShareCrypto::newKey();
+        const QString fragment = ShareCrypto::wrapKey(key, QStringLiteral("correct horse"));
+        QVERIFY(!fragment.isEmpty());
+        QVERIFY(fragment != ShareCrypto::keyToFragment(key));
+        QCOMPARE(QByteArray::fromBase64(fragment.toLatin1(), QByteArray::Base64UrlEncoding).size(), 76); // not 32: the page tells them apart
+        QCOMPARE(ShareCrypto::unwrapKey(fragment, QStringLiteral("correct horse")), key);
+        QVERIFY(ShareCrypto::unwrapKey(fragment, QStringLiteral("wrong horse")).isNull());
+        QVERIFY(ShareCrypto::unwrapKey(ShareCrypto::keyToFragment(key), QStringLiteral("x")).isNull()); // a plain key is not wrapped
+        QVERIFY(ShareCrypto::wrapKey(key, QStringLiteral("correct horse")) != fragment); // fresh salt every time
+        // An independent implementation (and a non-ASCII password) agrees
+        QProcess probe;
+        probe.start(QStringLiteral("python3"), {QStringLiteral("-c"), QStringLiteral("import cryptography")});
+        if (!probe.waitForFinished(10000) || probe.exitCode() != 0)
+            return;
+        QList<QByteArray> contents;
+        const auto files = sampleFiles(&contents);
+        const QString enc = m_tmp.filePath(QStringLiteral("enc.bin")), outDir = m_tmp.filePath(QStringLiteral("refpw"));
+        const QString password = QStringLiteral("pässwörd 密码");
+        const QString wrapped = ShareCrypto::wrapKey(key, password);
+        QCOMPARE(ShareCrypto::encryptFiles(files, enc, key), QString());
+        QProcess py;
+        py.start(QStringLiteral("python3"), {QStringLiteral(NOTCH_SOURCE_DIR "/server/tests/decrypt_share.py"), enc, wrapped, outDir, password});
+        QVERIFY(py.waitForFinished(60000));
+        QCOMPARE(QString::fromUtf8(py.readAllStandardError()), QString());
+        QFile f(QDir(outDir).filePath(files.last().name));
+        QVERIFY(f.open(QIODevice::ReadOnly));
+        QCOMPARE(f.readAll(), contents.last());
+    }
     void qrImageIsRenderedAndScannableSized()
     {
         const QImage qr = renderQr(QStringLiteral("https://share.example.com/s/abcdefghijklmnop#key"), 240);
@@ -861,6 +893,37 @@ private slots:
         QTRY_COMPARE(downloaded.count(), 3);
         server.stop();
         QCOMPARE(done.count(), 1);
+    }
+    void shareServerGatesWithPinAndLocksOut()
+    {
+        const QByteArray data = pattern(5000, 3);
+        ShareServer server;
+        QSignalSpy downloaded(&server, &ShareServer::fileDownloaded);
+        QCOMPARE(server.start(QHostAddress::LocalHost,
+                              {{writeSample(QStringLiteral("p.txt"), data), QStringLiteral("secret plans.txt"), QStringLiteral("text/plain"), 0},
+                               {writeSample(QStringLiteral("q.txt"), data), QStringLiteral("q.txt"), QStringLiteral("text/plain"), 0}},
+                              60, QStringLiteral("pin"), QStringLiteral("4821")), QString());
+        const QString base = server.url().toString();
+        const Http page = httpGet(QUrl(base));
+        QCOMPARE(page.status, 200);
+        QVERIFY(!page.body.contains("secret plans")); // no file names before the PIN
+        QVERIFY(page.body.contains("\"protection\":\"pin\""));
+        QCOMPARE(httpGet(QUrl(base + QStringLiteral("list"))).status, 403);
+        QCOMPARE(httpGet(QUrl(base + QStringLiteral("f/0"))).status, 403);
+        QCOMPARE(httpGet(QUrl(base + QStringLiteral("f/0")), {}, "4822").status, 403);
+        QCOMPARE(httpGet(QUrl(base + QStringLiteral("auth")), {}, "4821").status, 200);
+        const Http list = httpGet(QUrl(base + QStringLiteral("list")), {}, "4821");
+        QCOMPARE(list.status, 200);
+        QVERIFY(list.body.contains("secret plans.txt"));
+        const Http file = httpGet(QUrl(base + QStringLiteral("f/0")), {}, "4821");
+        QCOMPARE(file.status, 200);
+        QCOMPARE(file.body, data);
+        QTRY_COMPARE(downloaded.count(), 1);
+        // The first right answer reset the count; now five wrong ones lock this address out, even for the right PIN.
+        for (int i = 0; i < 5; ++i)
+            QCOMPARE(httpGet(QUrl(base + QStringLiteral("auth")), {}, "0000").status, 403);
+        QCOMPARE(httpGet(QUrl(base + QStringLiteral("auth")), {}, "4821").status, 429);
+        QCOMPARE(httpGet(QUrl(base + QStringLiteral("f/1")), {}, "4821").status, 429);
     }
     void shareServerExpiresAndStops()
     {

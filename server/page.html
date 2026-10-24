@@ -110,6 +110,7 @@
   .card .badge svg { width: 26px; height: 26px; }
   .card .btn { margin-top: 10px; width: 100%; }
   .pin { width: 100%; max-width: 220px; height: 52px; margin-top: 8px; border-radius: 12px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); text-align: center; font: 600 22px/1 ui-monospace, monospace; letter-spacing: .4em; padding-left: .4em; }
+  .pin.word { font: 500 17px/1 system-ui, sans-serif; letter-spacing: normal; padding-left: 0; max-width: 280px; }
   .pin:focus { outline: 2px solid var(--shu); border-color: transparent; }
   .shake { animation: shake .3s; }
   @keyframes shake { 25% { transform: translateX(-6px); } 75% { transform: translateX(6px); } }
@@ -209,15 +210,33 @@ function nameParts(name) {
 
 /* ---------- backends: init() -> {files, expiresAt}; fetchFile(i, progress) -> Blob ---------- */
 function localBackend() {
+  let pin = "", files = DATA.files || [];
+  const headers = () => pin ? { "X-Pin": pin } : {};
+  const check = status => { if (status === 403) throw fail("wrong"); if (status === 429) throw fail("locked"); if (status === 404) throw fail("gone"); if (status < 200 || status > 299) throw fail("net"); };
   return {
-    singleUse: DATA.files.length === 1,
-    async init() { return { files: DATA.files, expiresAt: DATA.expires_at, now: DATA.now }; },
-    thumbURL: i => "f/" + i + "?inline=1",
+    thumbsOk: true,
+    async init() {
+      if (DATA.protection) return { needSecret: DATA.protection, expiresAt: DATA.expires_at, now: DATA.now };
+      return { files, expiresAt: DATA.expires_at, now: DATA.now };
+    },
+    async unlock(secret) { // a PIN / password that Notch checks; the file list only comes after it
+      pin = secret;
+      const r = await fetch("list", { headers: headers() });
+      check(r.status);
+      files = (await r.json()).files;
+      return { files, expiresAt: DATA.expires_at, now: DATA.now };
+    },
+    async thumbSrc(i) {
+      if (!pin) return "f/" + i + "?inline=1";
+      const r = await fetch("f/" + i + "?inline=1", { headers: headers() });
+      check(r.status);
+      return URL.createObjectURL(await r.blob());
+    },
     async fetchFile(i, onProgress) {
-      const f = DATA.files[i];
+      const f = files[i];
       if (!f.size) return new Blob([], { type: f.type });
-      const r = await fetch("f/" + i);
-      if (!r.ok) throw fail(r.status === 404 ? "gone" : "net");
+      const r = await fetch("f/" + i, { headers: headers() });
+      check(r.status);
       return new Blob([await readStream(r, f.size, onProgress)], { type: f.type });
     },
   };
@@ -239,12 +258,12 @@ async function readStream(response, total, onProgress) {
 
 function relayBackend() {
   const id = location.pathname.split("/")[2];
-  let key = null, meta = null, pin = "", total = 0, prefix = null, chunk = 0, files = [], layout = [];
+  let key = null, wrapped = null, meta = null, pin = "", total = 0, prefix = null, chunk = 0, files = [], layout = [];
   const b64 = s => { s = s.replace(/-/g, "+").replace(/_/g, "/"); while (s.length % 4) s += "="; return Uint8Array.from(atob(s), c => c.charCodeAt(0)); };
 
   async function range(a, z, onProgress) { // inclusive byte range of the blob
     const r = await fetch("/s/" + id + "/blob", { headers: { "X-Pin": pin, Range: "bytes=" + a + "-" + z } });
-    if (r.status === 403) throw fail("pin");
+    if (r.status === 403) throw fail("wrong");
     if (r.status === 429) throw fail("locked");
     if (r.status === 404) throw fail("gone");
     if (r.status !== 206 && r.status !== 200) throw fail("net");
@@ -257,19 +276,35 @@ function relayBackend() {
   }
 
   return {
-    get singleUse() { return !!meta.single_use; },
-    needsPin: () => meta.pin_required,
-    setPin(p) { pin = p; },
+    get thumbsOk() { return !meta.single_use; }, // a single-use link must not be spent on a preview
     async init() {
       const raw = location.hash.slice(1);
       if (!raw) throw fail("nokey");
-      try { key = await crypto.subtle.importKey("raw", b64(raw), "AES-GCM", false, ["decrypt"]); }
-      catch (e) { throw fail("badkey"); }
+      let bytes;
+      try { bytes = b64(raw); } catch (e) { throw fail("badkey"); }
       const r = await fetch("/s/" + id + "/meta");
       if (!r.ok) throw fail("gone");
       meta = await r.json();
       total = meta.size;
-      return { needPin: meta.pin_required, expiresAt: meta.expires_at, now: meta.now };
+      const info = { expiresAt: meta.expires_at, now: meta.now };
+      if (bytes.length === 32) { key = await crypto.subtle.importKey("raw", bytes, "AES-GCM", false, ["decrypt"]); }
+      else if (bytes.length === 76) { wrapped = bytes; info.needSecret = "password"; return info; } // locked with a password
+      else throw fail("badkey");
+      if (meta.pin_required) info.needSecret = "pin";
+      return info;
+    },
+    // Password: unlocks the key in the link (PBKDF2 + AES-GCM, see ShareCrypto.h). PIN: sent to the relay.
+    async unlock(secret, kind) {
+      if (kind === "password") {
+        try {
+          const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), "PBKDF2", false, ["deriveKey"]);
+          const kek = await crypto.subtle.deriveKey({ name: "PBKDF2", salt: wrapped.slice(0, 16), iterations: 600000, hash: "SHA-256" }, base, { name: "AES-GCM", length: 256 }, false, ["decrypt"]);
+          const raw = await crypto.subtle.decrypt({ name: "AES-GCM", iv: wrapped.slice(16, 28), additionalData: new TextEncoder().encode("notch-key") }, kek, wrapped.slice(28));
+          key = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["decrypt"]);
+        } catch (e) { throw fail("wrong"); }
+        if (meta.pin_required) return { needSecret: "pin" };
+      } else pin = secret;
+      return this.load();
     },
     async load() { // reads the file list (record 0) and works out where every file sits in the blob
       const head = await range(0, 19);
@@ -290,7 +325,6 @@ function relayBackend() {
       if (off !== total) throw fail("badkey");
       return { files, expiresAt: meta.expires_at, now: meta.now };
     },
-    thumbURL: null,
     async fetchFile(i, onProgress) {
       const f = files[i], at = layout[i];
       if (!f.size) return new Blob([], { type: f.type });
@@ -380,24 +414,35 @@ function skeleton() {
   show(h("ul", { class: "skel", "aria-hidden": "true" }, row(), row(), row()));
 }
 
-function askPin(backend) {
-  stateCard("lock", "Enter the PIN", "The sender protected this share with a PIN.");
-  const input = h("input", { class: "pin", type: "password", inputmode: "numeric", autocomplete: "off", "aria-label": "PIN", maxlength: "12" });
+// One prompt for a PIN or a password. `submit(value)` returns the next step (the file list, or another
+// prompt) or throws fail("wrong") / fail("locked").
+function askSecret(kind, submit) {
+  const pin = kind === "pin";
+  stateCard("lock", pin ? "Enter the PIN" : "Enter the password",
+            pin ? "The sender protected this share with a PIN." : "The sender protected this share with a password.");
+  const input = h("input", { class: "pin" + (pin ? "" : " word"), type: "password", autocomplete: "off", "aria-label": pin ? "PIN" : "Password",
+                             ...(pin ? { inputmode: "numeric", maxlength: "12" } : {}) });
   const msg = h("p", { class: "meta err", style: "min-height:1.2em" });
   const go = h("button", { class: "btn", text: "Unlock" });
-  const submit = async () => {
+  const go_ = async () => {
     if (!input.value) return;
-    backend.setPin(input.value); go.disabled = true; msg.textContent = "";
-    try { start(await backend.load()); }
+    go.disabled = true; msg.textContent = pin ? "" : "Checking…";
+    try { proceed(await submit(input.value)); }
     catch (e) {
-      go.disabled = false;
-      if (e.code === "pin") { msg.textContent = "That PIN is not right."; input.classList.remove("shake"); void input.offsetWidth; input.classList.add("shake"); input.select(); }
+      go.disabled = false; msg.textContent = "";
+      if (e.code === "wrong") { msg.textContent = pin ? "That PIN is not right." : "That password is not right."; input.classList.remove("shake"); void input.offsetWidth; input.classList.add("shake"); input.select(); }
       else showError(e.code || "net");
     }
   };
-  go.onclick = submit; input.onkeydown = e => { if (e.key === "Enter") submit(); };
+  go.onclick = go_; input.onkeydown = e => { if (e.key === "Enter") go_(); };
   $("view").querySelector(".card").append(input, msg, go);
   input.focus();
+}
+
+// info: the file list, or {needSecret: "pin" | "password"} when something still has to be typed
+function proceed(info) {
+  if (info.needSecret) return askSecret(info.needSecret, v => S.backend.unlock(v, info.needSecret));
+  start(info);
 }
 
 function clock() {
@@ -539,7 +584,7 @@ const seen = new IntersectionObserver(entries => {
 function queueThumb(i, el) {
   const f = S.files[i];
   if (kindOf(f) !== "image" || f.size > THUMB_MAX || f.size === 0) return;
-  if (!S.backend.thumbURL && S.backend.singleUse) return; // a single-use link must not be spent on a preview
+  if (!S.backend.thumbsOk) return;
   el.dataset.i = i; seen.observe(el);
 }
 async function pump() {
@@ -547,7 +592,7 @@ async function pump() {
     const el = thumbQueue.shift(), i = +el.dataset.i; thumbBusy++;
     (async () => {
       try {
-        const src = S.backend.thumbURL ? S.backend.thumbURL(i) : URL.createObjectURL(await getBlob(i));
+        const src = S.backend.thumbSrc ? await S.backend.thumbSrc(i) : URL.createObjectURL(await getBlob(i));
         const img = h("img", { alt: "", decoding: "async" });
         img.onload = () => img.classList.add("on");
         img.src = src; el.append(img);
@@ -563,8 +608,8 @@ async function pump() {
   S.backend = DATA ? localBackend() : relayBackend();
   try {
     const info = await S.backend.init();
-    if (info.needPin) { S.expiresAt = info.expiresAt; S.clockSkew = info.now ? info.now * 1000 - Date.now() : 0; return askPin(S.backend); }
-    start(info.files ? info : await S.backend.load());
+    S.expiresAt = info.expiresAt; S.clockSkew = info.now ? info.now * 1000 - Date.now() : 0;
+    proceed(info.files || info.needSecret ? info : await S.backend.load());
   } catch (e) { showError(e.code || "net"); }
 })();
 addEventListener("hashchange", () => location.reload());

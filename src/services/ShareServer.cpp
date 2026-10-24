@@ -43,6 +43,16 @@ private:
         respond(QString::fromLatin1(m_request.left(end)).split(QStringLiteral("\r\n")));
     }
 
+    // The PIN / password sits in the X-Pin header (never in a URL); 200 when none is needed.
+    int authorize(const QStringList &lines)
+    {
+        QString given;
+        for (const QString &line : lines)
+            if (line.startsWith(QLatin1String("X-Pin:"), Qt::CaseInsensitive))
+                given = line.mid(6).trimmed();
+        return m_server->check(m_socket->peerAddress().toString(), given);
+    }
+
     void respond(const QStringList &lines)
     {
         const QStringList first = lines.value(0).split(u' ');
@@ -56,11 +66,21 @@ private:
             return reply(200, QStringLiteral("OK"), m_server->page(), head, QStringLiteral("text/html; charset=utf-8"),
                          {{"Content-Security-Policy", "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; "
                                                       "connect-src 'self'; img-src 'self' blob: data:; frame-ancestors 'none'"}});
+        const QString rest = path.startsWith(base) ? path.mid(base.size()) : QString();
+        if (rest == QLatin1String("auth") || rest == QLatin1String("list")) {
+            const int status = authorize(lines);
+            if (status != 200)
+                return reply(status, status == 429 ? QStringLiteral("Too Many Requests") : QStringLiteral("Forbidden"), {}, head);
+            return reply(200, QStringLiteral("OK"), rest == QLatin1String("auth") ? QByteArray("{\"ok\":true}") : m_server->fileList(),
+                         head, QStringLiteral("application/json"));
+        }
         static const QRegularExpression fileRoute(QStringLiteral(R"(^f/(\d{1,4})$)"));
-        const auto route = path.startsWith(base) ? fileRoute.match(path.mid(base.size())) : QRegularExpressionMatch();
+        const auto route = fileRoute.match(rest);
         const int index = route.hasMatch() ? route.captured(1).toInt() : -1;
         if (index < 0 || index >= m_server->m_files.size())
             return reply(404, QStringLiteral("Not Found"), {}, head);
+        if (const int status = authorize(lines); status != 200)
+            return reply(status, status == 429 ? QStringLiteral("Too Many Requests") : QStringLiteral("Forbidden"), {}, head);
         const ShareServer::Entry &entry = m_server->m_files.at(index);
         // Previews are only for images, and sandboxed, so a sender's file can never run as a page.
         if (inline_ && !entry.mimeType.startsWith(QLatin1String("image/")))
@@ -179,9 +199,13 @@ ShareServer::ShareServer(QObject *parent)
     connect(&m_expire, &QTimer::timeout, this, [this] { finish(QStringLiteral("expired")); });
 }
 
-QString ShareServer::start(const QHostAddress &address, const QList<Entry> &files, int ttlSeconds)
+QString ShareServer::start(const QHostAddress &address, const QList<Entry> &files, int ttlSeconds,
+                           const QString &protection, const QString &secret)
 {
     stop();
+    m_protection = secret.isEmpty() ? QString() : protection;
+    m_secret = secret;
+    m_fails.clear();
     if (files.isEmpty())
         return tr("Nothing to share");
     QList<Entry> list = files;
@@ -209,20 +233,51 @@ QByteArray ShareServer::page() const
     QFile f(QStringLiteral(":/share/page.html"));
     if (!f.open(QIODevice::ReadOnly))
         return "Notch page missing";
-    QJsonArray files;
-    for (const Entry &e : m_files)
-        files.append(QJsonObject{{QStringLiteral("name"), e.name},
-                                 {QStringLiteral("type"), e.mimeType},
-                                 {QStringLiteral("size"), double(e.size)}});
-    const QJsonObject data{{QStringLiteral("mode"), QStringLiteral("local")},
-                           {QStringLiteral("files"), files},
-                           {QStringLiteral("expires_at"), double(m_expiresAt)},
-                           {QStringLiteral("now"), double(QDateTime::currentSecsSinceEpoch())}};
+    // Protected: the page gets no file names until the PIN / password has been checked (route "list").
+    QJsonObject data{{QStringLiteral("mode"), QStringLiteral("local")},
+                     {QStringLiteral("expires_at"), double(m_expiresAt)},
+                     {QStringLiteral("now"), double(QDateTime::currentSecsSinceEpoch())}};
+    if (m_protection.isEmpty())
+        data.insert(QStringLiteral("files"), QJsonDocument::fromJson(fileList()).object().value(QStringLiteral("files")));
+    else
+        data.insert(QStringLiteral("protection"), m_protection);
     // "<" never appears raw inside the tag, so no file name can close the script element.
     QByteArray json = QJsonDocument(data).toJson(QJsonDocument::Compact).replace('<', "\\u003c");
     QByteArray html = f.readAll();
     static const QByteArray marker = R"(<script id="share-data" type="application/json">null</script>)";
     return html.replace(marker, R"(<script id="share-data" type="application/json">)" + json + "</script>");
+}
+
+QByteArray ShareServer::fileList() const
+{
+    QJsonArray files;
+    for (const Entry &e : m_files)
+        files.append(QJsonObject{{QStringLiteral("name"), e.name},
+                                 {QStringLiteral("type"), e.mimeType},
+                                 {QStringLiteral("size"), double(e.size)}});
+    return QJsonDocument(QJsonObject{{QStringLiteral("files"), files}}).toJson(QJsonDocument::Compact);
+}
+
+int ShareServer::check(const QString &peer, const QString &secret)
+{
+    if (m_protection.isEmpty())
+        return 200;
+    auto &fail = m_fails[peer];
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    if (fail.second > now)
+        return 429;
+    // Constant-time comparison: the time taken must not reveal how much of a guess was right.
+    const QByteArray a = secret.toUtf8(), b = m_secret.toUtf8();
+    int diff = a.size() ^ b.size();
+    for (int i = 0; i < a.size(); ++i)
+        diff |= a.at(i) ^ b.at(i % qMax<int>(1, b.size()));
+    if (diff == 0) {
+        m_fails.remove(peer);
+        return 200;
+    }
+    if (++fail.first >= 5)
+        fail = {0, now + 600};
+    return 403;
 }
 
 void ShareServer::completed(int index)

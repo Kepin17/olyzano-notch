@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(notch VERSION 0.1.9 LANGUAGES CXX)
+project(notch VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -44,6 +44,7 @@ qt_add_executable(notch
     src/main.cpp
     src/app/NotchController.h src/app/NotchController.cpp
     src/app/ShareController.h src/app/ShareController.cpp
+    src/app/ShareSession.h src/app/ShareSession.cpp
     src/models/FileItemModel.h src/models/FileItemModel.cpp
     src/platform/DesktopIntegration.h src/platform/DesktopIntegration.cpp
     src/platform/SystemEvents.h src/platform/SystemEvents.cpp
@@ -67,7 +68,7 @@ qt_add_qml_module(notch
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg
         src/qml/icons/unlock.svg src/qml/icons/trash.svg src/qml/icons/palette.svg src/qml/icons/pen.svg
         src/qml/icons/gear.svg src/qml/icons/sort.svg src/qml/icons/camera.svg src/qml/icons/download.svg
-        src/qml/icons/phone.svg src/qml/icons/search.svg src/qml/icons/share.svg
+        src/qml/icons/phone.svg src/qml/icons/search.svg src/qml/icons/share.svg src/qml/icons/wifi.svg src/qml/icons/server.svg
 )
 # Widgets: QApplication backs the tray icon (Qt.labs.platform falls back to QSystemTrayIcon).
 target_link_libraries(notch PRIVATE notch_core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::Concurrent Qt6::Network Qt6::DBus)

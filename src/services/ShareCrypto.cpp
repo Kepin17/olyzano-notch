@@ -4,6 +4,8 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
+#include <QCryptographicHash>
+#include <QPasswordDigestor>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QtEndian>
@@ -99,6 +101,32 @@ QByteArray newKey()
 QString keyToFragment(const QByteArray &key)
 {
     return QString::fromLatin1(key.toBase64(QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals));
+}
+
+namespace {
+const QByteArray KeyAad("notch-key");
+QByteArray passwordKey(const QString &password, const QByteArray &salt)
+{
+    return QPasswordDigestor::deriveKeyPbkdf2(QCryptographicHash::Sha256, password.toUtf8(), salt, KdfIterations, KeySize);
+}
+}
+
+QString wrapKey(const QByteArray &key, const QString &password)
+{
+    QByteArray salt(16, 0), iv(12, 0);
+    if (key.size() != KeySize || RAND_bytes(reinterpret_cast<unsigned char *>(salt.data()), 16) != 1
+        || RAND_bytes(reinterpret_cast<unsigned char *>(iv.data()), 12) != 1)
+        return {};
+    const QByteArray sealed = seal(passwordKey(password, salt), iv, KeyAad, key);
+    return sealed.isNull() ? QString() : keyToFragment(salt + iv + sealed);
+}
+
+QByteArray unwrapKey(const QString &fragment, const QString &password)
+{
+    const QByteArray raw = QByteArray::fromBase64(fragment.toLatin1(), QByteArray::Base64UrlEncoding);
+    if (raw.size() != 16 + 12 + KeySize + TagSize)
+        return {};
+    return open(passwordKey(password, raw.left(16)), raw.mid(16, 12), KeyAad, raw.mid(28));
 }
 
 QString encryptFiles(const QList<SourceFile> &files, const QString &outPath, const QByteArray &key)

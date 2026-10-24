@@ -33,7 +33,8 @@ multi-file share is fetched with a byte `Range`, so only that file travels, neve
 
 - Upload needs the API key; download needs the long random link (and the PIN, if set).
 - Each share has an expiry (up to `MAX_TTL_HOURS`) and can be limited to N downloads.
-- Wrong PIN: 5 tries, then that IP is locked out of that share for 10 minutes.
+- Wrong PIN: 5 tries, then that IP is locked out of that share for 10 minutes. (A password never reaches the
+  server: it locks the key inside the link, and the page unlocks it in the browser.)
 - `MAX_FILE_MB` per file, `MAX_TOTAL_MB` in total; uploads beyond that get HTTP 413.
 - The container runs as an unprivileged user with a read-only filesystem.
 

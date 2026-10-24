@@ -27,6 +27,13 @@ struct SourceFile {
 QByteArray newKey();
 QString keyToFragment(const QByteArray &key); // base64url without padding
 
+// Password protection of the key itself: the link carries salt | iv | AES-GCM(key) under a key derived
+// from the password (PBKDF2-HMAC-SHA256, KdfIterations), so the link alone opens nothing. 76 bytes
+// where a plain key is 32; the page tells them apart by length. Blocking (~0.5 s of key stretching).
+constexpr int KdfIterations = 600000;
+QString wrapKey(const QByteArray &key, const QString &password); // the link's fragment
+QByteArray unwrapKey(const QString &fragment, const QString &password); // null when the password is wrong
+
 // Both return an empty string on success, else a user-facing reason. Names must be unique.
 QString encryptFiles(const QList<SourceFile> &files, const QString &out, const QByteArray &key);
 // Writes every file into outDir under its stored name; `names` gets them in order.

@@ -79,6 +79,14 @@ To try it without touching your real shelf or settings:
     off. Options: PIN, single download (one file only), expiry. Set it up in **Settings → Sharing** (address + API key,
     **Test connection**); the relay itself (Docker Compose, `.env`) is in [server/](server/README.md).
     The API key is kept in `~/.config/notch/relay.key` (owner-only).
+  - **Several at once, and a list:** every share is its own session. The share button in the header (with the number
+    running) opens the list: each session shows its state and countdown, **QR** shows its code, **Stop**
+    ends it, **Stop all** / **Clear finished** tidy up. Server shares stay on the server, so they are still in
+    the list (and can be stopped) after you restart Notch; WiFi shares end with Notch.
+  - **PIN or password:** choose one when sharing. A **PIN** (4–12 digits) is checked by the server (or by Notch for
+    WiFi shares): 5 wrong tries lock that phone out for 10 minutes. A **password** (8+ characters) on a server
+    share also locks the key inside the link (PBKDF2 + AES-GCM), so the link alone opens nothing; tell the
+    password another way. File names are only shown after the PIN / password.
   - **What the person who scans sees:** a phone-friendly page (light/dark, Washi style). For several files
     it lists them with image thumbnails and sizes and a live countdown; they can download one file,
     tick a few, or take everything as a zip (built on their phone, nothing extra is stored). The same page
