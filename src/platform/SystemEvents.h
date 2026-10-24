@@ -1,9 +1,33 @@
 #pragma once
 
-#include <QDBusMessage>
 #include <QHash>
 #include <QObject>
+#include <QTimer>
+#ifdef NOTCH_HAVE_DBUS
+#include <QDBusMessage>
+#endif
 
+#ifndef NOTCH_HAVE_DBUS
+// Without D-Bus: on Windows the laptop battery is polled (charger plugged / unplugged, running low); no
+// Bluetooth alerts. Elsewhere this is a stub that never fires. Same `alert` signal as the Linux class.
+class SystemEvents : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit SystemEvents(QObject *parent = nullptr);
+
+signals:
+    void alert(const QString &kind, const QString &title, const QString &detail, const QString &icon, int level);
+
+private:
+    void poll();
+
+    QTimer m_timer;
+    int m_charging = -1; // -1 unknown, 0 on battery, 1 on mains
+    int m_percent = -1;
+};
+#else
 // Watches the system bus for moments worth a Dynamic-Island-style alert:
 // charger plugged/unplugged (UPower DisplayDevice) and Bluetooth devices connecting or
 // disconnecting (BlueZ Device1), and batteries running low: the laptop while discharging and
@@ -29,3 +53,4 @@ private:
     double m_percentage = -1;
     QHash<QString, int> m_deviceBattery; // BlueZ device path -> last known %
 };
+#endif

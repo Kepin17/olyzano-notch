@@ -11,7 +11,7 @@ deleted.
 sudo apt install cmake ninja-build g++ qt6-base-dev qt6-declarative-dev liblayershellqtinterface-dev
 ```
 
-Runtime: Qt 6 (Core, Gui, Widgets, Network, Sql + `libqt6sql6-sqlite`, Quick, Controls, Layouts, Shapes, Effects,
+Runtime (Linux): Qt 6 (Core, Gui, Widgets, Network, Sql + `libqt6sql6-sqlite`, Quick, Controls, Layouts, Shapes, Effects,
 Dialogs, `Qt.labs.platform`), `layer-shell-qt`; `gocryptfs` + `fuse3` for locked categories.
 Without `liblayershellqtinterface-dev` it still builds, but on Wayland the pill can't be pinned to
 the top edge. See [docs/wayland-limitations.md](docs/wayland-limitations.md).
@@ -175,6 +175,28 @@ To try it without touching your real shelf or settings:
   storage folder (changeable while the shelf is empty), start at login, quit.
 - Tray icon: click toggles the panel; menu has Show/Hide, Settings, Quit.
 - Plain-text drops are not supported.
+
+## Windows
+
+Notch also runs on Windows 10 / 11 (64-bit). Download `Notch-<version>-windows-x64-setup.exe` (installer: Start menu,
+optional "start with Windows", uninstall) or the `...-portable.zip` (extract anywhere, run `notch.exe`) from the
+GitHub Actions run or Release of the `windows-port` branch. The build is not code-signed, so SmartScreen says
+"Windows protected your PC": **More info → Run anyway**.
+
+- **Works the same:** the shelf at the top edge of every monitor, categories, notes, search, preview, Quick Look,
+  sorting, rename, undo, zip, share via QR (WiFi and your own server), settings, tray icon, "start with Windows",
+  battery / charger alerts, new screenshots (Win + PrtSc saves to `Pictures\Screenshots`) and downloads.
+- **Not on Windows yet:** the music-player card and real-audio equalizer, picking a colour from the screen, Bluetooth
+  alerts, KDE Connect, and locked categories (they need gocryptfs). Their buttons are hidden or greyed out.
+- **PDF and OCR tools** need [poppler](https://github.com/oschwartz10612/poppler-windows),
+  [Ghostscript](https://ghostscript.com/) and [Tesseract](https://github.com/UB-Mannheim/tesseract) on `PATH`; the image
+  tools need nothing.
+- **Sharing over WiFi:** Windows asks once to let Notch through its firewall; allow it on private networks.
+- Settings live in `%LOCALAPPDATA%\notch`, your files in `%LOCALAPPDATA%\notch\files`.
+
+Build from source: Qt 6.8 (MSVC 2022), CMake, Ninja and OpenSSL (`vcpkg install openssl:x64-windows`); see
+`.github/workflows/windows.yml` for the exact steps. Run `cmake` with `-DNOTCH_NO_DBUS=ON` on Linux to try the
+Windows code paths (no D-Bus integrations) without a Windows machine.
 
 ## Storage
 

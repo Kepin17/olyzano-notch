@@ -290,7 +290,8 @@ ScrollView {
 
         SettingToggle {
             title: "Add new screenshots"
-            caption: "Spectacle screenshots land in the 📷 Screenshots category."
+            caption: notch.linuxDesktop ? "Spectacle screenshots land in the Screenshots category."
+                                        : "Screenshots saved to Pictures\\Screenshots (Win + PrtSc) land in the Screenshots category."
             checked: notch.autoScreenshots
             onToggled: notch.autoScreenshots = !notch.autoScreenshots
         }

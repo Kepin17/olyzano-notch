@@ -150,6 +150,7 @@ Popup {
                 Layout.fillWidth: true
                 text: pop.mode === "local"
                       ? "Your computer serves the files to phones on the same WiFi. Not encrypted, and it works only while Notch runs."
+                        + (notch.platform === "windows" ? " The first time, Windows asks to let Notch through its firewall: allow it on private networks." : "")
                       : share.relayConfigured
                         ? "Encrypted here, then stored on your server. The server cannot read it, and your computer can be switched off."
                         : "Set up your server in Settings → Sharing first."

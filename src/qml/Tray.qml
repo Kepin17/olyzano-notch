@@ -4,7 +4,8 @@ import Qt.labs.platform as Labs
 // One tray icon for the whole app; actions go to the primary monitor's Notch.
 Labs.SystemTrayIcon {
     visible: true
-    icon.name: "folder-download"
+    icon.name: "folder-download" // a theme icon where there is one (KDE) ...
+    icon.source: "icons/notch.png" // ... else ours (Windows has no icon theme)
     tooltip: "Notch · " + notch.count + (notch.count === 1 ? " file" : " files")
     onActivated: (reason) => {
         if (reason === Labs.SystemTrayIcon.Trigger)

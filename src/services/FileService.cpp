@@ -13,9 +13,22 @@
 #include <QStorageInfo>
 
 #include <filesystem>
+#ifdef Q_OS_WIN
+#include <io.h>
+#else
 #include <unistd.h>
+#endif
 
 namespace FileService {
+
+bool syncFile(QFile &file)
+{
+#ifdef Q_OS_WIN
+    return _commit(file.handle()) == 0;
+#else
+    return ::fsync(file.handle()) == 0;
+#endif
+}
 
 QString validateSource(const QString &path)
 {
@@ -78,7 +91,7 @@ CopyResult copyInto(const QString &src, const QString &itemDir, const QString &n
             return fail(writeError(out));
         r.bytes += n;
     }
-    if (!out.flush() || ::fsync(out.handle()) != 0)
+    if (!out.flush() || !syncFile(out))
         return fail(writeError(out));
     out.close();
     if (QFileInfo(tmp).size() != r.bytes)

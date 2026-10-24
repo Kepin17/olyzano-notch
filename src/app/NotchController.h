@@ -67,6 +67,9 @@ class NotchController : public QObject
     // Automatic category per file type (FileService::typeGroup): {group: categoryId}.
     Q_PROPERTY(QVariantMap typeRules READ typeRules NOTIFY typeRulesChanged)
     // Encrypted vault for locked categories (gocryptfs). Unlocked = mounted in $XDG_RUNTIME_DIR.
+    Q_PROPERTY(bool vaultSupported READ vaultSupported CONSTANT)   // locked categories need gocryptfs (Linux)
+    Q_PROPERTY(bool linuxDesktop READ linuxDesktop CONSTANT)       // Spectacle, KDE Connect, … live here
+    Q_PROPERTY(QString platform READ platform CONSTANT)            // linux | windows | other
     Q_PROPERTY(bool vaultExists READ vaultExists NOTIFY vaultChanged)
     Q_PROPERTY(bool vaultUnlocked READ vaultUnlocked NOTIFY vaultChanged)
     Q_PROPERTY(bool autoScreenshots READ autoScreenshots WRITE setAutoScreenshots NOTIFY autoScreenshotsChanged)
@@ -106,6 +109,25 @@ public:
     void setUiStyle(const QString &style);
     QStringList recentColors() const { return m_settings.value(QStringLiteral("colors")).toStringList(); }
     QVariantMap typeRules() const;
+    bool vaultSupported() const { return Vault::supported(); }
+    QString platform() const
+    {
+#if defined(Q_OS_WIN)
+        return QStringLiteral("windows");
+#elif defined(Q_OS_LINUX)
+        return QStringLiteral("linux");
+#else
+        return QStringLiteral("other");
+#endif
+    }
+    bool linuxDesktop() const
+    {
+#ifdef Q_OS_LINUX
+        return true;
+#else
+        return false;
+#endif
+    }
     bool vaultExists() const { return m_vault.exists(); }
     bool vaultUnlocked() const { return m_vault.isUnlocked(); }
     bool autoScreenshots() const { return m_settings.value(QStringLiteral("autoScreenshots"), true).toBool(); }

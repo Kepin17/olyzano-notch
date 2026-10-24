@@ -313,23 +313,29 @@ void ShareServer::finish(const QString &reason)
 QList<QHostAddress> ShareServer::lanAddresses()
 {
     QList<QHostAddress> wifi, other;
-    static const QStringList virtualPrefixes{QStringLiteral("docker"), QStringLiteral("br-"), QStringLiteral("veth"),
-                                             QStringLiteral("virbr"), QStringLiteral("vmnet"), QStringLiteral("tun"),
-                                             QStringLiteral("tailscale")};
+    // Adapters that are not "the network the phone is on": containers, VMs, VPNs (names differ on Linux and Windows)
+    static const QStringList virtualMarks{QStringLiteral("docker"), QStringLiteral("br-"), QStringLiteral("veth"),
+                                          QStringLiteral("virbr"), QStringLiteral("vmnet"), QStringLiteral("tun"),
+                                          QStringLiteral("tailscale"), QStringLiteral("vethernet"), QStringLiteral("hyper-v"),
+                                          QStringLiteral("virtualbox"), QStringLiteral("vmware"), QStringLiteral("wsl"),
+                                          QStringLiteral("loopback"), QStringLiteral("bluetooth"), QStringLiteral("zerotier")};
     for (const QNetworkInterface &nic : QNetworkInterface::allInterfaces()) {
         const auto flags = nic.flags();
         if (!(flags & QNetworkInterface::IsUp) || !(flags & QNetworkInterface::IsRunning)
             || (flags & QNetworkInterface::IsLoopBack))
             continue;
+        const QString name = nic.name().toLower(), readable = nic.humanReadableName().toLower();
         bool virt = false;
-        for (const QString &p : virtualPrefixes)
-            virt = virt || nic.name().startsWith(p);
+        for (const QString &p : virtualMarks)
+            virt = virt || name.startsWith(p) || readable.contains(p);
         if (virt)
             continue;
+        const bool isWifi = nic.type() == QNetworkInterface::Wifi || name.startsWith(u'w') || readable.contains(QLatin1String("wi-fi"))
+                            || readable.contains(QLatin1String("wireless"));
         for (const QNetworkAddressEntry &e : nic.addressEntries())
             if (e.ip().protocol() == QAbstractSocket::IPv4Protocol && !e.ip().isLoopback()
                 && !e.ip().isInSubnet(QHostAddress(QStringLiteral("169.254.0.0")), 16))
-                (nic.name().startsWith(u'w') ? wifi : other) << e.ip();
+                (isWifi ? wifi : other) << e.ip();
     }
     return wifi + other;
 }

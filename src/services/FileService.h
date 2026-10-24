@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QList>
+#include <QFile>
 #include <QString>
 #include <QUrl>
 
@@ -58,6 +59,8 @@ QString textExtension(const QString &text, const QString &editorLanguage = {});
 QString uniqueAmong(const QString &name, const std::function<bool(const QString &)> &taken);
 // A name not yet taken in dir.
 QString uniqueName(const QString &dir, const QString &name);
+// Flushes a file's data to the disk (fsync / _commit); true on success.
+bool syncFile(QFile &file);
 
 // Coarse file type for automatic category rules: pdf | image | video | audio | document |
 // archive | text, or empty for anything else.

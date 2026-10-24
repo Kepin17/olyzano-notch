@@ -1,0 +1,79 @@
+name: Windows
+
+on:
+  push:
+    branches: [windows-port]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    env:
+      QT_VERSION: "6.8.*"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          cache: true
+
+      - name: MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: OpenSSL (AES-GCM for encrypted shares)
+        run: vcpkg install openssl:x64-windows
+
+      - name: Configure
+        run: >
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Version
+        id: ver
+        run: |
+          $v = (Select-String -Path CMakeLists.txt -Pattern 'project\(notch VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Collect the program and its libraries
+        run: |
+          New-Item -ItemType Directory deploy | Out-Null
+          Copy-Item build\notch.exe deploy\
+          windeployqt --release --qmldir src\qml --compiler-runtime deploy\notch.exe
+          Copy-Item "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin\libcrypto-3-x64.dll" deploy\
+          Get-ChildItem deploy | Select-Object -First 40 | Format-Table Name, Length
+
+      - name: Portable zip
+        run: Compress-Archive -Path deploy\* -DestinationPath "Notch-${{ steps.ver.outputs.version }}-windows-x64-portable.zip"
+
+      - name: Installer
+        run: |
+          choco install innosetup --no-progress -y
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.ver.outputs.version }}" "/DSourceDir=$PWD\deploy" packaging\windows\notch.iss
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notch-windows-x64
+          path: |
+            Notch-*-portable.zip
+            installer/*.exe
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Notch-*-portable.zip
+            installer/*.exe

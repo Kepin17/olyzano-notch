@@ -842,7 +842,7 @@ Window {
                         }
                     }
                     IconButton {
-                        visible: root.page === "shelf" && !root.selecting
+                        visible: root.page === "shelf" && !root.selecting && colorPicker.supported
                         iconName: "palette"
                         Accessible.name: "Pick a color from the screen"
                         onClicked: {
@@ -1864,7 +1864,9 @@ Window {
         Action { text: "Zip category"; onTriggered: notch.zipItems(notch.categoryItemIds(categoryMenu.catId)) }
         Action {
             readonly property bool locked: notch.categories.some(c => c.id === categoryMenu.catId && c.locked)
-            text: locked ? (notch.vaultUnlocked ? "Lock now" : "Unlock…") : "Lock with password…"
+            enabled: notch.vaultSupported
+            text: !notch.vaultSupported ? "Lock with password… (Linux only for now)"
+                  : locked ? (notch.vaultUnlocked ? "Lock now" : "Unlock…") : "Lock with password…"
             onTriggered: {
                 const id = categoryMenu.catId
                 if (locked)

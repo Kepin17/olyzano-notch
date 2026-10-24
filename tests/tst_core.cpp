@@ -8,6 +8,7 @@
 #include "services/QrImage.h"
 #include "services/ShareCrypto.h"
 #include "services/ShareServer.h"
+#include "services/ZipWriter.h"
 #include "services/Vault.h"
 #include "platform/BatteryThreshold.h"
 #include "platform/PlayerSelection.h"
@@ -33,7 +34,13 @@
 #include <QTest>
 #include <QUuid>
 
+#ifdef Q_OS_WIN
+// File modes are not POSIX on Windows: a read-only folder still takes new files.
+static bool permissionsEnforced() { return false; }
+#else
 #include <unistd.h>
+static bool permissionsEnforced() { return ::geteuid() != 0; } // root ignores them
+#endif
 
 struct Http {
     int status = 0;
@@ -229,15 +236,15 @@ private slots:
         QVERIFY(!FileService::validateSource(QStringLiteral("/dev/null")).isEmpty());
         const QString locked = writeSource(QStringLiteral("locked.txt"), "x");
         QFile::setPermissions(locked, {});
-        if (::geteuid() != 0)
+        if (permissionsEnforced())
             QVERIFY(!FileService::validateSource(locked).isEmpty());
         QVERIFY(FileService::validateSource(writeSource(QStringLiteral("ok.txt"), "x")).isEmpty());
     }
 
     void failedCopyLeavesNothing()
     {
-        if (::geteuid() == 0)
-            QSKIP("root ignores permissions");
+        if (!permissionsEnforced())
+            QSKIP("permissions are not enforced here (root, or Windows)");
         const QString ro = m_tmp.filePath(QStringLiteral("ro"));
         QDir().mkpath(ro + QStringLiteral("/item"));
         QFile::setPermissions(ro + QStringLiteral("/item"), QFileDevice::ReadOwner | QFileDevice::ExeOwner);
@@ -801,6 +808,39 @@ private slots:
         QFile f(QDir(outDir).filePath(files.last().name));
         QVERIFY(f.open(QIODevice::ReadOnly));
         QCOMPARE(f.readAll(), contents.last());
+    }
+    void zipWriterMakesAValidArchive()
+    {
+        const QList<QPair<QString, QByteArray>> spec{{QStringLiteral("plain.txt"), pattern(1000, 1)},
+                                                     {QStringLiteral("empty.txt"), {}},
+                                                     {QStringLiteral("Ünï sub/rapat 密码.pdf"), pattern(5, 2)},
+                                                     {QStringLiteral("big.bin"), pattern(3 * 1024 * 1024 + 17, 3)}};
+        QList<ZipWriter::Entry> entries;
+        QStringList expected;
+        int i = 0;
+        for (const auto &s : spec) {
+            entries.append({writeSample(QStringLiteral("z%1").arg(i++), s.second), s.first});
+            expected << s.first + u':' + QString::number(s.second.size()) + u':'
+                            + QString::fromLatin1(QCryptographicHash::hash(s.second, QCryptographicHash::Sha256).toHex());
+        }
+        const QString zip = m_tmp.filePath(QStringLiteral("out.zip"));
+        QCOMPARE(ZipWriter::write(zip, entries), QString());
+        QVERIFY(!ZipWriter::write(zip, {{m_tmp.filePath(QStringLiteral("missing")), QStringLiteral("m")}}).isEmpty());
+        QVERIFY(!ZipWriter::write(zip, {}).isEmpty());
+        QCOMPARE(ZipWriter::write(zip, entries), QString()); // a failed attempt must not break the next
+        QProcess py;
+        py.start(QStringLiteral("python3"), {QStringLiteral("-c"), QStringLiteral(
+            "import zipfile, hashlib, sys\n"
+            "z = zipfile.ZipFile(sys.argv[1])\n"
+            "assert z.testzip() is None\n"
+            "for i in z.infolist():\n"
+            "    assert i.flag_bits & 0x800\n"
+            "    d = z.read(i)\n"
+            "    print('%s:%d:%s' % (i.filename, len(d), hashlib.sha256(d).hexdigest()))\n"), zip});
+        if (!py.waitForFinished(30000))
+            QSKIP("python3 is not available");
+        QCOMPARE(QString::fromUtf8(py.readAllStandardError()), QString());
+        QCOMPARE(QString::fromUtf8(py.readAllStandardOutput()).split(u'\n', Qt::SkipEmptyParts), expected);
     }
     void inviteLinksAreParsedStrictly()
     {

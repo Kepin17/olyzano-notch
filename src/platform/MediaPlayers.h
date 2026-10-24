@@ -1,11 +1,56 @@
 #pragma once
 
-#include <QDBusMessage>
 #include <QElapsedTimer>
 #include <QHash>
 #include <QObject>
 #include <QVariantMap>
+#ifdef NOTCH_HAVE_DBUS
+#include <QDBusMessage>
+#endif
 
+#ifndef NOTCH_HAVE_DBUS
+// No MPRIS here (Windows): nothing is ever "playing", so the music card never shows. Same QML-facing API.
+class MediaPlayers : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(bool active READ active NOTIFY changed)
+    Q_PROPERTY(bool playing READ playing NOTIFY changed)
+    Q_PROPERTY(QString title READ title NOTIFY changed)
+    Q_PROPERTY(QString artist READ artist NOTIFY changed)
+    Q_PROPERTY(QString artUrl READ artUrl NOTIFY changed)
+    Q_PROPERTY(qint64 lengthMs READ lengthMs NOTIFY changed)
+    Q_PROPERTY(bool canSeek READ canSeek NOTIFY changed)
+    Q_PROPERTY(bool canNext READ canNext NOTIFY changed)
+    Q_PROPERTY(bool canPrevious READ canPrevious NOTIFY changed)
+    Q_PROPERTY(QString identity READ identity NOTIFY changed)
+    Q_PROPERTY(int playerCount READ playerCount NOTIFY changed)
+
+public:
+    explicit MediaPlayers(QObject *parent = nullptr) : QObject(parent) {}
+    bool active() const { return false; }
+    bool playing() const { return false; }
+    QString title() const { return {}; }
+    QString artist() const { return {}; }
+    QString artUrl() const { return {}; }
+    qint64 lengthMs() const { return 0; }
+    bool canSeek() const { return false; }
+    bool canNext() const { return false; }
+    bool canPrevious() const { return false; }
+    QString identity() const { return {}; }
+    int playerCount() const { return 0; }
+    Q_INVOKABLE qint64 positionMs() const { return 0; }
+    Q_INVOKABLE void playPause() {}
+    Q_INVOKABLE void next() {}
+    Q_INVOKABLE void previous() {}
+    Q_INVOKABLE void seek(qint64) {}
+    Q_INVOKABLE void raise() {}
+    Q_INVOKABLE void cyclePlayer() {}
+
+signals:
+    void changed();
+    void trackChanged(const QString &title, const QString &artist, const QString &artUrl);
+};
+#else
 // Now-playing over MPRIS (session bus): every org.mpris.MediaPlayer2.* service, e.g. Chrome/
 // Firefox tabs (YouTube), Spotify, Elisa. Exposes the player chosen by pickPlayer() and its
 // controls. Position isn't signalled by MPRIS, so QML reads positionMs() and interpolates.
@@ -80,3 +125,4 @@ private:
     bool m_ready = false;
     QElapsedTimer m_clock;
 };
+#endif

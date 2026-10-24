@@ -1,9 +1,27 @@
 #pragma once
 
-#include <QDBusMessage>
 #include <QObject>
 #include <QVariantList>
+#ifdef NOTCH_HAVE_DBUS
+#include <QDBusMessage>
+#endif
 
+#ifndef NOTCH_HAVE_DBUS
+// KDE Connect is a Linux desktop thing: here there are never devices, so "Send to device" does not show.
+class KdeConnect : public QObject
+{
+    Q_OBJECT
+
+public:
+    explicit KdeConnect(QObject *parent = nullptr) : QObject(parent) {}
+    Q_INVOKABLE QVariantList devices() const { return {}; }
+    Q_INVOKABLE void send(const QString &, const QString &, const QStringList &) {}
+
+signals:
+    void sent(int count, const QString &deviceName, const QString &error);
+    void received(const QString &url, const QString &deviceName);
+};
+#else
 // KDE Connect over the session bus (org.kde.kdeconnect): send files to paired, reachable devices
 // through their share plugin, and hear about files they send to this computer.
 class KdeConnect : public QObject
@@ -25,3 +43,4 @@ signals:
 private slots:
     void onShareReceived(const QDBusMessage &message);
 };
+#endif

@@ -22,9 +22,11 @@
 #include <QSocketNotifier>
 #include <QStandardPaths>
 
+#ifdef Q_OS_UNIX
 #include <csignal>
 #include <sys/socket.h>
 #include <unistd.h>
+#endif
 
 // image://mime/<icon-name> -> themed icon for a MIME type.
 class MimeIconProvider : public QQuickImageProvider
@@ -40,6 +42,7 @@ public:
     }
 };
 
+#ifdef Q_OS_UNIX
 // SIGTERM/SIGINT/SIGHUP (logout, `kill`, Ctrl+C) quit through the event loop, so aboutToQuit
 // runs and locked categories are unmounted. Self-pipe: the handler itself only write()s.
 static int quitPipe[2];
@@ -53,6 +56,9 @@ static void quitOnSignals(QCoreApplication &app)
     for (int sig : {SIGTERM, SIGINT, SIGHUP})
         std::signal(sig, [](int) { if (::write(quitPipe[0], "q", 1) < 0) {} });
 }
+#else
+static void quitOnSignals(QCoreApplication &) {} // Windows: a closing session already ends the event loop
+#endif
 
 // image://qr/<base64url text> -> QR code (white background, so it scans in dark mode too).
 class QrImageProvider : public QQuickImageProvider
@@ -79,6 +85,7 @@ int main(int argc, char *argv[])
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("notch"));
     app.setDesktopFileName(QStringLiteral("notch"));
+    app.setWindowIcon(QIcon(QStringLiteral(":/qt/qml/Notch/src/qml/icons/notch.png")));
     app.setApplicationVersion(QStringLiteral(NOTCH_VERSION));
     quitOnSignals(app);
 

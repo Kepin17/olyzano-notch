@@ -3,14 +3,33 @@
 #include <QObject>
 #include <QVariantMap>
 
+#ifndef NOTCH_HAVE_DBUS
+// No desktop portal here: `supported` is false and the picker button is hidden.
+class ColorPicker : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(bool supported READ supported CONSTANT)
+
+public:
+    using QObject::QObject;
+    bool supported() const { return false; }
+    Q_INVOKABLE void pick() { emit failed(tr("Picking a color from the screen is not available here")); }
+
+signals:
+    void picked(const QString &hex);
+    void failed(const QString &error);
+};
+#else
 // Pick a color anywhere on screen through the desktop portal (org.freedesktop.portal.Screenshot
 // PickColor). KDE implements it with KWin's picker; no special permission needed.
 class ColorPicker : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(bool supported READ supported CONSTANT)
 
 public:
     using QObject::QObject;
+    bool supported() const { return true; }
     Q_INVOKABLE void pick();
 
 signals:
@@ -24,3 +43,4 @@ private:
     void disconnectRequest();
     QString m_requestPath;
 };
+#endif

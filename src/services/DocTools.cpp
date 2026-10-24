@@ -21,9 +21,14 @@ namespace {
 QString run(const QString &program, const QStringList &args, QByteArray *stdOut = nullptr, int timeoutMs = 120000)
 {
     QProcess p;
+#ifdef Q_OS_WIN
+    // Ghostscript's console program has another name there; the others keep theirs (put on PATH by their installers).
+    p.start(program == QLatin1String("gs") ? QStringLiteral("gswin64c") : program, args);
+#else
     p.start(program, args);
+#endif
     if (!p.waitForStarted(5000))
-        return QStringLiteral("%1 is not installed").arg(program);
+        return QStringLiteral("%1 is not installed (see the README for the PDF and OCR tools)").arg(program);
     if (!p.waitForFinished(timeoutMs)) {
         p.kill();
         return QStringLiteral("%1 took too long").arg(program);

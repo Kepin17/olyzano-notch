@@ -2,6 +2,7 @@
 
 #include "services/CleanupService.h"
 #include "services/FileService.h"
+#include "services/ZipWriter.h"
 #include "services/TextTools.h"
 #include "services/DocTools.h"
 
@@ -29,7 +30,6 @@
 #include <QtConcurrent>
 
 #include <memory>
-#include <unistd.h>
 
 // ponytail: folder drops are walked on the main thread; the cap keeps a huge tree from stalling the UI.
 constexpr int MaxFolderFiles = 1000;
@@ -105,7 +105,7 @@ static QString configDir()
     return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
 }
 
-// Spectacle runs with the session's config dir, not ours (ours may be redirected for testing).
+// Spectacle (KDE's screenshot tool) runs with the session's config dir, not ours (ours may be redirected for testing).
 static QString spectacleConfig()
 {
     return QDir::homePath() + QStringLiteral("/.config/spectaclerc");
@@ -116,10 +116,22 @@ static QString autostartPath()
     return configDir() + QStringLiteral("/autostart/notch.desktop");
 }
 
+// A private tmpfs-like folder: XDG_RUNTIME_DIR on Linux, the temp folder where there is no such thing.
+static QString runtimeDir()
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
+    return dir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::TempLocation) : dir;
+}
+
+#ifdef Q_OS_WIN
+// "Start with Windows" is a value in HKCU\...\Run.
+static const QString RunKey = QStringLiteral("HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run");
+#endif
+
 NotchController::NotchController(const QString &dataDir, QObject *parent)
     : QObject(parent)
     , m_settings(configDir() + QStringLiteral("/notch/notch.conf"), QSettings::IniFormat)
-    , m_runtimeDir(QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation))
+    , m_runtimeDir(runtimeDir())
     // The mount name includes a hash of the data dir: separate Notch instances never share it.
     , m_vault(dataDir + QStringLiteral("/vault"),
               m_runtimeDir + QStringLiteral("/notch-vault-")
@@ -497,7 +509,7 @@ void NotchController::startDownload(const QUrl &url, const QString &categoryId)
         qint64 bytes = 0;
         if (ok) {
             d->out->write(reply->readAll());
-            ok = d->out->flush() && ::fsync(d->out->handle()) == 0;
+            ok = d->out->flush() && FileService::syncFile(*d->out);
             bytes = d->out->size();
             d->out->close();
             ok = ok && QFile::rename(d->out->fileName(), pathOf(d->item))
@@ -979,11 +991,24 @@ bool NotchController::setStorageDir(const QUrl &folder)
 
 bool NotchController::autostart() const
 {
+#ifdef Q_OS_WIN
+    return QSettings(RunKey, QSettings::NativeFormat).contains(QStringLiteral("Notch"));
+#else
     return QFile::exists(autostartPath());
+#endif
 }
 
 void NotchController::setAutostart(bool enabled)
 {
+#ifdef Q_OS_WIN
+    QSettings run(RunKey, QSettings::NativeFormat);
+    if (enabled)
+        run.setValue(QStringLiteral("Notch"), QLatin1Char('"') + QDir::toNativeSeparators(QCoreApplication::applicationFilePath()) + QLatin1Char('"'));
+    else
+        run.remove(QStringLiteral("Notch"));
+    emit autostartChanged();
+    return;
+#endif
     const QString path = autostartPath();
     if (enabled) {
         QDir().mkpath(QFileInfo(path).absolutePath());
@@ -1455,6 +1480,9 @@ void NotchController::setCategoryLocked(const QString &categoryId, bool locked)
 
 bool NotchController::spectacleAutoSave() const
 {
+#ifndef Q_OS_LINUX
+    return true; // nothing to switch on: Windows saves Win+PrtSc screenshots to Pictures\\Screenshots itself
+#endif
     return QSettings(spectacleConfig(), QSettings::IniFormat).value(QStringLiteral("General/autoSaveImage"), false).toBool();
 }
 
@@ -1615,30 +1643,33 @@ void NotchController::zipItems(const QStringList &ids)
         return;
     }
     const QString itemDir = baseDir(zip) + u'/' + zip.id;
-    const QString stage = itemDir + QStringLiteral("/stage"); // links under unique names
     const QString out = itemDir + QStringLiteral("/archive.zip");
-    if (!QDir().mkpath(stage) || !m_repo.insert(zip)) {
+    if (!QDir().mkpath(itemDir) || !m_repo.insert(zip)) {
         QDir(itemDir).removeRecursively();
         setError(tr("Cannot create the zip file"));
         return;
     }
-    for (const FileItem *item : items)
-        QFile::link(pathOf(*item),
-                    stage + u'/' + FileService::uniqueName(stage, item->originalName));
+    // Two files may share a name (report.pdf from two folders): the second becomes "report (1).pdf".
+    QList<ZipWriter::Entry> entries;
+    QStringList used;
+    for (const FileItem *item : items) {
+        const QString name = FileService::uniqueAmong(item->originalName, [&](const QString &n) { return used.contains(n); });
+        used << name;
+        entries.append({pathOf(*item), name});
+    }
     m_model.upsert(zip);
     ++m_copying;
     emit copyingChanged();
 
-    auto *process = new QProcess(this);
-    process->setWorkingDirectory(stage);
-    auto done = [this, process, zip, itemDir, stage, out](bool ok, const QString &why) {
-        process->deleteLater();
+    auto *watcher = new QFutureWatcher<QString>(this);
+    connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher, zip, out] {
+        const QString why = watcher->result();
+        watcher->deleteLater();
         --m_copying;
         emit copyingChanged();
-        QDir(stage).removeRecursively(); // only our symlinks: their targets are untouched
         const QString final = pathOf(zip);
         const qint64 size = QFileInfo(out).size();
-        if (ok && QFile::rename(out, final) && m_repo.markAvailable(zip.id, size)) {
+        if (why.isEmpty() && QFile::rename(out, final) && m_repo.markAvailable(zip.id, size)) {
             FileItem ready = zip;
             ready.status = Status::Available;
             ready.sizeBytes = size;
@@ -1651,16 +1682,8 @@ void NotchController::zipItems(const QStringList &ids)
         m_repo.remove(zip.id);
         m_model.removeId(zip.id);
         setError(tr("Could not create zip: %1").arg(why));
-    };
-    connect(process, &QProcess::finished, this, [process, done](int code, QProcess::ExitStatus status) {
-        done(status == QProcess::NormalExit && code == 0,
-             QString::fromLocal8Bit(process->readAllStandardError()).trimmed());
     });
-    connect(process, &QProcess::errorOccurred, this, [done](QProcess::ProcessError error) {
-        if (error == QProcess::FailedToStart)
-            done(false, tr("the zip program is not installed"));
-    });
-    process->start(QStringLiteral("zip"), {QStringLiteral("-q"), QStringLiteral("-r"), out, QStringLiteral(".")});
+    watcher->setFuture(QtConcurrent::run([entries, out] { return ZipWriter::write(out, entries); }));
 }
 
 void NotchController::clearError()

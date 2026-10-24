@@ -11,6 +11,16 @@ class Vault
 public:
     Vault(const QString &cipherDir, const QString &mountDir);
 
+    // Locked categories rely on gocryptfs + FUSE: Linux only for now.
+    static bool supported()
+    {
+#ifdef Q_OS_LINUX
+        return true;
+#else
+        return false;
+#endif
+    }
+
     QString cipherDir() const { return m_cipherDir; }
     QString mountDir() const { return m_mountDir; }
     bool exists() const;     // created (gocryptfs.conf present)
