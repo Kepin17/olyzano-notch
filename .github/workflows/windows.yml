@@ -2,7 +2,7 @@ name: Windows
 
 on:
   push:
-    branches: [windows-port]
+    branches: [main, windows-port]
     tags: ["v*"]
   workflow_dispatch:
 

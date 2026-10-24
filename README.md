@@ -180,7 +180,7 @@ To try it without touching your real shelf or settings:
 
 Notch also runs on Windows 10 / 11 (64-bit). Download `Notch-<version>-windows-x64-setup.exe` (installer: Start menu,
 optional "start with Windows", uninstall) or the `...-portable.zip` (extract anywhere, run `notch.exe`) from the
-GitHub Actions run or Release of the `windows-port` branch. The build is not code-signed, so SmartScreen says
+repository's Releases page (a `v*` tag builds one) or from the latest **Windows** run under Actions. The build is not code-signed, so SmartScreen says
 "Windows protected your PC": **More info → Run anyway**.
 
 - **Works the same:** the shelf at the top edge of every monitor, categories, notes, search, preview, Quick Look,
