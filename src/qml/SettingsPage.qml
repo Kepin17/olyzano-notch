@@ -72,6 +72,29 @@ ScrollView {
         }
 
         ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 8
+            SectionLabel { text: "Nearby" }
+            Caption {
+                Layout.fillWidth: true
+                text: "The name other Notch computers see while you have Receive switched on in the Share window."
+            }
+            TextField {
+                id: deviceField
+                Layout.fillWidth: true
+                implicitHeight: 30
+                leftPadding: 12
+                text: nearby.deviceName
+                placeholderTextColor: theme.placeholder
+                color: theme.text
+                selectionColor: theme.accent
+                font.pixelSize: 13
+                background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: deviceField.activeFocus ? theme.accent : theme.outline }
+                onEditingFinished: nearby.deviceName = text
+            }
+        }
+
+        ColumnLayout {
             id: sharing
             Layout.fillWidth: true
             spacing: 8

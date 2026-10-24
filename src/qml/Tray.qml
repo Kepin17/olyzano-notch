@@ -13,6 +13,7 @@ Labs.SystemTrayIcon {
     }
     menu: Labs.Menu {
         Labs.MenuItem { text: "Show / hide Notch"; onTriggered: desktop.toggleFromTray("") }
+        Labs.MenuItem { text: nearby.receiving ? "Stop receiving from nearby" : "Receive from nearby (10 min)"; onTriggered: nearby.receiving ? nearby.stopReceiving() : nearby.startReceiving() }
         Labs.MenuItem { text: "Settings…"; onTriggered: desktop.toggleFromTray("settings") }
         Labs.MenuSeparator {}
         Labs.MenuItem { text: "Quit Notch"; onTriggered: Qt.quit() }

@@ -50,7 +50,7 @@ Window {
     readonly property bool anyMenu: menu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible
                                     || toolsMenu.visible || extractPopup.visible || settingsPage.overlayOpen
                                     || quickLookCard.visible || vaultPopup.visible || confirmDelete.visible
-                                    || sharePopup.visible
+                                    || sharePopup.visible || incomingPopup.visible
                                     || sortMenu.visible || removedMenu.visible
                                     || removedChipMenu.visible
     readonly property bool dragOver: dragLive && (edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver)
@@ -776,7 +776,7 @@ Window {
                     IconButton {
                         visible: root.page === "shelf" && !root.selecting && share.count > 0
                         iconName: "share"
-                        checked: sharePopup.visible || share.activeCount > 0
+                        checked: sharePopup.visible || share.activeCount + nearby.activeCount > 0
                         Accessible.name: "Show what is being shared"
                         onClicked: sharePopup.visible && sharePopup.view === "sessions" ? sharePopup.close() : sharePopup.openSessions()
                         Rectangle {
@@ -1700,6 +1700,18 @@ Window {
     SharePopup {
         id: sharePopup
         shell: root
+    }
+
+    IncomingPopup {
+        id: incomingPopup
+        shell: root
+    }
+    Connections {
+        target: nearby
+        function onIncomingRequest(id, from, files, total, code, lowDisk) {
+            root.pinned = true // a request must not hide behind other windows
+            incomingPopup.ask(id, from, files, total, code, lowDisk)
+        }
     }
 
     // Vault password: create (typed twice, with the no-recovery warning) or unlock.

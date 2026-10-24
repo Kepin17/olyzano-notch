@@ -57,6 +57,7 @@ public:
     Q_INVOKABLE void cancel(const QString &transferId) { m_service.cancel(transferId); }
     Q_INVOKABLE void dismiss(const QString &transferId);
     Q_INVOKABLE void clearFinished();
+    Q_INVOKABLE void cancelAll();
 
 signals:
     void receivingChanged();
@@ -65,6 +66,7 @@ signals:
     void scanningChanged();
     void countChanged();
     // Someone wants to send you files: ask. `files`: [{name, size}].
+    void transferUpdated(const QString &transferId, const QString &state); // lets a request popup close itself
     void incomingRequest(const QString &transferId, const QString &from, const QVariantList &files, double total,
                          const QString &code, bool lowDisk);
 

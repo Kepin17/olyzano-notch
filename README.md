@@ -72,6 +72,7 @@ Delete `%LOCALAPPDATA%\notch` too if you want your shelf gone.
 | The shelf: drop, preview, categories, notes, search, tools | ✅ | ✅ |
 | Several monitors (one shelf per screen) | ✅ | ✅ |
 | Share via QR (WiFi, and your own encrypted server) | ✅ | ✅ |
+| Nearby: send to another computer running Notch | ✅ | ✅ |
 | Auto-add new screenshots and downloads | ✅ | ✅ |
 | Charger and low-battery alerts | ✅ | ✅ |
 | Start at login · tray icon | ✅ | ✅ |
@@ -207,6 +208,20 @@ Members with their own keys and quotas exist on the relay
 
 A phone-friendly page (light / dark). For several files it lists them with thumbnails, sizes and a live countdown;
 they can download one file, tick a few, or take everything as a zip (built on their phone, nothing extra is stored).
+
+---
+
+## Nearby: send to another computer
+
+Computer to computer, like Quick Share, between two computers running Notch (Linux or Windows) on the same network. Phones use the QR page instead.
+
+1. **Receiver:** open the Share window and press **Receive** (or use the tray menu). The computer is visible as its device name for 10 minutes, then hides again. It is invisible to the network the rest of the time.
+2. **Sender:** right-click files → Share via QR → **Nearby**, pick the computer, press **Send**.
+3. Both screens show the **same 4-digit number**. If they match, the receiver presses **Accept**; the files land in a **Nearby** category.
+
+Files are encrypted on the way. The number is derived from a key exchange in which the sender commits to its key first, so someone in the middle cannot make both screens agree. Three declined or broken requests from one address are ignored for 5 minutes, and only one transfer is accepted at a time.
+
+Limits: it only talks to Notch (not Google's Quick Share), it needs both computers on one network (guest WiFi often isolates devices), and a firewall may need to allow Notch (Windows asks once; with `ufw`, open UDP 47655 and Notch's transfer port). The device name is in Settings → Nearby.
 
 ---
 

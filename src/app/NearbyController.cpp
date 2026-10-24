@@ -156,6 +156,14 @@ void NearbyController::onTransfer(const QString &id)
         emit dataChanged(index(row), index(row));
     }
     emit countChanged();
+    emit transferUpdated(id, m_service.transfer(id).value(QStringLiteral("state")).toString());
+}
+
+void NearbyController::cancelAll()
+{
+    for (const QString &id : m_ids)
+        if (isActive(m_service.transfer(id).value(QStringLiteral("state")).toString()))
+            m_service.cancel(id);
 }
 
 void NearbyController::dismiss(const QString &id)

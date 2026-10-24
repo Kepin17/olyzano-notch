@@ -11,7 +11,9 @@ Popup {
     property bool hasVault: false
     property string view: "setup" // setup | sessions
     property string expandedId: ""
-    property string mode: "local"
+    property string mode: "local" // local | relay | nearby
+    property string nearbyId: ""
+    property string receiveError: ""
     property int ttl: 3600
     property string protection: "none" // none | pin | password
     property bool single: true
@@ -56,6 +58,7 @@ Popup {
         ttl = share.defaultTtl
         protection = "none"
         tried = false
+        nearbyId = ""
         addresses = share.lanAddresses()
         address = addresses.length > 0 ? addresses[0] : ""
         secret.clear()
@@ -67,6 +70,11 @@ Popup {
         open()
     }
     function begin() {
+        if (mode === "nearby") {
+            if (nearby.send(ids, nearbyId) !== "")
+                view = "sessions"
+            return
+        }
         tried = true
         if (secretError !== "")
             return
@@ -113,8 +121,14 @@ Popup {
             SectionLabel { text: pop.view === "setup" ? "Share via QR" : "Sharing now" }
             Item { Layout.fillWidth: true }
             PillButton {
-                visible: pop.view === "setup" && share.count > 0
-                text: "Active (" + share.count + ")"
+                iconName: "laptop"
+                text: nearby.receiving ? "Receiving · " + pop.countdown(nearby.receiveUntil) : "Receive"
+                checked: nearby.receiving
+                onClicked: pop.receiveError = nearby.receiving ? (nearby.stopReceiving(), "") : nearby.startReceiving()
+            }
+            PillButton {
+                visible: pop.view === "setup" && share.count + nearby.count > 0
+                text: "Active (" + (share.count + nearby.count) + ")"
                 onClicked: pop.view = "sessions"
             }
             PillButton {
@@ -122,6 +136,18 @@ Popup {
                 text: "New share"
                 onClicked: pop.view = "setup"
             }
+        }
+
+        Caption {
+            Layout.fillWidth: true
+            visible: nearby.receiving
+            text: "Visible to Notch computers on this network as “" + nearby.deviceName + "”. Whoever sends to you needs your OK."
+        }
+        Caption {
+            Layout.fillWidth: true
+            visible: pop.receiveError !== ""
+            color: theme.danger
+            text: pop.receiveError
         }
 
         // ---- setup ----
@@ -140,6 +166,12 @@ Popup {
                 spacing: 6
                 PillButton { text: "This WiFi"; iconName: "wifi"; checked: pop.mode === "local"; onClicked: pop.mode = "local" }
                 PillButton { text: "My server"; iconName: "server"; checked: pop.mode === "relay"; onClicked: pop.mode = "relay" }
+                PillButton {
+                    text: "Nearby"
+                    iconName: "laptop"
+                    checked: pop.mode === "nearby"
+                    onClicked: { pop.mode = "nearby"; pop.protection = "none"; nearby.scan() }
+                }
             }
             Caption {
                 Layout.fillWidth: true
@@ -148,12 +180,54 @@ Popup {
             }
             Caption {
                 Layout.fillWidth: true
-                text: pop.mode === "local"
+                text: pop.mode === "nearby"
+                      ? "Send to a computer running Notch on this network. They press Receive, you both compare a 4-digit code, and they press Accept. Files are encrypted on the way."
+                      : pop.mode === "local"
                       ? "Your computer serves the files to phones on the same WiFi. Not encrypted, and it works only while Notch runs."
                         + (notch.platform === "windows" ? " The first time, Windows asks to let Notch through its firewall: allow it on private networks." : "")
                       : share.relayConfigured
                         ? "Encrypted here, then stored on your server. The server cannot read it, and your computer can be switched off."
                         : "Set up your server in Settings → Sharing first."
+            }
+            // nearby computers
+            ColumnLayout {
+                visible: pop.mode === "nearby"
+                Layout.fillWidth: true
+                spacing: 6
+                RowLayout {
+                    Layout.fillWidth: true
+                    Caption {
+                        Layout.fillWidth: true
+                        text: nearby.scanning ? "Looking around…" : nearby.devices.length === 0 ? "No computer found." : "Computers nearby"
+                    }
+                    PillButton { text: "Look again"; onClicked: nearby.scan() }
+                }
+                ProgressBar { Layout.fillWidth: true; visible: nearby.scanning; indeterminate: true }
+                Repeater {
+                    model: nearby.devices
+                    delegate: Rectangle {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        implicitHeight: 40
+                        radius: theme.washi ? 8 : 12
+                        color: theme.card
+                        border.width: 1
+                        border.color: pop.nearbyId === modelData.id ? theme.accent : theme.outline
+                        RowLayout {
+                            anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                            spacing: 8
+                            LineIcon { glyph: "laptop"; sourceSize: Qt.size(16, 16); color: pop.nearbyId === modelData.id ? theme.accent : theme.textDim }
+                            Text { Layout.fillWidth: true; text: modelData.name; color: theme.text; font.pixelSize: 13; elide: Text.ElideRight }
+                            Text { text: modelData.os === "windows" ? "Windows" : modelData.os === "linux" ? "Linux" : ""; color: theme.textDim; font.pixelSize: 11 }
+                        }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: pop.nearbyId = modelData.id }
+                    }
+                }
+                Caption {
+                    Layout.fillWidth: true
+                    visible: !nearby.scanning && nearby.devices.length === 0
+                    text: "On the other computer, open Notch and press Receive. Both computers must be on the same network (guest WiFi often blocks this)."
+                }
             }
             // which server, when there is a choice
             RowLayout {
@@ -201,6 +275,7 @@ Popup {
                 text: "These include locked files. Over WiFi they are sent unencrypted."
             }
             Row {
+                visible: pop.mode !== "nearby"
                 spacing: 6
                 Repeater {
                     model: [[600, "10 min"], [3600, "1 hour"], [86400, "24 hours"]]
@@ -214,8 +289,9 @@ Popup {
                 }
             }
 
-            SectionLabel { text: "Protect with" }
+            SectionLabel { text: "Protect with"; visible: pop.mode !== "nearby" }
             Row {
+                visible: pop.mode !== "nearby"
                 spacing: 6
                 PillButton { text: "Nothing"; checked: pop.protection === "none"; onClicked: pop.protection = "none" }
                 PillButton { iconName: "lock"; text: "PIN"; checked: pop.protection === "pin"; onClicked: pop.protection = "pin" }
@@ -271,9 +347,10 @@ Popup {
                 Item { Layout.fillWidth: true }
                 PillButton { text: "Cancel"; onClicked: pop.close() }
                 PillButton {
-                    text: pop.hasVault && pop.mode === "local" ? "Share anyway" : "Share"
+                    text: pop.mode === "nearby" ? "Send" : pop.hasVault && pop.mode === "local" ? "Share anyway" : "Share"
                     checked: true
-                    enabled: pop.mode === "local" ? pop.addresses.length > 0 : (share.relayConfigured && pop.limitError === "")
+                    enabled: pop.mode === "nearby" ? pop.nearbyId !== ""
+                           : pop.mode === "local" ? pop.addresses.length > 0 : (share.relayConfigured && pop.limitError === "")
                     onClicked: pop.begin()
                 }
             }
@@ -287,7 +364,7 @@ Popup {
 
             Caption {
                 Layout.fillWidth: true
-                visible: share.count === 0
+                visible: share.count + nearby.count === 0
                 text: "Nothing is being shared. Right-click a file → Share via QR."
             }
 
@@ -459,18 +536,100 @@ Popup {
                 }
             }
 
+            // transfers with other computers (Nearby)
+            ColumnLayout {
+                Layout.fillWidth: true
+                visible: nearby.count > 0
+                spacing: 8
+                Repeater {
+                    model: nearby
+                    delegate: Rectangle {
+                        id: nb
+                        required property string transferId
+                        required property string direction
+                        required property string peer
+                        required property string state
+                        required property string code
+                        required property double progress
+                        required property string message
+                        required property bool active
+                        readonly property bool moving: state === "sending" || state === "receiving"
+                        Layout.fillWidth: true
+                        implicitHeight: nbBody.implicitHeight + 20
+                        radius: theme.washi ? 8 : 12
+                        color: theme.card
+                        border.width: 1
+                        border.color: state === "asking" ? theme.accent : theme.outline
+                        ColumnLayout {
+                            id: nbBody
+                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
+                            spacing: 6
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                LineIcon { glyph: "laptop"; sourceSize: Qt.size(16, 16); color: nb.active ? theme.accent : theme.textDim }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 0
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: (nb.direction === "out" ? "To " : "From ") + nb.peer
+                                        color: theme.text
+                                        font.pixelSize: 13
+                                        font.weight: Font.Medium
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        color: nb.state === "failed" ? theme.danger : theme.textDim
+                                        font.pixelSize: 11
+                                        elide: Text.ElideRight
+                                        text: nb.state === "connecting" ? "Connecting…"
+                                              : nb.state === "waiting" ? "Waiting for them to accept"
+                                              : nb.state === "asking" ? "Wants to send you files"
+                                              : nb.moving ? (nb.direction === "out" ? "Sending " : "Receiving ") + Math.round(nb.progress * 100) + "%"
+                                              : nb.state === "done" ? "✓ " + nb.message : nb.message
+                                    }
+                                }
+                                PillButton { visible: nb.state === "asking"; text: "Accept"; checked: true; onClicked: nearby.accept(nb.transferId) }
+                                PillButton { visible: nb.state === "asking"; text: "Decline"; onClicked: nearby.decline(nb.transferId) }
+                                PillButton { visible: nb.active && nb.state !== "asking"; text: "Stop"; onClicked: nearby.cancel(nb.transferId) }
+                                IconButton { visible: !nb.active; iconName: "close"; Accessible.name: "Remove from the list"; onClicked: nearby.dismiss(nb.transferId) }
+                            }
+                            // the number both people compare
+                            Text {
+                                Layout.alignment: Qt.AlignHCenter
+                                visible: nb.code !== "" && (nb.state === "waiting" || nb.state === "asking")
+                                text: nb.code
+                                color: theme.text
+                                font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
+                                font.pixelSize: 34
+                                font.letterSpacing: 8
+                            }
+                            Caption {
+                                Layout.fillWidth: true
+                                horizontalAlignment: Text.AlignHCenter
+                                visible: nb.code !== "" && (nb.state === "waiting" || nb.state === "asking")
+                                text: "It must be the same number on both screens."
+                            }
+                            ProgressBar { Layout.fillWidth: true; visible: nb.moving; value: nb.progress }
+                        }
+                    }
+                }
+            }
+
             RowLayout {
                 Layout.fillWidth: true
-                visible: share.count > 0
+                visible: share.count + nearby.count > 0
                 PillButton {
-                    visible: share.activeCount > 1
+                    visible: share.activeCount + nearby.activeCount > 1
                     text: "Stop all"
-                    onClicked: share.stopAll()
+                    onClicked: { share.stopAll(); nearby.cancelAll() }
                 }
                 PillButton {
-                    visible: share.count > share.activeCount
+                    visible: share.count > share.activeCount || nearby.count > nearby.activeCount
                     text: "Clear finished"
-                    onClicked: share.clearFinished()
+                    onClicked: { share.clearFinished(); nearby.clearFinished() }
                 }
                 Item { Layout.fillWidth: true }
                 PillButton { text: "Close"; checked: true; onClicked: pop.close() }
