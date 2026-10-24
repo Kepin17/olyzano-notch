@@ -117,16 +117,28 @@ QList<FolderEntry> expandFolder(const QString &root, int maxFiles, bool *truncat
     QList<FolderEntry> out;
     if (truncated)
         *truncated = false;
-    // Without QDir::Hidden the iterator neither lists hidden files nor descends into hidden folders.
-    QDirIterator it(root, QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
-    while (it.hasNext()) {
-        const QFileInfo fi = it.nextFileInfo();
-        if (out.size() >= maxFiles) {
-            if (truncated)
-                *truncated = true;
-            break;
+    // Hidden files and folders are skipped, and never entered: ".git", ".env", and what the OS marks hidden.
+    // (Qt's own hidden test is only the file attribute on Windows, where a leading dot means nothing.)
+    QStringList pending{root};
+    while (!pending.isEmpty() && (!truncated || !*truncated)) {
+        const QDir dir(pending.takeFirst());
+        const QFileInfoList entries = dir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden, QDir::Name);
+        for (const QFileInfo &fi : entries) {
+            if (fi.fileName().startsWith(u'.') || fi.isHidden())
+                continue;
+            if (fi.isDir()) {
+                if (!fi.isSymLink()) // links to folders are not followed
+                    pending << fi.absoluteFilePath();
+            } else if (out.size() >= maxFiles) {
+                if (truncated)
+                    *truncated = true;
+                break;
+            } else {
+                out << FolderEntry{fi.absoluteFilePath(), fi.dir().dirName()};
+            }
         }
-        out << FolderEntry{fi.absoluteFilePath(), fi.dir().dirName()};
+        if (!truncated && out.size() >= maxFiles)
+            break;
     }
     std::sort(out.begin(), out.end(), [](const FolderEntry &a, const FolderEntry &b) { return a.path < b.path; });
     return out;

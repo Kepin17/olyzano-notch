@@ -840,7 +840,7 @@ private slots:
         if (!py.waitForFinished(30000))
             QSKIP("python3 is not available");
         QCOMPARE(QString::fromUtf8(py.readAllStandardError()), QString());
-        QCOMPARE(QString::fromUtf8(py.readAllStandardOutput()).split(u'\n', Qt::SkipEmptyParts), expected);
+        QCOMPARE(QString::fromUtf8(py.readAllStandardOutput()).remove(u'\r').split(u'\n', Qt::SkipEmptyParts), expected); // CRLF on Windows
     }
     void inviteLinksAreParsedStrictly()
     {
@@ -1069,6 +1069,7 @@ private slots:
         QVERIFY(!FileService::removeManaged(m_files, id + QStringLiteral("/..")));
         QVERIFY(!FileService::removeManaged(m_files, id + QStringLiteral("/a/b")));
 
+#ifndef Q_OS_WIN // QFile::link makes a .lnk shortcut there, not a symbolic link: nothing to guard against
         // A uuid dir that is a symlink to outside: only the link goes, the target survives.
         const QString outside = writeSource(QStringLiteral("outside/keep.txt"), "keep");
         QVERIFY(QFile::link(QFileInfo(outside).absolutePath(), m_files + u'/' + id));
@@ -1082,6 +1083,7 @@ private slots:
         QVERIFY(QFile::link(outside, m_files + u'/' + id2 + QStringLiteral("/keep.txt")));
         QVERIFY(FileService::removeManaged(m_files, id2 + QStringLiteral("/keep.txt")));
         QVERIFY(QFile::exists(outside));
+#endif
     }
 
     void recoveryAfterCrash()

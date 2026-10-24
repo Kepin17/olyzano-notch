@@ -19,6 +19,7 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
+          modules: qtimageformats # WebP and friends: "Convert to WebP" and thumbnails need them
           cache: true
 
       - name: MSVC environment
