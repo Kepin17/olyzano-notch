@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: write # attaches the files to a release
     env:
       QT_VERSION: "6.8.*"
     steps:
