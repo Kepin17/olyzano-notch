@@ -40,6 +40,8 @@ qt_add_library(notch_core STATIC
     src/services/ShareServer.h src/services/ShareServer.cpp
     src/services/Invite.h src/services/Invite.cpp
     src/services/ZipWriter.h src/services/ZipWriter.cpp
+    src/services/NearbyCrypto.h src/services/NearbyCrypto.cpp
+    src/services/NearbyService.h src/services/NearbyService.cpp
     third_party/qrcodegen.cpp
 )
 set_source_files_properties(third_party/qrcodegen.cpp PROPERTIES COMPILE_OPTIONS "-w") # vendored (MIT)
@@ -60,7 +62,7 @@ qt_add_resources(notch_core migrations PREFIX "/" BASE database FILES
     database/migrations/005_vault.sql
 )
 target_include_directories(notch_core PUBLIC src third_party)
-target_link_libraries(notch_core PUBLIC Qt6::Core Qt6::Gui Qt6::Sql Qt6::Network ${NOTCH_CRYPTO}) # Gui: QImage/QPdfWriter in DocTools
+target_link_libraries(notch_core PUBLIC Qt6::Core Qt6::Gui Qt6::Sql Qt6::Network Qt6::Concurrent ${NOTCH_CRYPTO}) # Gui: QImage/QPdfWriter in DocTools
 
 qt_add_executable(notch
     src/main.cpp
