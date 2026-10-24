@@ -34,7 +34,7 @@ jobs:
           -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
 
       - name: Build
-        run: cmake --build build
+        run: cmake --build build -- -k 0 # keep going: one run shows every compile error
 
       - name: Test
         env:

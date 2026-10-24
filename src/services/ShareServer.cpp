@@ -114,7 +114,8 @@ private:
         m_left = size > 0 ? last - start + 1 : 0;
         m_index = index;
         m_countsAsDownload = !inline_ && !head && last == size - 1 && start == 0 && !partial;
-        const QByteArray disposition = (inline_ ? "inline" : "attachment; filename*=UTF-8''" + QUrl::toPercentEncoding(entry.name));
+        const QByteArray disposition = inline_ ? QByteArray("inline")
+                                               : QByteArray("attachment; filename*=UTF-8''") + QUrl::toPercentEncoding(entry.name);
         QList<QPair<QByteArray, QByteArray>> extra{{"Content-Disposition", disposition}, {"Accept-Ranges", "bytes"},
                                                    {"Content-Security-Policy", "default-src 'none'; sandbox"}};
         if (partial)
