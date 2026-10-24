@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notch · Install</title>
+<meta name="description" content="Notch, a temporary file shelf for your desktop. Download for Linux and Windows.">
+<link rel="icon" href="site/notch.svg">
+<style>
+:root{--bg:#f6f2ea;--card:#fffdf8;--ink:#1d1a16;--dim:#6b645a;--line:#e3dccd;--accent:#d4493b;--accent-ink:#fff;--code:#efe9dc}
+@media (prefers-color-scheme:dark){:root{--bg:#14120f;--card:#1d1a16;--ink:#efe9dc;--dim:#a39b8c;--line:#2e2a24;--accent:#e0584a;--code:#26221d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:860px;margin:0 auto;padding:48px 16px 64px}
+header{text-align:center;margin-bottom:36px}
+header img{width:84px;height:84px}
+h1{font-size:2.2rem;margin:12px 0 4px;letter-spacing:-.02em}
+.lead{color:var(--dim);max-width:520px;margin:0 auto 24px}
+.btn{display:inline-block;background:var(--accent);color:var(--accent-ink);text-decoration:none;font-weight:600;padding:12px 22px;border-radius:12px}
+.btn.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.meta{color:var(--dim);font-size:.85rem;margin-top:10px;min-height:1.3em}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media (max-width:700px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}
+.card.me{border-color:var(--accent)}
+h2{margin:0 0 4px;font-size:1.3rem}
+.sub{color:var(--dim);font-size:.9rem;margin:0 0 14px}
+.row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+pre{background:var(--code);border-radius:10px;padding:10px 12px;overflow-x:auto;font-size:.85rem;margin:8px 0}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+ol,ul{padding-left:20px;margin:8px 0}
+li{margin:4px 0}
+details{margin-top:10px;color:var(--dim);font-size:.9rem}
+summary{cursor:pointer;color:var(--ink)}
+.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:36px 0 0}
+.feat div{border-top:2px solid var(--line);padding-top:8px}
+.feat b{display:block}.feat span{color:var(--dim);font-size:.9rem}
+footer{margin-top:40px;text-align:center;color:var(--dim);font-size:.9rem}
+a{color:var(--accent)}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <img src="site/notch.svg" alt="">
+  <h1>Notch</h1>
+  <p class="lead">A temporary shelf for the files you are working with. Drop them at the top of the screen, share them, send them to another computer.</p>
+  <a class="btn" id="hero" href="https://github.com/Kepin17/olyzano-notch/releases/latest">Download</a>
+  <div class="meta" id="heroMeta"></div>
+  <p><a href="#linux" id="other">Linux</a> · <a href="#windows">Windows</a></p>
+</header>
+
+<div class="grid">
+  <section class="card" id="linux">
+    <h2>Linux</h2>
+    <p class="sub">Debian, Ubuntu, Kubuntu · 64-bit · tested on KDE Plasma (Wayland)</p>
+    <div class="row"><a class="btn" id="deb" href="https://github.com/Kepin17/olyzano-notch/releases/latest">Download .deb</a></div>
+    <ol>
+      <li>Download the package.</li>
+      <li>Install it; <code>apt</code> brings everything it needs:</li>
+    </ol>
+    <pre><code id="debCmd">sudo apt install ./notch_VERSION_amd64.deb</code></pre>
+    <ol start="3"><li>Start <b>Notch</b> from the application menu.</li></ol>
+    <details><summary>Optional and removal</summary>
+      <pre><code>sudo apt install tesseract-ocr   # OCR tool
+sudo apt remove notch            # remove (your shelf is kept)</code></pre>
+    </details>
+    <details><summary>Other distributions: build from source</summary>
+      <pre><code>git clone https://github.com/Kepin17/olyzano-notch
+cd olyzano-notch
+sudo apt install cmake ninja-build g++ qt6-base-dev \
+  qt6-declarative-dev liblayershellqtinterface-dev
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build &amp;&amp; ./build/notch</code></pre>
+    </details>
+  </section>
+
+  <section class="card" id="windows">
+    <h2>Windows</h2>
+    <p class="sub">Windows 10 and 11 · 64-bit</p>
+    <div class="row">
+      <a class="btn" id="exe" href="https://github.com/Kepin17/olyzano-notch/releases/latest">Download installer</a>
+      <a class="btn alt" id="zip" href="https://github.com/Kepin17/olyzano-notch/releases/latest">Portable .zip</a>
+    </div>
+    <ol>
+      <li>Run the installer. It installs for your user, no administrator prompt.</li>
+      <li>Windows may say <i>“Windows protected your PC”</i> because the build is not code-signed: click <b>More info → Run anyway</b>.</li>
+      <li>Start <b>Notch</b> from the Start menu.</li>
+    </ol>
+    <details><summary>Good to know</summary>
+      <ul>
+        <li>The portable zip needs no install: extract it and run <code>notch.exe</code>.</li>
+        <li>Sharing over WiFi or Nearby: allow Notch through the firewall on <b>private</b> networks.</li>
+        <li>PDF and OCR tools need Poppler, Ghostscript and Tesseract on your PATH.</li>
+        <li>Remove: Settings → Apps → Notch → Uninstall.</li>
+      </ul>
+    </details>
+  </section>
+</div>
+
+<div class="feat">
+  <div><b>The shelf</b><span>Drop files, folders, images, links and notes; preview and organize them.</span></div>
+  <div><b>Share via QR</b><span>Over your WiFi or your own encrypted server, with PIN or password.</span></div>
+  <div><b>Nearby</b><span>Send to another computer running Notch, after matching a 4-digit code.</span></div>
+  <div><b>Tools</b><span>Merge and split PDFs, convert images, OCR, zip.</span></div>
+</div>
+
+<footer>
+  <a href="https://github.com/Kepin17/olyzano-notch">Source and documentation</a> ·
+  <a href="https://github.com/Kepin17/olyzano-notch/releases">All releases</a>
+</footer>
+</main>
+
+<script>
+(function () {
+  var repo = "Kepin17/olyzano-notch";
+  var ua = navigator.userAgent || "";
+  var os = /Windows/i.test(ua) ? "windows" : /Linux|X11/i.test(ua) && !/Android/i.test(ua) ? "linux" : "";
+  var $ = function (id) { return document.getElementById(id); };
+  var releases = "https://github.com/" + repo + "/releases/latest";
+
+  function mb(n) { return (n / 1048576).toFixed(1) + " MB"; }
+  function label(el, text, a) { el.textContent = text + (a ? " (" + mb(a.size) + ")" : ""); }
+
+  if (os) {
+    $(os).classList.add("me");
+    $("other").textContent = os === "linux" ? "Windows" : "Linux";
+    $("other").href = os === "linux" ? "#windows" : "#linux";
+    $("hero").textContent = "Download for " + (os === "linux" ? "Linux" : "Windows");
+    $("hero").href = "#" + os;
+    $("heroMeta").textContent = "Looking up the latest version…";
+  }
+
+  fetch("https://api.github.com/repos/" + repo + "/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
+    .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+    .then(function (rel) {
+      var find = function (re) { return (rel.assets || []).filter(function (a) { return re.test(a.name); })[0]; };
+      var deb = find(/\.deb$/), exe = find(/setup\.exe$/), zip = find(/portable\.zip$/);
+      var ver = (rel.tag_name || "").replace(/^v/, "");
+      if (deb) { $("deb").href = deb.browser_download_url; label($("deb"), "Download .deb", deb); $("debCmd").textContent = "sudo apt install ./" + deb.name; }
+      if (exe) { $("exe").href = exe.browser_download_url; label($("exe"), "Download installer", exe); }
+      if (zip) { $("zip").href = zip.browser_download_url; label($("zip"), "Portable .zip", zip); }
+      var mine = os === "linux" ? deb : os === "windows" ? exe : null;
+      if (mine) $("hero").href = mine.browser_download_url;
+      $("heroMeta").textContent = ver ? "Version " + ver + (mine ? "" : " · no file for your system in this release yet") : "";
+    })
+    .catch(function () {
+      $("hero").href = os ? "#" + os : releases;
+      $("heroMeta").textContent = os ? "Could not reach GitHub; the buttons below open the releases page." : "";
+    });
+})();
+</script>
+</body>
+</html>

@@ -19,11 +19,13 @@ Runs on **Linux (KDE Plasma, Wayland or X11)** and **Windows 10 / 11**.
 
 ## Install
 
+The easiest way is the **[install page](https://kepin17.github.io/olyzano-notch/)**, which links the newest download for your system.
+
 ### Linux
 
 Tested on Kubuntu 26.04 (Qt 6.10, KDE Plasma on Wayland).
 
-**From a `.deb` package**
+**From a `.deb` package** (attached to each release, or build it yourself)
 
 ```bash
 cd build && cpack                      # makes notch_<version>_amd64.deb

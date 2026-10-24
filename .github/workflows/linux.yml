@@ -1,0 +1,42 @@
+name: Linux
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  deb:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build g++ libssl-dev qt6-base-dev qt6-declarative-dev \
+            qt6-base-private-dev liblayershellqtinterface-dev
+
+      - name: Configure and build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build build
+
+      - name: Test
+        run: cd build && QT_QPA_PLATFORM=offscreen ctest --output-on-failure
+
+      - name: Package
+        run: cd build && cpack
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notch-linux-deb
+          path: build/notch_*.deb
+
+      - name: Attach to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/notch_*.deb
