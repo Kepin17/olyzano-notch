@@ -38,8 +38,6 @@ jobs:
         run: cmake --build build -- -k 0 # keep going: one run shows every compile error
 
       - name: Test
-        # Not fatal for now: the installer is still built so it can be tried while a failing test is looked at.
-        continue-on-error: true
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
