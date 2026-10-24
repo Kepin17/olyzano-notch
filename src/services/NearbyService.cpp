@@ -150,8 +150,15 @@ private:
         // Only our own work folder, and only once it exists: QDir("") means "the current directory".
         if (!m_dir.isEmpty())
             QDir(m_dir).removeRecursively();
-        m_socket->abort();
-        deleteLater();
+        if (m_socket->state() == QAbstractSocket::ConnectedState && m_socket->bytesToWrite() > 0) {
+            // A last message (declined, done) is still on its way: let it out before closing.
+            m_socket->disconnectFromHost();
+            connect(m_socket, &QTcpSocket::disconnected, this, &QObject::deleteLater);
+            QTimer::singleShot(3000, this, &QObject::deleteLater);
+        } else {
+            m_socket->abort();
+            deleteLater();
+        }
     }
 
     void onRead()

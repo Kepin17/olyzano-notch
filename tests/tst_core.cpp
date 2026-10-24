@@ -5,6 +5,8 @@
 #include "services/TextTools.h"
 #include "services/DocTools.h"
 #include "services/Invite.h"
+#include "services/NearbyCrypto.h"
+#include "services/NearbyService.h"
 #include "services/QrImage.h"
 #include "services/ShareCrypto.h"
 #include "services/ShareServer.h"
@@ -29,7 +31,9 @@
 #include <QFile>
 #include <QSqlDatabase>
 #include <QSignalSpy>
+#include <memory>
 #include <QSqlQuery>
+#include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUuid>
@@ -76,6 +80,56 @@ static QByteArray pattern(int size, int salt)
     for (int i = 0; i < size; ++i)
         data.append(char(i * 31 + i / 251 + salt));
     return data;
+}
+
+// ---- helpers for the Nearby tests: two services in one process, talking over loopback ----
+struct NearbyPair {
+    std::unique_ptr<NearbyService> receiver, sender;
+    NearbyService::Device device;
+};
+
+static NearbyPair makeNearbyPair(const QString &dir)
+{
+    NearbyPair p;
+    p.receiver.reset(new NearbyService(dir + QStringLiteral("/nb-recv")));
+    p.sender.reset(new NearbyService(dir + QStringLiteral("/nb-send")));
+    p.receiver->setDevice(QStringLiteral("recv-id"), QStringLiteral("Alice's PC"));
+    p.sender->setDevice(QStringLiteral("send-id"), QStringLiteral("Bob's laptop"));
+    if (!p.receiver->startReceiving(60, 0).isEmpty())
+        return p;
+    QSignalSpy found(p.sender.get(), &NearbyService::deviceFound);
+    p.sender->probe({QHostAddress::LocalHost}, p.receiver->discoveryPort());
+    if (!found.wait(5000))
+        return p;
+    const QVariantMap d = found.first().first().toMap();
+    p.device = {d.value(QStringLiteral("id")).toString(), d.value(QStringLiteral("name")).toString(), d.value(QStringLiteral("os")).toString(),
+                QHostAddress(d.value(QStringLiteral("address")).toString()), quint16(d.value(QStringLiteral("port")).toInt())};
+    return p;
+}
+
+static QList<ShareCrypto::SourceFile> makeNearbyFiles(const QString &dir, QMap<QString, QByteArray> *expected)
+{
+    QList<ShareCrypto::SourceFile> files;
+    const QList<QPair<QString, QByteArray>> spec{{QStringLiteral("hello.txt"), QByteArrayLiteral("hi there")},
+                                                 {QStringLiteral("empty.bin"), {}},
+                                                 {QStringLiteral("big file.bin"), pattern(2 * 1024 * 1024 + 321, 9)}};
+    int i = 0;
+    for (const auto &s : spec) {
+        expected->insert(s.first, s.second);
+        const QString path = dir + QStringLiteral("/nbsrc%1").arg(i++);
+        QFile f(path);
+        if (f.open(QIODevice::WriteOnly))
+            f.write(s.second);
+        files.append({path, s.first, QStringLiteral("application/octet-stream")});
+    }
+    return files;
+}
+
+static QJsonObject takeFrame(QTcpSocket &s)
+{
+    const QByteArray head = s.read(4);
+    const quint32 len = qFromBigEndian<quint32>(head.constData());
+    return QJsonDocument::fromJson(s.read(len)).object();
 }
 
 class TestCore : public QObject
@@ -808,6 +862,188 @@ private slots:
         QFile f(QDir(outDir).filePath(files.last().name));
         QVERIFY(f.open(QIODevice::ReadOnly));
         QCOMPARE(f.readAll(), contents.last());
+    }
+    void nearbyCryptoAgreesAndBindsTheTranscript()
+    {
+        const auto s = NearbyCrypto::generate(), r = NearbyCrypto::generate();
+        QCOMPARE(s.pub.size(), 32);
+        QVERIFY(s.pub != r.pub);
+        const QByteArray zs = NearbyCrypto::agree(s.priv, r.pub), zr = NearbyCrypto::agree(r.priv, s.pub);
+        QVERIFY(!zs.isNull());
+        QCOMPARE(zs, zr);
+        const QByteArray files = QByteArrayLiteral("[{\"name\":\"a.txt\",\"size\":1}]");
+        const QByteArray t = NearbyCrypto::transcript(s.pub, r.pub, files);
+        const QString code = NearbyCrypto::code(zs, t);
+        QCOMPARE(code.size(), 4);
+        QCOMPARE(NearbyCrypto::code(zr, t), code);
+        QCOMPARE(NearbyCrypto::sessionKey(zs, t), NearbyCrypto::sessionKey(zr, t));
+        QCOMPARE(NearbyCrypto::sessionKey(zs, t).size(), 32);
+        QVERIFY(NearbyCrypto::sessionKey(zs, t) != NearbyCrypto::acceptProof(zs, t));
+        QVERIFY(NearbyCrypto::transcript(s.pub, r.pub, files + " ") != t); // another file list, another transcript
+        const auto other = NearbyCrypto::generate();
+        QVERIFY(NearbyCrypto::agree(other.priv, s.pub) != zs);
+        QCOMPARE(NearbyCrypto::commitment(s.pub).size(), 32);
+        QVERIFY(NearbyCrypto::commitment(s.pub) != NearbyCrypto::commitment(r.pub));
+        QVERIFY(NearbyCrypto::agree(s.priv, QByteArray(32, 0)).isNull()); // a low-order key gives no secret
+        QVERIFY(NearbyCrypto::agree(s.priv, QByteArray(5, 1)).isNull());
+        QSet<QString> seen;
+        for (int i = 0; i < 20; ++i) {
+            const auto a = NearbyCrypto::generate(), b = NearbyCrypto::generate();
+            seen << NearbyCrypto::code(NearbyCrypto::agree(a.priv, b.pub), NearbyCrypto::transcript(a.pub, b.pub, files));
+        }
+        QVERIFY(seen.size() > 10);
+    }
+    void nearbyCryptoMatchesPython()
+    {
+        QProcess probe;
+        probe.start(QStringLiteral("python3"), {QStringLiteral("-c"), QStringLiteral("import cryptography")});
+        if (!probe.waitForFinished(10000) || probe.exitCode() != 0)
+            QSKIP("python3 with the cryptography package is not available");
+        const auto a = NearbyCrypto::generate(), b = NearbyCrypto::generate();
+        QProcess py;
+        py.start(QStringLiteral("python3"), {QStringLiteral("-c"), QStringLiteral(
+            "import sys, binascii\n"
+            "from cryptography.hazmat.primitives.asymmetric.x25519 import X25519PrivateKey, X25519PublicKey\n"
+            "priv = X25519PrivateKey.from_private_bytes(binascii.unhexlify(sys.argv[1]))\n"
+            "print(binascii.hexlify(priv.exchange(X25519PublicKey.from_public_bytes(binascii.unhexlify(sys.argv[2])))).decode())\n"),
+            QString::fromLatin1(a.priv.toHex()), QString::fromLatin1(b.pub.toHex())});
+        QVERIFY(py.waitForFinished(30000));
+        QCOMPARE(QString::fromUtf8(py.readAllStandardOutput()).trimmed(), QString::fromLatin1(NearbyCrypto::agree(a.priv, b.pub).toHex()));
+    }
+    void nearbyFindsTheReceiverAndSendsAfterAccept()
+    {
+        NearbyPair p = makeNearbyPair(m_tmp.path());
+        QVERIFY(p.receiver->receiving());
+        QCOMPARE(p.device.name, QStringLiteral("Alice's PC"));
+        QCOMPARE(p.device.id, QStringLiteral("recv-id"));
+        QVERIFY(p.device.port > 0);
+
+        QMap<QString, QByteArray> expected, got;
+        const auto files = makeNearbyFiles(m_tmp.path(), &expected);
+        QString fromName;
+        connect(p.receiver.get(), &NearbyService::received, this, [&](const QString &folder, const QStringList &names, const QString &from) {
+            fromName = from;
+            for (const QString &n : names) { // the folder goes away right after this slot: read now
+                QFile f(QDir(folder).filePath(n));
+                if (f.open(QIODevice::ReadOnly))
+                    got.insert(n, f.readAll());
+            }
+        });
+        QSignalSpy incoming(p.receiver.get(), &NearbyService::incoming);
+        const QString out = p.sender->send(p.device, files);
+        QVERIFY2(incoming.wait(10000), qPrintable(QString::fromUtf8(QJsonDocument::fromVariant(p.sender->transfer(out)).toJson(QJsonDocument::Compact))));
+        const QString in = incoming.first().at(0).toString(), code = incoming.first().at(4).toString();
+        QCOMPARE(incoming.first().at(1).toString(), QStringLiteral("Bob's laptop"));
+        QCOMPARE(incoming.first().at(2).toList().size(), 3);
+        QCOMPARE(code.size(), 4);
+        QTRY_COMPARE(p.sender->transfer(out).value(QStringLiteral("state")).toString(), QStringLiteral("waiting"));
+        QCOMPARE(p.sender->transfer(out).value(QStringLiteral("code")).toString(), code); // the same number on both screens
+        QCOMPARE(p.receiver->transfer(in).value(QStringLiteral("code")).toString(), code);
+
+        p.receiver->accept(in);
+        QTRY_COMPARE_WITH_TIMEOUT(p.sender->transfer(out).value(QStringLiteral("state")).toString(), QStringLiteral("done"), 20000);
+        QTRY_COMPARE(p.receiver->transfer(in).value(QStringLiteral("state")).toString(), QStringLiteral("done"));
+        QCOMPARE(fromName, QStringLiteral("Bob's laptop"));
+        QCOMPARE(got, expected);
+        QVERIFY(!QDir(m_tmp.filePath(QStringLiteral("nb-recv/nearby/") + in)).exists()); // nothing left behind
+    }
+    void nearbyDeclineEndsItAndRepeatedRefusalsAreIgnored()
+    {
+        NearbyPair p = makeNearbyPair(m_tmp.path());
+        QMap<QString, QByteArray> expected;
+        const auto files = makeNearbyFiles(m_tmp.path(), &expected);
+        QSignalSpy incoming(p.receiver.get(), &NearbyService::incoming), received(p.receiver.get(), &NearbyService::received);
+        for (int i = 0; i < 3; ++i) {
+            incoming.clear();
+            const QString out = p.sender->send(p.device, files);
+            QVERIFY(incoming.wait(10000));
+            p.receiver->decline(incoming.first().at(0).toString());
+            QTRY_COMPARE(p.sender->transfer(out).value(QStringLiteral("state")).toString(), QStringLiteral("declined"));
+        }
+        QCOMPARE(received.count(), 0);
+        // Three refusals from one address: its next request is dropped, and it no longer sees the receiver.
+        incoming.clear();
+        const QString out = p.sender->send(p.device, files);
+        QTRY_COMPARE(p.sender->transfer(out).value(QStringLiteral("state")).toString(), QStringLiteral("failed"));
+        QCOMPARE(incoming.count(), 0);
+        QSignalSpy found(p.sender.get(), &NearbyService::deviceFound);
+        p.sender->probe({QHostAddress::LocalHost}, p.receiver->discoveryPort());
+        QTest::qWait(600);
+        QCOMPARE(found.count(), 0);
+    }
+    // A hand-made sender: it can follow the protocol, or break it at one chosen point.
+    void nearbyRejectsBrokenHandshakesAndDamagedData()
+    {
+        NearbyPair p = makeNearbyPair(m_tmp.path());
+        auto connectRaw = [&](QTcpSocket &s) {
+            s.connectToHost(QHostAddress::LocalHost, p.device.port);
+            QVERIFY(s.waitForConnected(5000));
+        };
+        const QByteArray filesJson = QByteArrayLiteral("[{\"name\":\"a.txt\",\"size\":100,\"type\":\"text/plain\"}]");
+        QSignalSpy incoming(p.receiver.get(), &NearbyService::incoming), received(p.receiver.get(), &NearbyService::received);
+
+        // 1. Reveals another key than the one it committed to: refused before anyone is asked.
+        {
+            QTcpSocket s;
+            connectRaw(s);
+            const auto k = NearbyCrypto::generate(), other = NearbyCrypto::generate();
+            s.write(NearbyService::frame({{"t", "hello"}, {"v", 1}, {"id", "x"}, {"name", "Mallory"}, {"filesJson", QString::fromUtf8(filesJson)},
+                                          {"commit", QString::fromLatin1(NearbyCrypto::commitment(k.pub).toBase64())}}));
+            QTRY_VERIFY(s.bytesAvailable() >= 4);
+            QCOMPARE(takeFrame(s).value(QStringLiteral("t")).toString(), QStringLiteral("key"));
+            s.write(NearbyService::frame({{"t", "reveal"}, {"pub", QString::fromLatin1(other.pub.toBase64())}}));
+            QTest::qWait(400);
+            QCOMPARE(incoming.count(), 0);
+        }
+        // 2. A proper handshake, accepted, but what follows is not the agreed encrypted stream: nothing arrives.
+        {
+            QTcpSocket s;
+            connectRaw(s);
+            const auto k = NearbyCrypto::generate();
+            s.write(NearbyService::frame({{"t", "hello"}, {"v", 1}, {"id", "x"}, {"name", "Mallory"}, {"filesJson", QString::fromUtf8(filesJson)},
+                                          {"commit", QString::fromLatin1(NearbyCrypto::commitment(k.pub).toBase64())}}));
+            QTRY_VERIFY(s.bytesAvailable() >= 4);
+            const QByteArray rpub = QByteArray::fromBase64(takeFrame(s).value(QStringLiteral("pub")).toString().toLatin1());
+            s.write(NearbyService::frame({{"t", "reveal"}, {"pub", QString::fromLatin1(k.pub.toBase64())}}));
+            QVERIFY(incoming.wait(5000));
+            const QByteArray z = NearbyCrypto::agree(k.priv, rpub), tr = NearbyCrypto::transcript(k.pub, rpub, filesJson);
+            QCOMPARE(incoming.first().at(4).toString(), NearbyCrypto::code(z, tr)); // the sender can compute the same code
+            const QString id = incoming.first().at(0).toString();
+            p.receiver->accept(id);
+            QTRY_VERIFY(s.bytesAvailable() >= 4);
+            QCOMPARE(takeFrame(s).value(QStringLiteral("t")).toString(), QStringLiteral("accept"));
+            s.write(NearbyService::frame({{"t", "data"}, {"size", 600}}));
+            s.write(pattern(600, 5)); // not an NSH1 stream
+            QTRY_COMPARE(p.receiver->transfer(id).value(QStringLiteral("state")).toString(), QStringLiteral("failed"));
+            QCOMPARE(received.count(), 0);
+        }
+    }
+    void nearbyAnswersOneRequestAtATime()
+    {
+        NearbyPair p = makeNearbyPair(m_tmp.path());
+        QMap<QString, QByteArray> expected;
+        const auto files = makeNearbyFiles(m_tmp.path(), &expected);
+        QSignalSpy incoming(p.receiver.get(), &NearbyService::incoming);
+        const QString first = p.sender->send(p.device, files);
+        QVERIFY(incoming.wait(10000));
+        const QString second = p.sender->send(p.device, files); // told "busy" while the first waits for an answer
+        QTRY_COMPARE(p.sender->transfer(second).value(QStringLiteral("state")).toString(), QStringLiteral("failed"));
+        QCOMPARE(incoming.count(), 1);
+        p.receiver->decline(incoming.first().at(0).toString());
+        QTRY_COMPARE(p.sender->transfer(first).value(QStringLiteral("state")).toString(), QStringLiteral("declined"));
+    }
+    void nearbyStopsBeingVisible()
+    {
+        NearbyService r(m_tmp.filePath(QStringLiteral("nb-solo")));
+        QVERIFY(r.startReceiving(60, 0).isEmpty());
+        const quint16 port = r.discoveryPort();
+        r.stopReceiving();
+        QVERIFY(!r.receiving());
+        NearbyService s(m_tmp.filePath(QStringLiteral("nb-solo2")));
+        QSignalSpy found(&s, &NearbyService::deviceFound);
+        s.probe({QHostAddress::LocalHost}, port);
+        QTest::qWait(500);
+        QCOMPARE(found.count(), 0); // nothing answers once receiving is off
     }
     void zipWriterMakesAValidArchive()
     {
