@@ -43,9 +43,12 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           $env:PATH = "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin;$env:PATH"
-          .\build\tst_core.exe -o "-,txt" 2>&1 | Select-String -Pattern 'FAIL!|Loc:|Actual|Expected|Totals|QFATAL|SKIP' -Context 0,0
-          "tst_core exit code: $LASTEXITCODE"
-          if ($LASTEXITCODE -ne 0) { exit 1 }
+          # QtTest's console output does not reach the log from here, so it goes to a file that is printed after.
+          .\build\tst_core.exe -o "tst_core.txt,txt"
+          $code = $LASTEXITCODE
+          Get-Content tst_core.txt | Select-String -Pattern 'FAIL!|Loc:|Actual|Expected|Totals|QFATAL|SKIP' | ForEach-Object { $_.Line }
+          "tst_core exit code: $code"
+          if ($code -ne 0) { exit 1 }
 
       - name: Version
         id: ver
