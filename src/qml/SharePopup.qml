@@ -18,6 +18,25 @@ Popup {
     property string address: ""
     property var addresses: []
     property bool tried: false
+    property string serverId: ""
+    property real totalBytes: 0
+    // The saved server this share would go to, with what its last test found (limits, usage).
+    readonly property var server: {
+        const list = share.servers
+        return list.find(s => s.id === serverId) || list.find(s => s.isDefault) || null
+    }
+    readonly property bool limited: mode === "relay" && server !== null && server.ok === true
+    readonly property string limitError: {
+        if (!limited)
+            return ""
+        if (server.maxFile > 0 && totalBytes > server.maxFile)
+            return "Too big for " + server.name + ": it takes up to " + mb(server.maxFile) + " per share."
+        if (server.quota > 0 && server.used + totalBytes > server.quota)
+            return "Not enough space left on " + server.name + " (" + mb(Math.max(0, server.quota - server.used)) + " free)."
+        if (server.maxActive > 0 && server.active >= server.maxActive)
+            return "You already have " + server.active + " shares on " + server.name + ", its limit."
+        return ""
+    }
     property int now: Math.floor(Date.now() / 1000)
     readonly property string secretError: protection === "none" ? "" : share.checkSecret(protection, secret.text)
 
@@ -30,6 +49,9 @@ Popup {
     function openFor(newIds) {
         ids = newIds
         hasVault = newIds.some(id => notch.itemInfo(id).vault)
+        totalBytes = newIds.reduce((sum, id) => sum + notch.itemInfo(id).size, 0)
+        serverId = share.lastServerId
+        share.testAllServers() // limits and usage up to date
         mode = share.lastMode === "relay" && share.relayConfigured ? "relay" : "local"
         ttl = share.defaultTtl
         protection = "none"
@@ -48,10 +70,14 @@ Popup {
         tried = true
         if (secretError !== "")
             return
-        expandedId = share.start(ids, mode, ttl, protection, secret.text, single, address)
+        expandedId = share.start(ids, mode, ttl, protection, secret.text, single, address, serverId)
         secret.clear()
         view = "sessions"
     }
+    function mb(bytes) { return bytes >= 10 * 1048576 ? Math.round(bytes / 1048576) + " MB" : (bytes / 1048576).toFixed(1) + " MB" }
+    // The longest expiry this server's rules allow (or the longest we offer).
+    function ttlAllowed(seconds) { return !limited || server.maxTtl <= 0 || seconds <= server.maxTtl }
+    onServerChanged: if (server && limited && server.maxTtl > 0 && ttl > server.maxTtl) ttl = 600
     function countdown(expiresAt) {
         const left = Math.max(0, expiresAt - now)
         const m = Math.floor(left / 60), s = left % 60
@@ -128,6 +154,39 @@ Popup {
                         ? "Encrypted here, then stored on your server. The server cannot read it, and your computer can be switched off."
                         : "Set up your server in Settings → Sharing first."
             }
+            // which server, when there is a choice
+            RowLayout {
+                visible: pop.mode === "relay" && share.servers.length > 1
+                Layout.fillWidth: true
+                spacing: 6
+                Caption { text: "Server" }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Repeater {
+                        model: share.servers
+                        PillButton {
+                            required property var modelData
+                            text: modelData.name
+                            iconName: "server"
+                            checked: pop.server !== null && pop.server.id === modelData.id
+                            onClicked: pop.serverId = modelData.id
+                        }
+                    }
+                }
+            }
+            Caption {
+                Layout.fillWidth: true
+                visible: pop.mode === "relay" && pop.server !== null && pop.server.tested && !pop.server.ok
+                color: theme.danger
+                text: pop.server ? pop.server.name + ": " + pop.server.message : ""
+            }
+            Caption {
+                Layout.fillWidth: true
+                visible: pop.limitError !== ""
+                color: theme.danger
+                text: pop.limitError
+            }
             Caption {
                 Layout.fillWidth: true
                 visible: pop.mode === "local" && pop.addresses.length === 0
@@ -147,6 +206,7 @@ Popup {
                     PillButton {
                         required property var modelData
                         text: modelData[1]
+                        enabled: pop.ttlAllowed(modelData[0])
                         checked: pop.ttl === modelData[0]
                         onClicked: { pop.ttl = modelData[0]; share.defaultTtl = modelData[0] }
                     }
@@ -212,7 +272,7 @@ Popup {
                 PillButton {
                     text: pop.hasVault && pop.mode === "local" ? "Share anyway" : "Share"
                     checked: true
-                    enabled: pop.mode === "local" ? pop.addresses.length > 0 : share.relayConfigured
+                    enabled: pop.mode === "local" ? pop.addresses.length > 0 : (share.relayConfigured && pop.limitError === "")
                     onClicked: pop.begin()
                 }
             }
@@ -259,6 +319,7 @@ Popup {
                             required property string message
                             required property string endReason
                             required property string protection
+                            required property string serverName
                             required property bool active
                             readonly property bool open: pop.expandedId === sessionId && status === "ready"
                             readonly property var snapshot: ({ status: status, progress: progress, expiresAt: expiresAt, downloads: downloads, message: message })
@@ -305,7 +366,7 @@ Popup {
                                         }
                                         Text {
                                             Layout.fillWidth: true
-                                            text: pop.statusText(card.snapshot)
+                                            text: pop.statusText(card.snapshot) + (card.serverName !== "" && share.servers.length > 1 ? " · " + card.serverName : "")
                                             color: card.status === "error" ? theme.danger : theme.textDim
                                             font.pixelSize: 11
                                             elide: Text.ElideRight

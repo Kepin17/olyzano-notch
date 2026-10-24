@@ -9,6 +9,7 @@ services:
       MAX_TOTAL_MB: ${MAX_TOTAL_MB:-2000}
       MAX_TTL_HOURS: ${MAX_TTL_HOURS:-24}
       TRUST_PROXY: "1" # Caddy sits in front: take the client IP from X-Forwarded-For
+      PUBLIC_URL: https://${DOMAIN} # only used to print invitation links
     volumes:
       - relay-data:/data
     read_only: true

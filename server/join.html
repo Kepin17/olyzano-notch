@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Join a Notch server</title>
+<style>
+  :root { color-scheme: light dark; --bg:#f3eee2; --paper:#faf6ec; --line:#d6ccb6; --fg:#1c1a17; --dim:#6b6355; --shu:#c8372d; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#14120f; --paper:#1a1714; --line:#3b352d; --fg:#efe9dc; --dim:#9b917f; --shu:#d4493b; } }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100dvh; display:grid; place-items:center; padding:16px; background:var(--bg); color:var(--fg); font:16px/1.5 system-ui, sans-serif; }
+  main { width:100%; max-width:440px; background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:26px 22px; }
+  .brand { font:600 11px/1 serif; letter-spacing:.14em; color:var(--dim); margin-bottom:14px; }
+  h1 { margin:0 0 8px; font:600 22px/1.2 serif; }
+  p, li { color:var(--dim); font-size:14.5px; }
+  ol { padding-left: 20px; margin: 10px 0 18px; } li { margin: 6px 0; }
+  code { display:block; word-break:break-all; padding:10px 12px; border:1px solid var(--line); border-radius:10px; background:var(--bg); color:var(--fg); font:12.5px/1.4 ui-monospace, monospace; }
+  button { margin-top:12px; width:100%; min-height:46px; border:0; border-radius:12px; background:var(--shu); color:#fff; font:600 16px system-ui; cursor:pointer; }
+</style>
+</head>
+<body>
+<main>
+  <div class="brand">NOTCH · 通知</div>
+  <h1>You are invited</h1>
+  <p>Someone gave you access to their Notch share server. To use it:</p>
+  <ol>
+    <li>Copy the full address of this page (the part after <b>#</b> is your invitation).</li>
+    <li>In Notch open <b>Settings → Sharing → Join a server</b> and paste it.</li>
+  </ol>
+  <code id="addr"></code>
+  <button id="copy">Copy invitation</button>
+  <p id="note" style="margin-top:14px"></p>
+</main>
+<script>
+const addr = location.href;
+document.getElementById("addr").textContent = location.hash ? addr : "This link is missing its invitation code (the part after #).";
+document.getElementById("copy").onclick = async () => {
+  try { await navigator.clipboard.writeText(addr); document.getElementById("note").textContent = "Copied. The invitation works once and expires in 7 days."; }
+  catch (e) { document.getElementById("note").textContent = "Select the address above and copy it by hand."; }
+};
+</script>
+</body>
+</html>

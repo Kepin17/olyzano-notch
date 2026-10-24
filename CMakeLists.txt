@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(notch VERSION 0.2.0 LANGUAGES CXX)
+project(notch VERSION 0.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -24,6 +24,7 @@ qt_add_library(notch_core STATIC
     src/services/ShareCrypto.h src/services/ShareCrypto.cpp
     src/services/QrImage.h src/services/QrImage.cpp
     src/services/ShareServer.h src/services/ShareServer.cpp
+    src/services/Invite.h src/services/Invite.cpp
     third_party/qrcodegen.cpp
 )
 set_source_files_properties(third_party/qrcodegen.cpp PROPERTIES COMPILE_OPTIONS "-w") # vendored (MIT)

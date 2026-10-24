@@ -252,9 +252,12 @@ void ShareSession::upload(const Prepared &p)
         m_upload = nullptr;
         reply->deleteLater();
         const QByteArray body = reply->readAll();
-        if (reply->error() != QNetworkReply::NoError)
-            return fail(networkError(reply));
         const QJsonObject o = QJsonDocument::fromJson(body).object();
+        if (reply->error() != QNetworkReply::NoError) {
+            // The server says why when it can ("Your space on this server is full (4 of 5 MB used)").
+            const QString why = o.value(QStringLiteral("message")).toString();
+            return fail(why.isEmpty() ? networkError(reply) : why);
+        }
         m_relayId = o.value(QStringLiteral("id")).toString();
         if (m_relayId.isEmpty())
             return fail(tr("That address is not a Notch share server"));
@@ -315,6 +318,7 @@ QJsonObject ShareSession::toJson() const
             {QStringLiteral("expiresAt"), double(m_expiresAt)},
             {QStringLiteral("singleUse"), m_singleUse},
             {QStringLiteral("protection"), m_protection},
+            {QStringLiteral("serverId"), m_relay.id},
             {QStringLiteral("downloads"), m_downloads}};
 }
 

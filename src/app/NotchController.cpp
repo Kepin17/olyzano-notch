@@ -1012,7 +1012,8 @@ QVariantMap NotchController::itemInfo(const QString &id) const
             continue;
         for (const auto &[role, key] : {std::pair{FileItemModel::NameRole, "name"}, {FileItemModel::SizeTextRole, "sizeText"},
                                         {FileItemModel::AddedTextRole, "addedText"}, {FileItemModel::IconNameRole, "iconName"},
-                                        {FileItemModel::IsTextRole, "isText"}, {FileItemModel::VaultRole, "vault"}})
+                                        {FileItemModel::IsTextRole, "isText"}, {FileItemModel::VaultRole, "vault"},
+                                        {FileItemModel::SizeRole, "size"}})
             info.insert(QLatin1String(key), i.data(role));
     }
     return info;

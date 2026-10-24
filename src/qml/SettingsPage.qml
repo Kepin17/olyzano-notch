@@ -72,74 +72,169 @@ ScrollView {
         }
 
         ColumnLayout {
+            id: sharing
             Layout.fillWidth: true
-            spacing: 6
-            SectionLabel { text: "Sharing (your own server)" }
+            spacing: 8
+            property bool manual: false
+            function mb(bytes) { return bytes >= 10 * 1048576 ? Math.round(bytes / 1048576) + " MB" : (bytes / 1048576).toFixed(1) + " MB" }
+
+            SectionLabel { text: "Sharing servers" }
             Caption {
                 Layout.fillWidth: true
-                text: "Share via QR can also upload to your own server, encrypted on this computer first. Set the server up with server/README.md."
+                text: "Share via QR can upload to a server you or your team run, encrypted on this computer first. Anyone can be the host: ask them for an invitation, or set one up with server/README.md."
             }
-            TextField {
-                id: relayUrlField
-                Layout.fillWidth: true
-                implicitHeight: 30
-                leftPadding: 12
-                text: share.relayUrl
-                placeholderText: "https://share.example.com"
-                placeholderTextColor: theme.placeholder
-                color: theme.text
-                selectionColor: theme.accent
-                font.pixelSize: 13
-                background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: relayUrlField.activeFocus ? theme.accent : theme.outline }
-                onEditingFinished: share.relayUrl = text
-            }
-            TextField {
-                id: relayKeyField
-                Layout.fillWidth: true
-                implicitHeight: 30
-                leftPadding: 12
-                echoMode: TextInput.Password
-                placeholderText: share.relayKeySet ? "API key saved (type to replace)" : "API key"
-                placeholderTextColor: theme.placeholder
-                color: theme.text
-                selectionColor: theme.accent
-                font.pixelSize: 13
-                background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: relayKeyField.activeFocus ? theme.accent : theme.outline }
-                onEditingFinished: {
-                    if (text !== "") {
-                        share.setRelayKey(text)
-                        clear()
-                    }
-                }
-            }
-            Row {
-                spacing: 8
-                PillButton {
-                    text: "Test connection"
-                    onClicked: {
-                        share.relayUrl = relayUrlField.text
-                        if (relayKeyField.text !== "") {
-                            share.setRelayKey(relayKeyField.text)
-                            relayKeyField.clear()
+            Caption { Layout.fillWidth: true; visible: share.servers.length === 0; text: "No server yet." }
+
+            Repeater {
+                model: share.servers
+                delegate: Rectangle {
+                    id: srv
+                    required property var modelData
+                    Layout.fillWidth: true
+                    implicitHeight: srvBody.implicitHeight + 16
+                    radius: theme.washi ? 8 : 12
+                    color: theme.card
+                    border.width: 1
+                    border.color: modelData.isDefault ? theme.accent : theme.outline
+
+                    ColumnLayout {
+                        id: srvBody
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
+                        spacing: 4
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 0
+                                Text { Layout.fillWidth: true; text: srv.modelData.name; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium; elide: Text.ElideRight }
+                                Text { Layout.fillWidth: true; text: srv.modelData.url; color: theme.textDim; font.pixelSize: 11; elide: Text.ElideMiddle }
+                            }
+                            PillButton {
+                                text: srv.modelData.isDefault ? "Default" : "Make default"
+                                checked: srv.modelData.isDefault
+                                visible: share.servers.length > 1
+                                onClicked: share.defaultServerId = srv.modelData.id
+                            }
+                            IconButton { iconName: "close"; Accessible.name: "Remove this server"; onClicked: share.removeServer(srv.modelData.id) }
                         }
-                        relayResult.text = "Testing…"
-                        relayResult.bad = false
-                        share.testRelay()
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Text {
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                                font.pixelSize: 11
+                                color: !srv.modelData.tested ? theme.textDim : srv.modelData.ok ? theme.success : theme.danger
+                                text: !srv.modelData.tested ? "Checking…"
+                                      : !srv.modelData.ok ? srv.modelData.message
+                                      : srv.modelData.message + " · " + sharing.mb(srv.modelData.used) + (srv.modelData.quota ? " of " + sharing.mb(srv.modelData.quota) : "")
+                                        + (srv.modelData.maxActive ? " · " + srv.modelData.active + " of " + srv.modelData.maxActive + " shares" : "")
+                                        + " · files up to " + sharing.mb(srv.modelData.maxFile)
+                            }
+                            PillButton { text: "Test"; onClicked: share.testServer(srv.modelData.id) }
+                        }
                     }
                 }
-                Caption {
-                    id: relayResult
-                    property bool bad
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: bad ? theme.danger : theme.success
-                    wrapMode: Text.NoWrap
+            }
+
+            SectionLabel { text: "Join a server" }
+            Caption { Layout.fillWidth: true; text: "Paste the invitation link your host sent you (it looks like https://share.example.com/join#…)." }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                TextField {
+                    id: joinField
+                    Layout.fillWidth: true
+                    implicitHeight: 30
+                    leftPadding: 12
+                    placeholderText: "https://share.example.com/join#…"
+                    placeholderTextColor: theme.placeholder
+                    color: theme.text
+                    selectionColor: theme.accent
+                    font.pixelSize: 12
+                    background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: joinField.activeFocus ? theme.accent : theme.outline }
+                    onAccepted: joinButton.clicked()
+                }
+                PillButton {
+                    id: joinButton
+                    text: "Join"
+                    checked: true
+                    enabled: joinField.text.trim() !== ""
+                    onClicked: { joinResult.bad = false; joinResult.text = "Joining…"; share.joinServer(joinField.text) }
+                }
+            }
+            Caption { id: joinResult; property bool bad; Layout.fillWidth: true; visible: text !== ""; color: bad ? theme.danger : theme.success }
+
+            PillButton {
+                text: sharing.manual ? "Hide" : "Add a server by hand"
+                onClicked: sharing.manual = !sharing.manual
+            }
+            ColumnLayout {
+                visible: sharing.manual
+                Layout.fillWidth: true
+                spacing: 6
+                TextField {
+                    id: nameField
+                    Layout.fillWidth: true
+                    implicitHeight: 30
+                    leftPadding: 12
+                    placeholderText: "Name (optional)"
+                    placeholderTextColor: theme.placeholder
+                    color: theme.text
+                    selectionColor: theme.accent
+                    font.pixelSize: 13
+                    background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: nameField.activeFocus ? theme.accent : theme.outline }
+                }
+                TextField {
+                    id: urlField
+                    Layout.fillWidth: true
+                    implicitHeight: 30
+                    leftPadding: 12
+                    placeholderText: "https://share.example.com"
+                    placeholderTextColor: theme.placeholder
+                    color: theme.text
+                    selectionColor: theme.accent
+                    font.pixelSize: 13
+                    background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: urlField.activeFocus ? theme.accent : theme.outline }
+                }
+                TextField {
+                    id: keyField
+                    Layout.fillWidth: true
+                    implicitHeight: 30
+                    leftPadding: 12
+                    echoMode: TextInput.Password
+                    placeholderText: "API key"
+                    placeholderTextColor: theme.placeholder
+                    color: theme.text
+                    selectionColor: theme.accent
+                    font.pixelSize: 13
+                    background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: keyField.activeFocus ? theme.accent : theme.outline }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Caption { id: addResult; Layout.fillWidth: true; color: theme.danger }
+                    PillButton {
+                        text: "Add"
+                        checked: true
+                        onClicked: {
+                            addResult.text = share.addServer(nameField.text, urlField.text, keyField.text)
+                            if (addResult.text === "") {
+                                nameField.clear()
+                                urlField.clear()
+                                keyField.clear()
+                                sharing.manual = false
+                            }
+                        }
+                    }
                 }
             }
             Connections {
                 target: share
-                function onRelayTested(ok, message) {
-                    relayResult.bad = !ok
-                    relayResult.text = message
+                function onJoined(ok, message) {
+                    joinResult.bad = !ok
+                    joinResult.text = message
+                    if (ok)
+                        joinField.clear()
                 }
             }
         }

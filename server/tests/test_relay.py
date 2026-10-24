@@ -83,6 +83,30 @@ class RelayTest(unittest.TestCase):
         self.assertEqual(self.call("GET", "/s/%s/blob" % sid, key=None)[0], 404)
         self.assertFalse(os.path.exists(self.srv.store.path(sid)))
 
+    def test_single_use_survives_a_race(self):
+        # Many requests for the final bytes at the same moment: exactly one gets the file.
+        sid = self.upload(b"x" * 200_000, **{"X-Max-Downloads": "1"})
+        results = []
+        barrier = threading.Barrier(8)
+
+        def go():
+            barrier.wait()
+            results.append(self.call("GET", "/s/%s/blob" % sid, key=None)[0])
+        threads = [threading.Thread(target=go) for _ in range(8)]
+        for th in threads:
+            th.start()
+        for th in threads:
+            th.join()
+        self.assertEqual(sorted(results), [200] + [404] * 7)
+
+    def test_a_download_that_breaks_is_given_back(self):
+        sid = self.upload(b"x" * 100, **{"X-Max-Downloads": "1"})
+        store = self.srv.store
+        self.assertTrue(store.reserve(sid))
+        store.release(sid)  # the transfer failed
+        self.assertEqual(self.call("GET", "/s/%s/blob" % sid, key=None)[0], 200)
+        self.assertEqual(self.call("GET", "/s/%s/blob" % sid, key=None)[0], 404)
+
     def test_expiry(self):
         sid = self.upload(**{"X-TTL": "1"})
         time.sleep(1.2)

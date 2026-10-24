@@ -22,6 +22,36 @@ so this server can never read the file or even its name. Shares disappear on the
 Update: copy the new files, then `docker compose up -d --build`. Logs: `docker compose logs -f relay`
 (they list methods and status codes only, never links).
 
+## For a team: members, quotas, invitations
+
+By default the relay has one key (`RELAY_API_KEY`), the host's. To let others use it, give each person their
+own key with their own limits, from the command line (inside Docker prefix with
+`docker compose exec relay`):
+
+```bash
+python3 relay.py members add alice --quota-mb 2000 --max-file-mb 200 --max-ttl-hours 48 --max-active 10
+```
+
+That prints a single-use **invitation link** (valid 7 days). Alice pastes it into Notch (**Settings → Sharing →
+Join a server**); Notch trades it for a key of her own, so no key ever travels through chat. Set `PUBLIC_URL`
+(docker compose does it from `DOMAIN`; behind nginx set it yourself) so the link carries your address.
+
+| Command | What it does |
+|---|---|
+| `members list` | each member, their limits, and what they use now |
+| `members set NAME --quota-mb N ...` | change limits (no restart needed) |
+| `members revoke NAME` | the key stops working and all their shares are deleted |
+| `invite NAME` | a new invitation; using it also gives them a new key (a lost key) |
+| `shares list` / `shares kill ID` | live shares (owner, size, expiry, downloads) / delete one now |
+
+Limits per member: disk used by their live shares, largest upload, longest expiry (a longer request is shortened,
+not refused), and shares at the same time. They can never exceed the server's own `MAX_*`. A member sees only
+their own shares; the host's key (`RELAY_API_KEY`) sees all. Notch shows each person their usage and greys out
+what the server would refuse.
+
+Because everything is end-to-end encrypted, the host can see **who** shared **how much** and **when**, but not
+names or contents.
+
 ## What the recipient sees
 
 One page for single files and for lists: image thumbnails, per-file download, tick several or take all as a

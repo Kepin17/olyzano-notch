@@ -4,6 +4,7 @@
 #include "services/FolderWatcher.h"
 #include "services/TextTools.h"
 #include "services/DocTools.h"
+#include "services/Invite.h"
 #include "services/QrImage.h"
 #include "services/ShareCrypto.h"
 #include "services/ShareServer.h"
@@ -800,6 +801,26 @@ private slots:
         QFile f(QDir(outDir).filePath(files.last().name));
         QVERIFY(f.open(QIODevice::ReadOnly));
         QCOMPARE(f.readAll(), contents.last());
+    }
+    void inviteLinksAreParsedStrictly()
+    {
+        const QString token = QStringLiteral("abcdEFGH0123456789_-xyz");
+        auto ok = Invite::parse(QStringLiteral("  https://share.example.com/join#") + token + QStringLiteral("\n"));
+        QCOMPARE(ok.error, QString());
+        QCOMPARE(ok.server, QUrl(QStringLiteral("https://share.example.com")));
+        QCOMPARE(ok.token, token);
+        QCOMPARE(Invite::parse(QStringLiteral("https://team.example.com:8443/notch/join#") + token).server,
+                 QUrl(QStringLiteral("https://team.example.com:8443/notch"))); // behind a path
+        QCOMPARE(Invite::parse(QStringLiteral("http://127.0.0.1:18090/join#") + token).error, QString()); // local testing
+        QVERIFY(!Invite::parse(QStringLiteral("http://share.example.com/join#") + token).error.isEmpty()); // key in the clear
+        QVERIFY(!Invite::parse(QStringLiteral("https://share.example.com/join")).error.isEmpty());          // no code
+        QVERIFY(!Invite::parse(QStringLiteral("https://share.example.com/join#short")).error.isEmpty());
+        QVERIFY(!Invite::parse(QStringLiteral("https://share.example.com/s/abc#") + token).error.isEmpty()); // a share link, not an invite
+        QVERIFY(!Invite::parse(QStringLiteral("just some text")).error.isEmpty());
+        QCOMPARE(Invite::normalizeServer(QStringLiteral(" https://share.example.com/ ")), QUrl(QStringLiteral("https://share.example.com")));
+        QCOMPARE(Invite::normalizeServer(QStringLiteral("share.example.com")), QUrl(QStringLiteral("https://share.example.com"))); // a bare name means https
+        QVERIFY(!Invite::normalizeServer(QStringLiteral("http://share.example.com")).isValid());                              // never plain http
+        QVERIFY(!Invite::normalizeServer(QString()).isValid());
     }
     void qrImageIsRenderedAndScannableSized()
     {

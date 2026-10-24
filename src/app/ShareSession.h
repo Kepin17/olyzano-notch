@@ -14,6 +14,7 @@ class QNetworkReply;
 
 // Where the user's own relay server (server/) is and how to log in to it.
 struct RelayAccess {
+    QString id, name;  // the saved server profile this is
     QUrl base;         // https://share.example.com (no trailing slash)
     QByteArray apiKey;
     bool valid() const { return base.isValid() && !apiKey.isEmpty(); }
@@ -52,6 +53,8 @@ public:
     const QString &message() const { return m_message; }
     const QString &endReason() const { return m_endReason; }
     const QString &protection() const { return m_protection; }
+    const QString &serverId() const { return m_relay.id; }
+    const QString &serverName() const { return m_relay.name; }
     double progress() const { return m_progress; }
     int fileCount() const { return m_fileCount; }
     int downloads() const { return m_downloads; }

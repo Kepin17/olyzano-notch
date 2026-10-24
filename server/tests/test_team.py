@@ -1,0 +1,188 @@
+import contextlib
+import http.client
+import io
+import json
+import os
+import sys
+import tempfile
+import threading
+import time
+import unittest
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import relay  # noqa: E402
+
+HOST_KEY = "h" * 40
+MB = 1024 * 1024
+
+
+class TeamTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.env = {"RELAY_API_KEY": HOST_KEY, "DATA_DIR": self.dir.name, "PORT": "0", "BIND": "127.0.0.1",
+                    "MAX_FILE_MB": "5", "MAX_TOTAL_MB": "20", "MAX_TTL_HOURS": "24", "PUBLIC_URL": "https://share.test"}
+        self.cfg = relay.Config(self.env)
+        self.srv = relay.make_server(self.cfg)
+        self.port = self.srv.server_address[1]
+        threading.Thread(target=self.srv.serve_forever, daemon=True).start()
+
+    def tearDown(self):
+        self.srv.shutdown()
+        self.srv.server_close()
+        self.dir.cleanup()
+
+    def call(self, method, path, body=None, headers=None, key=None):
+        h = dict(headers or {})
+        if key:
+            h["Authorization"] = "Bearer " + key
+        c = http.client.HTTPConnection("127.0.0.1", self.port, timeout=10)
+        c.request(method, path, body=body, headers=h)
+        r = c.getresponse()
+        data = r.read()
+        c.close()
+        return r.status, data
+
+    def cli(self, *argv):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            relay.cli(self.cfg, list(argv))
+        return out.getvalue()
+
+    def join(self, name, **limits):
+        """Add a member the way the host does, redeem the invitation the way Notch does; -> their key."""
+        args = ["members", "add", name] + [x for k, v in limits.items() for x in ("--" + k.replace("_", "-"), str(v))]
+        link = self.cli(*args).strip().splitlines()[-1].strip()
+        self.assertTrue(link.startswith("https://share.test/join#"), link)
+        status, body = self.call("POST", "/api/v1/join", json.dumps({"token": link.split("#", 1)[1]}).encode())
+        self.assertEqual(status, 200, body)
+        self.assertEqual(json.loads(body)["name"], name)
+        return json.loads(body)["key"], link
+
+    def upload(self, key, size=1000, expect=201, **headers):
+        status, body = self.call("POST", "/api/v1/shares", b"x" * size, headers, key)
+        self.assertEqual(status, expect, body)
+        return json.loads(body)
+
+    # ---- joining ----------------------------------------------------------------------------
+    def test_invitation_is_single_use_and_gives_a_working_key(self):
+        key, link = self.join("alice")
+        self.assertEqual(len(key), 64)
+        status, body = self.call("GET", "/api/v1/ping", key=key)
+        self.assertEqual((status, json.loads(body)["member"]), (200, "alice"))
+        self.assertEqual(self.call("POST", "/api/v1/join", json.dumps({"token": link.split("#", 1)[1]}).encode())[0], 404)
+        self.assertEqual(self.call("GET", "/api/v1/ping", key="not-a-key")[0], 401)
+
+    def test_expired_and_wrong_invitations_fail_and_guessing_is_limited(self):
+        link = self.cli("members", "add", "bob").strip().splitlines()[-1].strip()
+        token = link.split("#", 1)[1]
+        with self.srv.members.db() as c:
+            c.execute("UPDATE invites SET expires_at = 1")
+        self.assertEqual(self.call("POST", "/api/v1/join", json.dumps({"token": token}).encode())[0], 404)
+        codes = [self.call("POST", "/api/v1/join", json.dumps({"token": "guess%d" % i}).encode())[0] for i in range(12)]
+        self.assertEqual(codes[-1], 429)  # locked out after 10 wrong tries
+
+    def test_reissuing_an_invitation_resets_the_key(self):
+        old, _ = self.join("carol")
+        link = self.cli("invite", "carol").strip().splitlines()[-1].strip()
+        status, body = self.call("POST", "/api/v1/join", json.dumps({"token": link.split("#", 1)[1]}).encode())
+        new = json.loads(body)["key"]
+        self.assertEqual(status, 200)
+        self.assertEqual(self.call("GET", "/api/v1/ping", key=old)[0], 401)
+        self.assertEqual(self.call("GET", "/api/v1/ping", key=new)[0], 200)
+
+    def test_join_page_is_served(self):
+        status, body = self.call("GET", "/join")
+        self.assertEqual(status, 200)
+        self.assertIn(b"Join a server", body)
+
+    # ---- limits -----------------------------------------------------------------------------
+    def test_member_limits(self):
+        key, _ = self.join("dana", quota_mb=1, max_file_mb=1, max_ttl_hours=1, max_active=2)
+        _, body = self.call("GET", "/api/v1/ping", key=key)
+        lim = json.loads(body)["limits"]
+        self.assertEqual((lim["quota"], lim["max_file"], lim["max_ttl"], lim["max_active"]), (MB, MB, 3600, 2))
+        # ttl is clamped, not refused
+        share = self.upload(key, 400_000, **{"X-TTL": "999999"})
+        self.assertLessEqual(share["expires_at"], time.time() + 3601)
+        # file too big for this member (the server itself would take 5 MB)
+        status, body = self.call("POST", "/api/v1/shares", b"x" * (MB + 1), {}, key)
+        self.assertEqual((status, json.loads(body)["error"]), (413, "file_too_big"))
+        # space: 400k used, a second 400k fits, a third does not
+        self.upload(key, 400_000)
+        status, body = self.call("POST", "/api/v1/shares", b"x" * 400_000, {}, key)
+        self.assertEqual(status, 429)  # two shares at once is the cap, checked first
+        self.assertEqual(json.loads(body)["error"], "too_many_shares")
+        usage = json.loads(self.call("GET", "/api/v1/ping", key=key)[1])["usage"]
+        self.assertEqual((usage["used"], usage["active"]), (800_000, 2))
+
+    def test_space_quota(self):
+        key, _ = self.join("erin", quota_mb=1)
+        self.upload(key, 700_000)
+        status, body = self.call("POST", "/api/v1/shares", b"x" * 500_000, {}, key)
+        self.assertEqual((status, json.loads(body)["error"]), (413, "quota"))
+        # another member is unaffected
+        other, _ = self.join("frank", quota_mb=1)
+        self.upload(other, 700_000)
+
+    def test_host_key_still_works_with_the_server_limits(self):
+        self.upload(HOST_KEY, 4 * MB)
+        status, body = self.call("POST", "/api/v1/shares", b"x" * (6 * MB), {}, HOST_KEY)
+        self.assertEqual((status, json.loads(body)["error"]), (413, "file_too_big"))
+        self.assertEqual(json.loads(self.call("GET", "/api/v1/ping", key=HOST_KEY)[1])["member"], "owner")
+
+    # ---- isolation and revoking -------------------------------------------------------------
+    def test_members_only_see_their_own_shares(self):
+        a, _ = self.join("gina")
+        b, _ = self.join("hugo")
+        sid = self.upload(a)["id"]
+        self.assertEqual(self.call("GET", "/api/v1/shares/" + sid, key=a)[0], 200)
+        self.assertEqual(self.call("GET", "/api/v1/shares/" + sid, key=b)[0], 404)
+        self.call("DELETE", "/api/v1/shares/" + sid, key=b)  # no effect
+        self.assertEqual(self.call("GET", "/api/v1/shares/" + sid, key=a)[0], 200)
+        self.assertEqual(self.call("GET", "/api/v1/shares/" + sid, key=HOST_KEY)[0], 200)  # the host sees all
+        self.call("DELETE", "/api/v1/shares/" + sid, key=a)
+        self.assertEqual(self.call("GET", "/api/v1/shares/" + sid, key=a)[0], 404)
+        # the download link itself needs no key
+        sid2 = self.upload(a)["id"]
+        self.assertEqual(self.call("GET", "/s/%s/blob" % sid2)[0], 200)
+
+    def test_revoking_ends_access_and_deletes_their_shares(self):
+        key, _ = self.join("ivan")
+        keep, _ = self.join("judy")
+        mine = self.upload(key)["id"]
+        theirs = self.upload(keep)["id"]
+        self.assertIn("1 share(s) deleted", self.cli("members", "revoke", "ivan"))
+        self.assertEqual(self.call("GET", "/api/v1/ping", key=key)[0], 401)
+        self.assertEqual(self.call("GET", "/s/%s/meta" % mine)[0], 404)
+        self.assertEqual(self.call("GET", "/s/%s/meta" % theirs)[0], 200)
+
+    # ---- command line -----------------------------------------------------------------------
+    def test_cli_lists_sets_and_kills(self):
+        key, _ = self.join("kim", quota_mb=3)
+        sid = self.upload(key)["id"]
+        listing = self.cli("members", "list")
+        self.assertIn("kim", listing)
+        self.assertIn("active", listing)
+        self.assertIn("owner", listing)
+        self.assertIn("/ 3 MB", listing)
+        self.cli("members", "set", "kim", "--quota-mb", "9", "--max-active", "4")
+        self.assertIn("/ 9 MB", self.cli("members", "list"))
+        self.assertIn(sid, self.cli("shares", "list"))
+        self.assertIn("kim", self.cli("shares", "list"))
+        self.cli("shares", "kill", sid)
+        self.assertNotIn(sid, self.cli("shares", "list"))
+
+    def test_cli_rejects_bad_input(self):
+        self.cli("members", "add", "lee")
+        with self.assertRaises(SystemExit):
+            self.cli("members", "add", "lee")      # duplicate
+        with self.assertRaises(SystemExit):
+            self.cli("members", "add", "../etc")   # not a plain name
+        with self.assertRaises(SystemExit):
+            self.cli("invite", "nobody")
+        with self.assertRaises(SystemExit):
+            self.cli("shares", "kill", "short")
+
+
+if __name__ == "__main__":
+    unittest.main()
