@@ -69,6 +69,7 @@ qt_add_executable(notch
     src/app/NotchController.h src/app/NotchController.cpp
     src/app/ShareController.h src/app/ShareController.cpp
     src/app/ShareSession.h src/app/ShareSession.cpp
+    src/app/NearbyController.h src/app/NearbyController.cpp
     src/models/FileItemModel.h src/models/FileItemModel.cpp
     src/platform/DesktopIntegration.h src/platform/DesktopIntegration.cpp
     src/platform/SystemEvents.h

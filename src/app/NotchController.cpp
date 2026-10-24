@@ -219,6 +219,28 @@ QList<NotchController::ShareSource> NotchController::shareSources(const QStringL
     return out;
 }
 
+int NotchController::addReceivedFiles(const QString &folder, const QStringList &names, const QString &fromDevice)
+{
+    if (!m_ready || names.isEmpty())
+        return 0;
+    const QString category = autoCategory(QStringLiteral("nearbyCategory"), tr("Nearby"));
+    int added = 0;
+    QString lastName, lastMime;
+    for (const QString &name : names) {
+        // adoptFile renames the file out of the (temporary) folder, so nothing is copied twice
+        if (adoptFile(QDir(folder).filePath(name), name, tr("From %1").arg(fromDevice), category)) {
+            ++added;
+            lastName = name;
+        }
+    }
+    if (added > 0) {
+        const QString title = fromDevice.isEmpty() ? tr("Received") : tr("From %1").arg(fromDevice);
+        emit notice(title, added == 1 ? lastName : tr("%1 files").arg(added),
+                    added == 1 ? QMimeDatabase().mimeTypeForFile(lastName).iconName() : QStringLiteral("folder-download"), QString());
+    }
+    return added;
+}
+
 QString NotchController::settingsFolder() const
 {
     return QFileInfo(m_settings.fileName()).absolutePath();

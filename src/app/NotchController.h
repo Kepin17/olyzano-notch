@@ -238,6 +238,9 @@ public:
         bool vault = false;
     };
     QList<ShareSource> shareSources(const QStringList &ids) const;
+    // Files that another Notch computer just sent (Nearby share): moved from `folder` into the "Nearby" category,
+    // with a toast "From <device>". Returns how many were added.
+    int addReceivedFiles(const QString &folder, const QStringList &names, const QString &fromDevice);
     QString settingsFolder() const; // where notch.conf lives
     QString scratchPath(bool forVault) const { return scratchDir(forVault); }
 
