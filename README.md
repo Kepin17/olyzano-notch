@@ -84,10 +84,10 @@ To try it without touching your real shelf or settings:
     ends it, **Stop all** / **Clear finished** tidy up. Server shares stay on the server, so they are still in
     the list (and can be stopped) after you restart Notch; WiFi shares end with Notch.
   - **Servers (yours, a friend's, your team's):** Settings → Sharing keeps any number of servers. Add one with its
-    address and key, or **Join a server** by pasting the invitation link its host sent (Notch gets a key of its
-    own from it). Pick the server per share; the popup shows how much space and which limits that server gives
-    you, and greys out what it would refuse. The host manages members and quotas from the command line
-    ([server/README.md](server/README.md#for-a-team-members-quotas-invitations)).
+    address and key. Pick the server per share; the popup shows how much space and which limits that server
+    gives you, and greys out what it would refuse. (Members with their own keys and quotas exist on the relay
+    — [server/README.md](server/README.md#for-a-team-members-quotas-invitations) — but joining from inside Notch
+    is switched off for now; it will come back with single sign-on.)
   - **PIN or password:** choose one when sharing. A **PIN** (4–12 digits) is checked by the server (or by Notch for
     WiFi shares): 5 wrong tries lock that phone out for 10 minutes. A **password** (8+ characters) on a server
     share also locks the key inside the link (PBKDF2 + AES-GCM), so the link alone opens nothing; tell the

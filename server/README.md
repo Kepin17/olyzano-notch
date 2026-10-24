@@ -24,6 +24,9 @@ Update: copy the new files, then `docker compose up -d --build`. Logs: `docker c
 
 ## For a team: members, quotas, invitations
 
+> **Status:** the relay side below works and is tested, but Notch's **Join a server** field is hidden for now, so
+> an invitation cannot be redeemed from the app yet. Team sign-in will come with single sign-on instead.
+
 By default the relay has one key (`RELAY_API_KEY`), the host's. To let others use it, give each person their
 own key with their own limits, from the command line (inside Docker prefix with
 `docker compose exec relay`):

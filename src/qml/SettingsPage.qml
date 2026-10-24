@@ -81,7 +81,7 @@ ScrollView {
             SectionLabel { text: "Sharing servers" }
             Caption {
                 Layout.fillWidth: true
-                text: "Share via QR can upload to a server you or your team run, encrypted on this computer first. Anyone can be the host: ask them for an invitation, or set one up with server/README.md."
+                text: "Share via QR can upload to a server you or your team run, encrypted on this computer first. Anyone can be the host: ask them for the address and key, or set one up with server/README.md."
             }
             Caption { Layout.fillWidth: true; visible: share.servers.length === 0; text: "No server yet." }
 
@@ -136,34 +136,6 @@ ScrollView {
                     }
                 }
             }
-
-            SectionLabel { text: "Join a server" }
-            Caption { Layout.fillWidth: true; text: "Paste the invitation link your host sent you (it looks like https://share.example.com/join#…)." }
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                TextField {
-                    id: joinField
-                    Layout.fillWidth: true
-                    implicitHeight: 30
-                    leftPadding: 12
-                    placeholderText: "https://share.example.com/join#…"
-                    placeholderTextColor: theme.placeholder
-                    color: theme.text
-                    selectionColor: theme.accent
-                    font.pixelSize: 12
-                    background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: joinField.activeFocus ? theme.accent : theme.outline }
-                    onAccepted: joinButton.clicked()
-                }
-                PillButton {
-                    id: joinButton
-                    text: "Join"
-                    checked: true
-                    enabled: joinField.text.trim() !== ""
-                    onClicked: { joinResult.bad = false; joinResult.text = "Joining…"; share.joinServer(joinField.text) }
-                }
-            }
-            Caption { id: joinResult; property bool bad; Layout.fillWidth: true; visible: text !== ""; color: bad ? theme.danger : theme.success }
 
             PillButton {
                 text: sharing.manual ? "Hide" : "Add a server by hand"
@@ -226,15 +198,6 @@ ScrollView {
                             }
                         }
                     }
-                }
-            }
-            Connections {
-                target: share
-                function onJoined(ok, message) {
-                    joinResult.bad = !ok
-                    joinResult.text = message
-                    if (ok)
-                        joinField.clear()
                 }
             }
         }
