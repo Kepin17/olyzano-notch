@@ -52,7 +52,7 @@ Window {
                                     || quickLookCard.visible || vaultPopup.visible || confirmDelete.visible
                                     || sharePopup.visible || incomingPopup.visible
                                     || sortMenu.visible || removedMenu.visible
-                                    || removedChipMenu.visible
+                                    || removedChipMenu.visible || dockBar.overlayOpen
     readonly property bool dragOver: dragLive && (edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver)
     readonly property bool engaged: pinned || dwelled || islandHover.hovered || dragOver || anyMenu
                                     || saveDialog.visible
@@ -122,6 +122,7 @@ Window {
         }
     }
     onOpenChanged: {
+        dock.setWatching(open && dock.enabled)
         if (open)
             return
         page = "shelf"
@@ -1374,6 +1375,14 @@ Window {
                         }
                         PillButton { text: "Undo"; checked: true; onClicked: notch.undoRemove() }
                     }
+                }
+
+                DockBar {
+                    id: dockBar
+                    visible: dock.enabled && root.page === "shelf"
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
                 }
 
                 Item { Layout.preferredHeight: 4 }
