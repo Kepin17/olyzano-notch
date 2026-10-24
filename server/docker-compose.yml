@@ -1,0 +1,37 @@
+# Notch share relay + automatic HTTPS (Caddy). Configure with .env (copy .env.example).
+services:
+  relay:
+    build: .
+    restart: unless-stopped
+    environment:
+      RELAY_API_KEY: ${RELAY_API_KEY:?set RELAY_API_KEY in .env}
+      MAX_FILE_MB: ${MAX_FILE_MB:-500}
+      MAX_TOTAL_MB: ${MAX_TOTAL_MB:-2000}
+      MAX_TTL_HOURS: ${MAX_TTL_HOURS:-24}
+      TRUST_PROXY: "1" # Caddy sits in front: take the client IP from X-Forwarded-For
+    volumes:
+      - relay-data:/data
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [relay]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+      MAX_FILE_MB: ${MAX_FILE_MB:-500}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  relay-data:
+  caddy-data:
+  caddy-config:

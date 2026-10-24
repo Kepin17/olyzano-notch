@@ -1,0 +1,7 @@
+{$DOMAIN} {
+	# Uploads can be large: allow slightly more than the relay's own limit so it can answer with a clear 413.
+	request_body {
+		max_size {$MAX_FILE_MB}MB
+	}
+	reverse_proxy relay:8080
+}

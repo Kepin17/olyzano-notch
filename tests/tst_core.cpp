@@ -4,6 +4,9 @@
 #include "services/FolderWatcher.h"
 #include "services/TextTools.h"
 #include "services/DocTools.h"
+#include "services/QrImage.h"
+#include "services/ShareCrypto.h"
+#include "services/ShareServer.h"
 #include "services/Vault.h"
 #include "platform/BatteryThreshold.h"
 #include "platform/PlayerSelection.h"
@@ -14,7 +17,11 @@
 #include <QGuiApplication>
 #include <QImage>
 #include <QImageReader>
+#include <QNetworkAccessManager>
+#include <QNetworkReply>
+#include <QNetworkRequest>
 #include <QPainter>
+#include <QProcess>
 #include <QRandomGenerator>
 #include <QStandardPaths>
 #include <QFile>
@@ -26,6 +33,31 @@
 #include <QUuid>
 
 #include <unistd.h>
+
+struct Http {
+    int status = 0;
+    QByteArray body;
+    QByteArray contentRange, disposition;
+};
+static Http httpGet(const QUrl &url, const QByteArray &range = {})
+{
+    QNetworkAccessManager nam;
+    QNetworkRequest req(url);
+    if (!range.isEmpty())
+        req.setRawHeader("Range", range);
+    QNetworkReply *reply = nam.get(req);
+    QEventLoop loop;
+    QTimer::singleShot(10000, &loop, &QEventLoop::quit);
+    QObject::connect(reply, &QNetworkReply::finished, &loop, &QEventLoop::quit);
+    loop.exec();
+    Http h;
+    h.status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+    h.body = reply->readAll();
+    h.contentRange = reply->rawHeader("Content-Range");
+    h.disposition = reply->rawHeader("Content-Disposition");
+    reply->deleteLater();
+    return h;
+}
 
 class TestCore : public QObject
 {
@@ -618,6 +650,172 @@ private slots:
         QCOMPARE(FileService::typeGroup(QStringLiteral("application/json")), QStringLiteral("text"));
         QCOMPARE(FileService::typeGroup(QStringLiteral("application/x-desktop")), QString()); // link shortcuts: no rule
         QCOMPARE(FileService::typeGroup(QStringLiteral("application/octet-stream")), QString());
+    }
+
+    // ---- Share via QR ----
+    void shareCryptoRoundTrip_data()
+    {
+        QTest::addColumn<int>("size");
+        QTest::newRow("empty") << 0;
+        QTest::newRow("tiny") << 5;
+        QTest::newRow("one chunk exactly") << int(ShareCrypto::ChunkSize);
+        QTest::newRow("several chunks") << int(ShareCrypto::ChunkSize) * 2 + 1234;
+    }
+    void shareCryptoRoundTrip()
+    {
+        QFETCH(int, size);
+        const QByteArray data = QByteArray(size, 'x').replace(0, qMin(size, 4), "abcd");
+        const QString plain = m_tmp.filePath(QStringLiteral("plain.bin")), enc = m_tmp.filePath(QStringLiteral("enc.bin")),
+                      dec = m_tmp.filePath(QStringLiteral("dec.bin"));
+        QFile f(plain);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(data);
+        f.close();
+        const QByteArray key = ShareCrypto::newKey();
+        QCOMPARE(key.size(), ShareCrypto::KeySize);
+        QCOMPARE(ShareCrypto::encryptFile(plain, enc, key, QStringLiteral("Ünï report.pdf"), QStringLiteral("application/pdf")), QString());
+        QString name;
+        QCOMPARE(ShareCrypto::decryptFile(enc, dec, key, &name), QString());
+        QCOMPARE(name, QStringLiteral("Ünï report.pdf"));
+        QFile d(dec);
+        QVERIFY(d.open(QIODevice::ReadOnly));
+        QCOMPARE(d.readAll(), data);
+        // The server must not see the name or the content.
+        QFile e(enc);
+        QVERIFY(e.open(QIODevice::ReadOnly));
+        const QByteArray raw = e.readAll();
+        QVERIFY(!raw.contains("report"));
+        if (size >= 4)
+            QVERIFY(!raw.contains("abcd"));
+    }
+    void shareCryptoRejectsTampering()
+    {
+        const QString plain = m_tmp.filePath(QStringLiteral("plain.bin")), enc = m_tmp.filePath(QStringLiteral("enc.bin")),
+                      dec = m_tmp.filePath(QStringLiteral("dec.bin"));
+        QFile f(plain);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(QByteArray(int(ShareCrypto::ChunkSize) * 2 + 10, 'q'));
+        f.close();
+        const QByteArray key = ShareCrypto::newKey();
+        QCOMPARE(ShareCrypto::encryptFile(plain, enc, key, QStringLiteral("a.bin"), QStringLiteral("application/octet-stream")), QString());
+        QFile e(enc);
+        QVERIFY(e.open(QIODevice::ReadOnly));
+        const QByteArray good = e.readAll();
+        e.close();
+        auto tryDecrypt = [&](const QByteArray &bytes, const QByteArray &k) {
+            QFile w(enc);
+            if (!w.open(QIODevice::WriteOnly | QIODevice::Truncate))
+                return QStringLiteral("test setup failed");
+            w.write(bytes);
+            w.close();
+            return ShareCrypto::decryptFile(enc, dec, k);
+        };
+        QCOMPARE(tryDecrypt(good, key), QString());
+        QVERIFY(!tryDecrypt(good, ShareCrypto::newKey()).isEmpty());                    // wrong key
+        QByteArray flipped = good;
+        flipped[flipped.size() / 2] = char(flipped[flipped.size() / 2] ^ 1);
+        QVERIFY(!tryDecrypt(flipped, key).isEmpty());                                   // bit flip
+        QVERIFY(!tryDecrypt(good.left(good.size() - 100), key).isEmpty());              // cut off
+        // Last record removed whole (4-byte length + 10 bytes + 16-byte tag): every remaining record
+        // still authenticates alone, but the new last one was not sealed as "final".
+        QVERIFY(!tryDecrypt(good.left(good.size() - (4 + 10 + 16)), key).isEmpty());
+        QVERIFY(!tryDecrypt(QByteArray("NSH1garbage"), key).isEmpty());
+    }
+    void shareCryptoMatchesReferenceDecryptor()
+    {
+        QProcess probe;
+        probe.start(QStringLiteral("python3"), {QStringLiteral("-c"), QStringLiteral("import cryptography")});
+        if (!probe.waitForFinished(10000) || probe.exitCode() != 0)
+            QSKIP("python3 with the cryptography package is not available");
+        const QString plain = m_tmp.filePath(QStringLiteral("plain.bin")), enc = m_tmp.filePath(QStringLiteral("enc.bin")),
+                      dec = m_tmp.filePath(QStringLiteral("dec.bin"));
+        QByteArray data;
+        for (int i = 0; i < int(ShareCrypto::ChunkSize) + 777; ++i)
+            data.append(char(i * 31 + i / 251));
+        QFile f(plain);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write(data);
+        f.close();
+        const QByteArray key = ShareCrypto::newKey();
+        QCOMPARE(ShareCrypto::encryptFile(plain, enc, key, QStringLiteral("ref test.bin"), QStringLiteral("application/octet-stream")), QString());
+        QProcess py;
+        py.start(QStringLiteral("python3"), {QStringLiteral(NOTCH_SOURCE_DIR "/server/tests/decrypt_share.py"), enc,
+                                            ShareCrypto::keyToFragment(key), dec});
+        QVERIFY(py.waitForFinished(30000));
+        QCOMPARE(QString::fromUtf8(py.readAllStandardError()), QString());
+        QCOMPARE(QString::fromUtf8(py.readAllStandardOutput()).trimmed(), QStringLiteral("ref test.bin"));
+        QFile d(dec);
+        QVERIFY(d.open(QIODevice::ReadOnly));
+        QCOMPARE(d.readAll(), data);
+    }
+    void qrImageIsRenderedAndScannableSized()
+    {
+        const QImage qr = renderQr(QStringLiteral("https://share.example.com/s/abcdefghijklmnop#key"), 240);
+        QVERIFY(!qr.isNull());
+        QCOMPARE(qr.width(), qr.height());
+        QVERIFY(qr.width() > 100 && qr.width() <= 240);
+        QCOMPARE(qr.pixelColor(0, 0), QColor(Qt::white)); // quiet zone
+    }
+
+    // ---- Local share server ----
+    QString writeSample(const QString &name, const QByteArray &data)
+    {
+        const QString path = m_tmp.filePath(name);
+        QFile f(path);
+        if (f.open(QIODevice::WriteOnly))
+            f.write(data);
+        return path;
+    }
+    void shareServerServesPageAndFileThenStops()
+    {
+        QByteArray data;
+        for (int i = 0; i < 700 * 1024; ++i)
+            data.append(char(i * 7 + i / 13)); // several pump rounds
+        ShareServer server;
+        QSignalSpy done(&server, &ShareServer::finished);
+        QCOMPARE(server.start(QHostAddress::LocalHost, writeSample(QStringLiteral("s.bin"), data),
+                              QStringLiteral("Résumé <x>.bin"), QStringLiteral("application/octet-stream"), 60), QString());
+        QVERIFY(server.running());
+        const QUrl base = server.url();
+        QVERIFY(base.toString().startsWith(QStringLiteral("http://127.0.0.1:")));
+
+        const Http page = httpGet(base);
+        QCOMPARE(page.status, 200);
+        QVERIFY(page.body.contains("R&eacute;sum") || page.body.contains("Résumé"));
+        QVERIFY(!page.body.contains("<x>")); // the name is escaped
+        QCOMPARE(httpGet(QUrl(base.toString() + QStringLiteral("nope"))).status, 404);
+        QCOMPARE(httpGet(QUrl(base.toString().replace(base.path(), QStringLiteral("/wrongtoken/")))).status, 404);
+        QCOMPARE(done.count(), 0);
+
+        const Http part = httpGet(QUrl(base.toString() + QStringLiteral("file")), "bytes=100-199");
+        QCOMPARE(part.status, 206);
+        QCOMPARE(part.body, data.mid(100, 100));
+        QCOMPARE(part.contentRange, QByteArray("bytes 100-199/") + QByteArray::number(data.size()));
+        QCOMPARE(done.count(), 0); // a partial range is not the download
+
+        const Http whole = httpGet(QUrl(base.toString() + QStringLiteral("file")));
+        QCOMPARE(whole.status, 200);
+        QCOMPARE(whole.body, data);
+        QVERIFY(whole.disposition.contains("attachment"));
+        QVERIFY(done.count() == 1 || done.wait(5000));
+        QCOMPARE(done.first().first().toString(), QStringLiteral("downloaded"));
+        QVERIFY(!server.running());
+        QCOMPARE(httpGet(QUrl(base.toString() + QStringLiteral("file"))).status, 0); // closed
+    }
+    void shareServerExpiresAndStops()
+    {
+        ShareServer server;
+        QSignalSpy done(&server, &ShareServer::finished);
+        const QString file = writeSample(QStringLiteral("e.bin"), QByteArray(100, 'e'));
+        QCOMPARE(server.start(QHostAddress::LocalHost, file, QStringLiteral("e.bin"), {}, 1), QString());
+        QVERIFY(done.wait(4000));
+        QCOMPARE(done.first().first().toString(), QStringLiteral("expired"));
+
+        QCOMPARE(server.start(QHostAddress::LocalHost, file, QStringLiteral("e.bin"), {}, 60), QString());
+        server.stop();
+        QCOMPARE(done.count(), 2);
+        QCOMPARE(done.last().first().toString(), QStringLiteral("stopped"));
+        QVERIFY(!server.start(QHostAddress::LocalHost, m_tmp.filePath(QStringLiteral("missing")), QStringLiteral("m"), {}, 60).isEmpty());
     }
 
     void vaultLifecycle()

@@ -204,6 +204,20 @@ const FileItem *NotchController::available(const QString &id) const
     return item && item->status == Status::Available ? item : nullptr;
 }
 
+QList<NotchController::ShareSource> NotchController::shareSources(const QStringList &ids) const
+{
+    QList<ShareSource> out;
+    for (const QString &id : ids)
+        if (const FileItem *item = available(id))
+            out.append({pathOf(*item), item->originalName, item->mimeType, item->vault});
+    return out;
+}
+
+QString NotchController::settingsFolder() const
+{
+    return QFileInfo(m_settings.fileName()).absolutePath();
+}
+
 bool NotchController::storeSetting(const QString &key, const QVariant &value)
 {
     if (m_settings.contains(key) && m_settings.value(key) == value)

@@ -1,0 +1,42 @@
+# Notch share relay
+
+A tiny server for Notch's **Share via QR → Your server** mode. Notch encrypts the file on your
+computer (AES-256-GCM) and uploads the ciphertext here; the key stays in the link's `#fragment`,
+so this server can never read the file or even its name. Shares disappear on their own.
+
+## Install (Docker Compose)
+
+1. Point a DNS record for a subdomain (e.g. `share.example.com`) to your VPS and open ports 80 and 443.
+2. Copy this `server/` folder to the VPS, then:
+
+   ```bash
+   cp .env.example .env
+   openssl rand -hex 32        # paste the result as RELAY_API_KEY in .env, and set DOMAIN
+   docker compose up -d --build
+   ```
+
+   Caddy gets the HTTPS certificate by itself the first time the domain is visited.
+3. In Notch: **Settings → Sharing**, enter `https://share.example.com` and the API key, then
+   **Test connection**.
+
+Update: copy the new files, then `docker compose up -d --build`. Logs: `docker compose logs -f relay`
+(they list methods and status codes only, never links).
+
+## Limits and safety
+
+- Upload needs the API key; download needs the long random link (and the PIN, if set).
+- Each share has an expiry (up to `MAX_TTL_HOURS`) and can be limited to N downloads.
+- Wrong PIN: 5 tries, then that IP is locked out of that share for 10 minutes.
+- `MAX_FILE_MB` per file, `MAX_TOTAL_MB` in total; uploads beyond that get HTTP 413.
+- The container runs as an unprivileged user with a read-only filesystem.
+
+## Without Docker
+
+`RELAY_API_KEY=... DATA_DIR=./data PORT=8080 python3 relay.py` (Python 3.9+, standard library only),
+behind any HTTPS reverse proxy. Set `TRUST_PROXY=1` only when a proxy sets `X-Forwarded-For`.
+
+## Tests
+
+```bash
+python3 -m unittest discover -s tests
+```

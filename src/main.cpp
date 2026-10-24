@@ -1,4 +1,6 @@
 #include "app/NotchController.h"
+#include "app/ShareController.h"
+#include "services/QrImage.h"
 #include "platform/DesktopIntegration.h"
 #include "platform/AudioLevels.h"
 #include "platform/ColorPicker.h"
@@ -52,6 +54,25 @@ static void quitOnSignals(QCoreApplication &app)
         std::signal(sig, [](int) { if (::write(quitPipe[0], "q", 1) < 0) {} });
 }
 
+// image://qr/<base64url text> -> QR code (white background, so it scans in dark mode too).
+class QrImageProvider : public QQuickImageProvider
+{
+public:
+    QrImageProvider() : QQuickImageProvider(Pixmap) {}
+    QPixmap requestPixmap(const QString &id, QSize *size, const QSize &requested) override
+    {
+        const QString text = QString::fromUtf8(QByteArray::fromBase64(id.toLatin1(), QByteArray::Base64UrlEncoding));
+        QImage image;
+        try {
+            image = renderQr(text, requested.width() > 0 ? requested.width() : 220);
+        } catch (...) { // text too long for a QR code
+        }
+        if (size)
+            *size = image.size();
+        return QPixmap::fromImage(image);
+    }
+};
+
 int main(int argc, char *argv[])
 {
     QQuickWindow::setDefaultAlphaBuffer(true);
@@ -72,6 +93,7 @@ int main(int argc, char *argv[])
 
     NotchController controller(dataDir);
     controller.start(); // failures surface in the UI via errorMessage
+    ShareController share(&controller);
 
     DesktopIntegration desktop;
     SystemEvents systemEvents;
@@ -88,6 +110,8 @@ int main(int argc, char *argv[])
     QObject::connect(&kdeconnect, &KdeConnect::received, &controller, &NotchController::addReceived);
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("mime"), new MimeIconProvider);
+    engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider);
+    engine.rootContext()->setContextProperty(QStringLiteral("share"), &share);
     engine.rootContext()->setContextProperty(QStringLiteral("notch"), &controller);
     engine.rootContext()->setContextProperty(QStringLiteral("desktop"), &desktop);
     engine.rootContext()->setContextProperty(QStringLiteral("systemEvents"), &systemEvents);

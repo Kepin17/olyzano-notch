@@ -50,6 +50,7 @@ Window {
     readonly property bool anyMenu: menu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible
                                     || toolsMenu.visible || extractPopup.visible || settingsPage.overlayOpen
                                     || quickLookCard.visible || vaultPopup.visible || confirmDelete.visible
+                                    || sharePopup.visible
                                     || sortMenu.visible || removedMenu.visible
                                     || removedChipMenu.visible
     readonly property bool dragOver: dragLive && (edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver)
@@ -208,6 +209,11 @@ Window {
             if (c.id === id)
                 return c.name
         return ""
+    }
+
+    function shareFiles(ids) {
+        sharePopup.openFor(ids)
+        clearSelection()
     }
 
     // Files in a locked category are deleted for good (no Recently removed): ask first.
@@ -718,6 +724,11 @@ Window {
                     }
                     PillButton {
                         visible: root.selecting && !root.inRemoved
+                        text: "Share"
+                        onClicked: root.shareFiles(root.selection)
+                    }
+                    PillButton {
+                        visible: root.selecting && !root.inRemoved
                         text: "Remove"
                         onClicked: {
                             root.removeWithConfirm(root.selection)
@@ -760,6 +771,14 @@ Window {
                         checked: true
                         Accessible.name: "Save note"
                         onClicked: root.saveNote()
+                    }
+                    IconButton { // a share is running while its popup is hidden
+                        visible: root.page === "shelf" && !root.selecting && !sharePopup.visible
+                                 && (share.status === "preparing" || share.status === "uploading" || share.status === "ready")
+                        iconName: "share"
+                        checked: true
+                        Accessible.name: "Show the running share"
+                        onClicked: sharePopup.openFor([])
                     }
                     IconButton {
                         visible: root.page === "shelf" && !root.selecting && notch.vaultUnlocked
@@ -1432,6 +1451,7 @@ Window {
             onTriggered: list.renamingId = menu.itemId
         }
         Action { text: "Save to…"; onTriggered: root.saveFiles(menu.targets) }
+        Action { text: "Share via QR…"; onTriggered: root.shareFiles(menu.targets) }
         DarkMenu {
             id: sendMenu
             property var devices: []
@@ -1657,6 +1677,11 @@ Window {
                 PillButton { text: "Extract"; checked: true; onClicked: extractPopup.go() }
             }
         }
+    }
+
+    SharePopup {
+        id: sharePopup
+        shell: root
     }
 
     // Vault password: create (typed twice, with the no-recovery warning) or unlock.

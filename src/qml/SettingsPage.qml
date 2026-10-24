@@ -74,6 +74,79 @@ ScrollView {
         ColumnLayout {
             Layout.fillWidth: true
             spacing: 6
+            SectionLabel { text: "Sharing (your own server)" }
+            Caption {
+                Layout.fillWidth: true
+                text: "Share via QR can also upload to your own server, encrypted on this computer first. Set the server up with server/README.md."
+            }
+            TextField {
+                id: relayUrlField
+                Layout.fillWidth: true
+                implicitHeight: 30
+                leftPadding: 12
+                text: share.relayUrl
+                placeholderText: "https://share.example.com"
+                placeholderTextColor: theme.placeholder
+                color: theme.text
+                selectionColor: theme.accent
+                font.pixelSize: 13
+                background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: relayUrlField.activeFocus ? theme.accent : theme.outline }
+                onEditingFinished: share.relayUrl = text
+            }
+            TextField {
+                id: relayKeyField
+                Layout.fillWidth: true
+                implicitHeight: 30
+                leftPadding: 12
+                echoMode: TextInput.Password
+                placeholderText: share.relayKeySet ? "API key saved (type to replace)" : "API key"
+                placeholderTextColor: theme.placeholder
+                color: theme.text
+                selectionColor: theme.accent
+                font.pixelSize: 13
+                background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: relayKeyField.activeFocus ? theme.accent : theme.outline }
+                onEditingFinished: {
+                    if (text !== "") {
+                        share.setRelayKey(text)
+                        clear()
+                    }
+                }
+            }
+            Row {
+                spacing: 8
+                PillButton {
+                    text: "Test connection"
+                    onClicked: {
+                        share.relayUrl = relayUrlField.text
+                        if (relayKeyField.text !== "") {
+                            share.setRelayKey(relayKeyField.text)
+                            relayKeyField.clear()
+                        }
+                        relayResult.text = "Testing…"
+                        relayResult.bad = false
+                        share.testRelay()
+                    }
+                }
+                Caption {
+                    id: relayResult
+                    property bool bad
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: bad ? theme.danger : theme.success
+                    wrapMode: Text.NoWrap
+                }
+            }
+            Connections {
+                target: share
+                function onRelayTested(ok, message) {
+                    relayResult.bad = !ok
+                    relayResult.text = message
+                }
+            }
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 6
             SectionLabel { text: "Sort new files by type" }
             Caption {
                 Layout.fillWidth: true

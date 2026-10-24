@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(notch VERSION 0.1.7 LANGUAGES CXX)
+project(notch VERSION 0.1.8 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,7 +21,14 @@ qt_add_library(notch_core STATIC
     src/services/TextTools.h
     src/services/DocTools.h src/services/DocTools.cpp
     src/services/Vault.h src/services/Vault.cpp
+    src/services/ShareCrypto.h src/services/ShareCrypto.cpp
+    src/services/QrImage.h src/services/QrImage.cpp
+    src/services/ShareServer.h src/services/ShareServer.cpp
+    third_party/qrcodegen.cpp
 )
+set_source_files_properties(third_party/qrcodegen.cpp PROPERTIES COMPILE_OPTIONS "-w") # vendored (MIT)
+# AES-GCM comes from libcrypto (loaded by Qt Network anyway); ShareCrypto declares what it uses.
+find_library(NOTCH_CRYPTO NAMES crypto libcrypto.so.3 REQUIRED)
 qt_add_resources(notch_core migrations PREFIX "/" BASE database FILES
     database/migrations/001_initial.sql
     database/migrations/002_categories.sql
@@ -29,12 +36,13 @@ qt_add_resources(notch_core migrations PREFIX "/" BASE database FILES
     database/migrations/004_recently_removed.sql
     database/migrations/005_vault.sql
 )
-target_include_directories(notch_core PUBLIC src)
-target_link_libraries(notch_core PUBLIC Qt6::Core Qt6::Gui Qt6::Sql) # Gui: QImage/QPdfWriter in DocTools
+target_include_directories(notch_core PUBLIC src third_party)
+target_link_libraries(notch_core PUBLIC Qt6::Core Qt6::Gui Qt6::Sql Qt6::Network ${NOTCH_CRYPTO}) # Gui: QImage/QPdfWriter in DocTools
 
 qt_add_executable(notch
     src/main.cpp
     src/app/NotchController.h src/app/NotchController.cpp
+    src/app/ShareController.h src/app/ShareController.cpp
     src/models/FileItemModel.h src/models/FileItemModel.cpp
     src/platform/DesktopIntegration.h src/platform/DesktopIntegration.cpp
     src/platform/SystemEvents.h src/platform/SystemEvents.cpp
@@ -53,12 +61,12 @@ qt_add_qml_module(notch
         src/qml/PillButton.qml src/qml/IconButton.qml src/qml/Toggle.qml src/qml/PulseDot.qml
         src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkSeparator.qml
         src/qml/SettingToggle.qml src/qml/Chip.qml src/qml/WheelScroller.qml
-        src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml
+        src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml
     RESOURCES
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg
         src/qml/icons/unlock.svg src/qml/icons/trash.svg src/qml/icons/palette.svg src/qml/icons/pen.svg
         src/qml/icons/gear.svg src/qml/icons/sort.svg src/qml/icons/camera.svg src/qml/icons/download.svg
-        src/qml/icons/phone.svg src/qml/icons/search.svg
+        src/qml/icons/phone.svg src/qml/icons/search.svg src/qml/icons/share.svg
 )
 # Widgets: QApplication backs the tray icon (Qt.labs.platform falls back to QSystemTrayIcon).
 target_link_libraries(notch PRIVATE notch_core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::Concurrent Qt6::Network Qt6::DBus)
@@ -77,6 +85,7 @@ install(FILES packaging/notch.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/appli
 
 enable_testing()
 qt_add_executable(tst_core tests/tst_core.cpp)
+target_compile_definitions(tst_core PRIVATE NOTCH_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_link_libraries(tst_core PRIVATE notch_core Qt6::Test)
 add_test(NAME tst_core COMMAND tst_core)
 

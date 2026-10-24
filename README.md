@@ -68,6 +68,17 @@ To try it without touching your real shelf or settings:
 - **Quick Look:** hover a tile and hold **Space** (or press and hold the tile) for a large preview;
   release to close.
 - **Drop text:** text dragged from any app onto Notch (or onto a chip) becomes a note.
+- **Share via QR:** right-click a file (or select several → **Share**) → **Share via QR…**, then scan
+  the code with a phone.
+  - **This WiFi:** Notch serves the file to your local network for a short time (10 min / 1 h /
+    24 h). The link stops after the first download. Plain HTTP, so use it on your own network;
+    several files go as one zip.
+  - **My server:** the file is encrypted on this computer (AES-256-GCM) and uploaded to your own relay;
+    the key stays in the link after `#`, so the server cannot read it, and your computer can be switched
+    off. Options: PIN, single download, expiry. Set it up in **Settings → Sharing** (address + API key,
+    **Test connection**); the relay itself (Docker Compose, `.env`) is in [server/](server/README.md).
+    The API key is kept in `~/.config/notch/relay.key` (owner-only).
+  Files in locked categories can be shared too (the popup warns that WiFi sharing is unencrypted).
 - **Locked categories:** right-click a chip → **Lock with password…** for sensitive files (ID cards,
   pay slips). The first time sets the password (at least 8 characters; **forget it and the files are
   gone**, there is no recovery). Files in locked categories are encrypted on disk with

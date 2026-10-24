@@ -194,6 +194,16 @@ public:
     // {name, sizeText, addedText, iconName, isText} of one item, for overlays like Quick Look.
     Q_INVOKABLE QVariantMap itemInfo(const QString &id) const;
 
+    // For sharing (ShareController): what to send for the given items. Locked items are skipped
+    // while the vault is closed; `vault` files live on the decrypted mount.
+    struct ShareSource {
+        QString path, name, mimeType;
+        bool vault = false;
+    };
+    QList<ShareSource> shareSources(const QStringList &ids) const;
+    QString settingsFolder() const; // where notch.conf lives
+    QString scratchPath(bool forVault) const { return scratchDir(forVault); }
+
 signals:
     void countChanged();
     void copyingChanged();
