@@ -312,6 +312,13 @@ ScrollView {
         }
 
         SettingToggle {
+            title: "App dock"
+            caption: "Pinned and running apps along the bottom of the panel."
+            checked: dock.enabled
+            onToggled: dock.enabled = !dock.enabled
+        }
+
+        SettingToggle {
             title: "Add new screenshots"
             caption: notch.linuxDesktop ? "Spectacle screenshots land in the Screenshots category."
                                         : "Screenshots saved to Pictures\\Screenshots (Win + PrtSc) land in the Screenshots category."

@@ -15,6 +15,7 @@
 #include "platform/BatteryThreshold.h"
 #include "platform/PlayerSelection.h"
 #include "platform/AudioBands.h"
+#include "platform/DockModel.h"
 
 #include <QDir>
 #include <QDirIterator>
@@ -1364,6 +1365,58 @@ private slots:
                 QCOMPARE(i.id, ok.id);
         }
         QVERIFY(QFile::exists(path(ok)));
+    }
+
+    void dockParsesDesktopEntries()
+    {
+        const QByteArray text =
+            "[Desktop Entry]\nType=Application\nName=Fire Fox\nIcon=firefox\n"
+            "Exec=env MOZ_ENABLE=1 /usr/lib/firefox/Firefox --new-window %u %%x\n"
+            "[Desktop Action new]\nName=Other\nExec=ignored\n";
+        const DockApp app = dockmodel::parseDesktopEntry(QStringLiteral("firefox.desktop"), text);
+        QVERIFY(app.valid());
+        QCOMPARE(app.name, QStringLiteral("Fire Fox"));
+        QCOMPARE(app.icon, QStringLiteral("firefox"));
+        QCOMPARE(app.key, QStringLiteral("firefox"));
+        QCOMPARE(app.command, (QStringList{"env", "MOZ_ENABLE=1", "/usr/lib/firefox/Firefox", "--new-window", "%x"}));
+
+        QVERIFY(!dockmodel::parseDesktopEntry(QStringLiteral("a.desktop"), "[Desktop Entry]\nType=Application\nName=A\nExec=a\nNoDisplay=true\n").valid());
+        QVERIFY(!dockmodel::parseDesktopEntry(QStringLiteral("b.desktop"), "[Desktop Entry]\nType=Link\nName=B\nExec=b\n").valid());
+        QVERIFY(!dockmodel::parseDesktopEntry(QStringLiteral("c.desktop"), "[Desktop Entry]\nType=Application\nName=C\n").valid());
+    }
+
+    void dockMergesPinnedAndRunning()
+    {
+        auto app = [](const char *id, const char *name) {
+            DockApp a;
+            a.id = QString::fromLatin1(id);
+            a.name = QString::fromLatin1(name);
+            a.command = {a.id};
+            return a;
+        };
+        const DockApp files = app("files", "Files"), mail = app("mail", "Mail"), zed = app("zed", "Zed"), alpha = app("alpha", "Alpha");
+        const QHash<QString, DockApp> catalog{{"files", files}, {"mail", mail}, {"zed", zed}, {"alpha", alpha}};
+
+        const QVariantList items = dockmodel::merge({"mail", "gone", "files"}, catalog, {zed, files, alpha}, QStringLiteral("files"));
+        QStringList ids;
+        for (const QVariant &v : items)
+            ids << v.toMap().value("id").toString();
+        // Pinned keep their saved order (even uninstalled ones); the other running apps follow by name.
+        QCOMPARE(ids, (QStringList{"mail", "gone", "files", "alpha", "zed"}));
+        QVERIFY(!items[0].toMap().value("running").toBool());
+        QVERIFY(items[2].toMap().value("running").toBool());
+        QVERIFY(items[2].toMap().value("active").toBool());
+        QVERIFY(items[2].toMap().value("pinned").toBool());
+        QVERIFY(!items[3].toMap().value("pinned").toBool());
+        QVERIFY(items[3].toMap().value("running").toBool());
+        QVERIFY(!items[3].toMap().value("active").toBool());
+    }
+
+    void dockMovesPinned()
+    {
+        QCOMPARE(dockmodel::move({"a", "b", "c"}, 0, 2), (QStringList{"b", "c", "a"}));
+        QCOMPARE(dockmodel::move({"a", "b", "c"}, 2, 0), (QStringList{"c", "a", "b"}));
+        QCOMPARE(dockmodel::move({"a", "b"}, 0, 5), (QStringList{"a", "b"}));
     }
 };
 

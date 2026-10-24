@@ -3,6 +3,7 @@
 #include "app/ShareController.h"
 #include "services/QrImage.h"
 #include "platform/DesktopIntegration.h"
+#include "platform/AppDock.h"
 #include "platform/AudioLevels.h"
 #include "platform/ColorPicker.h"
 #include "platform/KdeConnect.h"
@@ -111,6 +112,7 @@ int main(int argc, char *argv[])
     KdeConnect kdeconnect;
     Theme theme;
     ColorPicker colorPicker;
+    AppDock dock;
     QObject::connect(&colorPicker, &ColorPicker::picked, &controller, &NotchController::addColor);
     theme.setMode(controller.themeMode());
     theme.setStyle(controller.uiStyle());
@@ -120,6 +122,7 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("mime"), new MimeIconProvider);
     engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider);
+    engine.addImageProvider(QStringLiteral("appicon"), new DockIconProvider(&dock));
     engine.rootContext()->setContextProperty(QStringLiteral("share"), &share);
     engine.rootContext()->setContextProperty(QStringLiteral("nearby"), &nearby);
     engine.rootContext()->setContextProperty(QStringLiteral("notch"), &controller);
@@ -130,6 +133,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("kdeconnect"), &kdeconnect);
     engine.rootContext()->setContextProperty(QStringLiteral("theme"), &theme);
     engine.rootContext()->setContextProperty(QStringLiteral("colorPicker"), &colorPicker);
+    engine.rootContext()->setContextProperty(QStringLiteral("dock"), &dock);
 
     // One Notch per monitor, following hotplug.
     QQmlComponent notchWindow(&engine, "Notch", "Main");

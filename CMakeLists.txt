@@ -78,6 +78,7 @@ qt_add_executable(notch
     src/platform/KdeConnect.h
     src/platform/Theme.h src/platform/Theme.cpp
     src/platform/ColorPicker.h
+    src/platform/AppDock.h src/platform/AppDock.cpp src/platform/DockModel.h
 )
 if(NOTCH_DBUS)
     target_sources(notch PRIVATE src/platform/SystemEvents.cpp src/platform/MediaPlayers.cpp
@@ -86,6 +87,7 @@ else()
     target_sources(notch PRIVATE src/platform/SystemEvents_other.cpp) # the rest are header-only stubs
 endif()
 if(WIN32)
+    target_link_libraries(notch PRIVATE user32) # AppDock lists and raises windows
     configure_file(packaging/windows/notch.rc.in ${CMAKE_CURRENT_BINARY_DIR}/notch.rc)
     target_sources(notch PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/notch.rc)
     set_target_properties(notch PROPERTIES WIN32_EXECUTABLE TRUE) # a window, not a console
@@ -100,6 +102,7 @@ qt_add_qml_module(notch
         src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkSeparator.qml
         src/qml/SettingToggle.qml src/qml/Chip.qml src/qml/WheelScroller.qml
         src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml
+        src/qml/DockBar.qml
     RESOURCES
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg
         src/qml/icons/unlock.svg src/qml/icons/trash.svg src/qml/icons/palette.svg src/qml/icons/pen.svg
