@@ -173,6 +173,7 @@ bool DesktopNotifications::doNotDisturb() const { return false; }
 
 #endif
 
+#ifndef Q_OS_WIN // on Windows these live in DesktopNotifications_win.cpp, where Listener is complete
 DesktopNotifications::DesktopNotifications(QObject *parent)
     : QObject(parent)
     , m_settings(configPath(), QSettings::IniFormat)
@@ -185,6 +186,7 @@ DesktopNotifications::~DesktopNotifications()
 {
     stop();
 }
+#endif
 
 void DesktopNotifications::setEnabled(bool on)
 {
