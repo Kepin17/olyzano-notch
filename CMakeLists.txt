@@ -91,6 +91,11 @@ else()
     target_sources(notch PRIVATE src/platform/SystemEvents_other.cpp) # the rest are header-only stubs
 endif()
 if(WIN32)
+    # KDE Connect for Windows runs a D-Bus of its own; QtDBus loads its libdbus at runtime (KdeConnect.cpp).
+    find_package(Qt6 6.5 REQUIRED COMPONENTS DBus)
+    target_sources(notch PRIVATE src/platform/KdeConnect.cpp)
+    target_link_libraries(notch PRIVATE Qt6::DBus)
+    target_compile_definitions(notch PRIVATE NOTCH_HAVE_KDECONNECT)
     target_sources(notch PRIVATE src/platform/WinPrivacy.h src/platform/WinPrivacy.cpp src/platform/ColorPicker_win.cpp
                                  src/platform/WinBluetooth.h src/platform/WinBluetooth.cpp
                                  src/platform/MediaPlayers_win.cpp src/platform/MediaNames.h src/platform/AudioLevels_win.cpp)
