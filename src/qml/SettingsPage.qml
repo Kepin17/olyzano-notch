@@ -61,6 +61,35 @@ ScrollView {
                 onToggled: notch.alerts = !notch.alerts
             }
 
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                Text {
+                    text: "How the notch sits on the screen"
+                    color: theme.text
+                    font.pixelSize: 13
+                    font.weight: Font.Medium
+                }
+                Row {
+                    spacing: 6
+                    Repeater {
+                        model: [["hidden", "Hidden"], ["capsule", "Capsule"], ["open", "Always open"]]
+                        PillButton {
+                            required property var modelData
+                            text: modelData[1]
+                            checked: activities.capsuleMode === modelData[0]
+                            onClicked: activities.capsuleMode = modelData[0]
+                        }
+                    }
+                }
+                Caption {
+                    Layout.fillWidth: true
+                    text: activities.capsuleMode === "capsule" ? "A small black capsule stays at the top, like a Dynamic Island. Point at it to open Olyzano Notch."
+                        : activities.capsuleMode === "open" ? "The panel stays open at the top of the screen."
+                        : "Only a thin line shows at the top edge. Rest the pointer there to open Olyzano Notch."
+                }
+            }
+
             SettingToggle {
                 title: "Clock when idle"
                 caption: "While nothing else is going on, the notch shows the time, the microphone and the battery."

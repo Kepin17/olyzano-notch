@@ -145,8 +145,12 @@ Controls that a platform cannot offer are hidden or greyed out.
 
 ### The shelf
 
-- **Open:** rest the mouse on the top-centre edge (a faint line marks the spot), or drag files there. It closes
+- **Open:** rest the mouse on the top-centre edge (a small black line marks the spot), or drag files there. It closes
   when the mouse leaves; **Pin** keeps it open; **Esc** closes it.
+- **How it sits on the screen** (*Settings → General*): **Hidden** (only the line), **Capsule** (a small black capsule
+  always shown, like a Dynamic Island; point at it to open) or **Always open** (the panel stays open).
+- **One section at a time:** a bar of actions under the title, **Files · Music · Timer · Share**, shows just that
+  section; **Music** is only the player. **Add** opens a file picker (you can still drop files on the notch, or paste).
 - **Every monitor has its own shelf** at its top edge; it opens wherever you move the mouse.
 - **Tray icon:** click to show or hide; the menu has Show/Hide, Settings and Quit.
 - **A tile:** click to preview (text files open in the note editor). Hover for **↗** (open) and **✕** (remove,

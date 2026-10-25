@@ -76,6 +76,17 @@ void Activities::setIdleClock(bool on)
     store(QStringLiteral("idleClock"), on);
 }
 
+QString Activities::capsuleMode() const
+{
+    const QString mode = m_settings.value(QStringLiteral("capsuleMode"), QStringLiteral("hidden")).toString();
+    return mode == QLatin1String("capsule") || mode == QLatin1String("open") ? mode : QStringLiteral("hidden");
+}
+
+void Activities::setCapsuleMode(const QString &mode)
+{
+    store(QStringLiteral("capsuleMode"), mode == QLatin1String("capsule") || mode == QLatin1String("open") ? mode : QStringLiteral("hidden"));
+}
+
 void Activities::toggleMicMute()
 {
 #ifdef Q_OS_WIN

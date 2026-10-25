@@ -32,6 +32,9 @@ class Activities : public QObject
     Q_PROPERTY(int micMuted READ micMuted NOTIFY privacyChanged) // default microphone: 1 muted, 0 live, -1 unknown
     // The small clock pill shown while nothing else is (Settings).
     Q_PROPERTY(bool idleClock READ idleClock WRITE setIdleClock NOTIFY settingsChanged)
+    // How the notch sits on the screen: "hidden" (a line until the pointer rests there), "capsule" (a small
+    // capsule always shown, like a Dynamic Island) or "open" (the panel stays open).
+    Q_PROPERTY(QString capsuleMode READ capsuleMode WRITE setCapsuleMode NOTIFY settingsChanged)
     // Settings
     Q_PROPERTY(bool showDownloads READ showDownloads WRITE setShowDownloads NOTIFY settingsChanged)
     Q_PROPERTY(bool privacyIndicators READ privacyIndicators WRITE setPrivacyIndicators NOTIFY settingsChanged)
@@ -53,6 +56,8 @@ public:
     int micMuted() const { return m_micMuted; }
     bool idleClock() const { return m_settings.value(QStringLiteral("idleClock"), true).toBool(); }
     void setIdleClock(bool on);
+    QString capsuleMode() const;
+    void setCapsuleMode(const QString &mode);
 
     bool showDownloads() const { return m_settings.value(QStringLiteral("downloads"), true).toBool(); }
     void setShowDownloads(bool on);

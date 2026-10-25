@@ -20,6 +20,12 @@ Window {
     readonly property int openWidth: 560
 
     property bool pinned: false
+    readonly property string capsuleMode: activities.capsuleMode
+    onCapsuleModeChanged: {
+        pinned = capsuleMode === "open" // "Always open" is a pin that stays
+        updateMask()
+    }
+    Component.onCompleted: if (capsuleMode === "open") pinned = true
     property bool open: false
     property bool dwelled: false
     property string page: "shelf" // shelf | preview | settings | note
@@ -42,9 +48,6 @@ Window {
     property bool dragLive: false
     property string infoText: ""        // short confirmation shown in the panel (saved, zip ready)
     Timer { id: infoTimer; interval: 3500; onTriggered: root.infoText = "" }
-    property bool playerExpanded: false // toggled by the equalizer button in the header
-    property bool playerFlash: false    // full player shown briefly on new playback / track change
-    Timer { id: flashTimer; interval: 6000; onTriggered: root.playerFlash = false }
     readonly property bool selecting: page === "shelf" && selection.length > 0
     readonly property bool inRemoved: notch.categoryFilter === "__removed__" // Recently removed view
     readonly property bool anyMenu: menu.visible || moreMenu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible
@@ -56,7 +59,7 @@ Window {
     readonly property bool dragOver: dragLive && (edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver)
     readonly property bool engaged: pinned || dwelled || (islandHover.hovered && mode !== "idle" && mode !== "prompt")
                                     || dragOver || anyMenu
-                                    || saveDialog.visible
+                                    || saveDialog.visible || addDialog.visible
     // hidden: only the top-edge strip is live. peek: copy in progress. open: full panel.
     // toast: a short system alert (charger, Bluetooth). Shown even while hidden, like Dynamic Island.
     property var toast: null // {kind, title, detail, icon, level}
@@ -72,7 +75,7 @@ Window {
                                       : toast.kind === "color" ? toast.detail : theme.textDim
     // prompt: the stretch reminder asking. idle: the small clock pill when nothing else is going on.
     readonly property string mode: wellbeing.state === "reminding" ? "prompt" : open ? "open" : toast ? "toast"
-                                 : live ? "peek" : activities.idleClock && !idleCovered ? "idle" : "hidden"
+                                 : live ? "peek" : (activities.idleClock || capsuleMode === "capsule") && !idleCovered ? "idle" : "hidden"
 
     // ---- Stretch reminder ----
     // A film, a call or a Pomodoro holds the reminder back (each can be switched off in Settings).
@@ -248,8 +251,6 @@ Window {
     Connections {
         target: media
         function onTrackChanged(title, artist, art) {
-            root.playerFlash = true
-            flashTimer.restart()
             if (!notch.alerts || root.open)
                 return
             root.toast = { kind: "media", title: title, detail: artist, icon: "", art: art, level: -1 }
@@ -271,6 +272,8 @@ Window {
     onEngagedChanged: {
         if (engaged) {
             closeTimer.stop()
+            if (mode === "toast" && toast && toast.kind === "media")
+                page = "music" // pointing at the now-playing alert opens just the player
             open = true
         } else {
             closeTimer.restart()
@@ -281,7 +284,6 @@ Window {
             return
         page = "shelf"
         editingCategory = ""
-        playerExpanded = false
         clearSelection()
         vaultLockTimer.restart()
     }
@@ -292,6 +294,11 @@ Window {
         interval: 5000
         onTriggered: if (!root.open) notch.lockVault()
     }
+    Connections {
+        target: media
+        function onChanged() { if (!media.active && root.page === "music") root.page = "shelf" }
+    }
+    onDragOverChanged: if (dragOver) page = "shelf" // a file being dragged in: show where it lands
     onAnyMenuChanged: updateMask()
     Timer { id: closeTimer; interval: 380; onTriggered: root.open = false }
     // Dwell before revealing, so flinging the mouse up to a tab doesn't pop the panel.
@@ -301,7 +308,7 @@ Window {
     function updateMask() {
         if (anyMenu)
             desktop.setInputRegion(root, Qt.rect(0, 0, width, height))
-        else if (mode === "hidden" || mode === "idle") // the idle clock is see-through for clicks; the top edge opens Notch
+        else if (mode === "hidden" || (mode === "idle" && capsuleMode !== "capsule")) // the idle clock is see-through for clicks; the top edge opens Notch (the capsule itself can be pointed at)
             desktop.setInputRegion(root, Qt.rect(edge.x, 0, edge.width, edge.height))
         else
             desktop.setInputRegion(root, Qt.rect(island.x, 0, island.width, Math.max(island.height, edge.height)))
@@ -438,7 +445,7 @@ Window {
             page = "settings"
             pinned = true
         } else {
-            pinned = !pinned
+            pinned = capsuleMode === "open" || !pinned
         }
     }
 
@@ -551,7 +558,7 @@ Window {
                     quickLookCard.show(list.hoveredId) // held Space: Quick Look until released
                 e.accepted = true
             } else if (e.key === Qt.Key_Space || e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
-                root.pinned = !root.pinned
+                root.pinned = root.capsuleMode === "open" || !root.pinned
                 e.accepted = true
             } else if (e.key === Qt.Key_Escape) {
                 if (root.selecting) {
@@ -559,8 +566,10 @@ Window {
                 } else if (root.page !== "shelf") {
                     root.page = "shelf"
                 } else {
-                    root.pinned = false
-                    root.open = false
+                    if (root.capsuleMode !== "open") { // "Always open" stays
+                        root.pinned = false
+                        root.open = false
+                    }
                 }
                 e.accepted = true
             }
@@ -918,7 +927,7 @@ Window {
                         text: root.selecting ? root.selection.length + " selected"
                             : root.page === "settings" ? "Settings" : root.page === "preview" ? root.preview.name
                             : root.page === "note" ? (root.noteId !== "" ? "Edit note" : "New note")
-                            : root.page === "timer" ? "Timer" : "Olyzano Notch"
+                            : root.page === "timer" ? "Timer" : root.page === "music" ? "Now playing" : "Olyzano Notch"
                         color: root.textPrimary
                         font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
                         font.pixelSize: 15
@@ -1038,69 +1047,12 @@ Window {
                         Accessible.name: "Clear selection"
                         onClicked: root.clearSelection()
                     }
-                    AbstractButton {
-                        id: eqButton
-                        readonly property bool shown: root.playerExpanded || root.playerFlash
-                        visible: root.page === "shelf" && !root.selecting && media.active
-                        implicitWidth: 38
-                        implicitHeight: 26
-                        Accessible.name: shown ? "Hide player" : "Show player"
-                        onClicked: {
-                            root.playerExpanded = !shown
-                            root.playerFlash = false
-                        }
-                        background: Rectangle {
-                            radius: 13
-                            color: eqButton.shown ? theme.accentSoft : eqButton.down ? theme.surfacePressed : eqButton.hovered ? theme.surfaceHover : theme.surface
-                            Behavior on color { ColorAnimation { duration: 120 } }
-                        }
-                        contentItem: Item {
-                            Equalizer {
-                                anchors.centerIn: parent
-                                barWidth: 2.5
-                                maxHeight: 14
-                            }
-                        }
-                    }
                     PillButton {
                         visible: root.page === "note"
                         text: "Save"
                         checked: true
                         Accessible.name: "Save note"
                         onClicked: root.saveNote()
-                    }
-                    IconButton {
-                        visible: root.page === "shelf" && !root.selecting && activities.timerKind !== "" // else under "⋯"
-                        iconName: "timer"
-                        checked: activities.timerKind !== ""
-                        Accessible.name: "Timer and Pomodoro"
-                        onClicked: root.page = "timer"
-                    }
-                    // Everything being shared (and what just finished): always reachable, even after the popup was closed.
-                    IconButton {
-                        visible: root.page === "shelf" && !root.selecting && share.count > 0
-                        iconName: "share"
-                        checked: sharePopup.visible || share.activeCount + nearby.activeCount > 0
-                        Accessible.name: "Show what is being shared"
-                        onClicked: sharePopup.visible && sharePopup.view === "sessions" ? sharePopup.close() : sharePopup.openSessions()
-                        Rectangle {
-                            visible: share.activeCount > 0
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            anchors.margins: -4
-                            width: Math.max(16, shareCount.implicitWidth + 8)
-                            height: 16
-                            radius: 8
-                            color: theme.accent
-                            Text {
-                                id: shareCount
-                                anchors.centerIn: parent
-                                text: share.activeCount
-                                color: "white"
-                                font.pixelSize: 9
-                                font.bold: true
-                            }
-                        }
                     }
                     IconButton {
                         visible: root.page === "shelf" && !root.selecting && notch.vaultUnlocked
@@ -1154,18 +1106,12 @@ Window {
                     }
                     IconButton {
                         visible: root.page === "shelf" && !root.selecting
-                        iconName: "pen"
-                        Accessible.name: "New note"
-                        onClicked: root.newNote()
-                    }
-                    IconButton {
-                        visible: root.page === "shelf" && !root.selecting
                         iconName: "gear"
                         Accessible.name: "Settings"
                         onClicked: root.page = "settings"
                     }
                     PillButton {
-                        visible: !root.selecting // room for the selection actions
+                        visible: !root.selecting && root.capsuleMode !== "open" // room for the selection actions
                         text: root.pinned ? "Pinned" : "Pin"
                         checked: root.pinned
                         onClicked: root.pinned = !root.pinned
@@ -1173,12 +1119,23 @@ Window {
                     }
                 }
 
+                // What to look at: one section at a time. Dropping files is an action too (Add).
+                ActionBar {
+                    visible: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer")
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 8
+                    page: root.page
+                    musicAvailable: media.active
+                    shareAvailable: share.count + nearby.count > 0
+                    shareBusy: share.activeCount + nearby.activeCount > 0
+                    onPick: (target) => root.page = target
+                    onAddFiles: addDialog.open()
+                    onOpenShares: sharePopup.visible && sharePopup.view === "sessions" ? sharePopup.close() : sharePopup.openSessions()
+                }
+
                 MediaCard {
-                    visible: root.page === "shelf" && media.active && (root.playerExpanded || root.playerFlash)
-                    onInteracted: {
-                        root.playerExpanded = true
-                        root.playerFlash = false
-                    }
+                    visible: root.page === "music" && media.active
                     Layout.fillWidth: true
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
@@ -1421,7 +1378,7 @@ Window {
                     Layout.fillWidth: true
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
-                    Layout.preferredHeight: 108
+                    Layout.preferredHeight: 76
                     Shape {
                         anchors.fill: parent
                         layer.enabled: true
@@ -1757,15 +1714,18 @@ Window {
         color: "#30d158"
     }
 
-    // Faint handle hinting where Notch lives; red when there's an unread error. Visual only.
+    // Black handle hinting where Notch lives; red when there's an unread error. Visual only.
     Rectangle {
         x: (root.width - width) / 2
         y: 0
         width: 44
         height: 3
         radius: 1.5
-        color: notch.errorMessage !== "" ? theme.danger : theme.dark ? "#ffffff" : "#000000"
-        opacity: root.mode !== "hidden" ? 0 : edgeHover.hovered ? 0.7 : 0.18
+        color: notch.errorMessage !== "" ? theme.danger : "#000000"
+        // A hair of light around the black, so it still shows on a dark wallpaper.
+        border.width: 0.5
+        border.color: notch.errorMessage !== "" ? "transparent" : Qt.rgba(1, 1, 1, 0.22)
+        opacity: root.mode !== "hidden" ? 0 : edgeHover.hovered ? 1 : 0.9
         Behavior on opacity { NumberAnimation { duration: 200 } }
     }
 
@@ -1964,14 +1924,17 @@ Window {
     // The header's less-used buttons.
     DarkMenu {
         id: moreMenu
-        Action { text: "Timer and Pomodoro"; onTriggered: root.page = "timer" }
+        Action { text: "New note"; onTriggered: root.newNote() }
         Action {
             text: "Pick a color from the screen"
             enabled: colorPicker.supported
             onTriggered: {
-                // Get out of the way so anything on screen (even under Notch) can be picked.
-                root.pinned = false
-                root.open = false
+                // Get out of the way so anything on screen (even under Notch) can be picked
+                // (not in "Always open": it would not come back).
+                if (root.capsuleMode !== "open") {
+                    root.pinned = false
+                    root.open = false
+                }
                 colorPicker.pick()
             }
         }
@@ -2306,6 +2269,13 @@ Window {
         }
     }
 
+    FileDialog {
+        id: addDialog
+        title: "Add files"
+        fileMode: FileDialog.OpenFiles
+        currentFolder: StandardPaths.writableLocation(StandardPaths.HomeLocation)
+        onAccepted: notch.addDrop(selectedFiles, "", notch.categoryFilter)
+    }
     FolderDialog {
         id: saveDialog
         property var targetIds: []
