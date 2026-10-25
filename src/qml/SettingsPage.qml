@@ -26,7 +26,7 @@ ScrollView {
             Layout.fillWidth: true
             spacing: 6
             Repeater {
-                model: [["general", "General"], ["files", "Files"], ["dock", "Dock"], ["sharing", "Sharing"], ["appearance", "Appearance"]]
+                model: [["general", "General"], ["files", "Files"], ["dock", "Dock"], ["wellbeing", "Wellbeing"], ["sharing", "Sharing"], ["appearance", "Appearance"]]
                 PillButton {
                     required property var modelData
                     text: modelData[1]
@@ -59,6 +59,13 @@ ScrollView {
                 caption: "Notch peeks out when you plug in, a device connects, or a battery runs low."
                 checked: notch.alerts
                 onToggled: notch.alerts = !notch.alerts
+            }
+
+            SettingToggle {
+                title: "Clock when idle"
+                caption: "While nothing else is going on, the notch shows the time, the microphone and the battery."
+                checked: activities.idleClock
+                onToggled: activities.idleClock = !activities.idleClock
             }
 
             SettingToggle {
@@ -452,6 +459,97 @@ ScrollView {
         }
 
         ColumnLayout {
+            visible: settingsScroll.category === "wellbeing"
+            Layout.fillWidth: true
+            spacing: 16
+
+            SettingCard {
+                title: "Stretch reminder"
+                SettingToggle {
+                    title: "Remind me to take breaks"
+                    caption: wellbeing.idleAvailable
+                             ? "Counts the time you actually work (mouse and keyboard). Stepping away resets it. You decide each time: break, later or skip."
+                             : "This desktop doesn't report idle time, so the reminder goes by the clock. Stepping away isn't noticed."
+                    checked: wellbeing.enabled
+                    onToggled: wellbeing.enabled = !wellbeing.enabled
+                }
+                MinutePicker {
+                    visible: wellbeing.enabled
+                    label: "Remind after working for"
+                    choices: [30, 45, 50, 60, 90]
+                    value: wellbeing.workMinutes
+                    onPicked: (m) => wellbeing.workMinutes = m
+                }
+                MinutePicker {
+                    visible: wellbeing.enabled
+                    label: "Break length"
+                    choices: [2, 5, 10]
+                    value: wellbeing.breakMinutes
+                    onPicked: (m) => wellbeing.breakMinutes = m
+                }
+                MinutePicker {
+                    visible: wellbeing.enabled && wellbeing.idleAvailable
+                    label: "Away this long counts as a break"
+                    choices: [2, 5, 10]
+                    value: wellbeing.idleMinutes
+                    onPicked: (m) => wellbeing.idleMinutes = m
+                }
+                MinutePicker {
+                    visible: wellbeing.enabled
+                    label: "\"Later\" asks again after"
+                    choices: [5, 10, 15]
+                    value: wellbeing.snoozeMinutes
+                    onPicked: (m) => wellbeing.snoozeMinutes = m
+                }
+            }
+
+            SettingCard {
+                visible: wellbeing.enabled
+                title: "Don't interrupt"
+                SettingToggle {
+                    title: "While a video or music plays"
+                    checked: wellbeing.pauseForMedia
+                    onToggled: wellbeing.pauseForMedia = !wellbeing.pauseForMedia
+                }
+                SettingToggle {
+                    title: "During a call"
+                    caption: "While the microphone or a camera is in use, or the phone rings."
+                    checked: wellbeing.pauseForCalls
+                    onToggled: wellbeing.pauseForCalls = !wellbeing.pauseForCalls
+                }
+                SettingToggle {
+                    title: "While a Pomodoro runs"
+                    caption: "It has its own breaks."
+                    checked: wellbeing.pauseForPomodoro
+                    onToggled: wellbeing.pauseForPomodoro = !wellbeing.pauseForPomodoro
+                }
+            }
+
+            SettingCard {
+                title: "Eyes"
+                SettingToggle {
+                    title: "20-20-20 reminder"
+                    caption: "Every 20 minutes of work, a small note to look at something far away for 20 seconds."
+                    checked: wellbeing.eyeReminder
+                    onToggled: wellbeing.eyeReminder = !wellbeing.eyeReminder
+                }
+            }
+
+            SettingCard {
+                title: "Today"
+                Text {
+                    text: {
+                        const minutes = Math.round(wellbeing.todayWorkedMs / 60000)
+                        const worked = minutes >= 60 ? Math.floor(minutes / 60) + " h " + (minutes % 60) + " min" : minutes + " min"
+                        return "Worked " + worked + " · " + wellbeing.todayBreaks + (wellbeing.todayBreaks === 1 ? " break" : " breaks")
+                    }
+                    color: theme.text
+                    font.pixelSize: 13
+                }
+            }
+        }
+
+        ColumnLayout {
             visible: settingsScroll.category === "sharing"
             Layout.fillWidth: true
             spacing: 16
@@ -751,6 +849,30 @@ ScrollView {
                 font.pixelSize: 10
                 font.weight: Font.DemiBold
                 font.letterSpacing: 1
+            }
+        }
+    }
+
+    // A row of minute choices for the wellbeing settings.
+    component MinutePicker: ColumnLayout {
+        id: picker
+        property string label
+        property var choices: []
+        property int value
+        signal picked(int minutes)
+        Layout.fillWidth: true
+        spacing: 6
+        SectionLabel { text: picker.label }
+        Row {
+            spacing: 6
+            Repeater {
+                model: picker.choices
+                PillButton {
+                    required property int modelData
+                    text: modelData + " min"
+                    checked: picker.value === modelData
+                    onClicked: picker.picked(modelData)
+                }
             }
         }
     }

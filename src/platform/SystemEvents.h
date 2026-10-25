@@ -13,12 +13,17 @@
 class SystemEvents : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(int batteryLevel READ batteryLevel NOTIFY batteryChanged)
+    Q_PROPERTY(bool batteryCharging READ batteryCharging NOTIFY batteryChanged)
 
 public:
     explicit SystemEvents(QObject *parent = nullptr);
+    int batteryLevel() const { return m_percent; }
+    bool batteryCharging() const { return m_charging == 1; }
 
 signals:
     void alert(const QString &kind, const QString &title, const QString &detail, const QString &icon, int level);
+    void batteryChanged();
 
 private:
     void poll();
@@ -35,11 +40,17 @@ private:
 class SystemEvents : public QObject
 {
     Q_OBJECT
+    // The laptop battery for the idle notch: % (-1 without a battery) and whether it's on the charger.
+    Q_PROPERTY(int batteryLevel READ batteryLevel NOTIFY batteryChanged)
+    Q_PROPERTY(bool batteryCharging READ batteryCharging NOTIFY batteryChanged)
 
 public:
     explicit SystemEvents(QObject *parent = nullptr);
+    int batteryLevel() const { return m_hasBattery ? qRound(m_percentage) : -1; }
+    bool batteryCharging() const;
 
 signals:
+    void batteryChanged();
     // kind: "charging" | "battery" | "bluetooth" | "lowbattery". icon: freedesktop icon name,
     // level: battery % or -1.
     void alert(const QString &kind, const QString &title, const QString &detail, const QString &icon, int level);
@@ -50,6 +61,7 @@ private slots:
 
 private:
     int m_powerState = -1; // UPower Device.State: 1 charging, 2 discharging, 4 full, 5 pending charge
+    bool m_hasBattery = false;
     double m_percentage = -1;
     QHash<QString, int> m_deviceBattery; // BlueZ device path -> last known %
 };

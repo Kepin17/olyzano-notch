@@ -54,7 +54,8 @@ Window {
                                     || sortMenu.visible || removedMenu.visible
                                     || removedChipMenu.visible
     readonly property bool dragOver: dragLive && (edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver)
-    readonly property bool engaged: pinned || dwelled || islandHover.hovered || dragOver || anyMenu
+    readonly property bool engaged: pinned || dwelled || (islandHover.hovered && mode !== "idle" && mode !== "prompt")
+                                    || dragOver || anyMenu
                                     || saveDialog.visible
     // hidden: only the top-edge strip is live. peek: copy in progress. open: full panel.
     // toast: a short system alert (charger, Bluetooth). Shown even while hidden, like Dynamic Island.
@@ -66,9 +67,45 @@ Window {
                                       : toast.kind === "media" ? theme.media
                                       : toast.kind === "file" ? theme.info
                                       : toast.kind === "timer" ? theme.accent
-                                      : toast.kind === "call" || toast.kind === "phone" ? theme.success
+                                      : toast.kind === "call" || toast.kind === "phone" || toast.kind === "wellbeing" ? theme.success
                                       : toast.kind === "color" ? toast.detail : theme.textDim
-    readonly property string mode: open ? "open" : toast ? "toast" : live ? "peek" : "hidden"
+    // prompt: the stretch reminder asking. idle: the small clock pill when nothing else is going on.
+    readonly property string mode: wellbeing.state === "reminding" ? "prompt" : open ? "open" : toast ? "toast"
+                                 : live ? "peek" : activities.idleClock ? "idle" : "hidden"
+
+    // ---- Stretch reminder ----
+    // A film, a call or a Pomodoro holds the reminder back (each can be switched off in Settings).
+    Binding {
+        target: wellbeing
+        property: "busy"
+        value: (wellbeing.pauseForMedia && media.playing)
+               || (wellbeing.pauseForCalls && (root.call !== null || activities.micApps.length > 0 || activities.cameraApps.length > 0))
+               || (wellbeing.pauseForPomodoro && activities.timerKind === "pomodoro")
+    }
+    property double breakNow: Date.now()
+    Timer {
+        interval: 1000
+        repeat: true
+        running: wellbeing.state === "break"
+        triggeredOnStart: true
+        onTriggered: root.breakNow = Date.now()
+    }
+    readonly property double breakLeft: Math.max(0, wellbeing.breakEndsAt - breakNow)
+    Connections {
+        target: wellbeing
+        function onBreakOver() { root.showToast("wellbeing", "Break's over", "Nicely done. Back to it", "chronometer", 5000) }
+        function onEyeBreak() { root.showToast("wellbeing", "Rest your eyes", "Look at something far away for 20 seconds", "chronometer", 6000) }
+    }
+
+    // ---- Idle clock ----
+    property date idleNow: new Date()
+    Timer {
+        interval: 5000
+        repeat: true
+        running: root.mode === "idle"
+        triggeredOnStart: true
+        onTriggered: root.idleNow = new Date()
+    }
 
     // ---- Live activities: what's going on, shown in the closed notch (most important first) ----
     property var call: null // {who, device} while the phone rings
@@ -95,6 +132,12 @@ Window {
     readonly property var live: {
         if (call)
             return { kind: "call", title: call.who, detail: "Calling", progress: -1, color: theme.success }
+        if (wellbeing.state === "break") {
+            const tips = wellbeing.tips
+            const total = wellbeing.breakMinutes * 60000
+            return { kind: "break", color: theme.success, detail: clock(breakLeft), progress: total > 0 ? 1 - breakLeft / total : -1,
+                     title: wellbeing.userActive ? "Still on a break" : tips[Math.floor(breakNow / 20000) % tips.length] }
+        }
         if (activities.timerKind !== "") {
             const total = activities.timerTotalMs
             return { kind: "timer", title: activities.timerLabel + (activities.timerRunning ? "" : " · paused"),
@@ -447,9 +490,11 @@ Window {
     Item {
         id: island
         x: (root.width - width) / 2
-        width: root.mode === "open" ? root.openWidth : root.mode === "toast" ? 380 : root.mode === "peek" ? (root.live && root.live.kind !== "copy" ? 320 : 230) : 150
+        width: root.mode === "open" ? root.openWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 380
+             : root.mode === "peek" ? (root.live && root.live.kind !== "copy" ? 320 : 230)
+             : root.mode === "idle" ? (systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         height: root.mode === "open" ? panel.implicitHeight + (root.dragOver ? 8 : 0)
-              : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : 0
+              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : root.mode === "idle" ? 28 : 0
         focus: true
 
         readonly property real shoulder: Math.min(10, Math.max(0, height) / 3)
@@ -684,7 +729,7 @@ Window {
             }
             Text {
                 visible: !(liveRow.l.kind === "copy" || liveRow.l.kind === "call")
-                text: liveRow.l.kind === "timer" ? "⏱" : liveRow.l.kind === "download" ? "↓" : "⇄"
+                text: liveRow.l.kind === "timer" ? "⏱" : liveRow.l.kind === "break" ? "🧘" : liveRow.l.kind === "download" ? "↓" : "⇄"
                 color: liveRow.l.color
                 font.pixelSize: 13
                 font.weight: Font.Bold
@@ -699,27 +744,130 @@ Window {
             }
             Text {
                 text: liveRow.l.detail
-                color: liveRow.l.kind === "timer" || liveRow.l.kind === "call" ? liveRow.l.color : root.textSecondary
+                readonly property bool clockLike: liveRow.l.kind === "timer" || liveRow.l.kind === "break"
+                color: clockLike || liveRow.l.kind === "call" ? liveRow.l.color : root.textSecondary
                 font.pixelSize: 12
-                font.weight: liveRow.l.kind === "timer" ? Font.DemiBold : Font.Normal
-                font.family: liveRow.l.kind === "timer" ? "monospace" : Qt.application.font.family
+                font.weight: clockLike ? Font.DemiBold : Font.Normal
+                font.family: clockLike ? "monospace" : Qt.application.font.family
             }
         }
         // Its progress, as a hairline along the bottom of the pill.
+        // The fraction is animated, not the width: a width animating while the notch shrinks from the panel
+        // to the pill ran past the end of the track and out of the notch.
         Rectangle {
+            id: liveTrack
+            property real shown: Math.max(0, Math.min(1, liveRow.l.progress))
+            Behavior on shown { NumberAnimation { duration: 400 } }
             visible: root.mode === "peek" && island.height > 24 && liveRow.l.progress >= 0
             x: island.shoulder + 18
             y: island.height - 6
             width: Math.max(0, island.width - 2 * (island.shoulder + 18))
             height: 2
             radius: 1
+            clip: true
             color: theme.surface
             Rectangle {
-                width: parent.width * Math.max(0, Math.min(1, liveRow.l.progress))
+                width: liveTrack.width * liveTrack.shown
                 height: parent.height
                 radius: 1
                 color: liveRow.l.color
-                Behavior on width { NumberAnimation { duration: 400 } }
+            }
+        }
+
+        // Idle: the time, the microphone and the battery, while nothing else is going on.
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: island.shoulder + 14
+            anchors.rightMargin: island.shoulder + 14
+            spacing: 8
+            opacity: root.mode === "idle" && island.height > 20 ? 1 : 0
+            visible: opacity > 0
+            Behavior on opacity { NumberAnimation { duration: 160 } }
+            Text {
+                text: Qt.formatTime(root.idleNow, Qt.locale().timeFormat(Locale.ShortFormat))
+                color: root.textPrimary
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+            }
+            Item { Layout.fillWidth: true }
+            // Microphone: orange while recording, red and struck through while muted.
+            LineIcon {
+                visible: activities.micMuted >= 0
+                glyph: activities.micMuted === 1 ? "mic-off" : "mic"
+                sourceSize: Qt.size(13, 13)
+                color: activities.micMuted === 1 ? theme.danger : activities.micApps.length > 0 ? theme.warn : root.textSecondary
+            }
+            // Battery
+            Item {
+                visible: systemEvents.batteryLevel >= 0
+                implicitWidth: 22
+                implicitHeight: 11
+                Rectangle {
+                    id: idleBattery
+                    width: 20
+                    height: 11
+                    radius: 3
+                    color: "transparent"
+                    border.width: 1.2
+                    border.color: root.textSecondary
+                    Rectangle {
+                        x: 2; y: 2
+                        height: parent.height - 4
+                        radius: 1.5
+                        width: Math.max(1.5, (parent.width - 4) * systemEvents.batteryLevel / 100)
+                        color: systemEvents.batteryCharging ? theme.success : systemEvents.batteryLevel <= 20 ? theme.danger : root.textPrimary
+                    }
+                }
+                Rectangle { x: 20.5; y: 3.5; width: 1.5; height: 4; radius: 0.75; color: root.textSecondary }
+            }
+            Text {
+                visible: systemEvents.batteryLevel >= 0
+                text: (systemEvents.batteryCharging ? "⚡" : "") + systemEvents.batteryLevel + "%"
+                color: root.textSecondary
+                font.pixelSize: 11
+            }
+        }
+
+        // Prompt: the stretch reminder. The person chooses; nothing happens until they do (or a minute passes = later).
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.leftMargin: island.shoulder + 16
+            anchors.rightMargin: island.shoulder + 16
+            anchors.topMargin: 10
+            anchors.bottomMargin: 12
+            spacing: 8
+            opacity: root.mode === "prompt" && island.height > 70 ? 1 : 0
+            visible: opacity > 0
+            Behavior on opacity { NumberAnimation { duration: 180 } }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                Text { text: "🧘"; font.pixelSize: 20 }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 1
+                    Text {
+                        text: "Time to stretch"
+                        color: root.textPrimary
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: "You've worked for " + Math.round(wellbeing.workedMs / 60000) + " min. A short break helps."
+                        color: root.textSecondary
+                        font.pixelSize: 11
+                        elide: Text.ElideRight
+                    }
+                }
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                Item { Layout.fillWidth: true }
+                PillButton { text: "Later (" + wellbeing.snoozeMinutes + " min)"; onClicked: wellbeing.later() }
+                PillButton { text: "Skip"; onClicked: wellbeing.skip() }
+                PillButton { text: "Start break"; checked: true; onClicked: wellbeing.startBreak() }
             }
         }
 
@@ -1470,6 +1618,30 @@ Window {
                     shell: root
                 }
 
+                // On a break: how long is left, and a way to end it early.
+                Rectangle {
+                    visible: root.page === "shelf" && wellbeing.state === "break"
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    implicitHeight: 36
+                    radius: 12
+                    color: theme.surface
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 14
+                        anchors.rightMargin: 5
+                        Text {
+                            Layout.fillWidth: true
+                            text: "🧘  On a break · " + root.clock(root.breakLeft) + " left"
+                            color: root.textPrimary
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                        }
+                        PillButton { text: "End break"; onClicked: wellbeing.endBreak() }
+                    }
+                }
+
                 // Who is using the microphone or a camera right now (the dots by the closed notch, spelled out).
                 Text {
                     visible: root.page === "shelf" && activities.privacyIndicators
@@ -1547,6 +1719,14 @@ Window {
         HoverHandler {
             id: islandHover
             property point last
+            onHoveredChanged: {
+                if (hovered && root.mode === "idle") {
+                    dwellTimer.restart()
+                } else if (!hovered) {
+                    dwellTimer.stop()
+                    root.dwelled = false
+                }
+            }
             onPointChanged: {
                 const p = point.position
                 if (p.x !== last.x || p.y !== last.y) {

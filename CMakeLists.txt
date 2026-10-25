@@ -16,6 +16,7 @@ if(NOTCH_DBUS)
 endif()
 find_package(LayerShellQt QUIET)
 find_package(KF6WindowSystem QUIET) # blur behind the dock on KDE Plasma
+find_package(KF6IdleTime QUIET)     # the stretch reminder's idle time on Wayland
 qt_standard_project_setup(REQUIRES 6.5)
 qt_policy(SET QTP0004 NEW)
 
@@ -81,6 +82,7 @@ qt_add_executable(notch
     src/platform/ColorPicker.h
     src/platform/AppDock.h src/platform/AppDock.cpp src/platform/DockModel.h
     src/platform/Activities.h src/platform/Activities.cpp
+    src/platform/Wellbeing.h src/platform/Wellbeing.cpp src/platform/WellbeingModel.h
 )
 if(NOTCH_DBUS)
     target_sources(notch PRIVATE src/platform/SystemEvents.cpp src/platform/MediaPlayers.cpp
@@ -110,7 +112,7 @@ qt_add_qml_module(notch
         src/qml/icons/unlock.svg src/qml/icons/trash.svg src/qml/icons/palette.svg src/qml/icons/pen.svg
         src/qml/icons/gear.svg src/qml/icons/sort.svg src/qml/icons/camera.svg src/qml/icons/download.svg
         src/qml/icons/phone.svg src/qml/icons/search.svg src/qml/icons/share.svg src/qml/icons/wifi.svg src/qml/icons/server.svg src/qml/icons/notch.png src/qml/icons/laptop.svg
-        src/qml/icons/timer.svg
+        src/qml/icons/timer.svg src/qml/icons/mic.svg src/qml/icons/mic-off.svg
 )
 # Widgets: QApplication backs the tray icon (Qt.labs.platform falls back to QSystemTrayIcon).
 target_link_libraries(notch PRIVATE notch_core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::Concurrent Qt6::Network)
@@ -118,6 +120,11 @@ target_compile_definitions(notch PRIVATE NOTCH_VERSION="${PROJECT_VERSION}")
 if(NOTCH_DBUS)
     target_link_libraries(notch PRIVATE Qt6::DBus)
     target_compile_definitions(notch PRIVATE NOTCH_HAVE_DBUS)
+endif()
+if(KF6IdleTime_FOUND)
+    target_link_libraries(notch PRIVATE KF6::IdleTime)
+    target_compile_definitions(notch PRIVATE NOTCH_HAVE_KIDLETIME)
+    message(STATUS "KF6IdleTime found: the stretch reminder reads the idle time from it")
 endif()
 if(KF6WindowSystem_FOUND)
     target_link_libraries(notch PRIVATE KF6::WindowSystem)
