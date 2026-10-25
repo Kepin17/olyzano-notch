@@ -61,9 +61,69 @@ details[open] summary::before{content:"−"}
 details ul{margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:.92rem}
 .list{display:grid;grid-template-columns:repeat(2,1fr);gap:0 56px}
 @media (max-width:720px){.list{grid-template-columns:1fr}}
-.list div{padding:18px 0;border-top:1px solid var(--line)}
-.list b{display:block;margin-bottom:2px}
-.list span{color:var(--dim);font-size:.95rem}
+.list>div{padding:18px 0;border-top:1px solid var(--line)}
+.list>div>b{display:block;margin-bottom:2px}
+.list>div>span{color:var(--dim);font-size:.95rem}
+
+/* feature demos: small looping illustrations of the real behaviour (8 s loop) */
+.stage{position:relative;height:160px;margin-bottom:16px;border:1px solid var(--line);border-radius:8px;background:var(--soft);overflow:hidden;font:11px/1.2 var(--mono);color:var(--dim)}
+.stage i{font-style:normal;display:block}
+.stage *{animation-duration:8s;animation-iteration-count:infinite;animation-timing-function:ease-in-out}
+.chip{position:absolute;padding:5px 9px;background:var(--bg);border:1px solid var(--line);border-radius:4px;color:var(--ink);white-space:nowrap}
+.win{position:absolute;top:22px;width:44%;height:112px;background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px}
+.win b{display:block;color:var(--ink);font-weight:600;margin-bottom:8px}
+.track{height:4px;background:var(--line);border-radius:2px;overflow:hidden;margin-top:8px}
+.track i{height:100%;width:0;background:var(--accent)}
+/* 1 shelf */
+.s1 .bar{position:absolute;left:50%;top:0;width:170px;margin-left:-85px;height:10px;background:var(--ink);border-radius:0 0 12px 12px;animation-name:s1bar}
+.s1 .tiles{position:absolute;left:50%;top:22px;margin-left:-60px;display:flex;gap:8px;opacity:0;animation-name:s1tiles}
+.s1 .tiles i{width:34px;height:34px;border-radius:5px;background:var(--bg);opacity:.9}
+.s1 .chip{animation-name:s1file;left:8%;top:112px;opacity:0}
+@keyframes s1bar{0%,8%{height:10px}18%,82%{height:74px}92%,100%{height:10px}}
+@keyframes s1file{0%,10%{left:8%;top:112px;opacity:0}16%{opacity:1}44%{left:36%;top:14px;opacity:1}50%,100%{left:36%;top:14px;opacity:0}}
+@keyframes s1tiles{0%,48%{opacity:0}56%,80%{opacity:1}88%,100%{opacity:0}}
+/* 2 qr */
+.s2 .qr{position:absolute;left:44px;top:26px;width:108px;height:108px;display:grid;grid-template-columns:repeat(9,1fr);gap:2px;padding:6px;background:var(--bg);border:1px solid var(--line);border-radius:6px}
+.s2 .qr i{background:var(--ink);opacity:.9}.s2 .qr i.o{background:transparent}
+.s2 .scan{position:absolute;left:44px;width:108px;height:2px;background:var(--accent);animation-name:s2scan}
+.s2 .phone{position:absolute;right:52px;top:18px;width:84px;height:124px;border:2px solid var(--ink);border-radius:12px;background:var(--bg);padding:34px 8px 0;color:var(--ink)}
+.s2 .phone .track{margin-top:6px}.s2 .phone .track i{animation-name:s2fill}
+.s2 .phone u{text-decoration:none;display:block;opacity:0;animation-name:s2ok;margin-top:8px;color:var(--accent)}
+@keyframes s2scan{0%,5%{top:26px;opacity:0}10%{opacity:1}40%{top:132px;opacity:1}45%,100%{top:132px;opacity:0}}
+@keyframes s2fill{0%,45%{width:0}80%,100%{width:100%}}
+@keyframes s2ok{0%,80%{opacity:0}86%,95%{opacity:1}100%{opacity:0}}
+/* 3 nearby */
+.s3 .win:nth-of-type(1){left:4%}.s3 .win:nth-of-type(2){right:4%}
+.s3 .code{font-size:22px;letter-spacing:.25em;color:var(--ink);opacity:0;animation-name:s3code}
+.s3 .btn2{display:inline-block;margin-top:8px;padding:3px 10px;border:1px solid var(--line);border-radius:4px;color:var(--ink);animation-name:s3btn}
+.s3 .track i{animation-name:s3fill}
+.s3 .t{opacity:0;animation-name:s3t}
+@keyframes s3code{0%,14%{opacity:0}20%,86%{opacity:1}94%,100%{opacity:0}}
+@keyframes s3btn{0%,38%{background:transparent;color:var(--ink);border-color:var(--line)}44%,100%{background:var(--accent);color:var(--bg);border-color:var(--accent)}}
+@keyframes s3fill{0%,48%{width:0}82%,100%{width:100%}}
+@keyframes s3t{0%,46%{opacity:0}52%,88%{opacity:1}94%,100%{opacity:0}}
+/* 4 merge */
+.s4 .chip{top:62px;opacity:1}
+.s4 .a{animation-name:s4a;left:8%}.s4 .b{animation-name:s4b;left:38%}.s4 .c{animation-name:s4c;left:68%}
+.s4 .out{left:50%;margin-left:-38px;top:62px;border-color:var(--accent);opacity:0;animation-name:s4out}
+@keyframes s4a{0%,20%{left:8%;opacity:1}45%,100%{left:40%;opacity:0}}
+@keyframes s4b{0%,20%{left:38%;opacity:1}45%,100%{left:40%;opacity:0}}
+@keyframes s4c{0%,20%{left:68%;opacity:1}45%,100%{left:40%;opacity:0}}
+@keyframes s4out{0%,44%{opacity:0;transform:scale(.9)}52%,86%{opacity:1;transform:scale(1)}94%,100%{opacity:0}}
+/* 5 private */
+.s5 .row{position:absolute;left:12%;right:12%;top:62px;height:38px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:11px 12px;color:var(--ink)}
+.s5 .row span{position:absolute;right:12px;color:var(--faint)}
+.s5 .l{animation-name:s5l}.s5 .u{opacity:0;animation-name:s5u;border-color:var(--accent)}
+@keyframes s5l{0%,30%{opacity:1}38%,78%{opacity:0}86%,100%{opacity:1}}
+@keyframes s5u{0%,30%{opacity:0}38%,78%{opacity:1}86%,100%{opacity:0}}
+/* 6 undo */
+.s6 .row{position:absolute;left:12%;right:12%;top:30px;height:38px;border:1px solid var(--line);border-radius:6px;background:var(--bg);padding:11px 12px;color:var(--ink);animation-name:s6row}
+.s6 .toast{position:absolute;left:12%;right:12%;bottom:22px;height:34px;border-radius:6px;background:var(--ink);color:var(--bg);padding:10px 12px;opacity:0;animation-name:s6toast}
+.s6 .toast u{float:right;text-decoration:none;font-weight:700;animation-name:s6undo}
+@keyframes s6row{0%,14%{transform:none;opacity:1}26%,60%{transform:translateX(40px);opacity:0}72%,100%{transform:none;opacity:1}}
+@keyframes s6toast{0%,22%{opacity:0}30%,64%{opacity:1}72%,100%{opacity:0}}
+@keyframes s6undo{0%,50%{color:var(--bg)}56%,100%{color:var(--accent)}}
+@media (prefers-reduced-motion:reduce){.stage *{animation-play-state:paused!important;animation-delay:-4.5s!important}}
 footer{border-top:1px solid var(--line);padding:28px 0 48px;color:var(--faint);font-size:.88rem}
 footer .wrap{display:flex;flex-wrap:wrap;gap:8px 24px;justify-content:space-between}
 footer a{color:var(--dim)}
@@ -150,12 +210,12 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
   <h2>What it does</h2>
   <p class="sec-lead">Small, local, and out of the way until you need it.</p>
   <div class="list">
-    <div><b>A shelf for files in transit</b><span>Drop files, folders, images, links and text. Preview them, sort them into categories, and let old ones expire.</span></div>
-    <div><b>Share by QR code</b><span>Hand a file to a phone over your WiFi, or through a server you run, with a PIN or password and an expiry.</span></div>
-    <div><b>Send to another computer</b><span>Nearby finds other Notch computers on the network. Both screens show the same four digits; the receiver accepts.</span></div>
-    <div><b>Everyday tools</b><span>Merge and split PDFs, convert and resize images, extract text with OCR, make zip archives.</span></div>
-    <div><b>Private by design</b><span>Files stay on your computer. Server shares are encrypted before they leave it. Locked categories are encrypted on disk.</span></div>
-    <div><b>Safety nets</b><span>Undo, a 24-hour bin for removed files, and names that never overwrite anything.</span></div>
+    <div><div class="stage s1" aria-hidden="true"><i class="bar"></i><i class="chip">report.pdf</i><div class="tiles"><i></i><i></i><i></i></div></div><b>A shelf for files in transit</b><span>Drop files, folders, images, links and text. Preview them, sort them into categories, and let old ones expire.</span></div>
+    <div><div class="stage s2" aria-hidden="true"><div class="qr"></div><i class="scan"></i><div class="phone"><i>report.pdf</i><div class="track"><i></i></div><u>Downloaded</u></div></div><b>Share by QR code</b><span>Hand a file to a phone over your WiFi, or through a server you run, with a PIN or password and an expiry.</span></div>
+    <div><div class="stage s3" aria-hidden="true"><div class="win"><b>This computer</b><i class="code">4821</i><i class="t">Sending</i><div class="track"><i></i></div></div><div class="win"><b>Kevien-laptop</b><i class="code">4821</i><i class="btn2">Accept</i><div class="track"><i></i></div></div></div><b>Send to another computer</b><span>Nearby finds other Notch computers on the network. Both screens show the same four digits; the receiver accepts.</span></div>
+    <div><div class="stage s4" aria-hidden="true"><i class="chip a">a.pdf</i><i class="chip b">b.pdf</i><i class="chip c">c.pdf</i><i class="chip out">merged.pdf</i></div><b>Everyday tools</b><span>Merge and split PDFs, convert and resize images, extract text with OCR, make zip archives.</span></div>
+    <div><div class="stage s5" aria-hidden="true"><div class="row l">&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;<span>Locked</span></div><div class="row u">taxes.pdf<span>Unlocked</span></div></div><b>Private by design</b><span>Files stay on your computer. Server shares are encrypted before they leave it. Locked categories are encrypted on disk.</span></div>
+    <div><div class="stage s6" aria-hidden="true"><div class="row">photo.jpg</div><div class="toast">Moved to Recently removed<u>Undo</u></div></div><b>Safety nets</b><span>Undo, a 24-hour bin for removed files, and names that never overwrite anything.</span></div>
   </div>
 </div></section>
 
@@ -194,6 +254,16 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
     })
     .catch(function () {});
 })();
+  var qr = document.querySelector(".qr");
+  if (qr) {
+    var finder = function (r, c) { return (r < 3 && c < 3) || (r < 3 && c > 5) || (r > 5 && c < 3); };
+    for (var n = 0; n < 81; n++) {
+      var r = Math.floor(n / 9), c = n % 9, el = document.createElement("i");
+      var on = finder(r, c) ? !(r % 2 && c % 2 === 1 && r === 1 && (c === 1 || c === 7)) || true : ((n * 7 + r * 3 + c * 5) % 5 < 2);
+      if (!on) el.className = "o";
+      qr.appendChild(el);
+    }
+  }
 </script>
 </body>
 </html>
