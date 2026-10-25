@@ -588,20 +588,76 @@ ScrollView {
             spacing: 16
 
             ColumnLayout {
+                Layout.fillWidth: true
                 spacing: 6
-                SectionLabel { text: "Appearance" }
-                Row {
-                    spacing: 6
+                SectionLabel { text: "Theme" }
+                // A swatch card per style: its island, surface and accent, as they look in dark mode.
+                GridLayout {
+                    Layout.fillWidth: true
+                    columns: 4
+                    columnSpacing: 8
+                    rowSpacing: 8
                     Repeater {
-                        model: [["classic", "Classic"], ["washi", "Washi 和紙"]]
-                        PillButton {
+                        model: theme.styles
+                        AbstractButton {
+                            id: styleCard
                             required property var modelData
-                            text: modelData[1]
-                            checked: notch.uiStyle === modelData[0]
-                            onClicked: notch.uiStyle = modelData[0]
+                            readonly property bool current: notch.uiStyle === modelData.id
+                            Layout.fillWidth: true
+                            implicitHeight: 64
+                            Accessible.name: modelData.name + " theme"
+                            onClicked: notch.uiStyle = modelData.id
+                            background: Rectangle {
+                                radius: 12
+                                color: styleCard.modelData.island
+                                border.width: styleCard.current ? 2 : 1
+                                border.color: styleCard.current ? theme.accent : styleCard.hovered ? theme.textFaint : theme.outline
+                            }
+                            contentItem: Item {
+                                Rectangle {
+                                    x: 8; y: 8
+                                    width: parent.width - 16
+                                    height: 22
+                                    radius: 7
+                                    color: styleCard.modelData.surface
+                                    Rectangle {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        x: 6
+                                        width: 10; height: 10; radius: 5
+                                        color: styleCard.modelData.accent
+                                    }
+                                    Rectangle {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        x: 22
+                                        width: parent.width - 30; height: 4; radius: 2
+                                        color: Qt.rgba(1, 1, 1, 0.25)
+                                    }
+                                }
+                                Text {
+                                    x: 8
+                                    anchors.bottom: parent.bottom
+                                    anchors.bottomMargin: 7
+                                    width: parent.width - 16
+                                    text: styleCard.modelData.name
+                                    color: "#f5f5f7"
+                                    font.pixelSize: 11
+                                    font.weight: styleCard.current ? Font.DemiBold : Font.Normal
+                                    elide: Text.ElideRight
+                                }
+                            }
                         }
                     }
                 }
+                Caption {
+                    Layout.fillWidth: true
+                    text: {
+                        for (const s of theme.styles)
+                            if (s.id === notch.uiStyle)
+                                return s.caption
+                        return ""
+                    }
+                }
+                SectionLabel { text: "Brightness"; Layout.topMargin: 6 }
                 Row {
                     spacing: 6
                     Repeater {
@@ -613,10 +669,6 @@ ScrollView {
                             onClicked: notch.themeMode = modelData[0]
                         }
                     }
-                }
-                Caption {
-                    text: theme.washi ? "Sumi ink and washi paper, with a vermilion (shu) accent."
-                                      : "Highlights use your KDE accent color."
                 }
             }
         }
