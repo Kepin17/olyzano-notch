@@ -18,6 +18,8 @@ RowLayout {
     signal openShares()
     signal toggleLyrics()
     spacing: 6
+    // With Music, Color and Sharing all there, the words of Note and Add no longer fit the panel: they shrink to icons.
+    readonly property bool tight: 2 + (musicAvailable ? 1 : 0) + (colorAvailable ? 1 : 0) + (shareAvailable ? 1 : 0) + (page === "shelf" ? 2 : 0) >= 7
 
     PillButton { text: "Files"; iconName: "folder"; checked: bar.page === "shelf"; onClicked: bar.pick("shelf") }
     PillButton { visible: bar.musicAvailable; text: "Music"; iconName: "music"; checked: bar.page === "music"; onClicked: bar.pick("music") }
@@ -26,6 +28,6 @@ RowLayout {
     PillButton { visible: bar.shareAvailable; text: bar.shareBusy ? "Sharing" : "Share"; iconName: "share"; checked: bar.shareBusy; onClicked: bar.openShares() }
     Item { Layout.fillWidth: true }
     PillButton { visible: bar.page === "music"; text: "Lyrics"; checked: bar.lyricsOn; onClicked: bar.toggleLyrics() }
-    PillButton { visible: bar.page === "shelf"; text: "Note"; iconName: "pen"; onClicked: bar.newNote() }
-    PillButton { visible: bar.page === "shelf"; text: "Add"; iconName: "plus"; onClicked: bar.addFiles() } // adding files belongs to Files
+    PillButton { visible: bar.page === "shelf"; text: "Note"; iconName: "pen"; iconOnly: bar.tight; onClicked: bar.newNote() }
+    PillButton { visible: bar.page === "shelf"; text: "Add"; iconName: "plus"; iconOnly: bar.tight; onClicked: bar.addFiles() } // adding files belongs to Files
 }
