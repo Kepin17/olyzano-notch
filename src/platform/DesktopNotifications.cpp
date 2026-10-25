@@ -197,24 +197,6 @@ void DesktopNotifications::setEnabled(bool on)
     emit settingsChanged();
 }
 
-void DesktopNotifications::ignore(const QString &app)
-{
-    QStringList list = ignored();
-    if (app.isEmpty() || list.contains(app, Qt::CaseInsensitive))
-        return;
-    list << app;
-    m_settings.setValue(QStringLiteral("ignored"), list);
-    emit settingsChanged();
-}
-
-void DesktopNotifications::unignore(const QString &app)
-{
-    QStringList list = ignored();
-    list.removeIf([&](const QString &a) { return a.compare(app, Qt::CaseInsensitive) == 0; });
-    m_settings.setValue(QStringLiteral("ignored"), list);
-    emit settingsChanged();
-}
-
 void DesktopNotifications::setAvailable(bool available)
 {
     if (available == m_available)
@@ -225,17 +207,7 @@ void DesktopNotifications::setAvailable(bool available)
 
 void DesktopNotifications::received(const QString &app, const QString &title, const QString &icon)
 {
-    const QString name = app.trimmed();
-    const QString lower = name.toLower();
-    QStringList recent = recentApps();
-    if (!name.isEmpty() && lower != QLatin1String("notch") && lower != QLatin1String("olyzano notch") && !lower.startsWith(QLatin1String("kdeconnect"))
-        && !lower.startsWith(QLatin1String("kde connect")) && recent.value(0) != name) {
-        recent.removeAll(name);
-        recent.prepend(name);
-        m_settings.setValue(QStringLiteral("recent"), recent.mid(0, 10));
-        emit settingsChanged();
-    }
-    if (!enabled() || !m_filter.accept(app, title, ignored(), QDateTime::currentMSecsSinceEpoch()) || doNotDisturb())
+    if (!enabled() || !m_filter.accept(app, title, QDateTime::currentMSecsSinceEpoch()) || doNotDisturb())
         return;
     emit notification(app, title, icon);
 }

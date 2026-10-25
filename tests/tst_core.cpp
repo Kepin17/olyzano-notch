@@ -524,17 +524,16 @@ private slots:
     void notificationFilter()
     {
         NotificationFilter f;
-        QVERIFY(f.accept(QStringLiteral("Slack"), QStringLiteral("John"), {}, 1000));
-        QVERIFY(!f.accept(QStringLiteral("Slack"), QStringLiteral("John"), {}, 1500)); // posted twice
-        QVERIFY(f.accept(QStringLiteral("Slack"), QStringLiteral("John"), {}, 4000));  // a new one later
-        QVERIFY(f.accept(QStringLiteral("Slack"), QStringLiteral("Mary"), {}, 4100));
-        QVERIFY(!f.accept(QStringLiteral("Notch"), QStringLiteral("x"), {}, 5000));
-        QVERIFY(!f.accept(QStringLiteral("Olyzano Notch"), QStringLiteral("x"), {}, 5000));
-        QVERIFY(!f.accept(QStringLiteral("KDE Connect"), QStringLiteral("Mom"), {}, 5000));
-        QVERIFY(!f.accept(QStringLiteral("kdeconnect.app"), QStringLiteral("Mom"), {}, 5000));
-        QVERIFY(!f.accept(QString(), QString(), {}, 5000));
-        QVERIFY(!f.accept(QStringLiteral("Discord"), QStringLiteral("hi"), {QStringLiteral("discord")}, 5000));
-        QVERIFY(f.accept(QStringLiteral("Discord"), QStringLiteral("hi"), {QStringLiteral("Slack")}, 5000));
+        QVERIFY(f.accept(QStringLiteral("Slack"), QStringLiteral("John"), 1000));
+        QVERIFY(!f.accept(QStringLiteral("Slack"), QStringLiteral("John"), 1500)); // posted twice
+        QVERIFY(f.accept(QStringLiteral("Slack"), QStringLiteral("John"), 4000));  // a new one later
+        QVERIFY(f.accept(QStringLiteral("Slack"), QStringLiteral("Mary"), 4100));
+        QVERIFY(!f.accept(QStringLiteral("Notch"), QStringLiteral("x"), 5000));
+        QVERIFY(!f.accept(QStringLiteral("Olyzano Notch"), QStringLiteral("x"), 5000));
+        QVERIFY(!f.accept(QStringLiteral("KDE Connect"), QStringLiteral("Mom"), 5000));
+        QVERIFY(!f.accept(QStringLiteral("kdeconnect.app"), QStringLiteral("Mom"), 5000));
+        QVERIFY(!f.accept(QString(), QString(), 5000));
+        QVERIFY(f.accept(QStringLiteral("Discord"), QStringLiteral("hi"), 5000)); // every other app comes through
     }
 
     void lowBatteryThresholds()

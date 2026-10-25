@@ -372,8 +372,8 @@ Limits: it only talks to Olyzano Notch (not Google's Quick Share), it needs both
   PipeWire, in the `.deb` already); Windows through its own sound API. The sounds are made by `tools/make_sounds.py`.
 - **Notifications from this computer:** what other apps show (Slack, mail, the browser, …) also appears in the notch as
   "Notification from Slack · John", never the message itself, with a sound. *Do not disturb* (Plasma) or *Focus*
-  (Windows) keeps them quiet. *Settings → General → Notifications from this computer* lists the apps that sent some
-  lately; tap one to stop or start showing it. Notifications from KDE Connect are left out (the phone's already show).
+  (Windows) keeps them quiet. Every app's notifications come through when they are detected; *Settings → General →
+  Notifications from this computer* only has the one switch. Notifications from KDE Connect are left out (the phone's already show).
   - Linux: Olyzano Notch watches the session bus for notifications, the way KDE Connect does; Plasma still shows them as usual.
   - Windows: Olyzano Notch asks Windows for access to notifications. Windows may only grant that to apps installed as an
     MSIX package, which Olyzano Notch isn't; then Settings says it isn't available on this install.

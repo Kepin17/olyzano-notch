@@ -18,9 +18,6 @@ class DesktopNotifications : public QObject
     Q_OBJECT
     Q_PROPERTY(bool available READ available NOTIFY availableChanged)
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY settingsChanged)
-    Q_PROPERTY(QStringList ignored READ ignored NOTIFY settingsChanged)
-    // Apps that showed notifications lately, newest first (ignored ones too), for Settings to switch off and on.
-    Q_PROPERTY(QStringList recentApps READ recentApps NOTIFY settingsChanged)
 
 public:
     explicit DesktopNotifications(QObject *parent = nullptr);
@@ -29,10 +26,6 @@ public:
     bool available() const { return m_available; }
     bool enabled() const { return m_settings.value(QStringLiteral("enabled"), true).toBool(); }
     void setEnabled(bool on);
-    QStringList ignored() const { return m_settings.value(QStringLiteral("ignored")).toStringList(); }
-    QStringList recentApps() const { return m_settings.value(QStringLiteral("recent")).toStringList(); }
-    Q_INVOKABLE void ignore(const QString &app);
-    Q_INVOKABLE void unignore(const QString &app);
 
     // From the platform listener, on this object's thread.
     void received(const QString &app, const QString &title, const QString &icon);

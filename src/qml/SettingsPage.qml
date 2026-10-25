@@ -100,26 +100,6 @@ ScrollView {
                     checked: desktopNotifications.enabled
                     onToggled: desktopNotifications.enabled = !desktopNotifications.enabled
                 }
-                Caption {
-                    Layout.fillWidth: true
-                    visible: desktopNotifications.enabled && desktopNotifications.recentApps.length > 0
-                    text: "Apps that showed notifications lately. Tap one to stop or start showing it."
-                }
-                Flow {
-                    Layout.fillWidth: true
-                    visible: desktopNotifications.enabled && desktopNotifications.recentApps.length > 0
-                    spacing: 6
-                    Repeater {
-                        model: desktopNotifications.recentApps
-                        PillButton {
-                            required property string modelData
-                            readonly property bool off: desktopNotifications.ignored.some(a => a.toLowerCase() === modelData.toLowerCase())
-                            text: off ? modelData + " · off" : modelData
-                            checked: !off
-                            onClicked: off ? desktopNotifications.unignore(modelData) : desktopNotifications.ignore(modelData)
-                        }
-                    }
-                }
             }
 
             SettingCard {
