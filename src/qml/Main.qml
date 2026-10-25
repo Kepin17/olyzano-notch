@@ -53,7 +53,7 @@ Window {
     Timer { id: infoTimer; interval: 3500; onTriggered: root.infoText = "" }
     readonly property bool selecting: page === "shelf" && selection.length > 0
     readonly property bool inRemoved: notch.categoryFilter === "__removed__" // Recently removed view
-    readonly property bool anyMenu: menu.visible || moreMenu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible
+    readonly property bool anyMenu: menu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible
                                     || toolsMenu.visible || extractPopup.visible || settingsPage.overlayOpen
                                     || quickLookCard.visible || vaultPopup.visible || confirmDelete.visible
                                     || sharePopup.visible || incomingPopup.visible
@@ -1040,7 +1040,7 @@ Window {
                         text: root.selecting ? root.selection.length + " selected"
                             : root.page === "settings" ? "Settings" : root.page === "preview" ? root.preview.name
                             : root.page === "note" ? (root.noteId !== "" ? "Edit note" : "New note")
-                            : root.page === "timer" ? "Timer" : root.page === "music" ? "Now playing" : "Olyzano Notch"
+                            : root.page === "timer" ? "Timer" : root.page === "music" ? "Now playing" : root.page === "color" ? "Color picker" : "Olyzano Notch"
                         color: root.textPrimary
                         font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
                         font.pixelSize: 15
@@ -1211,14 +1211,7 @@ Window {
                         }
                     }
                     IconButton {
-                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer") && !root.selecting
-                        text: "⋯"
-                        checked: moreMenu.visible
-                        Accessible.name: "More"
-                        onClicked: moreMenu.popup()
-                    }
-                    IconButton {
-                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer") && !root.selecting
+                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "color") && !root.selecting
                         iconName: "gear"
                         Accessible.name: "Settings"
                         onClicked: root.page = "settings"
@@ -1234,7 +1227,7 @@ Window {
 
                 // What to look at: one section at a time. Dropping files is an action too (Add).
                 ActionBar {
-                    visible: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer")
+                    visible: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "color")
                     Layout.fillWidth: true
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
@@ -1243,7 +1236,9 @@ Window {
                     shareAvailable: share.count + nearby.count > 0
                     shareBusy: share.activeCount + nearby.activeCount > 0
                     onPick: (target) => root.page = target
+                    colorAvailable: colorPicker.supported || notch.recentColors.length > 0
                     onAddFiles: addDialog.open()
+                    onNewNote: root.newNote()
                     lyricsOn: lyrics.enabled
                     onToggleLyrics: {
                         if (lyrics.enabled || lyrics.consented) {
@@ -1441,48 +1436,87 @@ Window {
                     }
                 }
 
-                // ---- Picked colors ----
-                Flickable {
-                    visible: root.page === "shelf" && !root.inRemoved && notch.recentColors.length > 0
+                // ---- Color: pick one from the screen, and the ones picked before ----
+                ColumnLayout {
+                    visible: root.page === "color"
                     Layout.fillWidth: true
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
-                    Layout.preferredHeight: 24
-                    contentWidth: swatches.implicitWidth
-                    clip: true
-                    boundsBehavior: Flickable.StopAtBounds
-                    Row {
-                        id: swatches
-                        spacing: 8
+                    spacing: 12
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 10
+                        PillButton {
+                            visible: colorPicker.supported
+                            text: "Pick a color from the screen"
+                            iconName: "palette"
+                            checked: true
+                            onClicked: {
+                                // Get out of the way so anything on screen (even under Notch) can be picked
+                                // (not in "Always open": it would not come back).
+                                if (root.capsuleMode !== "open") {
+                                    root.pinned = false
+                                    root.open = false
+                                }
+                                colorPicker.pick()
+                            }
+                        }
+                        Caption {
+                            Layout.fillWidth: true
+                            text: !colorPicker.supported ? "Picking a color from the screen isn't available here."
+                                 : "The panel hides; click a pixel anywhere (Esc cancels)."
+                        }
+                    }
+                    Caption {
+                        visible: notch.recentColors.length === 0
+                        Layout.fillWidth: true
+                        text: "No colors yet. The ones you pick are kept here: click one to copy it."
+                    }
+                    Flow {
+                        visible: notch.recentColors.length > 0
+                        Layout.fillWidth: true
+                        spacing: 10
                         Repeater {
                             model: notch.recentColors
-                            Rectangle {
+                            Column {
                                 id: swatch
                                 required property string modelData
-                                width: 22
-                                height: 22
-                                radius: 11
-                                color: modelData
-                                border.width: swatchHover.hovered ? 2 : 1
-                                border.color: swatchHover.hovered ? theme.text : theme.outline
-                                HoverHandler { id: swatchHover }
-                                ToolTip.visible: swatchHover.hovered
-                                ToolTip.delay: 300
-                                ToolTip.text: swatch.modelData + " · click to copy · right-click to remove"
-                                TapHandler {
-                                    onTapped: {
-                                        notch.copyText(swatch.modelData)
-                                        root.infoText = "Copied " + swatch.modelData
-                                        infoTimer.restart()
+                                spacing: 4
+                                Rectangle {
+                                    width: 56
+                                    height: 40
+                                    radius: theme.radiusMd
+                                    color: swatch.modelData
+                                    border.width: swatchHover.hovered ? 2 : 1
+                                    border.color: swatchHover.hovered ? theme.text : theme.outline
+                                    HoverHandler { id: swatchHover }
+                                    ToolTip.visible: swatchHover.hovered
+                                    ToolTip.delay: 300
+                                    ToolTip.text: "Click to copy · right-click to remove"
+                                    TapHandler {
+                                        onTapped: {
+                                            notch.copyText(swatch.modelData)
+                                            root.infoText = "Copied " + swatch.modelData
+                                            infoTimer.restart()
+                                        }
+                                    }
+                                    TapHandler {
+                                        acceptedButtons: Qt.RightButton
+                                        onTapped: notch.removeColor(swatch.modelData)
                                     }
                                 }
-                                TapHandler {
-                                    acceptedButtons: Qt.RightButton
-                                    onTapped: notch.removeColor(swatch.modelData)
+                                Text {
+                                    width: 56
+                                    horizontalAlignment: Text.AlignHCenter
+                                    text: swatch.modelData
+                                    color: theme.textDim
+                                    font.pixelSize: 10
+                                    font.family: "monospace"
                                 }
                             }
                         }
                     }
+                    Item { Layout.preferredHeight: 4 }
                 }
 
                 // ---- Locked category, vault closed ----
@@ -2071,25 +2105,6 @@ Window {
                 font.pixelSize: 12
                 elide: Text.ElideMiddle
                 horizontalAlignment: Text.AlignHCenter
-            }
-        }
-    }
-
-    // The header's less-used buttons.
-    DarkMenu {
-        id: moreMenu
-        Action { text: "New note"; onTriggered: root.newNote() }
-        Action {
-            text: "Pick a color from the screen"
-            enabled: colorPicker.supported
-            onTriggered: {
-                // Get out of the way so anything on screen (even under Notch) can be picked
-                // (not in "Always open": it would not come back).
-                if (root.capsuleMode !== "open") {
-                    root.pinned = false
-                    root.open = false
-                }
-                colorPicker.pick()
             }
         }
     }
