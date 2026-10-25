@@ -233,7 +233,7 @@ Item {
             anchors.margins: -6
             text: "✕"
             visible: hover.hovered && !tile.copying
-            Accessible.name: tile.removed ? "Delete now" : "Remove from Notch"
+            Accessible.name: tile.removed ? "Delete now" : "Remove from Olyzano Notch"
             onClicked: tile.removed ? notch.deleteForever([tile.itemId]) : tile.view.requestRemove([tile.itemId])
         }
     }

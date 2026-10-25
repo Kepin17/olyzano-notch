@@ -228,7 +228,7 @@ void DesktopNotifications::received(const QString &app, const QString &title, co
     const QString name = app.trimmed();
     const QString lower = name.toLower();
     QStringList recent = recentApps();
-    if (!name.isEmpty() && lower != QLatin1String("notch") && !lower.startsWith(QLatin1String("kdeconnect"))
+    if (!name.isEmpty() && lower != QLatin1String("notch") && lower != QLatin1String("olyzano notch") && !lower.startsWith(QLatin1String("kdeconnect"))
         && !lower.startsWith(QLatin1String("kde connect")) && recent.value(0) != name) {
         recent.removeAll(name);
         recent.prepend(name);

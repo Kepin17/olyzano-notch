@@ -56,7 +56,7 @@ ScrollView {
 
             SettingToggle {
                 title: "Charger & Bluetooth alerts"
-                caption: "Notch peeks out when you plug in, a device connects, or a battery runs low."
+                caption: "Olyzano Notch peeks out when you plug in, a device connects, or a battery runs low."
                 checked: notch.alerts
                 onToggled: notch.alerts = !notch.alerts
             }
@@ -94,7 +94,7 @@ ScrollView {
                 SettingToggle {
                     title: "Show them in the notch"
                     caption: desktopNotifications.enabled && !desktopNotifications.available
-                             ? (Qt.platform.os === "windows" ? "Not available on this Windows install: Windows doesn't let Notch read notifications."
+                             ? (Qt.platform.os === "windows" ? "Not available on this Windows install: Windows doesn't let Olyzano Notch read notifications."
                                                              : "Not available: the session bus doesn't allow watching notifications.")
                              : "Other apps' notifications show as \"Notification from <app> · <title>\", never the message itself."
                     checked: desktopNotifications.enabled
@@ -174,8 +174,8 @@ ScrollView {
 
             RowLayout {
                 Layout.fillWidth: true
-                Caption { Layout.fillWidth: true; text: "Notch " + Qt.application.version }
-                PillButton { text: "Quit Notch"; onClicked: Qt.quit() }
+                Caption { Layout.fillWidth: true; text: "Olyzano Notch " + Qt.application.version }
+                PillButton { text: "Quit Olyzano Notch"; onClicked: Qt.quit() }
             }
         }
 
@@ -300,7 +300,7 @@ ScrollView {
                     Caption {
                         Layout.fillWidth: true
                         color: theme.warn
-                        text: "Spectacle doesn't save screenshots automatically, so they never reach a folder Notch can see."
+                        text: "Spectacle doesn't save screenshots automatically, so they never reach a folder Olyzano Notch can see."
                     }
                     PillButton {
                         Layout.alignment: Qt.AlignVCenter
@@ -388,7 +388,7 @@ ScrollView {
                 SettingToggle {
                     title: "Blur behind the dock"
                     caption: desktop.canBlur ? "Frosted glass: what's behind the dock is blurred."
-                                             : "Needs KDE Plasma with its blur effect on (and Notch built with KF6WindowSystem)."
+                                             : "Needs KDE Plasma with its blur effect on (and Olyzano Notch built with KF6WindowSystem)."
                     checked: dock.blur
                     onToggled: dock.blur = !dock.blur
                 }
@@ -641,7 +641,7 @@ ScrollView {
                 SectionLabel { text: "Nearby" }
                 Caption {
                     Layout.fillWidth: true
-                    text: "The name other Notch computers see while you have Receive switched on in the Share window."
+                    text: "The name other Olyzano Notch computers see while you have Receive switched on in the Share window."
                 }
                 TextField {
                     id: deviceField
@@ -904,7 +904,7 @@ ScrollView {
 
     FolderDialog {
         id: folderDialog
-        title: "Choose where Notch stores files"
+        title: "Choose where Olyzano Notch stores files"
         currentFolder: "file://" + notch.storageDir
         onAccepted: notch.setStorageDir(selectedFolder)
     }

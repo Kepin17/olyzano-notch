@@ -152,7 +152,7 @@ void Sounds::output(const QString &name)
     const QString file = m_dir + u'/' + name + QStringLiteral(".wav");
     const bool started = QProcess::startDetached(QStringLiteral("paplay"),
                                                  {QStringLiteral("--volume=%1").arg(qRound(65536 * volume() / 100.0)),
-                                                  QStringLiteral("--client-name=Notch"), file});
+                                                  QStringLiteral("--client-name=Olyzano Notch"), file});
     if (!started && !m_warned) {
         m_warned = true;
         qCWarning(lcNotch) << "paplay not available: no sound effects";

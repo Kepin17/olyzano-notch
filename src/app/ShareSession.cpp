@@ -260,7 +260,7 @@ void ShareSession::upload(const Prepared &p)
         }
         m_relayId = o.value(QStringLiteral("id")).toString();
         if (m_relayId.isEmpty())
-            return fail(tr("That address is not a Notch share server"));
+            return fail(tr("That address is not a Olyzano Notch share server"));
         QUrl link = m_relay.base;
         link.setPath(link.path() + QStringLiteral("/s/") + m_relayId);
         link.setFragment(fragment);
