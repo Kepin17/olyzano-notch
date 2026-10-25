@@ -344,6 +344,12 @@ ScrollView {
                     checked: dock.showRunning
                     onToggled: dock.showRunning = !dock.showRunning
                 }
+                SettingToggle {
+                    title: "Show Trash"
+                    caption: "At the end of the dock: drop files on it to move them to the trash, click to open it."
+                    checked: dock.showTrash
+                    onToggled: dock.showTrash = !dock.showTrash
+                }
                 SectionLabel { text: "Kept in the dock"; Layout.topMargin: 4 }
                 Caption {
                     Layout.fillWidth: true

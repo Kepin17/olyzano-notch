@@ -2,6 +2,7 @@
 
 #include "platform/DockModel.h"
 
+#include <QFileSystemWatcher>
 #include <QHash>
 #include <QIcon>
 #include <QObject>
@@ -30,6 +31,9 @@ class AppDock : public QObject
     Q_PROPERTY(bool blur READ blur WRITE setBlur NOTIFY appearanceChanged) // blur what's behind the bar (KDE)
     Q_PROPERTY(QString animation READ animation WRITE setAnimation NOTIFY appearanceChanged) // none | smooth | bouncy
     Q_PROPERTY(bool showRunning READ showRunning WRITE setShowRunning NOTIFY appearanceChanged) // running apps that aren't pinned
+    Q_PROPERTY(bool showTrash READ showTrash WRITE setShowTrash NOTIFY appearanceChanged)
+    Q_PROPERTY(bool trashFull READ trashFull NOTIFY trashChanged)
+    Q_PROPERTY(QString trashIcon READ trashIcon NOTIFY trashChanged) // image source, empty or full
     Q_PROPERTY(QVariantList pinnedApps READ pinnedApps NOTIFY itemsChanged) // {id, name, iconSource}, for Settings
     // {id, name, iconSource, pinned, running, active, canLaunch, kind ("app" | "folder"),
     //  badge (unread count, 0 = none), progress (0-1, -1 = none), urgent, windows [{id, title}]}
@@ -57,6 +61,10 @@ public:
     QString animation() const { return m_settings.value(QStringLiteral("animation"), QStringLiteral("smooth")).toString(); }
     void setAnimation(const QString &animation);
     bool showRunning() const { return m_settings.value(QStringLiteral("showRunning"), true).toBool(); }
+    bool showTrash() const { return m_settings.value(QStringLiteral("showTrash"), true).toBool(); }
+    void setShowTrash(bool show);
+    bool trashFull() const { return m_trashFull; }
+    QString trashIcon() const { return iconSource(m_trashFull ? QStringLiteral("special:trash-full") : QStringLiteral("special:trash")); }
     void setShowRunning(bool show);
     QVariantList pinnedApps() const;
 
@@ -83,6 +91,10 @@ public:
     Q_INVOKABLE QString downloadsFolder() const;
     // {name, url, iconName, isDir}, newest first.
     Q_INVOKABLE QVariantList folderEntries(const QString &id, int limit = 24) const;
+    // Trash at the end of the dock: files dropped on it are moved to the system trash / Recycle Bin.
+    Q_INVOKABLE int moveToTrash(const QStringList &urls); // how many were moved
+    Q_INVOKABLE void openTrash() const;
+    Q_INVOKABLE void emptyTrash();
 
     QIcon iconFor(const QString &id) const;
 
@@ -98,6 +110,7 @@ signals:
     void appearanceChanged();
     void positionChanged(); // also signalled through appearanceChanged; the window has to move
     void itemsChanged();
+    void trashChanged();
 
 private:
     struct KWinWindow {
@@ -126,6 +139,9 @@ private:
     QHash<QString, QStringList> m_appWindows; // app id -> its windows, front to back (KWin ids / HWNDs)
     QHash<QString, QString> m_windowTitles;   // window id -> title
     QHash<QString, QVariantMap> m_badges;     // desktop file id -> launcher entry properties
+    bool m_trashFull = false;
+    QFileSystemWatcher m_trashWatcher;        // Linux: the freedesktop trash folder
+    void checkTrash();
     QVariantList m_items;
     QTimer m_timer;
     bool m_catalogLoaded = false;

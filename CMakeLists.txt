@@ -89,7 +89,7 @@ else()
     target_sources(notch PRIVATE src/platform/SystemEvents_other.cpp) # the rest are header-only stubs
 endif()
 if(WIN32)
-    target_link_libraries(notch PRIVATE user32) # AppDock lists and raises windows
+    target_link_libraries(notch PRIVATE user32 shell32) # AppDock lists and raises windows, and asks the Recycle Bin
     configure_file(packaging/windows/notch.rc.in ${CMAKE_CURRENT_BINARY_DIR}/notch.rc)
     target_sources(notch PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/notch.rc)
     set_target_properties(notch PROPERTIES WIN32_EXECUTABLE TRUE) # a window, not a console

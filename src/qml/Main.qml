@@ -147,9 +147,11 @@ Window {
             if (event === "missedCall")
                 root.showToast("call", "Missed call", who, "smartphone", 6000)
         }
+        // Just who it's from ("WhatsApp · Mom"): a whole message doesn't fit the notch and may be private.
         function onPhoneNotification(app, title, text, device) {
-            if (activities.phoneAlerts && (title || text))
-                root.showToast("phone", title || app, text || app, "smartphone", 4500)
+            if (!activities.phoneAlerts || !(app || title))
+                return
+            root.showToast("phone", app ? "Notification from " + app : "Notification", title || device, "smartphone", 4500)
         }
         function onPhoneBattery(charge, charging, device) {
             if (!activities.phoneAlerts)
@@ -645,7 +647,7 @@ Window {
                 elide: Text.ElideRight
             }
             Text {
-                Layout.maximumWidth: toastRow.t.kind === "media" || toastRow.t.kind === "file" ? 130 : -1
+                Layout.maximumWidth: toastRow.t.kind === "media" || toastRow.t.kind === "file" ? 130 : 150
                 elide: Text.ElideRight
                 text: toastRow.t.kind === "bluetooth" && toastRow.t.level >= 0
                       ? toastRow.t.detail + " · " + toastRow.t.level + "%" : toastRow.t.detail
