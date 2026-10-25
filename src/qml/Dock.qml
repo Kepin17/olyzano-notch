@@ -46,7 +46,12 @@ Window {
                                     || dropHover || dropTargetIndex >= 0
     property bool shown: !dock.autoHide
 
+    // `notch --debug-dock` prints what holds the dock up.
+    readonly property bool debugDock: Qt.application.arguments.indexOf("--debug-dock") >= 0
     onEngagedChanged: {
+        if (debugDock)
+            console.log("dock engaged=" + engaged, "autoHide=" + dock.autoHide, "edge=" + edgeDwelled, "zone=" + zoneHover.hovered,
+                        "overlay=" + overlayOpen, "drag=" + dragIndex, "dropHover=" + dropHover, "dropTarget=" + dropTargetIndex)
         if (engaged) {
             hideTimer.stop()
             shown = true
@@ -62,6 +67,8 @@ Window {
     }
     Timer { id: hideTimer; interval: 400; onTriggered: root.shown = false }
     Timer { id: dwellTimer; interval: 120; onTriggered: root.edgeDwelled = true }
+    // If a drag ever ends without telling us (the source went away), the dock still lets go.
+    Timer { id: dropGuard; interval: 15000; onTriggered: { root.dropHover = false; if (root.dropTargetIndex === 9999) root.dropTargetIndex = -1 } }
 
     // ---- Geometry. The layout is worked out unmagnified, centred on the window, so the pointer can be
     // compared with fixed slot centres (magnifying doesn't move the target under the pointer). ----
@@ -286,11 +293,17 @@ Window {
         DropArea {
             anchors.fill: parent
             anchors.margins: -root.headroom
+            // Accepted on purpose: a DropArea that rejects a drag is never told when it leaves, which left
+            // dropHover on for good and the dock stuck on screen after any file was dragged over it.
             onEntered: (drag) => {
                 root.dropHover = drag.hasUrls
-                drag.accepted = false // the icons decide; this only keeps the dock up
+                dropGuard.restart()
             }
             onExited: root.dropHover = false
+            onDropped: (drop) => {
+                root.dropHover = false
+                drop.accepted = false // the icons decide where files go; the space between them takes nothing
+            }
         }
 
         Grid {
@@ -685,7 +698,12 @@ Window {
             anchors.margins: -2
             onEntered: (drag) => {
                 root.dropHover = drag.hasUrls
-                drag.accepted = false
+                dropGuard.restart()
+            }
+            onExited: root.dropHover = false
+            onDropped: (drop) => {
+                root.dropHover = false
+                drop.accepted = false
             }
         }
     }
