@@ -16,7 +16,7 @@ public:
         const QString a = app.trimmed().toLower();
         if (a.isEmpty() && title.trimmed().isEmpty())
             return false;
-        if (a == QLatin1String("notch") || a.startsWith(QLatin1String("kdeconnect")) || a.startsWith(QLatin1String("kde connect")))
+        if (a == QLatin1String("notch") || a == QLatin1String("olyzano notch") || a.startsWith(QLatin1String("kdeconnect")) || a.startsWith(QLatin1String("kde connect")))
             return false;
         for (const QString &skip : ignored)
             if (a == skip.trimmed().toLower())

@@ -638,7 +638,7 @@ void NotchController::pasteClipboard(const QString &categoryId)
         addBytes(stamp + u'.' + ext, mime, text.toUtf8(), tr("Clipboard"), categoryId);
         return;
     }
-    setError(tr("The clipboard has nothing Notch can keep."));
+    setError(tr("The clipboard has nothing Olyzano Notch can keep."));
 }
 
 void NotchController::addTextNote(const QString &text, const QString &categoryId)
@@ -1407,7 +1407,7 @@ void NotchController::runTool(const QString &kind, const QStringList &ids, const
         emit copyingChanged();
         int added = 0;
         for (const auto &[path, name] : r.outputs)
-            if (QFileInfo::exists(path) && adoptFile(path, name, tr("Made in Notch"), category))
+            if (QFileInfo::exists(path) && adoptFile(path, name, tr("Made in Olyzano Notch"), category))
                 ++added;
         if (kind.startsWith(QLatin1String("ocr")) && r.error.isEmpty()) {
             if (kind == QLatin1String("ocr-copy")) {
@@ -1655,7 +1655,7 @@ void NotchController::zipItems(const QStringList &ids)
             items << item;
     if (items.isEmpty())
         return;
-    QString base = QStringLiteral("Notch");
+    QString base = QStringLiteral("Olyzano Notch");
     for (const Category &c : std::as_const(m_categoryList))
         if (c.id == m_categoryFilter)
             base = c.name;
@@ -1663,7 +1663,7 @@ void NotchController::zipItems(const QStringList &ids)
                                .arg(items.size() == 1 ? tr("file") : tr("files")),
                            m_categoryFilter);
     zip.mimeType = QStringLiteral("application/zip");
-    zip.sourcePath = tr("Compressed in Notch");
+    zip.sourcePath = tr("Compressed in Olyzano Notch");
     if (QString why; !assignStorage(zip, &why)) {
         setError(why);
         return;

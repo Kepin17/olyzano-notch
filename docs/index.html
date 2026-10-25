@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Notch · Install</title>
-<meta name="description" content="Notch: a file shelf, an app dock, live activities, a Pomodoro timer and a stretch reminder at the edges of your screen. Watch the demo, then download for Linux or Windows.">
+<title>Olyzano Notch · Install</title>
+<meta name="description" content="Olyzano Notch: a file shelf, an app dock, live activities, a Pomodoro timer and a stretch reminder at the edges of your screen. Watch the demo, then download for Linux or Windows.">
 <link rel="icon" href="site/notch.svg">
 <style>
 :root{
@@ -429,7 +429,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between}
 <body>
 <nav>
   <div class="wrap">
-    <a class="brand" href="#"><img src="site/notch.svg" alt="">Notch</a>
+    <a class="brand" href="#"><img src="site/notch.svg" alt="">Olyzano Notch</a>
     <div class="links">
       <a href="#demo">Demo</a>
       <a href="#features">Features</a>
@@ -448,7 +448,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between}
     <div class="showcase" aria-hidden="true"><div class="isl" id="heroIsl"><div class="nc"></div></div></div>
     <span class="eyebrow"><b id="verTag">New</b> App dock, live activities, Pomodoro and a stretch reminder</span>
     <h1>Your files, apps and focus, <span>at the edges of your screen.</span></h1>
-    <p class="lead">Notch slides out from the top of the screen with a shelf for the files you're working with,
+    <p class="lead">Olyzano Notch slides out from the top of the screen with a shelf for the files you're working with,
       shows what's going on in a little live pill, and adds a dock at the bottom. For KDE Plasma and Windows.</p>
     <div class="cta">
       <a class="btn" id="hero" href="https://github.com/Kepin17/olyzano-notch/releases/latest">⬇ Download</a>
@@ -550,11 +550,11 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between}
             <li><b>Install it</b> <span class="muted">apt brings everything it needs.</span>
               <div class="cmd"><pre id="debCmd">sudo apt install ./notch_VERSION_amd64.deb</pre><button class="copy">Copy</button></div>
             </li>
-            <li><b>Start Notch</b> from the application menu. Rest the mouse on the top-centre edge to open it; turn on
+            <li><b>Start Olyzano Notch</b> from the application menu. Rest the mouse on the top-centre edge to open it; turn on
               <i>Settings → General → Start at login</i> to have it always.</li>
           </ol>
           <details class="faq" style="margin-top:6px"><summary>Update or remove</summary>
-            <p>Update: install the newer <code>.deb</code> the same way, then restart Notch. Your shelf and settings stay.</p>
+            <p>Update: install the newer <code>.deb</code> the same way, then restart Olyzano Notch. Your shelf and settings stay.</p>
             <div class="cmd"><pre>pkill notch; notch &amp;          # restart after an update
 sudo apt remove notch          # remove (your shelf is kept)
 rm -r ~/.local/share/notch ~/.config/notch   # delete the shelf and settings too</pre><button class="copy">Copy</button></div>
@@ -587,7 +587,7 @@ rm -r ~/.local/share/notch ~/.config/notch   # delete the shelf and settings too
             </li>
             <li><b>Run it</b>. Windows may say <i>"Windows protected your PC"</i> because the build isn't code-signed:
               click <b>More info → Run anyway</b>. The portable zip needs no install: extract it and run <code>notch.exe</code>.</li>
-            <li><b>Start Notch</b> from the Start menu. Allow it through the firewall on <b>private</b> networks if you
+            <li><b>Start Olyzano Notch</b> from the Start menu. Allow it through the firewall on <b>private</b> networks if you
               share over WiFi or use Nearby.</li>
           </ol>
         </div>
@@ -596,7 +596,7 @@ rm -r ~/.local/share/notch ~/.config/notch   # delete the shelf and settings too
           <ul class="req">
             <li><span>📄</span><span>PDF tools and OCR need Poppler, Ghostscript and Tesseract: see <a href="#optional">optional components</a>.</span></li>
             <li><span>📁</span><span>Settings and files live in <code>%LOCALAPPDATA%\notch</code>.</span></li>
-            <li><span>🗑️</span><span>Remove: <i>Settings → Apps → Notch → Uninstall</i>.</span></li>
+            <li><span>🗑️</span><span>Remove: <i>Settings → Apps → Olyzano Notch → Uninstall</i>.</span></li>
             <li><span>📱</span><span>Phone calls and notifications: install <a href="https://kdeconnect.kde.org/download.html">KDE Connect for Windows</a> (the installer) and pair your phone.</span></li>
             <li><span>➖</span><span>Linux-only: dock blur and unread badges.</span></li>
           </ul>
@@ -609,8 +609,8 @@ rm -r ~/.local/share/notch ~/.config/notch   # delete the shelf and settings too
 <section id="optional">
   <div class="wrap">
     <h2>Optional components</h2>
-    <p class="sub">Notch runs without these. Each switches on a feature, and Notch finds it by itself once installed
-      (restart Notch afterwards). Things marked <span class="tag">in the .deb</span> come with the Linux package.</p>
+    <p class="sub">Olyzano Notch runs without these. Each switches on a feature, and Olyzano Notch finds it by itself once installed
+      (restart Olyzano Notch afterwards). Things marked <span class="tag">in the .deb</span> come with the Linux package.</p>
     <div class="table">
       <table>
         <thead><tr><th style="width:24%">Component</th><th style="width:28%">What it adds</th><th>Linux</th><th>Windows</th></tr></thead>
@@ -626,19 +626,19 @@ rm -r ~/.local/share/notch ~/.config/notch   # delete the shelf and settings too
             <td><a class="dl" href="https://ghostscript.com/releases/gsdnld.html">Ghostscript downloads</a><br><span class="what">64-bit release; its installer adds it to PATH.</span></td></tr>
           <tr><td><b>KDE Connect</b><br><span class="what">computer + phone</span></td><td class="what">Send to your phone, files from it, incoming calls, phone notifications and a low phone battery in the notch.</td>
             <td><code>sudo apt install kdeconnect</code><br><span class="what">Phone app: <a class="dl" href="https://play.google.com/store/apps/details?id=org.kde.kdeconnect_tp">Google Play</a> · <a class="dl" href="https://f-droid.org/packages/org.kde.kdeconnect_tp/">F-Droid</a> · <a class="dl" href="https://apps.apple.com/app/kde-connect/id1580245991">App Store</a>. Pair them once.</span></td>
-            <td><a class="dl" href="https://kdeconnect.kde.org/download.html">KDE Connect for Windows</a><br><span class="what">The installer (Notch finds it in its install folder; not the Microsoft Store version). Same phone app; pair once.</span></td></tr>
+            <td><a class="dl" href="https://kdeconnect.kde.org/download.html">KDE Connect for Windows</a><br><span class="what">The installer (Olyzano Notch finds it in its install folder; not the Microsoft Store version). Same phone app; pair once.</span></td></tr>
           <tr><td><b>KDE Plasma (KWin)</b></td><td class="what">Dock: real running apps, a click raises or minimizes the window, the window list.</td>
             <td>Part of Plasma</td><td><span class="tag">built in</span></td></tr>
           <tr><td><b>Plasma blur effect</b></td><td class="what">Frosted-glass blur behind the dock.</td>
             <td><i>System Settings → Window Management → Desktop Effects → Blur</i></td><td><span class="tag no">–</span></td></tr>
           <tr><td><b>Spectacle auto-save</b></td><td class="what">Add new screenshots to the shelf.</td>
-            <td>Spectacle → Configure → Save automatically<br><span class="what">Notch has a button that turns it on.</span></td><td><span class="tag">built in</span> Win + PrtSc</td></tr>
+            <td>Spectacle → Configure → Save automatically<br><span class="what">Olyzano Notch has a button that turns it on.</span></td><td><span class="tag">built in</span> Win + PrtSc</td></tr>
           <tr><td><b>Dolphin · ktrash6</b></td><td class="what">Dock Trash: open and empty it.</td>
             <td><code>sudo apt install dolphin kio-extras</code><br><span class="what">Part of Plasma.</span></td><td><span class="tag">built in</span> Recycle Bin</td></tr>
           <tr><td><b>PipeWire / PulseAudio</b> (<code>pactl</code>)</td><td class="what">Equalizer, microphone indicator and mute state.</td>
             <td><span class="tag">in the .deb</span> <code>pulseaudio-utils</code><br><span class="what">Works with PipeWire.</span></td><td><span class="tag">built in</span> Windows audio</td></tr>
           <tr><td><b>gocryptfs</b> + FUSE</td><td class="what">Locked (encrypted) categories.</td>
-            <td><span class="tag">in the .deb</span> <code>gocryptfs</code>, <code>fuse3</code></td><td><span class="tag">built in</span> Notch encrypts the files itself</td></tr>
+            <td><span class="tag">in the .deb</span> <code>gocryptfs</code>, <code>fuse3</code></td><td><span class="tag">built in</span> Olyzano Notch encrypts the files itself</td></tr>
           <tr><td><b>Noto Serif JP</b></td><td class="what">The Washi theme's serif headings.</td>
             <td><span class="tag">in the .deb</span> <code>fonts-noto-cjk</code></td>
             <td><a class="dl" href="https://fonts.google.com/noto/specimen/Noto+Serif+JP">Google Fonts</a> <span class="what">(optional)</span></td></tr>
@@ -647,7 +647,7 @@ rm -r ~/.local/share/notch ~/.config/notch   # delete the shelf and settings too
     </div>
     <details class="faq" style="margin-top:14px"><summary>How do I add a folder to PATH on Windows?</summary>
       <p>Start → type <i>environment variables</i> → <i>Edit the environment variables for your account</i> → select <b>Path</b> →
-        <b>Edit</b> → <b>New</b> → paste the folder → OK. Then restart Notch.</p>
+        <b>Edit</b> → <b>New</b> → paste the folder → OK. Then restart Olyzano Notch.</p>
     </details>
   </div>
 </section>
@@ -696,7 +696,7 @@ cd build &amp;&amp; cpack                               # makes notch_&lt;versio
 
 <footer>
   <div class="wrap">
-    <span>Notch · open source</span>
+    <span>Olyzano Notch · open source</span>
     <span><a href="https://github.com/Kepin17/olyzano-notch">Source &amp; docs</a> · <a href="https://github.com/Kepin17/olyzano-notch/releases">All releases</a> · <a href="https://github.com/Kepin17/olyzano-notch/blob/main/docs/wayland-limitations.md">Wayland notes</a></span>
   </div>
 </footer>
@@ -962,7 +962,7 @@ cd build &amp;&amp; cpack                               # makes notch_&lt;versio
       L.map(function (l, i) { return "<b>" + (i + 1) + "</b>" + l; }).join("\n") + "</pre></div>";
   }
   function browser() {
-    return '<div class="web"><div class="tabs3"><span class="on"><i style="background:#ff0033"></i>Sunset Drive · lofi mix</span><span><i style="background:#3daee9"></i>Notch · Install</span></div>' +
+    return '<div class="web"><div class="tabs3"><span class="on"><i style="background:#ff0033"></i>Sunset Drive · lofi mix</span><span><i style="background:#3daee9"></i>Olyzano Notch · Install</span></div>' +
       '<div class="url">‹ › ⟳<div>youtube.com/watch?v=sunset-drive</div></div><div class="page"><div style="flex:1.7"><div class="vid" id="vid"><div class="bar"><i></i></div>' +
       '<div class="big"><svg width="56" height="56" viewBox="0 0 24 24"><circle cx="12" cy="12" r="11" fill="rgba(0,0,0,.45)"/><path d="M10 8l6 4-6 4z" fill="#fff"/></svg></div></div>' +
       '<h4>Sunset Drive · 2 hour lofi mix</h4><small>Lofi Station · 1.2M views</small></div>' +
@@ -1022,7 +1022,7 @@ cd build &amp;&amp; cpack                               # makes notch_&lt;versio
   function tileHTML(t) { return '<div class="tile ' + (t[2] || "") + '" data-n="' + t[0] + '">' + fileSvg(t[1]) + t[0] + "</div>"; }
   function shelf(o) {
     o = Object.assign({ tiles: [["photo.jpg", "img"], ["assets.zip", "zip"]], chip: "All" }, o || {});
-    return '<div class="pn"><div class="hd">Notch <span class="cnt">' + o.tiles.length + '</span><div class="b"><span id="hbSearch">' + li("search") +
+    return '<div class="pn"><div class="hd">Olyzano Notch <span class="cnt">' + o.tiles.length + '</span><div class="b"><span id="hbSearch">' + li("search") +
       '</span><span id="hbTimer">' + li("timer") + '</span><span id="hbShare">' + li("share") + '</span><span id="hbGear">' + li("gear") + "</span></div></div>" +
       '<div class="chrow">' + CHIPS.map(function (c) { return '<span class="' + (c === o.chip ? "on" : "") + '" data-c="' + c + '">' + c + "</span>"; }).join("") + "</div>" +
       '<div class="tiles">' + (o.hint ? '<div class="hint">' + o.hint + "</div>" : o.tiles.map(tileHTML).join("")) + "</div></div>";
@@ -1255,7 +1255,7 @@ cd build &amp;&amp; cpack                               # makes notch_&lt;versio
       await sleep(2400);
     } },
     { id: "timer", name: "Timer & Pomodoro", dur: 12500, run: async function () {
-      cap("Open Notch and press the <b>clock</b>");
+      cap("Open Olyzano Notch and press the <b>clock</b>");
       await move(480, 4, 900);
       panelN(shelf());
       await sleep(700);
@@ -1314,7 +1314,7 @@ cd build &amp;&amp; cpack                               # makes notch_&lt;versio
     } },
     { id: "stretch", name: "Stretch reminder", dur: 12000, run: async function () {
       front($("wKate"));
-      cap("Notch counts the time you <b>actually work</b>: typing and moving the mouse");
+      cap("Olyzano Notch counts the time you <b>actually work</b>: typing and moving the mouse");
       idleN({ extra: '<span id="wk" style="color:#30d158">⌨ 46 min</span>' });
       for (var m = 47; m <= 50; m++) { await sleep(420); var e = q("#wk"); if (e) e.textContent = "⌨ " + m + " min"; }
       await sleep(300);
@@ -1350,7 +1350,7 @@ cd build &amp;&amp; cpack                               # makes notch_&lt;versio
       cap("Plugged in: <b>charging</b>");
       await sleep(1600);
       idleN({ mic: "rec", charging: true, batt: 0.78, time: "12:34" });
-      cap("<b>Orange</b> while an app records you. Rest the pointer on it to open Notch.");
+      cap("<b>Orange</b> while an app records you. Rest the pointer on it to open Olyzano Notch.");
       await sleep(2000);
     } },
     { id: "phone", name: "Phone & privacy", dur: 11000, run: async function () {
@@ -1364,7 +1364,7 @@ cd build &amp;&amp; cpack                               # makes notch_&lt;versio
       await sleep(700);
       toastN('<span>📱 Notification from WhatsApp</span><span class="r">Mom</span>', "#30d158");
       sound("notify");
-      cap("…Notch says <b>who</b> it's from, never the message itself");
+      cap("…Olyzano Notch says <b>who</b> it's from, never the message itself");
       await sleep(2600);
       P.classList.remove("on");
       front($("wCall"));

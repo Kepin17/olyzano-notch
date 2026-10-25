@@ -420,7 +420,7 @@ void ShareController::joinServer(const QString &invitation)
         }
         const QString key = o.value(QStringLiteral("key")).toString();
         if (key.isEmpty()) {
-            emit joined(false, tr("That address is not a Notch share server"));
+            emit joined(false, tr("That address is not a Olyzano Notch share server"));
             return;
         }
         const QString id = saveNewServer(server.host(), server, key);
@@ -459,7 +459,7 @@ void ShareController::testServer(const QString &id)
         } else {
             const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
             if (!o.value(QStringLiteral("ok")).toBool()) {
-                message = tr("That address is not a Notch share server");
+                message = tr("That address is not a Olyzano Notch share server");
             } else {
                 const QJsonObject lim = o.value(QStringLiteral("limits")).toObject(), use = o.value(QStringLiteral("usage")).toObject();
                 auto num = [](const QJsonValue &v) { return v.toVariant().toLongLong(); };

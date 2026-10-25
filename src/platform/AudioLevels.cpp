@@ -65,7 +65,7 @@ void AudioLevels::start()
                     {QStringLiteral("-d"), QStringLiteral("@DEFAULT_MONITOR@"), QStringLiteral("--rate=%1").arg(Rate),
                      QStringLiteral("--channels=1"), QStringLiteral("--format=float32le"),
                      QStringLiteral("--latency-msec=25"), QStringLiteral("--raw"),
-                     QStringLiteral("--client-name=Notch"), QStringLiteral("--stream-name=Equalizer")});
+                     QStringLiteral("--client-name=Olyzano Notch"), QStringLiteral("--stream-name=Equalizer")});
 #endif
 }
 

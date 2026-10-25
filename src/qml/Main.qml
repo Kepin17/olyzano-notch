@@ -12,7 +12,7 @@ Window {
     height: 620
     visible: false
     color: "transparent"
-    title: "Notch"
+    title: "Olyzano Notch"
 
     readonly property color accent: theme.accent
     readonly property color textPrimary: theme.text
@@ -918,7 +918,7 @@ Window {
                         text: root.selecting ? root.selection.length + " selected"
                             : root.page === "settings" ? "Settings" : root.page === "preview" ? root.preview.name
                             : root.page === "note" ? (root.noteId !== "" ? "Edit note" : "New note")
-                            : root.page === "timer" ? "Timer" : "Notch"
+                            : root.page === "timer" ? "Timer" : "Olyzano Notch"
                         color: root.textPrimary
                         font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
                         font.pixelSize: 15
@@ -1173,7 +1173,7 @@ Window {
                         text: root.pinned ? "Pinned" : "Pin"
                         checked: root.pinned
                         onClicked: root.pinned = !root.pinned
-                        Accessible.name: "Keep Notch open"
+                        Accessible.name: "Keep Olyzano Notch open"
                     }
                 }
 
@@ -1879,7 +1879,7 @@ Window {
             }
         }
         Action {
-            text: menu.targets.length > 1 ? "Remove " + menu.targets.length + " files" : "Remove from Notch"
+            text: menu.targets.length > 1 ? "Remove " + menu.targets.length + " files" : "Remove from Olyzano Notch"
             onTriggered: {
                 root.removeWithConfirm(menu.targets)
                 root.clearSelection()
@@ -2269,7 +2269,7 @@ Window {
             onTriggered: notch.deleteCategory(categoryMenu.catId)
         }
         DarkSeparator {}
-        Action { enabled: false; text: "Its files stay in Notch" }
+        Action { enabled: false; text: "Its files stay in Olyzano Notch" }
     }
 
     DarkMenu {

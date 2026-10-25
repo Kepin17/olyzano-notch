@@ -8,11 +8,11 @@
 
 [Setup]
 AppId={{B7C1F5A2-7E0F-4C6C-9D6A-2E4B6E8A0A11}
-AppName=Notch
+AppName=Olyzano Notch
 AppVersion={#AppVersion}
-AppPublisher=Notch
+AppPublisher=Olyzano
 DefaultDirName={autopf}\Notch
-DefaultGroupName=Notch
+DefaultGroupName=Olyzano Notch
 OutputBaseFilename=Notch-{#AppVersion}-windows-x64-setup
 OutputDir=..\..\installer
 Compression=lzma2
@@ -28,17 +28,17 @@ WizardStyle=modern
 CloseApplications=yes
 
 [Tasks]
-Name: "autostart"; Description: "Start Notch when I sign in to Windows"; Flags: unchecked
+Name: "autostart"; Description: "Start Olyzano Notch when I sign in to Windows"; Flags: unchecked
 
 [Files]
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
 [Icons]
-Name: "{group}\Notch"; Filename: "{app}\notch.exe"
+Name: "{group}\Olyzano Notch"; Filename: "{app}\notch.exe"
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "Notch"; \
   ValueData: """{app}\notch.exe"""; Flags: uninsdeletevalue; Tasks: autostart
 
 [Run]
-Filename: "{app}\notch.exe"; Description: "Start Notch"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\notch.exe"; Description: "Start Olyzano Notch"; Flags: nowait postinstall skipifsilent

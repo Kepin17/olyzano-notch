@@ -1,15 +1,15 @@
-# Notch
+# Olyzano Notch
 
 **A temporary file shelf that lives at the top edge of your screen.**
 Move the mouse (or a dragged file) to the top-centre and it slides out. Drop files on it, take them
 back out whenever you need them, send them to a phone with a QR code. Files are **copied** into
-Notch's own storage and cleaned up automatically after a few days; your originals are never touched.
+Olyzano Notch's own storage and cleaned up automatically after a few days; your originals are never touched.
 
 Runs on **Linux (KDE Plasma, Wayland or X11)** and **Windows 10 / 11**.
 
 - [Install](#install): Linux · Windows · [optional components](#optional-components)
 - [Features](#features)
-- [Using Notch](#using-notch) · [the dock](#the-app-dock) · [live activities](#live-activities-and-the-idle-clock) ·
+- [Using Olyzano Notch](#using-olyzano-notch) · [the dock](#the-app-dock) · [live activities](#live-activities-and-the-idle-clock) ·
   [timer & Pomodoro](#timer-and-pomodoro) · [stretch reminder](#stretch-reminder)
 - [Share via QR](#share-via-qr)
 - [Settings and storage](#settings-and-storage)
@@ -42,10 +42,10 @@ wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.9.0/notch_0.9
 sudo apt install ./notch_0.9.0_amd64.deb
 ```
 
-**3. Start** **Notch** from the application menu, or turn on **Settings → General → Start at login**.
+**3. Start** **Olyzano Notch** from the application menu, or turn on **Settings → General → Start at login**.
 For OCR, KDE Connect and the rest, see [optional components](#optional-components).
 
-**Update:** install the newer `.deb` the same way, then restart Notch (`pkill notch; notch &`). Your shelf and settings stay.
+**Update:** install the newer `.deb` the same way, then restart Olyzano Notch (`pkill notch; notch &`). Your shelf and settings stay.
 
 **Remove:** `sudo apt remove notch`. Your shelf is kept; delete it yourself with `rm -r ~/.local/share/notch ~/.config/notch`.
 
@@ -58,41 +58,41 @@ For OCR, KDE Connect and the rest, see [optional components](#optional-component
    from the repository's **Releases** page (a `v*` tag builds one), or from the latest **Windows** run under *Actions →
    Artifacts*.
 2. Run the installer. It installs for your user (no administrator prompt), adds a Start-menu entry and can
-   start Notch when you sign in. The portable zip needs no install: extract it anywhere and run `notch.exe`.
+   start Olyzano Notch when you sign in. The portable zip needs no install: extract it anywhere and run `notch.exe`.
 3. The build is not code-signed, so Windows SmartScreen says *"Windows protected your PC"*:
    click **More info → Run anyway**.
 
 **Good to know**
 
-- Sharing over WiFi: Windows asks once to let Notch through its firewall. Allow it on **private** networks.
+- Sharing over WiFi: Windows asks once to let Olyzano Notch through its firewall. Allow it on **private** networks.
 - PDF and OCR tools need Poppler, Ghostscript and Tesseract on your `PATH`: download links and steps are in
   [optional components](#optional-components). The image tools need nothing.
 - Settings and files live in `%LOCALAPPDATA%\notch`.
 
-**Remove:** *Settings → Apps → Notch → Uninstall* (installer), or delete the folder (portable).
+**Remove:** *Settings → Apps → Olyzano Notch → Uninstall* (installer), or delete the folder (portable).
 Delete `%LOCALAPPDATA%\notch` too if you want your shelf gone.
 
 ### Optional components
 
-Notch runs without these; each one switches on a feature. Notch finds them by itself once they are installed
-(restart Notch after installing).
+Olyzano Notch runs without these; each one switches on a feature. Olyzano Notch finds them by itself once they are installed
+(restart Olyzano Notch after installing).
 
 | Component | What it adds | Linux | Windows |
 |---|---|---|---|
 | **Tesseract OCR** + a language | *OCR* in the Tools menu (text from images and scanned PDFs) | `sudo apt install tesseract-ocr tesseract-ocr-eng`<br>(more languages: `tesseract-ocr-ind`, `tesseract-ocr-deu`, …) | [UB Mannheim installer](https://github.com/UB-Mannheim/tesseract/wiki): tick the languages you need, then add `C:\Program Files\Tesseract-OCR` to `PATH` |
 | **Poppler** | PDF page count, split, extract, PDF → image, OCR of PDFs | included in the `.deb` (`poppler-utils`) | [poppler-windows releases](https://github.com/oschwartz10612/poppler-windows/releases/latest): unzip, add its `Library\bin` folder to `PATH` |
 | **Ghostscript** | *Compress PDF* | included in the `.deb` (`ghostscript`) | [Ghostscript downloads](https://ghostscript.com/releases/gsdnld.html) (64-bit AGPL release); its installer adds it to `PATH` |
-| **KDE Connect** (computer + phone) | *Send to device*, files from your phone, incoming calls, phone notifications and a low phone battery in the notch | `sudo apt install kdeconnect` and on the phone [KDE Connect for Android](https://play.google.com/store/apps/details?id=org.kde.kdeconnect_tp) ([F-Droid](https://f-droid.org/packages/org.kde.kdeconnect_tp/)) or [iOS](https://apps.apple.com/app/kde-connect/id1580245991); pair them once | [KDE Connect for Windows](https://kdeconnect.kde.org/download.html) (the installer; Notch looks for it in its install folder, so the Microsoft Store version is not found) and the same phone app; pair them once |
+| **KDE Connect** (computer + phone) | *Send to device*, files from your phone, incoming calls, phone notifications and a low phone battery in the notch | `sudo apt install kdeconnect` and on the phone [KDE Connect for Android](https://play.google.com/store/apps/details?id=org.kde.kdeconnect_tp) ([F-Droid](https://f-droid.org/packages/org.kde.kdeconnect_tp/)) or [iOS](https://apps.apple.com/app/kde-connect/id1580245991); pair them once | [KDE Connect for Windows](https://kdeconnect.kde.org/download.html) (the installer; Olyzano Notch looks for it in its install folder, so the Microsoft Store version is not found) and the same phone app; pair them once |
 | **KDE Plasma's KWin** | Dock: real running apps, a click raises or minimizes the app's window, the window list | part of Plasma | built in (Windows windows) |
 | **Plasma blur effect** | Frosted-glass blur behind the dock | *System Settings → Window Management → Desktop Effects → Blur* | – |
-| **Spectacle** auto-save | *Add new screenshots* | in Spectacle: *Configure → Save → save automatically* (Notch has a button for it) | built in (Win + PrtSc) |
+| **Spectacle** auto-save | *Add new screenshots* | in Spectacle: *Configure → Save → save automatically* (Olyzano Notch has a button for it) | built in (Win + PrtSc) |
 | **Dolphin** / `ktrash6` | Dock Trash: open and empty it | part of Plasma (`sudo apt install dolphin kio-extras`) | built in (Recycle Bin) |
 | **PipeWire or PulseAudio** (`pactl`) | Equalizer, the microphone indicator and its mute state | included in the `.deb` (`pulseaudio-utils`; works with PipeWire) | built in (Windows audio) |
-| **gocryptfs** + FUSE | Locked categories | included in the `.deb` (`gocryptfs`, `fuse3`) | built in (Notch encrypts the files itself) |
+| **gocryptfs** + FUSE | Locked categories | included in the `.deb` (`gocryptfs`, `fuse3`) | built in (Olyzano Notch encrypts the files itself) |
 | **Noto CJK fonts** | The Washi theme's serif headings (和紙) | included in the `.deb` (`fonts-noto-cjk`) | [Noto Serif JP](https://fonts.google.com/noto/specimen/Noto+Serif+JP) (optional) |
 
 **Adding a folder to `PATH` on Windows:** Start → type *environment variables* → *Edit the environment variables for your
-account* → select **Path** → **Edit** → **New** → paste the folder → OK. Then restart Notch.
+account* → select **Path** → **Edit** → **New** → paste the folder → OK. Then restart Olyzano Notch.
 
 ---
 
@@ -105,7 +105,7 @@ account* → select **Path** → **Edit** → **New** → paste the folder → O
 | The shelf: drop, preview, categories, notes, search, tools | ✅ | ✅ |
 | Several monitors (one shelf per screen) | ✅ | ✅ |
 | Share via QR (WiFi, and your own encrypted server) | ✅ | ✅ |
-| Nearby: send to another computer running Notch | ✅ | ✅ |
+| Nearby: send to another computer running Olyzano Notch | ✅ | ✅ |
 | Auto-add new screenshots and downloads | ✅ | ✅ |
 | Charger and low-battery alerts | ✅ | ✅ |
 | Start at login · tray icon | ✅ | ✅ |
@@ -141,7 +141,7 @@ Controls that a platform cannot offer are hidden or greyed out.
 
 ---
 
-## Using Notch
+## Using Olyzano Notch
 
 ### The shelf
 
@@ -150,7 +150,7 @@ Controls that a platform cannot offer are hidden or greyed out.
 - **Every monitor has its own shelf** at its top edge; it opens wherever you move the mouse.
 - **Tray icon:** click to show or hide; the menu has Show/Hide, Settings and Quit.
 - **A tile:** click to preview (text files open in the note editor). Hover for **↗** (open) and **✕** (remove,
-  deletes only Notch's copy). Right-click for the full menu. Drag a tile out to a folder or an app to copy it there.
+  deletes only Olyzano Notch's copy). Right-click for the full menu. Drag a tile out to a folder or an app to copy it there.
 - **Select several:** Ctrl+click toggles, Shift+click selects a range, Ctrl+A selects all in view; Delete removes,
   Esc clears. Dragging a selected tile drags the whole selection.
 
@@ -158,11 +158,11 @@ Controls that a platform cannot offer are hidden or greyed out.
 
 | You do | You get |
 |---|---|
-| Drop files | Copies in Notch. A name already on the shelf becomes "name (1).ext" |
+| Drop files | Copies in Olyzano Notch. A name already on the shelf becomes "name (1).ext" |
 | Drop a **folder** | Every file inside (hidden ones skipped, up to 1000); each goes into a category named after its folder |
 | Drag an **image or link** from a browser | The image is downloaded; a page link becomes a shortcut that reopens the page |
 | Drop **text** from any app | A new note |
-| **Ctrl+V** after clicking Notch | Copied files; an image from the clipboard; a link (downloaded); other text becomes a `.txt` / `.json` / code file |
+| **Ctrl+V** after clicking Olyzano Notch | Copied files; an image from the clipboard; a link (downloaded); other text becomes a `.txt` / `.json` / code file |
 | Take a **screenshot** | Added to a *Screenshots* category (Settings → Add new screenshots; Windows: Win + PrtSc) |
 | Finish a **download** | Added to *Downloads* (off by default) |
 
@@ -244,7 +244,7 @@ percentage, a **browser download** still being written to Downloads (size and sp
 A hairline along the bottom shows the progress.
 
 When nothing is going on, the **idle clock** shows the time, the **microphone** (red and struck through when muted,
-orange while an app records) and the **battery**. Rest the pointer on it to open Notch. Turn it off in
+orange while an app records) and the **battery**. Rest the pointer on it to open Olyzano Notch. Turn it off in
 *Settings → General → Clock when idle*.
 
 **Privacy dot:** a green dot beside the notch while a camera is on (the idle clock's microphone turns orange while an app records);
@@ -253,7 +253,7 @@ WhatsApp · Mom", never the message itself) and a low phone battery, through KDE
 
 ## Timer and Pomodoro
 
-Open Notch and press the **clock button** in the header.
+Open Olyzano Notch and press the **clock button** in the header.
 
 - **Timer:** 1 to 60 minutes with one click, or any number of minutes and a name ("Tea").
 - **Pomodoro:** 25 or 50 minutes of focus, 5 / 10 / 15 minutes of break, round after round until you stop it.
@@ -263,7 +263,7 @@ The running one shows in the closed notch; open the page again to pause, add a m
 
 ## Stretch reminder
 
-*Settings → Wellbeing.* Notch counts the time you **actually work** (mouse and keyboard). Stepping away for a few minutes
+*Settings → Wellbeing.* Olyzano Notch counts the time you **actually work** (mouse and keyboard). Stepping away for a few minutes
 counts as a break and starts over. After 50 minutes of work it asks:
 
 > 🧘 **Time to stretch** — **Start break** · **Later (10 min)** · **Skip**
@@ -285,7 +285,7 @@ Right-click a file (or select several and press **Share**) → **Share via QR…
 
 | | **This WiFi** | **My server** |
 |---|---|---|
-| How | Notch serves the files on your local network | Encrypted on your computer, then uploaded to your own relay |
+| How | Olyzano Notch serves the files on your local network | Encrypted on your computer, then uploaded to your own relay |
 | Needs | Phone and computer on the same WiFi | A relay you run ([server/](server/README.md)); your computer may then be switched off |
 | Encryption | None (plain HTTP on your own network) | End-to-end (AES-256-GCM); the key stays in the link after `#`, so the server cannot read anything |
 | Ends when | One file: after its first download. Several: when it expires or you press Stop | It expires, or after the first download if you choose *Single download* (one file) |
@@ -294,7 +294,7 @@ Expiry: 10 minutes, 1 hour or 24 hours.
 
 ### Protect it
 
-- **PIN** (4–12 digits): checked by the server (or by Notch for WiFi shares). Five wrong tries lock that phone out
+- **PIN** (4–12 digits): checked by the server (or by Olyzano Notch for WiFi shares). Five wrong tries lock that phone out
   for 10 minutes.
 - **Password** (8+ characters): on a server share it also locks the key inside the link, so the link alone opens
   nothing. Tell the password another way.
@@ -304,14 +304,14 @@ Expiry: 10 minutes, 1 hour or 24 hours.
 
 Every share is its own session. The share button in the header (with the number running) opens the list: state,
 countdown, **QR**, **Stop**, **Stop all**, **Clear finished**. Server shares stay on the server, so they are still in
-the list after you restart Notch; WiFi shares end with Notch.
+the list after you restart Olyzano Notch; WiFi shares end with Olyzano Notch.
 
 ### Servers
 
 **Settings → Sharing** keeps any number of servers (yours, a friend's, your team's). Add one with its address and API key and
 press **Test**. When you share, pick the server; the popup shows what it allows and greys out what it would refuse.
 Members with their own keys and quotas exist on the relay
-([server/README.md](server/README.md#for-a-team-members-quotas-invitations)), but joining from inside Notch is switched off for now.
+([server/README.md](server/README.md#for-a-team-members-quotas-invitations)), but joining from inside Olyzano Notch is switched off for now.
 
 ### What the person who scans sees
 
@@ -322,7 +322,7 @@ they can download one file, tick a few, or take everything as a zip (built on th
 
 ## Nearby: send to another computer
 
-Computer to computer, like Quick Share, between two computers running Notch (Linux or Windows) on the same network. Phones use the QR page instead.
+Computer to computer, like Quick Share, between two computers running Olyzano Notch (Linux or Windows) on the same network. Phones use the QR page instead.
 
 1. **Receiver:** open the Share window and press **Receive** (or use the tray menu). The computer is visible as its device name for 10 minutes, then hides again. It is invisible to the network the rest of the time.
 2. **Sender:** right-click files → Share via QR → **Nearby**, pick the computer, press **Send**.
@@ -330,7 +330,7 @@ Computer to computer, like Quick Share, between two computers running Notch (Lin
 
 Files are encrypted on the way. The number is derived from a key exchange in which the sender commits to its key first, so someone in the middle cannot make both screens agree. Three declined or broken requests from one address are ignored for 5 minutes, and only one transfer is accepted at a time.
 
-Limits: it only talks to Notch (not Google's Quick Share), it needs both computers on one network (guest WiFi often isolates devices), and a firewall may need to allow Notch (Windows asks once; with `ufw`, open UDP 47655 and Notch's transfer port). The device name is in Settings → Nearby.
+Limits: it only talks to Olyzano Notch (not Google's Quick Share), it needs both computers on one network (guest WiFi often isolates devices), and a firewall may need to allow Olyzano Notch (Windows asks once; with `ufw`, open UDP 47655 and Olyzano Notch's transfer port). The device name is in Settings → Nearby.
 
 ---
 
@@ -338,11 +338,11 @@ Limits: it only talks to Notch (not Google's Quick Share), it needs both compute
 
 - **Locked categories:** right-click a chip → **Lock with password…**. Files in it are encrypted on disk, never expire
   and stay hidden until you unlock. The password has at least 8 characters and **cannot be recovered**. Everything locks
-  again a few seconds after Notch closes, when it quits, or with the unlock button in the header. *Remove lock* moves
+  again a few seconds after Olyzano Notch closes, when it quits, or with the unlock button in the header. *Remove lock* moves
   files back to normal storage. Locked files can be shared too.
   - Linux: [gocryptfs](https://nuetzlich.net/gocryptfs/) (the engine behind Plasma Vault); while unlocked the plain view
     exists only in RAM.
-  - Windows: each file is encrypted by Notch itself (AES-256-GCM, a key protected by your password). While unlocked the
+  - Windows: each file is encrypted by Olyzano Notch itself (AES-256-GCM, a key protected by your password). While unlocked the
     files sit decrypted in your user's Temp folder, kept out of Windows Search; locking encrypts what changed and deletes
     them. A file still open in another app keeps the vault unlocked until you close it and lock again.
 - **Now playing:** when YouTube (any browser tab), Spotify or another player plays or pauses, an equalizer button
@@ -352,11 +352,11 @@ Limits: it only talks to Notch (not Google's Quick Share), it needs both compute
   - Windows: the media sessions the volume flyout shows (browsers, Spotify, Media Player…); sound from the speakers'
     loopback (no microphone permission).
 - **Alerts:** plugging the charger in or out, a Bluetooth device connecting or disconnecting, and low battery
-  (20 %, 10 %, 5 %, the laptop's and a headset's) make Notch peek out. Linux reads UPower and BlueZ; Windows its own
+  (20 %, 10 %, 5 %, the laptop's and a headset's) make Olyzano Notch peek out. Linux reads UPower and BlueZ; Windows its own
   power status and Bluetooth device list.
 - **KDE Connect:** right-click → **Send to device ▸**; files a phone sends arrive in a *KDE Connect* category. Calls and
   phone notifications show in the notch. On Windows install [KDE Connect for Windows](https://kdeconnect.kde.org/download.html)
-  and pair it with the phone; Notch joins it by itself.
+  and pair it with the phone; Olyzano Notch joins it by itself.
 - **Microphone and camera:** a green dot beside the notch while a camera is on, and the open panel names the apps using
   the camera or the microphone; the idle clock shows whether the microphone is muted and toggles it. Windows reads the
   same list as its own taskbar microphone icon.
@@ -373,9 +373,9 @@ Limits: it only talks to Notch (not Google's Quick Share), it needs both compute
   "Notification from Slack · John", never the message itself, with a sound. *Do not disturb* (Plasma) or *Focus*
   (Windows) keeps them quiet. *Settings → General → Notifications from this computer* lists the apps that sent some
   lately; tap one to stop or start showing it. Notifications from KDE Connect are left out (the phone's already show).
-  - Linux: Notch watches the session bus for notifications, the way KDE Connect does; Plasma still shows them as usual.
-  - Windows: Notch asks Windows for access to notifications. Windows may only grant that to apps installed as an
-    MSIX package, which Notch isn't; then Settings says it isn't available on this install.
+  - Linux: Olyzano Notch watches the session bus for notifications, the way KDE Connect does; Plasma still shows them as usual.
+  - Windows: Olyzano Notch asks Windows for access to notifications. Windows may only grant that to apps installed as an
+    MSIX package, which Olyzano Notch isn't; then Settings says it isn't available on this install.
 ---
 
 ## Settings and storage
@@ -391,8 +391,8 @@ Limits: it only talks to Notch (not Google's Quick Share), it needs both compute
 | Start at login | `~/.config/autostart/notch.desktop` | `HKCU\…\Run` |
 
 Cleanup runs at start-up, hourly and when the retention changes; it removes items older than the retention period
-(default 7 days). Deletion is crash-safe (mark → delete file → delete row) and limited to Notch's own folder. If the
-database cannot be read, Notch shows an error and deletes nothing.
+(default 7 days). Deletion is crash-safe (mark → delete file → delete row) and limited to Olyzano Notch's own folder. If the
+database cannot be read, Olyzano Notch shows an error and deletes nothing.
 
 ---
 
