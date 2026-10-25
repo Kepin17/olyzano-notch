@@ -4,150 +4,460 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Notch · Install</title>
-<meta name="description" content="Notch, a temporary file shelf for your desktop. Download for Linux and Windows.">
+<meta name="description" content="Notch: a file shelf, an app dock, live activities, a Pomodoro timer and a stretch reminder at the edges of your screen. Download for Linux and Windows.">
 <link rel="icon" href="site/notch.svg">
 <style>
-:root{--bg:#f6f2ea;--card:#fffdf8;--ink:#1d1a16;--dim:#6b645a;--line:#e3dccd;--accent:#d4493b;--accent-ink:#fff;--code:#efe9dc}
-@media (prefers-color-scheme:dark){:root{--bg:#14120f;--card:#1d1a16;--ink:#efe9dc;--dim:#a39b8c;--line:#2e2a24;--accent:#e0584a;--code:#26221d}}
+:root{
+  --bg:#f5f3ef;--bg2:#ece8e1;--card:#fffdfa;--ink:#1b1916;--dim:#6a645b;--faint:#a49d92;--line:#e2dcd2;
+  --accent:#d4493b;--accent2:#e8873a;--accent-ink:#fff;--code:#f0ebe3;--ok:#2e9e5b;--warn:#c97a12;
+  --island:#0d0d0f;--island-ink:#f5f5f7;--island-dim:#8e8e93;--screen:linear-gradient(135deg,#c9d6e8,#e9d8cf 55%,#d9cfe6);
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 30px rgba(0,0,0,.06);
+}
+:root[data-theme="dark"]{
+  --bg:#111012;--bg2:#18161a;--card:#1b191d;--ink:#f1eee9;--dim:#a39d94;--faint:#6d675f;--line:#2b282d;
+  --accent:#ff6a55;--accent2:#ffa24c;--code:#232026;--ok:#3ddc84;--warn:#ffb347;
+  --screen:linear-gradient(135deg,#1f2a3c,#3a2a2a 55%,#2b2440);--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 40px rgba(0,0,0,.35);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#111012;--bg2:#18161a;--card:#1b191d;--ink:#f1eee9;--dim:#a39d94;--faint:#6d675f;--line:#2b282d;
+  --accent:#ff6a55;--accent2:#ffa24c;--code:#232026;--ok:#3ddc84;--warn:#ffb347;
+  --screen:linear-gradient(135deg,#1f2a3c,#3a2a2a 55%,#2b2440);--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 40px rgba(0,0,0,.35);
+}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:860px;margin:0 auto;padding:48px 16px 64px}
-header{text-align:center;margin-bottom:36px}
-header img{width:84px;height:84px}
-h1{font-size:2.2rem;margin:12px 0 4px;letter-spacing:-.02em}
-.lead{color:var(--dim);max-width:520px;margin:0 auto 24px}
-.btn{display:inline-block;background:var(--accent);color:var(--accent-ink);text-decoration:none;font-weight:600;padding:12px 22px;border-radius:12px}
-.btn.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
-.btn:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-.meta{color:var(--dim);font-size:.85rem;margin-top:10px;min-height:1.3em}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-@media (max-width:700px){.grid{grid-template-columns:1fr}}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}
-.card.me{border-color:var(--accent)}
-h2{margin:0 0 4px;font-size:1.3rem}
-.sub{color:var(--dim);font-size:.9rem;margin:0 0 14px}
-.row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
-pre{background:var(--code);border-radius:10px;padding:10px 12px;overflow-x:auto;font-size:.85rem;margin:8px 0}
-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-ol,ul{padding-left:20px;margin:8px 0}
-li{margin:4px 0}
-details{margin-top:10px;color:var(--dim);font-size:.9rem}
-summary{cursor:pointer;color:var(--ink)}
-.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:36px 0 0}
-.feat div{border-top:2px solid var(--line);padding-top:8px}
-.feat b{display:block}.feat span{color:var(--dim);font-size:.9rem}
-footer{margin-top:40px;text-align:center;color:var(--dim);font-size:.9rem}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 a{color:var(--accent)}
+a:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:8px}
+.wrap{max-width:1080px;margin:0 auto;padding:0 16px}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+/* nav */
+nav{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:20px;height:58px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--ink);text-decoration:none;font-size:1.05rem}
+.brand img{width:28px;height:28px}
+nav .links{display:flex;gap:18px;margin-left:auto;font-size:.92rem}
+nav .links a{color:var(--dim);text-decoration:none}
+nav .links a:hover{color:var(--ink)}
+.theme-btn{background:none;border:1px solid var(--line);color:var(--dim);border-radius:10px;padding:5px 9px;cursor:pointer;font-size:.9rem}
+@media (max-width:720px){nav .links a:not(.gh){display:none}}
+
+/* hero */
+.hero{display:grid;grid-template-columns:1.05fr 1fr;gap:48px;align-items:center;padding:64px 0 40px}
+@media (max-width:900px){.hero{grid-template-columns:1fr;gap:32px;padding-top:40px}}
+.eyebrow{display:inline-flex;gap:8px;align-items:center;font-size:.82rem;color:var(--dim);background:var(--card);border:1px solid var(--line);border-radius:99px;padding:4px 12px 4px 6px}
+.eyebrow b{background:linear-gradient(90deg,var(--accent),var(--accent2));color:#fff;border-radius:99px;padding:1px 8px;font-size:.75rem}
+h1{font-size:clamp(2.1rem,4.6vw,3.3rem);line-height:1.08;letter-spacing:-.03em;margin:18px 0 14px}
+h1 span{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{color:var(--dim);font-size:1.1rem;max-width:520px;margin:0 0 26px}
+.cta{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:var(--accent-ink);text-decoration:none;font-weight:600;padding:12px 20px;border-radius:12px;border:0;cursor:pointer;font-size:1rem;box-shadow:0 6px 20px color-mix(in srgb,var(--accent) 35%,transparent)}
+.btn:hover{filter:brightness(1.06)}
+.btn.alt{background:var(--card);color:var(--ink);border:1px solid var(--line);box-shadow:none}
+.meta{color:var(--dim);font-size:.85rem;margin-top:12px;min-height:1.4em}
+
+/* screen mock */
+.screen{position:relative;aspect-ratio:16/10;border-radius:18px;background:var(--screen);border:1px solid var(--line);box-shadow:var(--shadow);overflow:hidden}
+.screen .win{position:absolute;left:12%;top:24%;width:56%;height:46%;background:color-mix(in srgb,var(--card) 85%,transparent);border-radius:10px;border:1px solid var(--line);box-shadow:var(--shadow)}
+.screen .win:before{content:"";position:absolute;left:10px;top:9px;width:42px;height:8px;border-radius:4px;background:radial-gradient(circle at 4px 4px,#ff5f57 3px,transparent 3.5px),radial-gradient(circle at 19px 4px,#febc2e 3px,transparent 3.5px),radial-gradient(circle at 34px 4px,#28c840 3px,transparent 3.5px)}
+.screen .win.b{left:38%;top:34%;width:46%;height:40%;opacity:.85}
+.island{position:absolute;left:50%;top:0;transform:translateX(-50%);background:var(--island);color:var(--island-ink);border-radius:0 0 18px 18px;height:30px;min-width:150px;padding:0 16px;display:flex;align-items:center;gap:10px;font-size:.78rem;font-weight:600;white-space:nowrap;transition:min-width .5s cubic-bezier(.3,1.4,.5,1),height .4s ease;box-shadow:0 4px 18px rgba(0,0,0,.25)}
+.island .r{margin-left:auto;color:var(--island-dim);font-weight:500;display:flex;align-items:center;gap:6px}
+.island .bar{position:absolute;left:16px;right:16px;bottom:4px;height:2px;border-radius:1px;background:#2a2a2e;overflow:hidden}
+.island .bar i{display:block;height:100%;background:#3daee9;width:30%;transition:width .8s}
+.island.wide{min-width:270px}
+.island.tall{height:58px;flex-wrap:wrap;align-content:center;row-gap:4px;min-width:300px}
+.island .btns{width:100%;display:flex;gap:6px;justify-content:flex-end}
+.island .btns span{background:#2c2c2e;border-radius:99px;padding:2px 9px;font-size:.68rem;font-weight:600}
+.island .btns span.on{background:#3ddc84;color:#06240f}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block}
+.mock-dock{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);display:flex;gap:8px;align-items:flex-end;padding:7px 10px;border-radius:16px;background:color-mix(in srgb,var(--island) 55%,transparent);backdrop-filter:blur(10px);border:1px solid rgba(255,255,255,.15)}
+.mock-dock span{width:30px;height:30px;border-radius:9px;position:relative;transition:transform .18s}
+.mock-dock span:hover{transform:translateY(-4px) scale(1.12)}
+.mock-dock span.run:after{content:"";position:absolute;left:50%;bottom:-6px;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:#fff;opacity:.7}
+.mock-dock span.act:after{width:10px;margin-left:-5px;border-radius:2px;background:#3daee9;opacity:1}
+.mock-dock em{position:absolute;right:-5px;top:-5px;background:#ff453a;color:#fff;font-style:normal;font-size:.6rem;font-weight:700;border-radius:99px;padding:0 4px;line-height:14px}
+.mock-dock .sep{width:1px;height:26px;background:rgba(255,255,255,.25);border-radius:0}
+.caption{text-align:center;color:var(--dim);font-size:.82rem;margin-top:10px;min-height:1.3em}
+
+/* sections */
+section{padding:56px 0}
+h2{font-size:clamp(1.6rem,3vw,2.1rem);letter-spacing:-.02em;margin:0 0 8px}
+.sub{color:var(--dim);margin:0 0 28px;max-width:640px}
+.features{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.feature{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 18px 16px;box-shadow:var(--shadow)}
+.feature .ic{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-size:1.15rem;background:var(--bg2);margin-bottom:10px}
+.feature b{display:block;margin-bottom:4px}
+.feature span{color:var(--dim);font-size:.92rem}
+.feature small{display:inline-block;margin-top:8px;color:var(--faint);font-size:.78rem}
+
+/* install */
+.tabs{display:inline-flex;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px;margin-bottom:18px}
+.tabs button{border:0;background:none;color:var(--dim);font:inherit;font-weight:600;padding:8px 18px;border-radius:9px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+.panel{display:none}.panel.on{display:block}
+.install{display:grid;grid-template-columns:1.3fr 1fr;gap:18px}
+.install>*,.hero>*,.card,.cmd{min-width:0} /* long commands scroll inside their box instead of widening the page */
+@media (max-width:860px){.install{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:var(--shadow)}
+.card h3{margin:0 0 4px;font-size:1.1rem}
+.card .muted{color:var(--dim);font-size:.9rem;margin:0 0 14px}
+.steps{counter-reset:s;list-style:none;padding:0;margin:0}
+.steps>li{counter-increment:s;position:relative;padding-left:40px;margin:0 0 18px}
+.steps>li:before{content:counter(s);position:absolute;left:0;top:0;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;font-size:.85rem;display:grid;place-items:center}
+.steps b{display:block;margin-bottom:4px}
+.cmd{position:relative;background:var(--code);border:1px solid var(--line);border-radius:10px;margin:8px 0 0}
+.cmd pre{margin:0;padding:11px 74px 11px 13px;overflow-x:auto;font-size:.84rem;white-space:pre}
+.copy{position:absolute;right:7px;top:7px;border:1px solid var(--line);background:var(--card);color:var(--dim);font:inherit;font-size:.75rem;padding:3px 9px;border-radius:7px;cursor:pointer}
+.copy.done{color:var(--ok);border-color:var(--ok)}
+.req{list-style:none;padding:0;margin:0}
+.req li{display:flex;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:.93rem}
+.req li:last-child{border:0}
+.req li span:first-child{width:22px;flex:none;text-align:center}
+.note{background:color-mix(in srgb,var(--warn) 12%,transparent);border:1px solid color-mix(in srgb,var(--warn) 35%,transparent);border-radius:12px;padding:12px 14px;font-size:.9rem;margin-top:14px}
+
+/* optional table */
+.table{overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:var(--card);box-shadow:var(--shadow)}
+table{border-collapse:collapse;width:100%;min-width:760px;font-size:.92rem}
+th,td{text-align:left;padding:13px 16px;vertical-align:top;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+th{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);background:var(--bg2)}
+td b{display:block}
+td .what{color:var(--dim);font-size:.86rem}
+td code{background:var(--code);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:.8rem;display:inline-block;margin:2px 0}
+.tag{display:inline-block;font-size:.72rem;font-weight:600;border-radius:99px;padding:1px 8px;background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.tag.no{background:var(--bg2);color:var(--faint)}
+.dl{display:inline-flex;align-items:center;gap:4px;font-weight:600;text-decoration:none}
+.dl:after{content:"↗";font-size:.8em}
+
+/* faq */
+.faq details{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 18px;margin-bottom:10px}
+.faq summary{cursor:pointer;font-weight:600;padding:12px 0;list-style:none}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary:after{content:"+";float:right;color:var(--dim)}
+.faq details[open] summary:after{content:"–"}
+.faq p,.faq ul{color:var(--dim);margin:0 0 14px}
+footer{border-top:1px solid var(--line);padding:28px 0 40px;color:var(--dim);font-size:.9rem}
+footer .wrap{display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}html{scroll-behavior:auto}}
 </style>
 </head>
 <body>
-<main>
-<header>
-  <img src="site/notch.svg" alt="">
-  <h1>Notch</h1>
-  <p class="lead">A temporary shelf for the files you are working with. Drop them at the top of the screen, share them, send them to another computer.</p>
-  <a class="btn" id="hero" href="https://github.com/Kepin17/olyzano-notch/releases/latest">Download</a>
-  <div class="meta" id="heroMeta"></div>
-  <p><a href="#linux" id="other">Linux</a> · <a href="#windows">Windows</a></p>
-</header>
-
-<div class="grid">
-  <section class="card" id="linux">
-    <h2>Linux</h2>
-    <p class="sub">Debian, Ubuntu, Kubuntu · 64-bit · tested on KDE Plasma (Wayland)</p>
-    <div class="row"><a class="btn" id="deb" href="https://github.com/Kepin17/olyzano-notch/releases/latest">Download .deb</a></div>
-    <ol>
-      <li>Download the package.</li>
-      <li>Install it; <code>apt</code> brings everything it needs:</li>
-    </ol>
-    <pre><code id="debCmd">sudo apt install ./notch_VERSION_amd64.deb</code></pre>
-    <ol start="3"><li>Start <b>Notch</b> from the application menu.</li></ol>
-    <details><summary>Optional and removal</summary>
-      <pre><code>sudo apt install tesseract-ocr   # OCR tool
-sudo apt remove notch            # remove (your shelf is kept)</code></pre>
-    </details>
-    <details><summary>Other distributions: build from source</summary>
-      <pre><code>git clone https://github.com/Kepin17/olyzano-notch
-cd olyzano-notch
-sudo apt install cmake ninja-build g++ qt6-base-dev \
-  qt6-declarative-dev liblayershellqtinterface-dev
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build &amp;&amp; ./build/notch</code></pre>
-    </details>
-  </section>
-
-  <section class="card" id="windows">
-    <h2>Windows</h2>
-    <p class="sub">Windows 10 and 11 · 64-bit</p>
-    <div class="row">
-      <a class="btn" id="exe" href="https://github.com/Kepin17/olyzano-notch/releases/latest">Download installer</a>
-      <a class="btn alt" id="zip" href="https://github.com/Kepin17/olyzano-notch/releases/latest">Portable .zip</a>
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="site/notch.svg" alt="">Notch</a>
+    <div class="links">
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#optional">Optional</a>
+      <a href="#faq">FAQ</a>
+      <a class="gh" href="https://github.com/Kepin17/olyzano-notch">GitHub</a>
     </div>
-    <ol>
-      <li>Run the installer. It installs for your user, no administrator prompt.</li>
-      <li>Windows may say <i>“Windows protected your PC”</i> because the build is not code-signed: click <b>More info → Run anyway</b>.</li>
-      <li>Start <b>Notch</b> from the Start menu.</li>
-    </ol>
-    <details><summary>Good to know</summary>
-      <ul>
-        <li>The portable zip needs no install: extract it and run <code>notch.exe</code>.</li>
-        <li>Sharing over WiFi or Nearby: allow Notch through the firewall on <b>private</b> networks.</li>
-        <li>PDF and OCR tools need Poppler, Ghostscript and Tesseract on your PATH.</li>
-        <li>Remove: Settings → Apps → Notch → Uninstall.</li>
-      </ul>
-    </details>
-  </section>
+    <button class="theme-btn" id="themeBtn" aria-label="Switch light or dark">◐</button>
+  </div>
+</nav>
+
+<main>
+<div class="wrap">
+  <div class="hero">
+    <div>
+      <span class="eyebrow"><b id="verTag">New</b> App dock, live activities, Pomodoro and a stretch reminder</span>
+      <h1>Your files, apps and focus, <span>at the edges of your screen.</span></h1>
+      <p class="lead">Notch slides out from the top of the screen with a shelf for the files you're working with,
+        shows what's going on in a little live pill, and adds a dock at the bottom. For KDE Plasma and Windows.</p>
+      <div class="cta">
+        <a class="btn" id="hero" href="https://github.com/Kepin17/olyzano-notch/releases/latest">⬇ Download</a>
+        <a class="btn alt" href="#install">Install guide</a>
+      </div>
+      <div class="meta" id="heroMeta">Free and open source · Linux (.deb) and Windows 10/11</div>
+    </div>
+    <div>
+      <div class="screen" aria-hidden="true">
+        <div class="win"></div><div class="win b"></div>
+        <div class="island" id="island"></div>
+        <div class="mock-dock">
+          <span class="act" style="background:linear-gradient(135deg,#3daee9,#1d6fb8)"></span>
+          <span class="run" style="background:linear-gradient(135deg,#4cc2ff,#0b7bd6)"><em>7</em></span>
+          <span style="background:linear-gradient(135deg,#ff9f43,#ee5a24)"></span>
+          <span style="background:linear-gradient(135deg,#a3be8c,#5f8a4a)"></span>
+          <span class="sep"></span>
+          <span class="run" style="background:linear-gradient(135deg,#b392f0,#7c4dd6)"></span>
+          <span class="sep"></span>
+          <span style="background:linear-gradient(135deg,#9aa0a6,#5f6368)"></span>
+        </div>
+      </div>
+      <div class="caption" id="islandCaption"></div>
+    </div>
+  </div>
 </div>
 
-<div class="feat">
-  <div><b>The shelf</b><span>Drop files, folders, images, links and notes; preview and organize them.</span></div>
-  <div><b>Share via QR</b><span>Over your WiFi or your own encrypted server, with PIN or password.</span></div>
-  <div><b>Nearby</b><span>Send to another computer running Notch, after matching a 4-digit code.</span></div>
-  <div><b>Tools</b><span>Merge and split PDFs, convert images, OCR, zip.</span></div>
-</div>
+<section id="features">
+  <div class="wrap">
+    <h2>Everything it does</h2>
+    <p class="sub">A few small things, close at hand, that stay out of the way until you need them.</p>
+    <div class="features">
+      <div class="feature"><div class="ic">🗂️</div><b>The shelf</b><span>Drop files, folders, images, links and notes at the top edge. Preview, sort into categories, search; cleaned up after a few days.</span></div>
+      <div class="feature"><div class="ic">🚀</div><b>App dock</b><span>Pinned and running apps, folders as stacks, Trash, unread badges, glass look. Bottom, left or right.</span><small>Window focusing: KDE Plasma · Windows</small></div>
+      <div class="feature"><div class="ic">💊</div><b>Live activities</b><span>Timer, downloads, Nearby transfers and incoming calls in a pill in the closed notch, with progress.</span></div>
+      <div class="feature"><div class="ic">⏱️</div><b>Timer &amp; Pomodoro</b><span>Timers, a stopwatch, and focus / break rounds, from the clock button in the header.</span></div>
+      <div class="feature"><div class="ic">🧘</div><b>Stretch reminder</b><span>Counts the time you actually work. After 50 minutes it asks: break, later or skip. You decide.</span></div>
+      <div class="feature"><div class="ic">🕒</div><b>Idle clock</b><span>When nothing's going on: the time, your microphone (muted / recording) and the battery.</span></div>
+      <div class="feature"><div class="ic">📱</div><b>Phone &amp; privacy</b><span>Calls and notifications from your phone (KDE Connect); dots while the microphone or a camera is on.</span><small>Linux</small></div>
+      <div class="feature"><div class="ic">🔗</div><b>Share via QR &amp; Nearby</b><span>To a phone over WiFi or your own encrypted server; to another computer after matching a 4-digit code.</span></div>
+      <div class="feature"><div class="ic">🛠️</div><b>Tools</b><span>Merge, split and compress PDFs, convert images, OCR, zip. Locked categories encrypted on disk (Linux).</span></div>
+      <div class="feature"><div class="ic">🎨</div><b>Eight themes</b><span>Classic, Washi 和紙, Frost, Ocean, Forest, Sunset, Lavender and Mocha, each in dark and light.</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="install" style="background:var(--bg2);border-block:1px solid var(--line)">
+  <div class="wrap">
+    <h2>Install</h2>
+    <p class="sub">Pick your system. The buttons always point at the newest release.</p>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-linux" aria-selected="true" data-os="linux">🐧 Linux</button>
+      <button role="tab" id="tab-windows" aria-selected="false" data-os="windows">🪟 Windows</button>
+    </div>
+
+    <div class="panel on" id="panel-linux" role="tabpanel">
+      <div class="install">
+        <div class="card">
+          <h3>Debian · Ubuntu · Kubuntu · KDE neon</h3>
+          <p class="muted">64-bit, Qt 6.5 or newer. Made for KDE Plasma (Wayland or X11).</p>
+          <ol class="steps">
+            <li><b>Download the package</b>
+              <a class="btn" id="deb" href="https://github.com/Kepin17/olyzano-notch/releases/latest" style="margin-top:6px">⬇ Download .deb</a>
+              <div class="cmd"><pre id="wgetCmd">wget https://github.com/Kepin17/olyzano-notch/releases/latest/download/notch_VERSION_amd64.deb</pre><button class="copy">Copy</button></div>
+            </li>
+            <li><b>Install it</b> <span class="muted">apt brings everything it needs.</span>
+              <div class="cmd"><pre id="debCmd">sudo apt install ./notch_VERSION_amd64.deb</pre><button class="copy">Copy</button></div>
+            </li>
+            <li><b>Start Notch</b> from the application menu. Rest the mouse on the top-centre edge to open it; turn on
+              <i>Settings → General → Start at login</i> to have it always.</li>
+          </ol>
+          <details class="faq" style="margin-top:6px"><summary>Update or remove</summary>
+            <p>Update: install the newer <code>.deb</code> the same way, then restart Notch. Your shelf and settings stay.</p>
+            <div class="cmd"><pre>pkill notch; notch &amp;          # restart after an update
+sudo apt remove notch          # remove (your shelf is kept)
+rm -r ~/.local/share/notch ~/.config/notch   # delete the shelf and settings too</pre><button class="copy">Copy</button></div>
+          </details>
+        </div>
+        <div class="card">
+          <h3>What you get where</h3>
+          <ul class="req">
+            <li><span>✅</span><span><b>KDE Plasma</b>: everything: dock window focusing, blur, badges, KDE Connect, idle time on Wayland.</span></li>
+            <li><span>🟡</span><span><b>Other desktops</b>: the shelf, timer and sharing work; the dock can start apps but not raise their windows.</span></li>
+            <li><span>🧩</span><span>Extras like OCR and KDE Connect are <a href="#optional">optional components</a>.</span></li>
+          </ul>
+          <div class="note">Older Ubuntu (24.04 and before) ships Qt 6.4, which is too old. Use a newer release, KDE neon, or
+            <a href="#source">build from source</a> with a newer Qt.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-windows" role="tabpanel">
+      <div class="install">
+        <div class="card">
+          <h3>Windows 10 and 11</h3>
+          <p class="muted">64-bit. Installs for your user, no administrator prompt.</p>
+          <ol class="steps">
+            <li><b>Download the installer</b>
+              <div class="cta" style="margin-top:6px">
+                <a class="btn" id="exe" href="https://github.com/Kepin17/olyzano-notch/releases/latest">⬇ Installer (.exe)</a>
+                <a class="btn alt" id="zip" href="https://github.com/Kepin17/olyzano-notch/releases/latest">Portable .zip</a>
+              </div>
+            </li>
+            <li><b>Run it</b>. Windows may say <i>"Windows protected your PC"</i> because the build isn't code-signed:
+              click <b>More info → Run anyway</b>. The portable zip needs no install: extract it and run <code>notch.exe</code>.</li>
+            <li><b>Start Notch</b> from the Start menu. Allow it through the firewall on <b>private</b> networks if you
+              share over WiFi or use Nearby.</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>Good to know</h3>
+          <ul class="req">
+            <li><span>📄</span><span>PDF tools and OCR need Poppler, Ghostscript and Tesseract: see <a href="#optional">optional components</a>.</span></li>
+            <li><span>📁</span><span>Settings and files live in <code>%LOCALAPPDATA%\notch</code>.</span></li>
+            <li><span>🗑️</span><span>Remove: <i>Settings → Apps → Notch → Uninstall</i>.</span></li>
+            <li><span>➖</span><span>Linux-only: KDE Connect, phone alerts, privacy dots, locked categories, dock blur and badges.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="optional">
+  <div class="wrap">
+    <h2>Optional components</h2>
+    <p class="sub">Notch runs without these. Each switches on a feature, and Notch finds it by itself once installed
+      (restart Notch afterwards). Things marked <span class="tag">in the .deb</span> come with the Linux package.</p>
+    <div class="table">
+      <table>
+        <thead><tr><th style="width:24%">Component</th><th style="width:28%">What it adds</th><th>Linux</th><th>Windows</th></tr></thead>
+        <tbody>
+          <tr><td><b>Tesseract OCR</b></td><td class="what">OCR in the Tools menu: text from images and scanned PDFs.</td>
+            <td><code>sudo apt install tesseract-ocr tesseract-ocr-eng</code><br><span class="what">More languages: <code>tesseract-ocr-ind</code>, <code>tesseract-ocr-deu</code>, …</span></td>
+            <td><a class="dl" href="https://github.com/UB-Mannheim/tesseract/wiki">UB Mannheim installer</a><br><span class="what">Tick your languages; add <code>C:\Program Files\Tesseract-OCR</code> to PATH.</span></td></tr>
+          <tr><td><b>Poppler</b></td><td class="what">PDF split, extract, page count, PDF → image, OCR of PDFs.</td>
+            <td><span class="tag">in the .deb</span> <code>poppler-utils</code></td>
+            <td><a class="dl" href="https://github.com/oschwartz10612/poppler-windows/releases/latest">poppler-windows</a><br><span class="what">Unzip; add its <code>Library\bin</code> folder to PATH.</span></td></tr>
+          <tr><td><b>Ghostscript</b></td><td class="what">Compress PDF.</td>
+            <td><span class="tag">in the .deb</span> <code>ghostscript</code></td>
+            <td><a class="dl" href="https://ghostscript.com/releases/gsdnld.html">Ghostscript downloads</a><br><span class="what">64-bit release; its installer adds it to PATH.</span></td></tr>
+          <tr><td><b>KDE Connect</b><br><span class="what">computer + phone</span></td><td class="what">Send to your phone, files from it, incoming calls, phone notifications and a low phone battery in the notch.</td>
+            <td><code>sudo apt install kdeconnect</code><br><span class="what">Phone app: <a class="dl" href="https://play.google.com/store/apps/details?id=org.kde.kdeconnect_tp">Google Play</a> · <a class="dl" href="https://f-droid.org/packages/org.kde.kdeconnect_tp/">F-Droid</a> · <a class="dl" href="https://apps.apple.com/app/kde-connect/id1580245991">App Store</a>. Pair them once.</span></td>
+            <td><span class="tag no">Linux only</span></td></tr>
+          <tr><td><b>KDE Plasma (KWin)</b></td><td class="what">Dock: real running apps, a click raises or minimizes the window, the window list.</td>
+            <td>Part of Plasma</td><td><span class="tag">built in</span></td></tr>
+          <tr><td><b>Plasma blur effect</b></td><td class="what">Frosted-glass blur behind the dock.</td>
+            <td><i>System Settings → Window Management → Desktop Effects → Blur</i></td><td><span class="tag no">–</span></td></tr>
+          <tr><td><b>Spectacle auto-save</b></td><td class="what">Add new screenshots to the shelf.</td>
+            <td>Spectacle → Configure → Save automatically<br><span class="what">Notch has a button that turns it on.</span></td><td><span class="tag">built in</span> Win + PrtSc</td></tr>
+          <tr><td><b>Dolphin · ktrash6</b></td><td class="what">Dock Trash: open and empty it.</td>
+            <td><code>sudo apt install dolphin kio-extras</code><br><span class="what">Part of Plasma.</span></td><td><span class="tag">built in</span> Recycle Bin</td></tr>
+          <tr><td><b>PipeWire / PulseAudio</b> (<code>pactl</code>)</td><td class="what">Equalizer, microphone indicator and mute state.</td>
+            <td><span class="tag">in the .deb</span> <code>pulseaudio-utils</code><br><span class="what">Works with PipeWire.</span></td><td><span class="tag no">–</span></td></tr>
+          <tr><td><b>Noto Serif JP</b></td><td class="what">The Washi theme's serif headings.</td>
+            <td><span class="tag">in the .deb</span> <code>fonts-noto-cjk</code></td>
+            <td><a class="dl" href="https://fonts.google.com/noto/specimen/Noto+Serif+JP">Google Fonts</a> <span class="what">(optional)</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <details class="faq" style="margin-top:14px"><summary>How do I add a folder to PATH on Windows?</summary>
+      <p>Start → type <i>environment variables</i> → <i>Edit the environment variables for your account</i> → select <b>Path</b> →
+        <b>Edit</b> → <b>New</b> → paste the folder → OK. Then restart Notch.</p>
+    </details>
+  </div>
+</section>
+
+<section id="source" style="background:var(--bg2);border-block:1px solid var(--line)">
+  <div class="wrap">
+    <h2>Build from source</h2>
+    <p class="sub">Needs Qt 6.5 or newer (Debian 13, Ubuntu 25.04+). The optional libraries are found automatically.</p>
+    <div class="card">
+      <div class="cmd"><pre>git clone https://github.com/Kepin17/olyzano-notch
+cd olyzano-notch
+# required
+sudo apt install cmake ninja-build g++ libssl-dev qt6-base-dev qt6-base-private-dev qt6-declarative-dev
+# optional
+sudo apt install liblayershellqtinterface-dev   # Wayland: pin the notch and dock to the screen edges
+sudo apt install libkf6windowsystem-dev         # blur behind the dock (KDE Plasma)
+sudo apt install libkf6idletime-dev             # stretch reminder: idle time on Wayland
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build &amp;&amp; ./build/notch
+cd build &amp;&amp; cpack                               # makes notch_&lt;version&gt;_amd64.deb</pre><button class="copy">Copy</button></div>
+      <p class="muted" style="margin:12px 0 0">Windows builds need Qt 6.8 (MSVC 2022), CMake, Ninja and OpenSSL; the exact steps are in
+        <a href="https://github.com/Kepin17/olyzano-notch/blob/main/.github/workflows/windows.yml">windows.yml</a>.</p>
+    </div>
+  </div>
+</section>
+
+<section id="faq" class="faq">
+  <div class="wrap">
+    <h2>Questions</h2>
+    <p class="sub">Short answers; the <a href="https://github.com/Kepin17/olyzano-notch#readme">README</a> has the rest.</p>
+    <details><summary>Where does the notch appear, and how do I open it?</summary>
+      <p>At the top-centre of every monitor. Rest the mouse on the top edge (or drag a file there) and it slides out. When idle it shows a small clock; rest on it to open.</p></details>
+    <details><summary>Where's the dock, and how do I keep apps in it?</summary>
+      <p>On the bottom edge by default (Settings → Dock → Position). It hides until the pointer touches the edge, or switch on <i>Always show</i>. Press <b>+</b> to add apps or folders, right-click an app → <i>Keep in Dock</i>, or drag a running app among the pinned ones.</p></details>
+    <details><summary>Why does a click on a dock app open a new window instead of switching?</summary>
+      <p>Raising existing windows needs KDE Plasma (KWin) on Linux, or Windows. On other desktops the dock can only start apps.</p></details>
+    <details><summary>How does the stretch reminder know I'm working?</summary>
+      <p>It asks the system how long ago you last used the mouse or keyboard. Time with input counts as work; a few minutes away counts as a break. Nothing about what you type is read.</p></details>
+    <details><summary>Windows says "Windows protected your PC". Is it safe?</summary>
+      <p>The build isn't code-signed, so SmartScreen warns about any new download. Click <b>More info → Run anyway</b>. The installer is built by GitHub Actions from this repository's source.</p></details>
+    <details><summary>Where are my files and settings?</summary>
+      <ul><li>Linux: <code>~/.local/share/notch</code> (files) and <code>~/.config/notch</code> (settings).</li><li>Windows: <code>%LOCALAPPDATA%\notch</code>.</li></ul></details>
+  </div>
+</section>
+</main>
 
 <footer>
-  <a href="https://github.com/Kepin17/olyzano-notch">Source and documentation</a> ·
-  <a href="https://github.com/Kepin17/olyzano-notch/releases">All releases</a>
+  <div class="wrap">
+    <span>Notch · open source</span>
+    <span><a href="https://github.com/Kepin17/olyzano-notch">Source &amp; docs</a> · <a href="https://github.com/Kepin17/olyzano-notch/releases">All releases</a> · <a href="https://github.com/Kepin17/olyzano-notch/blob/main/docs/wayland-limitations.md">Wayland notes</a></span>
+  </div>
 </footer>
-</main>
 
 <script>
 (function () {
   var repo = "Kepin17/olyzano-notch";
+  var $ = function (id) { return document.getElementById(id); };
   var ua = navigator.userAgent || "";
   var os = /Windows/i.test(ua) ? "windows" : /Linux|X11/i.test(ua) && !/Android/i.test(ua) ? "linux" : "";
-  var $ = function (id) { return document.getElementById(id); };
-  var releases = "https://github.com/" + repo + "/releases/latest";
 
-  function mb(n) { return (n / 1048576).toFixed(1) + " MB"; }
-  function label(el, text, a) { el.textContent = text + (a ? " (" + mb(a.size) + ")" : ""); }
+  // Light / dark switch (remembered when the browser allows it).
+  var root = document.documentElement;
+  try { var saved = localStorage.getItem("theme"); if (saved) root.dataset.theme = saved; } catch (e) {}
+  $("themeBtn").addEventListener("click", function () {
+    var dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("theme", root.dataset.theme); } catch (e) {}
+  });
 
-  if (os) {
-    $(os).classList.add("me");
-    $("other").textContent = os === "linux" ? "Windows" : "Linux";
-    $("other").href = os === "linux" ? "#windows" : "#linux";
-    $("hero").textContent = "Download for " + (os === "linux" ? "Linux" : "Windows");
-    $("hero").href = "#" + os;
-    $("heroMeta").textContent = "Looking up the latest version…";
+  // Tabs
+  function show(which) {
+    ["linux", "windows"].forEach(function (k) {
+      $("tab-" + k).setAttribute("aria-selected", k === which ? "true" : "false");
+      $("panel-" + k).classList.toggle("on", k === which);
+    });
   }
+  document.querySelectorAll(".tabs button").forEach(function (b) { b.addEventListener("click", function () { show(b.dataset.os); }); });
+  if (os) show(os);
 
+  // Copy buttons
+  document.querySelectorAll(".copy").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var text = b.previousElementSibling.textContent;
+      var done = function () { b.textContent = "Copied"; b.classList.add("done"); setTimeout(function () { b.textContent = "Copy"; b.classList.remove("done"); }, 1500); };
+      if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {});
+    });
+  });
+
+  // The mock notch cycles through what it shows.
+  var states = [
+    { html: '<span>12:33</span><span class="r"><span class="dot" style="background:#8e8e93"></span>🎙 · ▮ 76%</span>', cls: "", cap: "Idle: the time, the microphone and the battery" },
+    { html: '<span>⏱ Focus</span><span class="r" style="color:#3daee9;font-family:ui-monospace,monospace">16:53</span><span class="bar"><i style="width:32%"></i></span>', cls: "wide", cap: "Pomodoro running in the closed notch" },
+    { html: '<span>↓ ubuntu-26.04.iso</span><span class="r">1.2 GB · 8 MB/s</span>', cls: "wide", cap: "A download in progress" },
+    { html: '<span>🧘 Time to stretch</span><span class="r">50 min worked</span><span class="btns"><span>Later</span><span>Skip</span><span class="on">Start break</span></span>', cls: "tall", cap: "The stretch reminder asks; you choose" },
+    { html: '<span><span class="dot" style="background:#3ddc84"></span> Mom</span><span class="r" style="color:#3ddc84">Calling</span>', cls: "wide", cap: "An incoming call from your phone" }
+  ];
+  var i = 0, island = $("island");
+  function step() {
+    var s = states[i++ % states.length];
+    island.className = "island " + s.cls;
+    island.innerHTML = s.html;
+    $("islandCaption").textContent = s.cap;
+  }
+  step();
+  if (!matchMedia("(prefers-reduced-motion: reduce)").matches) setInterval(step, 2800);
+
+  // Newest release: real file links, sizes and commands.
+  function mb(n) { return (n / 1048576).toFixed(1) + " MB"; }
   fetch("https://api.github.com/repos/" + repo + "/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
     .then(function (r) { if (!r.ok) throw 0; return r.json(); })
     .then(function (rel) {
       var find = function (re) { return (rel.assets || []).filter(function (a) { return re.test(a.name); })[0]; };
       var deb = find(/\.deb$/), exe = find(/setup\.exe$/), zip = find(/portable\.zip$/);
       var ver = (rel.tag_name || "").replace(/^v/, "");
-      if (deb) { $("deb").href = deb.browser_download_url; label($("deb"), "Download .deb", deb); $("debCmd").textContent = "sudo apt install ./" + deb.name; }
-      if (exe) { $("exe").href = exe.browser_download_url; label($("exe"), "Download installer", exe); }
-      if (zip) { $("zip").href = zip.browser_download_url; label($("zip"), "Portable .zip", zip); }
+      if (ver) $("verTag").textContent = "v" + ver;
+      if (deb) {
+        $("deb").href = deb.browser_download_url;
+        $("deb").textContent = "⬇ Download .deb (" + mb(deb.size) + ")";
+        $("wgetCmd").textContent = "wget " + deb.browser_download_url;
+        $("debCmd").textContent = "sudo apt install ./" + deb.name;
+      }
+      if (exe) { $("exe").href = exe.browser_download_url; $("exe").textContent = "⬇ Installer (" + mb(exe.size) + ")"; }
+      if (zip) { $("zip").href = zip.browser_download_url; $("zip").textContent = "Portable .zip (" + mb(zip.size) + ")"; }
       var mine = os === "linux" ? deb : os === "windows" ? exe : null;
-      if (mine) $("hero").href = mine.browser_download_url;
-      $("heroMeta").textContent = ver ? "Version " + ver + (mine ? "" : " · no file for your system in this release yet") : "";
+      if (os) $("hero").textContent = "⬇ Download for " + (os === "linux" ? "Linux" : "Windows");
+      $("hero").href = mine ? mine.browser_download_url : "#install";
+      $("heroMeta").textContent = (ver ? "Version " + ver : "") + (mine ? " · " + mine.name + " · " + mb(mine.size)
+                                   : os ? " · no file for your system in this release yet" : "");
     })
     .catch(function () {
-      $("hero").href = os ? "#" + os : releases;
-      $("heroMeta").textContent = os ? "Could not reach GitHub; the buttons below open the releases page." : "";
+      if (os) { $("hero").textContent = "⬇ Download for " + (os === "linux" ? "Linux" : "Windows"); $("hero").href = "#install"; }
     });
 })();
 </script>
