@@ -31,6 +31,7 @@ Window {
     onTrayMenuChanged: if (trayMenu) { quickOpen = false; calOpen = false; menuOpen = -1; trayMore = false; launcherOpen = false; kdeOpen = false }
     onTrayMoreChanged: if (trayMore) { quickOpen = false; calOpen = false; menuOpen = -1; trayMenu = false; launcherOpen = false; kdeOpen = false }
     property bool launcherOpen: false // the app launcher, from the grid button
+    function toggleLauncher() { if (topbar.launcher) launcherOpen = !launcherOpen } // the Super key
     property bool kdeOpen: false // the KDE Connect card, from the phone icon in the tray
     onKdeOpenChanged: if (kdeOpen) { quickOpen = false; calOpen = false; menuOpen = -1; trayMenu = false; trayMore = false; launcherOpen = false }
     Timer { id: kdeCloser; interval: 900; onTriggered: if (!kdeHover.hovered && !kdeIconHover.hovered) root.kdeOpen = false }

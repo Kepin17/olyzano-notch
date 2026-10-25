@@ -2,7 +2,38 @@
 
 #include "platform/AppDock.h"
 
+#include <QProcess>
 #include <QStandardPaths>
+
+#ifdef NOTCH_HAVE_DBUS
+#include <QDBusConnection>
+#include <QDBusMessage>
+#endif
+
+namespace {
+// What KWin reads for a lone press of the Windows key: service, path, interface, method.
+const QString NotchKey = QStringLiteral("org.olyzano.Notch,/Launcher,org.olyzano.Notch,toggle");
+
+QString kwinMeta()
+{
+    QProcess p;
+    p.start(QStringLiteral("kreadconfig6"), {QStringLiteral("--file"), QStringLiteral("kwinrc"), QStringLiteral("--group"), QStringLiteral("ModifierOnlyShortcuts"), QStringLiteral("--key"), QStringLiteral("Meta")});
+    p.waitForFinished(1500);
+    return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+}
+void writeKwinMeta(const QString &value) // empty: back to KWin's own default (Plasma's launcher)
+{
+    QStringList args{QStringLiteral("--file"), QStringLiteral("kwinrc"), QStringLiteral("--group"), QStringLiteral("ModifierOnlyShortcuts"), QStringLiteral("--key"), QStringLiteral("Meta")};
+    if (value.isEmpty())
+        args << QStringLiteral("--delete");
+    else
+        args << value;
+    QProcess::execute(QStringLiteral("kwriteconfig6"), args);
+#ifdef NOTCH_HAVE_DBUS
+    QDBusConnection::sessionBus().send(QDBusMessage::createMethodCall(QStringLiteral("org.kde.KWin"), QStringLiteral("/KWin"), QStringLiteral("org.kde.KWin"), QStringLiteral("reconfigure")));
+#endif
+}
+}
 
 Launcher::Launcher(AppDock *dock, QObject *parent)
     : QObject(parent)
@@ -15,6 +46,38 @@ Launcher::Launcher(AppDock *dock, QObject *parent)
     for (const QString &k : m_settings.childKeys())
         m_uses.insert(QString::fromUtf8(QByteArray::fromPercentEncoding(k.toUtf8())), m_settings.value(k).toInt());
     m_settings.endGroup();
+#ifdef NOTCH_HAVE_DBUS
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (bus.isConnected() && bus.registerService(QStringLiteral("org.olyzano.Notch")))
+        bus.registerObject(QStringLiteral("/Launcher"), this, QDBusConnection::ExportScriptableSlots);
+#endif
+}
+
+bool Launcher::superKeyAvailable() const
+{
+#ifdef NOTCH_HAVE_DBUS
+    return !QStandardPaths::findExecutable(QStringLiteral("kwriteconfig6")).isEmpty() && !QStandardPaths::findExecutable(QStringLiteral("kreadconfig6")).isEmpty();
+#else
+    return false;
+#endif
+}
+
+bool Launcher::superKey() const
+{
+    return superKeyAvailable() && kwinMeta() == NotchKey;
+}
+
+void Launcher::setSuperKey(bool on)
+{
+    if (!superKeyAvailable() || on == superKey())
+        return;
+    if (on) {
+        m_settings.setValue(QStringLiteral("previousMeta"), kwinMeta()); // empty = Plasma's own default
+        writeKwinMeta(NotchKey);
+    } else {
+        writeKwinMeta(m_settings.value(QStringLiteral("previousMeta")).toString());
+    }
+    emit superKeyChanged();
 }
 
 QVariantList Launcher::all()

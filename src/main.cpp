@@ -293,6 +293,15 @@ int main(int argc, char *argv[])
     // And a status bar along the top of each monitor (Settings → Panel). Created before the notch, so the notch draws above it.
     QQmlComponent barWindow(&engine, "Notch", "Bar");
     QHash<QScreen *, QQuickWindow *> bars;
+    QObject::connect(&launcher, &Launcher::toggleRequested, &app, [&bars] { // the Super key: on the screen the pointer is on
+        QQuickWindow *target = nullptr;
+        const QScreen *at = QGuiApplication::screenAt(QCursor::pos());
+        for (auto it = bars.cbegin(); it != bars.cend(); ++it)
+            if (it.key() == at || !target)
+                target = it.value();
+        if (target)
+            QMetaObject::invokeMethod(target, "toggleLauncher");
+    });
     auto addScreen = [&](QScreen *screen) {
         if (auto *bar = qobject_cast<QQuickWindow *>(barWindow.create())) {
             bar->setScreen(screen);

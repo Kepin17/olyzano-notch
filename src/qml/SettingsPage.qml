@@ -787,6 +787,13 @@ RowLayout {
                 visible: topbar.enabled
                 title: "App launcher"
                 SettingToggle { title: "Show the launcher button"; caption: "A grid button at the left end of the bar: search and open any app."; checked: topbar.launcher; onToggled: topbar.launcher = !topbar.launcher }
+                SettingToggle {
+                    visible: launcher.superKeyAvailable
+                    title: "Open with the Windows key"
+                    caption: "A tap on the Windows (Super) key opens this launcher instead of Plasma's. Turn it off to get Plasma's back."
+                    checked: launcher.superKey
+                    onToggled: launcher.superKey = !launcher.superKey
+                }
                 SectionLabel { text: "Show apps as" }
                 Row {
                     spacing: 6
