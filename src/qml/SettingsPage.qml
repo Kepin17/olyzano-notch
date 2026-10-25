@@ -27,13 +27,14 @@ RowLayout {
         ["files", "Files", "folder", "How long files stay, where they go and what is added by itself."],
         ["dock", "Dock", "dock", "The app dock at the edge of the screen."],
         ["sharing", "Sharing & Nearby", "share", "Servers for Share via QR, and the name other computers see."],
-        ["wellbeing", "Wellbeing", "heart", "Break and eye reminders."]
+        ["wellbeing", "Wellbeing", "heart", "Break and eye reminders."],
+        ["about", "About", "info", "Version, author, links and support."]
     ]
     // What a search can find: section, setting, words that also describe it.
     readonly property var index: [
         ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
         ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Sounds", "sound effects volume quiet mute"],
-        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha"], ["appearance", "Light or dark", "brightness dark light system mode"],
+        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"],
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
         ["panel", "Transparency and blur", "glass opacity bar"], ["panel", "What the bar shows", "app name date seconds battery percentage"],
         ["panel", "Quick Settings", "wifi bluetooth volume brightness power click hover"],
@@ -822,6 +823,97 @@ RowLayout {
                 Caption {
                     Layout.fillWidth: true
                     text: "Click the clock on the bar to open it."
+                }
+            }
+        }
+
+        ColumnLayout {
+            visible: settingsScroll.category === "about"
+            Layout.fillWidth: true
+            spacing: 16
+
+            SettingCard {
+                title: "Olyzano Notch"
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 14
+                    Image {
+                        Layout.preferredWidth: 56; Layout.preferredHeight: 56
+                        source: "icons/notch.png"
+                        sourceSize: Qt.size(112, 112)
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Text { text: "Olyzano Notch"; color: theme.text; font.pixelSize: 17; font.weight: Font.DemiBold }
+                        Text { text: "Version " + Qt.application.version; color: theme.textDim; font.pixelSize: 12 }
+                        Text { text: "A Dynamic-Island style notch for your files, music and desktop."; color: theme.textDim; font.pixelSize: 12; wrapMode: Text.Wrap; Layout.fillWidth: true }
+                    }
+                }
+            }
+
+            SettingCard {
+                title: "Author"
+                RowLayout {
+                    Layout.fillWidth: true
+                    Text { text: "Made by"; color: theme.textDim; font.pixelSize: 12 }
+                    Text { text: "Kevien.OJ (Kepin17)"; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium }
+                    Item { Layout.fillWidth: true }
+                    Text { text: "MIT License"; color: theme.textDim; font.pixelSize: 12 }
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    PillButton { text: "Web demo"; iconName: "external"; checked: true; onClicked: Qt.openUrlExternally("https://kepin17.github.io/olyzano-notch/") }
+                    PillButton { text: "Source code"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch") }
+                    PillButton { text: "Releases"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/releases") }
+                    PillButton { text: "Report a problem"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/issues") }
+                }
+            }
+
+            SettingCard {
+                title: "Buy me a coffee"
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 16
+                    Rectangle { // a white mat around the code, so it scans in dark themes too
+                        Layout.preferredWidth: 156; Layout.preferredHeight: 156
+                        radius: 10
+                        color: "white"
+                        Image {
+                            anchors.centerIn: parent
+                            width: 144; height: 144
+                            source: "images/traktir.jpeg"
+                            sourceSize: Qt.size(288, 288)
+                            fillMode: Image.PreserveAspectFit
+                            smooth: true
+                        }
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Text { text: "Enjoying Olyzano Notch?"; color: theme.text; font.pixelSize: 14; font.weight: Font.DemiBold }
+                        Text {
+                            Layout.fillWidth: true
+                            text: "It is free and open source. If it helps you, you can buy me a coffee: scan the QR code with your banking or e-wallet app. Thank you!"
+                            color: theme.textDim; font.pixelSize: 12; wrapMode: Text.Wrap
+                        }
+                    }
+                }
+            }
+
+            SettingCard {
+                title: "Problems?"
+                RowLayout {
+                    Layout.fillWidth: true
+                    Caption { Layout.fillWidth: true; text: "Copy the version and system details to paste into a bug report." }
+                    PillButton {
+                        text: "Copy details"
+                        iconName: "copy"
+                        onClicked: notch.copyText("Olyzano Notch " + Qt.application.version + " · " + Qt.platform.os + " · " + Qt.platform.pluginName)
+                    }
                 }
             }
         }

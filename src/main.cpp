@@ -393,12 +393,15 @@ int main(int argc, char *argv[])
     // `notch --shot-settings file.png [section]`: the open Settings page, the same way.
     if (const int i = app.arguments().indexOf(QStringLiteral("--shot-settings")); i >= 0 && i + 1 < app.arguments().size()) {
         const QString path = app.arguments().at(i + 1);
-        QTimer::singleShot(1200, &app, [&windows, &app, path] {
+        const QString section = i + 2 < app.arguments().size() && !app.arguments().at(i + 2).startsWith(QLatin1String("--")) ? app.arguments().at(i + 2) : QString();
+        QTimer::singleShot(1200, &app, [&windows, &app, path, section] {
             QQuickWindow *w = windows.isEmpty() ? nullptr : windows.constBegin().value();
             if (!w)
                 return app.quit();
             w->setProperty("pinned", true);
             w->setProperty("page", QStringLiteral("settings"));
+            if (!section.isEmpty())
+                QMetaObject::invokeMethod(w, "debugSettings", Q_ARG(QVariant, section));
             QTimer::singleShot(1500, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
         });
     }

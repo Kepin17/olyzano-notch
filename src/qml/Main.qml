@@ -247,6 +247,7 @@ Window {
         return null
     }
 
+    function debugSettings(section) { settingsPage.category = section } // `notch --shot-settings file.png <section>`
     function debugShare() { sharePopup.openFor([]) } // `notch --shot-page file.png share`: the share window, for a picture
     function showShares() {
         pinned = true // opens the panel and keeps it while the shares are looked at
