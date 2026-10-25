@@ -32,14 +32,14 @@ Tested on Kubuntu 26.04 (Qt 6.10, KDE Plasma on Wayland).
 **[latest release](https://github.com/Kepin17/olyzano-notch/releases/latest)**, or from a terminal:
 
 ```bash
-wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.9.3/notch_0.9.3_amd64.deb
+wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.10.0/notch_0.10.0_amd64.deb
 ```
 
 **2. Install** it. `apt` pulls in everything it needs (Qt 6 runtime, `layer-shell-qt`, Poppler, Ghostscript,
 `gocryptfs`, `fuse3`, `pulseaudio-utils`, …):
 
 ```bash
-sudo apt install ./notch_0.9.3_amd64.deb
+sudo apt install ./notch_0.10.0_amd64.deb
 ```
 
 **3. Start** **Olyzano Notch** from the application menu, or turn on **Settings → General → Start at login**.
