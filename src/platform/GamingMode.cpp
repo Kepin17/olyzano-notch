@@ -1,5 +1,7 @@
 #include "platform/GamingMode.h"
 
+#include "models/FileItem.h"
+
 #include <QStandardPaths>
 
 #ifdef Q_OS_WIN
@@ -30,8 +32,11 @@ void GamingMode::apply(const GamingModel &next)
 {
     const bool same = next.enabled == m_state.enabled && next.fullScreen == m_state.fullScreen;
     m_state = next;
-    if (!same)
+    if (!same) {
+        qCInfo(lcNotch) << "Gaming mode: switch" << (m_state.enabled ? "on" : "off") << "- full-screen app in front:"
+                        << (m_state.fullScreen ? "yes" : "no") << "- Notch kept away:" << (m_state.active() ? "yes" : "no");
         emit changed();
+    }
 }
 
 void GamingMode::setEnabled(bool on)
