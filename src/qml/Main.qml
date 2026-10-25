@@ -1817,7 +1817,7 @@ Window {
                     } else {
                         dwellTimer.restart()
                     }
-                } else if (!hovered) {
+                } else if (!hovered && !edgeHover.hovered) {
                     dwellTimer.stop()
                     root.dwelled = false
                 }
@@ -1869,7 +1869,7 @@ Window {
             onHoveredChanged: {
                 if (hovered) {
                     dwellTimer.restart()
-                } else {
+                } else if (!islandHover.hovered) { // sliding down from the strip into the capsule is not leaving
                     dwellTimer.stop()
                     root.dwelled = false
                 }
