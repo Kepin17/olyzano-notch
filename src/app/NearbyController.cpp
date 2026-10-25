@@ -87,6 +87,20 @@ int NearbyController::activeCount() const
     return n;
 }
 
+QVariantMap NearbyController::activity() const
+{
+    for (const QString &id : m_ids) {
+        const QVariantMap t = m_service.transfer(id);
+        if (!isActive(t.value(QStringLiteral("state")).toString()))
+            continue;
+        // "progress" is already a fraction; before bytes move (connecting, waiting for accept) there is none.
+        return {{QStringLiteral("direction"), t.value(QStringLiteral("direction"))},
+                {QStringLiteral("peer"), t.value(QStringLiteral("peer"))},
+                {QStringLiteral("progress"), t.contains(QStringLiteral("progress")) ? t.value(QStringLiteral("progress")).toDouble() : -1.0}};
+    }
+    return {};
+}
+
 void NearbyController::setDeviceName(const QString &name)
 {
     const QString clean = name.trimmed().left(60);

@@ -65,8 +65,105 @@ Window {
                                       : toast.kind === "lowbattery" ? theme.danger
                                       : toast.kind === "media" ? theme.media
                                       : toast.kind === "file" ? theme.info
+                                      : toast.kind === "timer" ? theme.accent
+                                      : toast.kind === "call" || toast.kind === "phone" ? theme.success
                                       : toast.kind === "color" ? toast.detail : theme.textDim
-    readonly property string mode: open ? "open" : toast ? "toast" : notch.copying > 0 ? "peek" : "hidden"
+    readonly property string mode: open ? "open" : toast ? "toast" : live ? "peek" : "hidden"
+
+    // ---- Live activities: what's going on, shown in the closed notch (most important first) ----
+    property var call: null // {who, device} while the phone rings
+    Timer { id: callTimer; interval: 45000; onTriggered: root.call = null }
+    property double liveNow: 0
+    Timer {
+        interval: 500
+        repeat: true
+        running: activities.timerKind !== "" && !root.open
+        triggeredOnStart: true
+        onTriggered: root.liveNow = activities.timerMs()
+    }
+    function clock(ms) {
+        const total = Math.round(ms / 1000)
+        const h = Math.floor(total / 3600), m = Math.floor(total / 60) % 60, s = total % 60
+        const two = n => (n < 10 ? "0" : "") + n
+        return (h > 0 ? h + ":" + two(m) : two(m)) + ":" + two(s)
+    }
+    function formatBytes(b) {
+        return b >= 1073741824 ? (b / 1073741824).toFixed(1) + " GB" : b >= 1048576 ? (b / 1048576).toFixed(1) + " MB"
+             : Math.max(1, Math.round(b / 1024)) + " KB"
+    }
+    // {kind, title, detail, progress (0-1, -1 none), color}
+    readonly property var live: {
+        if (call)
+            return { kind: "call", title: call.who, detail: "Calling", progress: -1, color: theme.success }
+        if (activities.timerKind !== "") {
+            const total = activities.timerTotalMs
+            return { kind: "timer", title: activities.timerLabel + (activities.timerRunning ? "" : " · paused"),
+                     detail: clock(liveNow), progress: total > 0 ? 1 - liveNow / total : -1,
+                     color: activities.timerLabel === "Break" ? theme.success : theme.accent }
+        }
+        const t = nearby.activity
+        if (t && t.peer !== undefined)
+            return { kind: "transfer", title: (t.direction === "out" ? "Sending to " : "Receiving from ") + t.peer,
+                     detail: t.progress >= 0 ? Math.round(t.progress * 100) + "%" : "", progress: t.progress, color: theme.info }
+        const downloads = activities.downloads
+        if (downloads.length > 0) {
+            const d = downloads[0]
+            return { kind: "download", title: d.name, progress: -1, color: theme.info,
+                     detail: formatBytes(d.bytes) + (d.speed > 1024 ? " · " + formatBytes(d.speed) + "/s" : "")
+                             + (downloads.length > 1 ? " · +" + (downloads.length - 1) : "") }
+        }
+        if (notch.copying > 0)
+            return { kind: "copy", title: "Copying " + notch.copying + (notch.copying === 1 ? " file" : " files"),
+                     detail: String(notch.count), progress: -1, color: theme.accent }
+        return null
+    }
+
+    function showToast(kind, title, detail, icon, ms) {
+        if (root.open) {
+            root.infoText = title + (detail ? " · " + detail : "")
+            infoTimer.restart()
+            return
+        }
+        root.toast = { kind: kind, title: title, detail: detail, icon: icon, art: "", level: -1 }
+        toastTimer.interval = ms || 3600
+        toastTimer.restart()
+    }
+    Connections {
+        target: activities
+        function onTimerFinished(title, detail) { root.showToast("timer", title, detail, "chronometer", 6000) }
+    }
+    property var phoneLowWarned: ({})
+    Connections {
+        target: kdeconnect
+        function onPhoneCall(event, who, device) {
+            if (!activities.phoneAlerts)
+                return
+            if (event === "ringing") {
+                root.call = { who: who, device: device }
+                callTimer.restart()
+                return
+            }
+            root.call = null
+            if (event === "missedCall")
+                root.showToast("call", "Missed call", who, "smartphone", 6000)
+        }
+        function onPhoneNotification(app, title, text, device) {
+            if (activities.phoneAlerts && (title || text))
+                root.showToast("phone", title || app, text || app, "smartphone", 4500)
+        }
+        function onPhoneBattery(charge, charging, device) {
+            if (!activities.phoneAlerts)
+                return
+            const warned = root.phoneLowWarned
+            if (charging || charge > 20) {
+                warned[device] = false
+            } else if (charge <= 15 && !warned[device]) {
+                warned[device] = true
+                root.showToast("lowbattery", device + " battery low", charge + "%", "smartphone", 5000)
+            }
+            root.phoneLowWarned = warned
+        }
+    }
 
     Timer { id: toastTimer; interval: 3200; onTriggered: root.toast = null }
     Connections {
@@ -348,7 +445,7 @@ Window {
     Item {
         id: island
         x: (root.width - width) / 2
-        width: root.mode === "open" ? root.openWidth : root.mode === "toast" ? 380 : root.mode === "peek" ? 230 : 150
+        width: root.mode === "open" ? root.openWidth : root.mode === "toast" ? 380 : root.mode === "peek" ? (root.live && root.live.kind !== "copy" ? 320 : 230) : 150
         height: root.mode === "open" ? panel.implicitHeight + (root.dragOver ? 8 : 0)
               : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : 0
         focus: true
@@ -567,25 +664,61 @@ Window {
             }
         }
 
-        // Peek: compact copy-progress pill.
+        // Peek: the live activity (call, timer, transfer, download, copy) as a compact pill.
         RowLayout {
+            id: liveRow
+            readonly property var l: root.live || ({ kind: "", title: "", detail: "", progress: -1, color: theme.accent })
             anchors.fill: parent
             anchors.leftMargin: island.shoulder + 16
             anchors.rightMargin: island.shoulder + 16
+            anchors.bottomMargin: liveRow.l.progress >= 0 ? 4 : 0
             spacing: 8
             opacity: root.mode === "peek" && island.height > 24 ? 1 : 0
             visible: opacity > 0
             Behavior on opacity { NumberAnimation { duration: 160 } }
-            PulseDot {}
+            PulseDot {
+                visible: liveRow.l.kind === "copy" || liveRow.l.kind === "call"
+                color: liveRow.l.color
+            }
+            Text {
+                visible: !(liveRow.l.kind === "copy" || liveRow.l.kind === "call")
+                text: liveRow.l.kind === "timer" ? "⏱" : liveRow.l.kind === "download" ? "↓" : "⇄"
+                color: liveRow.l.color
+                font.pixelSize: 13
+                font.weight: Font.Bold
+            }
             Text {
                 Layout.fillWidth: true
-                text: "Copying " + notch.copying + (notch.copying === 1 ? " file" : " files")
+                text: liveRow.l.title
                 color: root.textPrimary
                 font.pixelSize: 12
                 font.weight: Font.Medium
                 elide: Text.ElideRight
             }
-            Text { text: notch.count; color: root.textSecondary; font.pixelSize: 12 }
+            Text {
+                text: liveRow.l.detail
+                color: liveRow.l.kind === "timer" || liveRow.l.kind === "call" ? liveRow.l.color : root.textSecondary
+                font.pixelSize: 12
+                font.weight: liveRow.l.kind === "timer" ? Font.DemiBold : Font.Normal
+                font.family: liveRow.l.kind === "timer" ? "monospace" : Qt.application.font.family
+            }
+        }
+        // Its progress, as a hairline along the bottom of the pill.
+        Rectangle {
+            visible: root.mode === "peek" && island.height > 24 && liveRow.l.progress >= 0
+            x: island.shoulder + 18
+            y: island.height - 6
+            width: Math.max(0, island.width - 2 * (island.shoulder + 18))
+            height: 2
+            radius: 1
+            color: theme.surface
+            Rectangle {
+                width: parent.width * Math.max(0, Math.min(1, liveRow.l.progress))
+                height: parent.height
+                radius: 1
+                color: liveRow.l.color
+                Behavior on width { NumberAnimation { duration: 400 } }
+            }
         }
 
         // Open: full panel. Fixed width, centered and clipped so it doesn't reflow mid-spring.
@@ -621,7 +754,8 @@ Window {
                         Layout.maximumWidth: 300
                         text: root.selecting ? root.selection.length + " selected"
                             : root.page === "settings" ? "Settings" : root.page === "preview" ? root.preview.name
-                            : root.page === "note" ? (root.noteId !== "" ? "Edit note" : "New note") : "Notch"
+                            : root.page === "note" ? (root.noteId !== "" ? "Edit note" : "New note")
+                            : root.page === "timer" ? "Timer" : "Notch"
                         color: root.textPrimary
                         font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
                         font.pixelSize: 15
@@ -771,6 +905,13 @@ Window {
                         checked: true
                         Accessible.name: "Save note"
                         onClicked: root.saveNote()
+                    }
+                    IconButton {
+                        visible: root.page === "shelf" && !root.selecting
+                        iconName: "timer"
+                        checked: activities.timerKind !== ""
+                        Accessible.name: "Timer and Pomodoro"
+                        onClicked: root.page = "timer"
                     }
                     // Everything being shared (and what just finished): always reachable, even after the popup was closed.
                     IconButton {
@@ -1323,6 +1464,25 @@ Window {
                     maximumLineCount: 2
                 }
 
+                TimerPage {
+                    shell: root
+                }
+
+                // Who is using the microphone or a camera right now (the dots by the closed notch, spelled out).
+                Text {
+                    visible: root.page === "shelf" && activities.privacyIndicators
+                             && (activities.micApps.length > 0 || activities.cameraApps.length > 0)
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 12
+                    text: (activities.cameraApps.length > 0 ? "● Camera: " + activities.cameraApps.join(", ") : "")
+                          + (activities.cameraApps.length > 0 && activities.micApps.length > 0 ? "    " : "")
+                          + (activities.micApps.length > 0 ? "● Microphone: " + activities.micApps.join(", ") : "")
+                    color: activities.cameraApps.length > 0 ? theme.success : theme.warn
+                    font.pixelSize: 11
+                    elide: Text.ElideRight
+                }
+
                 NotePage {
                     id: notePage
                     shell: root
@@ -1392,6 +1552,25 @@ Window {
                     root.dragLive = false
                 }
             }
+        }
+    }
+
+    // Privacy dots, like iOS / macOS: green while a camera is on, orange while the microphone records.
+    // Beside the notch at the top edge, shown even while it's closed. Visual only.
+    Row {
+        visible: activities.privacyIndicators && root.mode !== "open"
+        x: root.width / 2 + Math.max(island.width, 44) / 2 + 6
+        y: 3
+        spacing: 4
+        Rectangle {
+            visible: activities.cameraApps.length > 0
+            width: 7; height: 7; radius: 3.5
+            color: "#30d158"
+        }
+        Rectangle {
+            visible: activities.micApps.length > 0
+            width: 7; height: 7; radius: 3.5
+            color: "#ff9f0a"
         }
     }
 
