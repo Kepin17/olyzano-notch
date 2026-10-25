@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
-<title>Notch share</title>
+<title>Olyzano Notch share</title>
 <style>
   :root {
     color-scheme: light dark;
@@ -140,7 +140,7 @@
     </div>
     <div class="hint" id="hint" hidden></div>
   </div>
-  <footer>Shared with Notch</footer>
+  <footer>Shared with Olyzano Notch</footer>
 </div>
 <script id="share-data" type="application/json">null</script>
 <script>
@@ -384,15 +384,15 @@ const S = { backend: null, files: [], rows: [], selected: new Set(), cache: new 
 
 function setHead(title, ...sub) {
   $("title").textContent = title;
-  document.title = "Notch · " + title;
+  document.title = "Olyzano Notch · " + title;
   $("sub").replaceChildren(...sub.filter(Boolean));
 }
 function show(...nodes) { $("view").replaceChildren(...nodes); $("bar").hidden = true; }
 
 function stateCard(icon, title, text, button) {
   clearInterval(S.timer);
-  $("title").textContent = "Notch share";
-  document.title = "Notch share";
+  $("title").textContent = "Olyzano Notch share";
+  document.title = "Olyzano Notch share";
   $("sub").replaceChildren();
   show(h("div", { class: "card" }, h("div", { class: "badge" }, svg(icon)), h("h2", { text: title }), h("p", { text }), button));
 }
@@ -510,7 +510,7 @@ async function downloadMany(indices) {
       done += S.files[i].size;
       entries.push({ name: S.files[i].name, blob, size: blob.size, crc: crc32(new Uint8Array(await blob.arrayBuffer())) });
     }
-    save(makeZip(entries), "Notch share.zip");
+    save(makeZip(entries), "Olyzano Notch share.zip");
     for (const i of indices) setAct(i, "done");
   } catch (e) { if (e.code === "gone") showError("gone"); else { $("hint").hidden = false; $("hint").className = "hint warn"; $("hint").textContent = "Something went wrong. Try again, or download the files one by one."; } }
   fill.style.width = "0"; S.busy = false; refreshBar();

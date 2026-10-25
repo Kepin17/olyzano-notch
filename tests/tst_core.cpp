@@ -16,6 +16,8 @@
 #include "platform/PlayerSelection.h"
 #include "platform/WinPrivacy.h"
 #include "platform/MediaNames.h"
+#include "platform/NotificationFilter.h"
+#include "platform/SoundsModel.h"
 #include "platform/AudioBands.h"
 #include "platform/DockModel.h"
 #include "platform/WellbeingModel.h"
@@ -40,6 +42,7 @@
 #include <QTcpSocket>
 #include <QTemporaryDir>
 #include <QTest>
+#include <QtEndian>
 #include <QUuid>
 
 #ifdef Q_OS_WIN
@@ -457,6 +460,81 @@ private slots:
         QCOMPARE(MediaNames::processName(QStringLiteral("MSEdge")), QStringLiteral("msedge"));
         QCOMPARE(MediaNames::processName(QStringLiteral("308046B0AF4A39CB")), QStringLiteral("firefox"));
         QCOMPARE(MediaNames::processName(QStringLiteral("Spotify.exe")), QStringLiteral("spotify"));
+    }
+
+    void soundRules()
+    {
+        using namespace SoundsModel;
+        QCOMPARE(groupOf(QStringLiteral("drop")), Shelf);
+        QCOMPARE(groupOf(QStringLiteral("break-over")), Timer);
+        QCOMPARE(groupOf(QStringLiteral("ring")), Phone);
+        QCOMPARE(groupOf(QStringLiteral("plug-out")), System);
+        QCOMPARE(groupOf(QStringLiteral("nope")), Unknown);
+
+        State s;
+        QVERIFY(shouldPlay(QStringLiteral("drop"), s));
+        QVERIFY(!shouldPlay(QStringLiteral("nope"), s));
+        s.enabled = false;
+        QVERIFY(!shouldPlay(QStringLiteral("drop"), s));
+        s = State();
+        s.groupOn = false;
+        QVERIFY(!shouldPlay(QStringLiteral("drop"), s));
+        s = State();
+        s.sinceSameMs = 120; // the same event seen by a second screen's notch
+        QVERIFY(!shouldPlay(QStringLiteral("notify"), s));
+        s.sinceSameMs = 900;
+        QVERIFY(shouldPlay(QStringLiteral("notify"), s));
+        s = State();
+        s.micInUse = true; // in a call: nothing, not even another call
+        QVERIFY(!shouldPlay(QStringLiteral("notify"), s));
+        QVERIFY(!shouldPlay(QStringLiteral("ring"), s));
+        s = State();
+        s.fullScreen = true; // a video: only a call gets through
+        QVERIFY(!shouldPlay(QStringLiteral("timer"), s));
+        QVERIFY(shouldPlay(QStringLiteral("ring"), s));
+        s.quietWhenBusy = false;
+        QVERIFY(shouldPlay(QStringLiteral("timer"), s));
+    }
+
+    // The files tools/make_sounds.py wrote: one per sound, short mono 16-bit PCM.
+    void soundFiles()
+    {
+        const QStringList names = {"drop", "receive", "send", "ring", "notify", "timer", "stretch", "break-over",
+                                   "plug-in", "plug-out", "device", "warning", "trash", "pick"};
+        for (const QString &name : names) {
+            QVERIFY2(SoundsModel::groupOf(name) != SoundsModel::Unknown, qPrintable(name));
+            QFile f(QStringLiteral(NOTCH_SOURCE_DIR "/src/qml/sounds/") + name + QStringLiteral(".wav"));
+            QVERIFY2(f.open(QIODevice::ReadOnly), qPrintable(name));
+            const QByteArray wav = f.readAll();
+            QVERIFY(wav.size() > 44);
+            QCOMPARE(wav.mid(0, 4), QByteArray("RIFF"));
+            QCOMPARE(wav.mid(8, 4), QByteArray("WAVE"));
+            QCOMPARE(qFromLittleEndian<quint16>(wav.constData() + 20), quint16(1));  // PCM
+            QCOMPARE(qFromLittleEndian<quint16>(wav.constData() + 22), quint16(1));  // mono
+            QCOMPARE(qFromLittleEndian<quint16>(wav.constData() + 34), quint16(16)); // bits
+            const quint32 rate = qFromLittleEndian<quint32>(wav.constData() + 24);
+            const qsizetype data = wav.indexOf("data", 12);
+            QVERIFY(data > 0);
+            const quint32 bytes = qFromLittleEndian<quint32>(wav.constData() + data + 4);
+            const double seconds = bytes / 2.0 / rate;
+            QVERIFY2(seconds > 0.05 && seconds < 1.5, qPrintable(name));
+        }
+    }
+
+    void notificationFilter()
+    {
+        NotificationFilter f;
+        QVERIFY(f.accept(QStringLiteral("Slack"), QStringLiteral("John"), {}, 1000));
+        QVERIFY(!f.accept(QStringLiteral("Slack"), QStringLiteral("John"), {}, 1500)); // posted twice
+        QVERIFY(f.accept(QStringLiteral("Slack"), QStringLiteral("John"), {}, 4000));  // a new one later
+        QVERIFY(f.accept(QStringLiteral("Slack"), QStringLiteral("Mary"), {}, 4100));
+        QVERIFY(!f.accept(QStringLiteral("Notch"), QStringLiteral("x"), {}, 5000));
+        QVERIFY(!f.accept(QStringLiteral("Olyzano Notch"), QStringLiteral("x"), {}, 5000));
+        QVERIFY(!f.accept(QStringLiteral("KDE Connect"), QStringLiteral("Mom"), {}, 5000));
+        QVERIFY(!f.accept(QStringLiteral("kdeconnect.app"), QStringLiteral("Mom"), {}, 5000));
+        QVERIFY(!f.accept(QString(), QString(), {}, 5000));
+        QVERIFY(!f.accept(QStringLiteral("Discord"), QStringLiteral("hi"), {QStringLiteral("discord")}, 5000));
+        QVERIFY(f.accept(QStringLiteral("Discord"), QStringLiteral("hi"), {QStringLiteral("Slack")}, 5000));
     }
 
     void lowBatteryThresholds()

@@ -195,7 +195,7 @@ QString decryptFiles(const QString &inPath, const QString &outDir, const QByteAr
         return QStringLiteral("cannot read the file");
     const QByteArray header = in.read(HeaderSize);
     if (header.size() != HeaderSize || !header.startsWith(Magic))
-        return QStringLiteral("not a Notch share");
+        return QStringLiteral("not a Olyzano Notch share");
     const QByteArray prefix = header.mid(4, PrefixSize);
     const quint32 chunk = qFromBigEndian<quint32>(header.constData() + 4 + PrefixSize);
     if (chunk == 0 || chunk > (16u << 20))

@@ -4,6 +4,7 @@
 #include "services/NearbyService.h"
 
 #include <QAbstractListModel>
+#include <QSet>
 #include <QSettings>
 #include <QTimer>
 
@@ -70,6 +71,7 @@ signals:
     void countChanged();
     // Someone wants to send you files: ask. `files`: [{name, size}].
     void transferUpdated(const QString &transferId, const QString &state); // lets a request popup close itself
+    void transferDone(const QString &direction); // once per transfer: "in" or "out"
     void incomingRequest(const QString &transferId, const QString &from, const QVariantList &files, double total,
                          const QString &code, bool lowDisk);
 
@@ -81,6 +83,7 @@ private:
     QSettings m_settings;
     NearbyService m_service;
     QStringList m_ids; // transfers, newest first
+    QSet<QString> m_finished; // transfers whose "done" was announced
     QVariantList m_devices;
     QHash<QString, qint64> m_seen; // device id -> last heard (epoch seconds)
     QTimer m_scan;

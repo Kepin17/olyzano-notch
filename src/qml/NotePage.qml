@@ -140,7 +140,7 @@ ColumnLayout {
 
     Caption {
         Layout.fillWidth: true
-        text: (shell.noteId !== "" ? "Saving updates this file in Notch" : "Saved as " + shell.noteFileName())
+        text: (shell.noteId !== "" ? "Saving updates this file in Olyzano Notch" : "Saved as " + shell.noteFileName())
               + " · Ctrl+S to save · Esc to go back (draft is kept)"
     }
 }

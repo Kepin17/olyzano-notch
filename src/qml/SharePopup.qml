@@ -141,7 +141,7 @@ Popup {
         Caption {
             Layout.fillWidth: true
             visible: nearby.receiving
-            text: "Visible to Notch computers on this network as “" + nearby.deviceName + "”. Whoever sends to you needs your OK."
+            text: "Visible to Olyzano Notch computers on this network as “" + nearby.deviceName + "”. Whoever sends to you needs your OK."
         }
         Caption {
             Layout.fillWidth: true
@@ -181,10 +181,10 @@ Popup {
             Caption {
                 Layout.fillWidth: true
                 text: pop.mode === "nearby"
-                      ? "Send to a computer running Notch on this network. They press Receive, you both compare a 4-digit code, and they press Accept. Files are encrypted on the way."
+                      ? "Send to a computer running Olyzano Notch on this network. They press Receive, you both compare a 4-digit code, and they press Accept. Files are encrypted on the way."
                       : pop.mode === "local"
-                      ? "Your computer serves the files to phones on the same WiFi. Not encrypted, and it works only while Notch runs."
-                        + (notch.platform === "windows" ? " The first time, Windows asks to let Notch through its firewall: allow it on private networks." : "")
+                      ? "Your computer serves the files to phones on the same WiFi. Not encrypted, and it works only while Olyzano Notch runs."
+                        + (notch.platform === "windows" ? " The first time, Windows asks to let Olyzano Notch through its firewall: allow it on private networks." : "")
                       : share.relayConfigured
                         ? "Encrypted here, then stored on your server. The server cannot read it, and your computer can be switched off."
                         : "Set up your server in Settings → Sharing first."
@@ -226,7 +226,7 @@ Popup {
                 Caption {
                     Layout.fillWidth: true
                     visible: !nearby.scanning && nearby.devices.length === 0
-                    text: "On the other computer, open Notch and press Receive. Both computers must be on the same network (guest WiFi often blocks this)."
+                    text: "On the other computer, open Olyzano Notch and press Receive. Both computers must be on the same network (guest WiFi often blocks this)."
                 }
             }
             // which server, when there is a choice
@@ -328,9 +328,9 @@ Popup {
                     text: pop.tried && pop.secretError !== "" ? pop.secretError
                           : pop.protection === "pin"
                             ? (pop.mode === "relay" ? "Checked by your server: 5 wrong tries lock it for 10 minutes."
-                                                    : "Checked by Notch: 5 wrong tries lock that phone out for 10 minutes.")
+                                                    : "Checked by Olyzano Notch: 5 wrong tries lock that phone out for 10 minutes.")
                             : (pop.mode === "relay" ? "It also locks the key inside the link, so the link alone opens nothing. Tell it by another route."
-                                                    : "Checked by Notch: 5 wrong tries lock that phone out for 10 minutes.")
+                                                    : "Checked by Olyzano Notch: 5 wrong tries lock that phone out for 10 minutes.")
                 }
                 PillButton { id: showSecret; text: "Show"; checkable: true }
             }

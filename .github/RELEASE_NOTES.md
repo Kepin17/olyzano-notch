@@ -1,23 +1,25 @@
-## Notch 0.8.0
+## Olyzano Notch 0.9.0
 
-Windows catches up: everything that was Linux-only works there now, except the dock's blur and unread badges.
+Olyzano Notch makes a sound now, and shows what other apps on the computer want to tell you.
 
-- **Now playing on Windows.** YouTube in any browser, Spotify, Media Player: anything in the volume flyout gets the
-  equalizer button and the player card (cover, seek bar, previous / play / next, switch between players). The bars
-  follow the real sound from the speakers' loopback; no microphone permission is asked.
-- **Locked categories on Windows.** Notch encrypts each file itself (AES-256-GCM, a key protected by your password).
-  While unlocked the files sit decrypted in your Temp folder, kept out of Windows Search; locking encrypts what changed
-  and deletes them. On Linux nothing changes (gocryptfs).
-- **Microphone and camera on Windows.** The green camera dot, the apps using the camera or the microphone, and the idle
-  clock's mute state and toggle, from the same list as Windows' own taskbar microphone icon.
-- **Bluetooth alerts on Windows.** A device connecting or disconnecting peeks out of the notch, with its battery when it
-  reports one, and a warning when that battery runs low.
-- **Colour picker on Windows.** The screen freezes with a magnifier and the hex value at the pointer; click to pick,
-  Esc to cancel.
-- **KDE Connect on Windows.** With [KDE Connect for Windows](https://kdeconnect.kde.org/download.html) installed and
-  paired: Send to device, files from the phone, incoming calls and phone notifications in the notch.
+- **Sound effects.** Short, soft sounds for a file dropped or pasted, the Trash emptied, a colour picked, a timer or
+  Pomodoro done, the stretch reminder and the end of a break, an incoming call (rings up to three times),
+  notifications, files sent or received, the charger, a Bluetooth device and a low battery.
+  - *Settings → General → Sounds*: volume, a switch per group with ▶ to hear it.
+  - *Quiet during calls and full-screen apps* is on by default: nothing plays while an app uses the microphone, and
+    only a call rings over a full-screen video.
+  - Nothing new to install: Linux plays through `paplay` (PulseAudio or PipeWire), Windows through its own sound API.
+- **Notifications from this computer in the notch.** Slack, mail, the browser…: "Notification from Slack · John", never
+  the message itself, with a sound. Do not disturb (Plasma) or Focus (Windows) keeps them quiet. Settings lists the apps
+  that sent some lately; tap one to stop or start showing it. KDE Connect's are left out, since the phone's notifications
+  already show.
+  - Linux: read from the session bus, like KDE Connect does; Plasma still shows them as usual.
+  - Windows: Olyzano Notch asks Windows for access. Windows may refuse it to apps not installed as an MSIX package; Settings then
+    says it isn't available on this install.
+- The *Phone calls & notifications* and *Microphone & camera* switches now show on Windows too (they were hidden there
+  in 0.8.0 although the features worked).
 
 ### Downloads
-- **Linux:** `notch_0.8.0_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.8.0_amd64.deb`, then restart Notch.
-- **Windows:** `Notch-0.8.0-windows-x64-setup.exe`, or the portable `.zip`.
+- **Linux:** `notch_0.9.0_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.9.0_amd64.deb`, then restart Olyzano Notch.
+- **Windows:** `Notch-0.9.0-windows-x64-setup.exe`, or the portable `.zip`.
 - Optional components (OCR, KDE Connect, PDF tools on Windows): see the [install page](https://kepin17.github.io/olyzano-notch/#optional).

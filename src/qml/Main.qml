@@ -12,7 +12,7 @@ Window {
     height: 620
     visible: false
     color: "transparent"
-    title: "Notch"
+    title: "Olyzano Notch"
 
     readonly property color accent: theme.accent
     readonly property color textPrimary: theme.text
@@ -68,6 +68,7 @@ Window {
                                       : toast.kind === "file" ? theme.info
                                       : toast.kind === "timer" ? theme.accent
                                       : toast.kind === "call" || toast.kind === "phone" || toast.kind === "wellbeing" ? theme.success
+                                      : toast.kind === "desktop" ? theme.info
                                       : toast.kind === "color" ? toast.detail : theme.textDim
     // prompt: the stretch reminder asking. idle: the small clock pill when nothing else is going on.
     readonly property string mode: wellbeing.state === "reminding" ? "prompt" : open ? "open" : toast ? "toast"
@@ -208,8 +209,17 @@ Window {
             } else if (charge <= 15 && !warned[device]) {
                 warned[device] = true
                 root.showToast("lowbattery", device + " battery low", charge + "%", "smartphone", 5000)
+                sounds.play("warning") // every screen's notch gets here: Sounds plays it once
             }
             root.phoneLowWarned = warned
+        }
+    }
+
+    Connections {
+        target: desktopNotifications
+        // Other apps on this computer: who it's from and the title, like the phone's.
+        function onNotification(app, title, icon) {
+            root.showToast("desktop", app ? "Notification from " + app : "Notification", title, "notifications", 4500)
         }
     }
 
@@ -908,7 +918,7 @@ Window {
                         text: root.selecting ? root.selection.length + " selected"
                             : root.page === "settings" ? "Settings" : root.page === "preview" ? root.preview.name
                             : root.page === "note" ? (root.noteId !== "" ? "Edit note" : "New note")
-                            : root.page === "timer" ? "Timer" : "Notch"
+                            : root.page === "timer" ? "Timer" : "Olyzano Notch"
                         color: root.textPrimary
                         font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
                         font.pixelSize: 15
@@ -1163,7 +1173,7 @@ Window {
                         text: root.pinned ? "Pinned" : "Pin"
                         checked: root.pinned
                         onClicked: root.pinned = !root.pinned
-                        Accessible.name: "Keep Notch open"
+                        Accessible.name: "Keep Olyzano Notch open"
                     }
                 }
 
@@ -1869,7 +1879,7 @@ Window {
             }
         }
         Action {
-            text: menu.targets.length > 1 ? "Remove " + menu.targets.length + " files" : "Remove from Notch"
+            text: menu.targets.length > 1 ? "Remove " + menu.targets.length + " files" : "Remove from Olyzano Notch"
             onTriggered: {
                 root.removeWithConfirm(menu.targets)
                 root.clearSelection()
@@ -2259,7 +2269,7 @@ Window {
             onTriggered: notch.deleteCategory(categoryMenu.catId)
         }
         DarkSeparator {}
-        Action { enabled: false; text: "Its files stay in Notch" }
+        Action { enabled: false; text: "Its files stay in Olyzano Notch" }
     }
 
     DarkMenu {

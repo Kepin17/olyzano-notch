@@ -170,7 +170,13 @@ void NearbyController::onTransfer(const QString &id)
         emit dataChanged(index(row), index(row));
     }
     emit countChanged();
-    emit transferUpdated(id, m_service.transfer(id).value(QStringLiteral("state")).toString());
+    const QVariantMap t = m_service.transfer(id);
+    const QString state = t.value(QStringLiteral("state")).toString();
+    emit transferUpdated(id, state);
+    if (state == QLatin1String("done") && !m_finished.contains(id)) {
+        m_finished.insert(id);
+        emit transferDone(t.value(QStringLiteral("direction")).toString());
+    }
 }
 
 void NearbyController::cancelAll()

@@ -210,6 +210,7 @@ void AppDock::openTrash() const
 
 void AppDock::emptyTrash()
 {
+    emit trashEmptied();
 #ifdef Q_OS_WIN
     SHEmptyRecycleBinW(nullptr, nullptr, SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND);
     checkTrash();
@@ -519,15 +520,19 @@ void AppDock::kwinWindows(const QString &json)
         w.pid = o.value(QLatin1String("pid")).toInteger();
         w.active = o.value(QLatin1String("active")).toBool();
         w.atTop = o.value(QLatin1String("top")).toBool();
+        w.fullScreen = o.value(QLatin1String("fs")).toBool();
         w.screen = o.value(QLatin1String("scr")).toString();
         if (!w.id.isEmpty() && w.pid != self)
             m_kwinWindows << w;
     }
     // Plasma 5 numbers screens ("#0") instead of naming them: then hide the clock on every screen.
     QString covered;
-    for (const KWinWindow &w : std::as_const(m_kwinWindows))
+    m_fullScreen = false;
+    for (const KWinWindow &w : std::as_const(m_kwinWindows)) {
         if (w.active && w.atTop)
             covered = w.screen.startsWith(u'#') || w.screen.isEmpty() ? QStringLiteral("*") : w.screen;
+        m_fullScreen = m_fullScreen || (w.active && w.fullScreen);
+    }
     setCoveredScreen(covered);
     refresh();
 }
@@ -568,12 +573,13 @@ function push(gone) {
             continue;
         out.push({ id: id, app: String(w.desktopFileName || ""), cls: String(w.resourceClass || ""),
                    title: String(w.caption || ""), pid: w.pid || 0, active: id === activeId,
-                   top: atTop(w), scr: screenOf(w) });
+                   top: atTop(w), fs: !!w.fullScreen, scr: screenOf(w) });
     }
     callDBus("@SERVICE@", "/Dock", "org.olyzano.Notch.Dock", "kwinWindows", JSON.stringify(out));
 }
 // Titles change (tabs, documents): the dock's window list shows them. Moving or resizing only reports
-// when the window starts or stops touching the top, not on every step of a drag.
+// when the window starts or stops touching the top or being full screen, not on every step of a drag.
+function placement(w) { return (atTop(w) ? "t" : "") + (w.fullScreen ? "f" : ""); }
 var tops = {};
 function watchTitle(w) {
     if (!w)
@@ -581,9 +587,9 @@ function watchTitle(w) {
     if (w.captionChanged)
         w.captionChanged.connect(function () { push(null); });
     var id = String(w.internalId);
-    tops[id] = atTop(w);
+    tops[id] = placement(w);
     var moved = function () {
-        var t = atTop(w);
+        var t = placement(w);
         if (t !== tops[id]) {
             tops[id] = t;
             push(null);
