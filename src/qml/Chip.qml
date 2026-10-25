@@ -17,7 +17,7 @@ AbstractButton {
     implicitWidth: chipRow.implicitWidth + 22
     // Washi: the active chip is a vermilion outline (hanko-like) rather than a filled pill.
     readonly property bool filled: chip.active && !theme.washi
-    readonly property color ink: chip.filled ? "white" : chip.active ? theme.accent : theme.text
+    readonly property color ink: chip.filled ? theme.onColor(theme.accent) : chip.active ? theme.accent : theme.text
     background: Rectangle {
         radius: theme.chipRadius
         color: chip.filled ? theme.accent : chip.dropHover ? theme.surfaceHover : chip.hovered ? theme.surfaceHover

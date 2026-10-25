@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <cmath>
 #include <QObject>
 #include <QVariantList>
 
@@ -63,6 +64,16 @@ public:
     QColor info() const { return role(&Palette::info); }
     QColor media() const { return role(&Palette::media); }
     int chipRadius() const { return washi() ? 6 : 13; }
+    // Text on a filled background: white or near-black, whichever reads better (white on a light blue accent
+    // is hard to read; WCAG contrast ratio decides).
+    Q_INVOKABLE QColor onColor(const QColor &background) const
+    {
+        const auto channel = [](double c) { return c <= 0.03928 ? c / 12.92 : std::pow((c + 0.055) / 1.055, 2.4); };
+        const double l = 0.2126 * channel(background.redF()) + 0.7152 * channel(background.greenF()) + 0.0722 * channel(background.blueF());
+        const double white = 1.05 / (l + 0.05);
+        const double black = (l + 0.05) / (0.006 + 0.05); // #111113
+        return white >= black ? QColor(QStringLiteral("#ffffff")) : QColor(QStringLiteral("#111113"));
+    }
     int radiusSm() const { return washi() ? 4 : 8; }
     int radiusMd() const { return washi() ? 6 : 12; }
     int radiusLg() const { return washi() ? 8 : 18; }

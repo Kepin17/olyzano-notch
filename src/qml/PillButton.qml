@@ -31,9 +31,9 @@ AbstractButton {
             Text {
                 id: pbLabel
                 text: pb.text
-                color: pb.checked ? "white" : theme.text // on the accent fill, always white
+                color: pb.checked ? theme.onColor(theme.accent) : theme.text // whichever of white / dark reads on the accent
                 font.pixelSize: 12
-                font.weight: Font.Medium
+                font.weight: pb.checked ? Font.DemiBold : Font.Medium
             }
         }
     }
