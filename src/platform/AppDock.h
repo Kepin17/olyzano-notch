@@ -31,7 +31,8 @@ class AppDock : public QObject
     Q_PROPERTY(QString animation READ animation WRITE setAnimation NOTIFY appearanceChanged) // none | smooth | bouncy
     Q_PROPERTY(bool showRunning READ showRunning WRITE setShowRunning NOTIFY appearanceChanged) // running apps that aren't pinned
     Q_PROPERTY(QVariantList pinnedApps READ pinnedApps NOTIFY itemsChanged) // {id, name, iconSource}, for Settings
-    // {id, name, iconSource, pinned, running, active, canLaunch}
+    // {id, name, iconSource, pinned, running, active, canLaunch, kind ("app" | "folder"),
+    //  badge (unread count, 0 = none), progress (0-1, -1 = none), urgent, windows [{id, title}]}
     Q_PROPERTY(QVariantList items READ items NOTIFY itemsChanged)
 
 public:
@@ -73,12 +74,23 @@ public:
     Q_INVOKABLE void pinAt(const QString &id, int index);
     // Installed apps for the picker, filtered by name; {id, name, iconSource, pinned}.
     Q_INVOKABLE QVariantList installedApps(const QString &filter);
+    // Bring one particular window forward (from the hover list of an app's windows).
+    Q_INVOKABLE void activateWindow(const QString &windowId);
+    // Files dropped on an app's icon: open them with it (file:// URLs or paths).
+    Q_INVOKABLE void openWith(const QString &id, const QStringList &urls);
+    // Folders kept in the dock ("folder:<path>" items) open as a stack of their newest entries.
+    Q_INVOKABLE void pinFolder(const QString &pathOrUrl);
+    Q_INVOKABLE QString downloadsFolder() const;
+    // {name, url, iconName, isDir}, newest first.
+    Q_INVOKABLE QVariantList folderEntries(const QString &id, int limit = 24) const;
 
     QIcon iconFor(const QString &id) const;
 
 public slots:
     // Called by the KWin script with the current windows as JSON. Scriptable = exported on D-Bus.
     Q_SCRIPTABLE void kwinWindows(const QString &json);
+    // com.canonical.Unity.LauncherEntry.Update from any app: unread counts, progress, urgency.
+    void launcherEntry(const QString &appUri, const QVariantMap &properties);
 
 signals:
     void enabledChanged();
@@ -89,7 +101,7 @@ signals:
 
 private:
     struct KWinWindow {
-        QString id, desktopFile, windowClass;
+        QString id, desktopFile, windowClass, caption;
         qint64 pid = 0;
         bool active = false;
     };
@@ -101,6 +113,9 @@ private:
     void startKWin();
     void runKWinAction(const QString &mode, const QStringList &windows);
     static QString iconSource(const QString &id);
+    static bool isFolder(const QString &id) { return id.startsWith(QLatin1String("folder:")); }
+    static QString folderPath(const QString &id) { return id.mid(7); }
+    bool openIfFolder(const QString &id) const;
 
     QSettings m_settings;
     bool m_enabled = true;
@@ -109,6 +124,8 @@ private:
     QHash<QString, DockApp> m_catalog;
     QHash<QString, DockApp> m_seenRunning; // running apps outside the catalog, kept for name and icon
     QHash<QString, QStringList> m_appWindows; // app id -> its windows, front to back (KWin ids / HWNDs)
+    QHash<QString, QString> m_windowTitles;   // window id -> title
+    QHash<QString, QVariantMap> m_badges;     // desktop file id -> launcher entry properties
     QVariantList m_items;
     QTimer m_timer;
     bool m_catalogLoaded = false;
