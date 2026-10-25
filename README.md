@@ -32,14 +32,14 @@ Tested on Kubuntu 26.04 (Qt 6.10, KDE Plasma on Wayland).
 **[latest release](https://github.com/Kepin17/olyzano-notch/releases/latest)**, or from a terminal:
 
 ```bash
-wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.7.0/notch_0.7.0_amd64.deb
+wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.7.1/notch_0.7.1_amd64.deb
 ```
 
 **2. Install** it. `apt` pulls in everything it needs (Qt 6 runtime, `layer-shell-qt`, Poppler, Ghostscript,
 `gocryptfs`, `fuse3`, `pulseaudio-utils`, …):
 
 ```bash
-sudo apt install ./notch_0.7.0_amd64.deb
+sudo apt install ./notch_0.7.1_amd64.deb
 ```
 
 **3. Start** **Notch** from the application menu, or turn on **Settings → General → Start at login**.
@@ -244,7 +244,7 @@ When nothing is going on, the **idle clock** shows the time, the **microphone** 
 orange while an app records) and the **battery**. Rest the pointer on it to open Notch. Turn it off in
 *Settings → General → Clock when idle*.
 
-**Privacy dots:** a green dot beside the notch while a camera is on, an orange one while an app records the microphone;
+**Privacy dot:** a green dot beside the notch while a camera is on (the idle clock's microphone turns orange while an app records);
 the open panel names the apps. **Phone:** incoming and missed calls, the phone's notifications ("Notification from
 WhatsApp · Mom", never the message itself) and a low phone battery, through KDE Connect.
 

@@ -9,6 +9,8 @@
 #include <QDirIterator>
 #include <QFile>
 #include <QFileIconProvider>
+#include <QGuiApplication>
+#include <QScreen>
 #include <QIcon>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -57,6 +59,11 @@ AppDock::AppDock(QObject *parent)
     connect(&m_trashWatcher, &QFileSystemWatcher::directoryChanged, this, &AppDock::checkTrash);
 #endif
     checkTrash();
+#ifdef Q_OS_WIN
+    m_coverPoll.setInterval(1200);
+    connect(&m_coverPoll, &QTimer::timeout, this, &AppDock::checkForeground);
+    m_coverPoll.start();
+#endif
 #ifdef NOTCH_HAVE_DBUS
     // Any sender, any path: apps (Telegram, Thunderbird, Discord, …) broadcast this for their launcher icon.
     QDBusConnection::sessionBus().connect(QString(), QString(), QStringLiteral("com.canonical.Unity.LauncherEntry"),
@@ -119,6 +126,44 @@ void AppDock::setAnimation(const QString &animation)
     static const QStringList kinds = {QStringLiteral("none"), QStringLiteral("smooth"), QStringLiteral("bouncy")};
     if (kinds.contains(animation))
         storeAppearance(QStringLiteral("animation"), animation);
+}
+
+void AppDock::setCoveredScreen(const QString &screen)
+{
+    if (screen == m_coveredScreen)
+        return;
+    m_coveredScreen = screen;
+    emit coveredScreenChanged();
+}
+
+// Windows: the window in front covers its screen's top edge when it's maximized or its top is at the
+// top of the work area (the desktop and the taskbar don't count).
+void AppDock::checkForeground()
+{
+#ifdef Q_OS_WIN
+    QString covered;
+    const HWND fg = GetForegroundWindow();
+    DWORD pid = 0;
+    if (fg)
+        GetWindowThreadProcessId(fg, &pid);
+    if (fg && pid != GetCurrentProcessId() && IsWindowVisible(fg)) {
+        wchar_t cls[64];
+        const int n = GetClassNameW(fg, cls, 64);
+        const QString windowClass = QString::fromWCharArray(cls, qMax(0, n));
+        const bool shell = windowClass == QLatin1String("Progman") || windowClass == QLatin1String("WorkerW")
+                           || windowClass == QLatin1String("Shell_TrayWnd");
+        RECT r;
+        MONITORINFO mi = {};
+        mi.cbSize = sizeof(mi);
+        if (!shell && GetWindowRect(fg, &r) && GetMonitorInfoW(MonitorFromWindow(fg, MONITOR_DEFAULTTONEAREST), &mi)
+            && (IsZoomed(fg) || r.top <= mi.rcWork.top + 8)) {
+            const qreal dpr = QGuiApplication::primaryScreen() ? QGuiApplication::primaryScreen()->devicePixelRatio() : 1.0;
+            QScreen *screen = QGuiApplication::screenAt(QPoint(int((r.left + r.right) / 2 / dpr), int((r.top + r.bottom) / 2 / dpr)));
+            covered = screen ? screen->name() : QStringLiteral("*");
+        }
+    }
+    setCoveredScreen(covered);
+#endif
 }
 
 void AppDock::setShowTrash(bool show)
@@ -473,9 +518,17 @@ void AppDock::kwinWindows(const QString &json)
         w.caption = o.value(QLatin1String("title")).toString();
         w.pid = o.value(QLatin1String("pid")).toInteger();
         w.active = o.value(QLatin1String("active")).toBool();
+        w.atTop = o.value(QLatin1String("top")).toBool();
+        w.screen = o.value(QLatin1String("scr")).toString();
         if (!w.id.isEmpty() && w.pid != self)
             m_kwinWindows << w;
     }
+    // Plasma 5 numbers screens ("#0") instead of naming them: then hide the clock on every screen.
+    QString covered;
+    for (const KWinWindow &w : std::as_const(m_kwinWindows))
+        if (w.active && w.atTop)
+            covered = w.screen.startsWith(u'#') || w.screen.isEmpty() ? QStringLiteral("*") : w.screen;
+    setCoveredScreen(covered);
     refresh();
 }
 
@@ -490,6 +543,17 @@ static const QString ActionPlugin = QStringLiteral("notch-dock-action");
 static const char WatchScript[] = R"JS(
 function windows() { return workspace.windowList ? workspace.windowList() : workspace.clientList(); }
 function current() { return workspace.activeWindow !== undefined ? workspace.activeWindow : workspace.activeClient; }
+// Whether a window reaches the top of its screen's usable area (maximized, full screen or dragged up there):
+// the notch's idle clock would sit on top of it there.
+var maximizeArea = typeof KWin !== "undefined" && KWin.MaximizeArea !== undefined ? KWin.MaximizeArea : workspace.MaximizeArea;
+function atTop(w) {
+    if (w.fullScreen)
+        return true;
+    var g = w.frameGeometry, a = null;
+    try { a = workspace.clientArea(maximizeArea, w); } catch (e) {}
+    return !!(g && a && g.y <= a.y + 8);
+}
+function screenOf(w) { return w.output ? String(w.output.name) : w.screen !== undefined ? "#" + w.screen : ""; }
 // Windows are compared by id: the same window can come back as a different script object.
 function push(gone) {
     var active = current();
@@ -503,14 +567,32 @@ function push(gone) {
         if (id === goneId || !w.normalWindow || w.skipTaskbar)
             continue;
         out.push({ id: id, app: String(w.desktopFileName || ""), cls: String(w.resourceClass || ""),
-                   title: String(w.caption || ""), pid: w.pid || 0, active: id === activeId });
+                   title: String(w.caption || ""), pid: w.pid || 0, active: id === activeId,
+                   top: atTop(w), scr: screenOf(w) });
     }
     callDBus("@SERVICE@", "/Dock", "org.olyzano.Notch.Dock", "kwinWindows", JSON.stringify(out));
 }
-// Titles change (tabs, documents): the dock's window list shows them.
+// Titles change (tabs, documents): the dock's window list shows them. Moving or resizing only reports
+// when the window starts or stops touching the top, not on every step of a drag.
+var tops = {};
 function watchTitle(w) {
-    if (w && w.captionChanged)
+    if (!w)
+        return;
+    if (w.captionChanged)
         w.captionChanged.connect(function () { push(null); });
+    var id = String(w.internalId);
+    tops[id] = atTop(w);
+    var moved = function () {
+        var t = atTop(w);
+        if (t !== tops[id]) {
+            tops[id] = t;
+            push(null);
+        }
+    };
+    if (w.frameGeometryChanged)
+        w.frameGeometryChanged.connect(moved);
+    if (w.fullScreenChanged)
+        w.fullScreenChanged.connect(moved);
 }
 var existing = windows();
 for (var e = 0; e < existing.length; ++e)
