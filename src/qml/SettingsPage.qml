@@ -119,6 +119,17 @@ ScrollView {
             }
 
             SettingCard {
+                title: "Lyrics"
+                SettingToggle {
+                    title: "Show the lyrics of the song that plays"
+                    caption: "Looks the song up on lrclib.net, an open lyrics service: the artist, title, album and length of what plays are sent, nothing else. Off by default."
+                    checked: lyrics.enabled
+                    onToggled: lyrics.enabled = !lyrics.enabled
+                }
+                PillButton { text: "Forget the saved lyrics"; onClicked: lyrics.clearCache() }
+            }
+
+            SettingCard {
                 title: "Notifications from this computer"
                 SettingToggle {
                     title: "Show them in the notch"

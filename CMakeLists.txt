@@ -44,6 +44,7 @@ qt_add_library(notch_core STATIC
     src/services/ZipWriter.h src/services/ZipWriter.cpp
     src/services/NearbyCrypto.h src/services/NearbyCrypto.cpp
     src/services/NearbyService.h src/services/NearbyService.cpp
+    src/platform/Lyrics.h src/platform/Lyrics.cpp src/platform/LrcParser.h
     third_party/qrcodegen.cpp
 )
 set_source_files_properties(third_party/qrcodegen.cpp PROPERTIES COMPILE_OPTIONS "-w") # vendored (MIT)

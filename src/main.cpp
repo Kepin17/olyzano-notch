@@ -12,6 +12,7 @@
 #include "platform/Sounds.h"
 #include "platform/KdeConnect.h"
 #include "platform/Theme.h"
+#include "platform/Lyrics.h"
 #include "platform/MediaPlayers.h"
 #include "platform/SystemEvents.h"
 
@@ -149,6 +150,10 @@ int main(int argc, char *argv[])
     Activities activities;
     Wellbeing wellbeing;
     Sounds sounds;
+    Lyrics lyrics;
+    QObject::connect(&media, &MediaPlayers::changed, &lyrics, [&] {
+        lyrics.track(media.active() ? media.artist() : QString(), media.active() ? media.title() : QString(), media.album(), media.lengthMs());
+    });
     DesktopNotifications desktopNotifications;
     QObject::connect(&colorPicker, &ColorPicker::picked, &controller, &NotchController::addColor);
 
@@ -220,6 +225,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("activities"), &activities);
     engine.rootContext()->setContextProperty(QStringLiteral("wellbeing"), &wellbeing);
     engine.rootContext()->setContextProperty(QStringLiteral("sounds"), &sounds);
+    engine.rootContext()->setContextProperty(QStringLiteral("lyrics"), &lyrics);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
 
     // One Notch per monitor, following hotplug.

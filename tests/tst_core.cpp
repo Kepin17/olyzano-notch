@@ -17,6 +17,7 @@
 #include "platform/WinPrivacy.h"
 #include "platform/MediaNames.h"
 #include "platform/LrcParser.h"
+#include "platform/Lyrics.h"
 #include "platform/NotificationFilter.h"
 #include "platform/SoundsModel.h"
 #include "platform/AudioBands.h"
@@ -139,6 +140,32 @@ static QJsonObject takeFrame(QTcpSocket &s)
     const quint32 len = qFromBigEndian<quint32>(head.constData());
     return QJsonDocument::fromJson(s.read(len)).object();
 }
+
+// A web server on localhost for the lyrics lookups: what each path answers, and how often it was asked.
+struct FakeLyricsServer {
+    QTcpServer server;
+    QHash<QString, QPair<int, QByteArray>> routes; // path -> status, body
+    int hits = 0;
+    FakeLyricsServer()
+    {
+        server.listen(QHostAddress::LocalHost);
+        QObject::connect(&server, &QTcpServer::newConnection, &server, [this] {
+            while (QTcpSocket *s = server.nextPendingConnection())
+                QObject::connect(s, &QTcpSocket::readyRead, s, [this, s] {
+                    const QByteArray head = s->readAll();
+                    if (!head.contains("\r\n\r\n"))
+                        return;
+                    ++hits;
+                    const QString path = QUrl(QString::fromLatin1(head.split(' ').value(1))).path();
+                    const auto r = routes.value(path, {404, "{}"});
+                    s->write("HTTP/1.1 " + QByteArray::number(r.first) + " X\r\nContent-Type: application/json\r\nContent-Length: "
+                             + QByteArray::number(r.second.size()) + "\r\nConnection: close\r\n\r\n" + r.second);
+                    s->disconnectFromHost();
+                });
+        });
+    }
+    QUrl url() const { return QUrl(QStringLiteral("http://127.0.0.1:%1").arg(server.serverPort())); }
+};
 
 class TestCore : public QObject
 {
@@ -578,6 +605,81 @@ private slots:
         QCOMPARE(Lrc::indexAt(lines, 12500), 1);
         QCOMPARE(Lrc::indexAt(lines, 999999), 4);
         QCOMPARE(Lrc::indexAt({}, 5), -1);
+    }
+
+    void lyricsAreLookedUpCachedAndOffByDefault()
+    {
+        FakeLyricsServer web;
+        const QByteArray song = R"({"syncedLyrics":"[00:01.00] hello\n[00:05.00] there","plainLyrics":"hello\nthere","instrumental":false})";
+        web.routes.insert(QStringLiteral("/api/get"), {200, song});
+        const QString conf = m_tmp.filePath(QStringLiteral("lyrics-a.conf")), cache = m_tmp.filePath(QStringLiteral("lyrics-cache"));
+        {
+            Lyrics off(conf, cache);
+            off.setBaseUrl(web.url());
+            QCOMPARE(off.state(), QStringLiteral("off"));
+            off.track(QStringLiteral("Artist"), QStringLiteral("Song"), QStringLiteral("Album"), 200000);
+            QTest::qWait(150);
+            QCOMPARE(web.hits, 0); // nothing is sent until it is switched on
+            QCOMPARE(off.requests(), 0);
+
+            off.setEnabled(true); // asks for the song already playing
+            QTRY_COMPARE(off.state(), QStringLiteral("synced"));
+            QCOMPARE(web.hits, 1);
+            QCOMPARE(off.lines().size(), 2);
+            off.setPosition(500);
+            QCOMPARE(off.currentIndex(), -1);
+            off.setPosition(1500);
+            QCOMPARE(off.currentText(), QStringLiteral("hello"));
+            off.setOffsetMs(1000); // the words come a second sooner
+            QCOMPARE(off.currentText(), QStringLiteral("hello"));
+            off.setPosition(4200);
+            QCOMPARE(off.currentText(), QStringLiteral("there"));
+            off.setEnabled(false);
+            QCOMPARE(off.state(), QStringLiteral("off"));
+            QVERIFY(off.lines().isEmpty());
+        }
+        { // a new run finds it in the cache: no second request
+            Lyrics again(conf, cache);
+            again.setBaseUrl(web.url());
+            again.setEnabled(true);
+            again.track(QStringLiteral("artist"), QStringLiteral("SONG"), QString(), 200500);
+            QCOMPARE(again.state(), QStringLiteral("synced"));
+            QCOMPARE(web.hits, 1);
+        }
+    }
+
+    void lyricsFallBackToSearchAndRememberMisses()
+    {
+        FakeLyricsServer web;
+        web.routes.insert(QStringLiteral("/api/get"), {404, "{}"});
+        web.routes.insert(QStringLiteral("/api/search"), {200, R"([{"duration":300,"plainLyrics":"only words"},)"
+                                                              R"({"duration":199,"syncedLyrics":"[00:02.00] close one","plainLyrics":"close one"}])"});
+        const QString cache = m_tmp.filePath(QStringLiteral("lyrics-cache-b"));
+        Lyrics l(m_tmp.filePath(QStringLiteral("lyrics-b.conf")), cache);
+        l.setBaseUrl(web.url());
+        l.setEnabled(true);
+        l.track(QStringLiteral("A"), QStringLiteral("B"), QString(), 200000);
+        QTRY_COMPARE(l.state(), QStringLiteral("synced"));
+        QCOMPARE(web.hits, 2); // the exact lookup, then the search
+        l.setPosition(2500);
+        QCOMPARE(l.currentText(), QStringLiteral("close one")); // the synced one closest in length
+
+        web.routes.insert(QStringLiteral("/api/search"), {200, "[]"});
+        l.track(QStringLiteral("Nobody"), QStringLiteral("Unknown"), QString(), 100000);
+        QTRY_COMPARE(l.state(), QStringLiteral("none"));
+        const int asked = web.hits;
+        l.track(QString(), QString(), QString(), 0); // stops
+        QCOMPARE(l.state(), QStringLiteral("none"));
+        l.track(QStringLiteral("Nobody"), QStringLiteral("Unknown"), QString(), 100000); // a miss is remembered
+        QCOMPARE(l.state(), QStringLiteral("none"));
+        QCOMPARE(web.hits, asked);
+
+        web.routes.insert(QStringLiteral("/api/get"), {200, R"({"instrumental":true})"});
+        l.track(QStringLiteral("X"), QStringLiteral("Y"), QString(), 90000);
+        QTRY_COMPARE(l.state(), QStringLiteral("none"));
+        web.routes.insert(QStringLiteral("/api/get"), {500, "oops"});
+        l.track(QStringLiteral("P"), QStringLiteral("Q"), QString(), 90000);
+        QTRY_COMPARE(l.state(), QStringLiteral("error"));
     }
 
     void lowBatteryThresholds()
