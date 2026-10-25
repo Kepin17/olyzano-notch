@@ -102,6 +102,9 @@ if(WIN32)
     # user32/shell32: AppDock lists and raises windows, and asks the Recycle Bin. ole32/advapi32: microphone, registry.
     # windowsapp: the WinRT APIs (Bluetooth, media sessions) through C++/WinRT, which ships with the Windows SDK.
     target_link_libraries(notch PRIVATE user32 shell32 ole32 advapi32 windowsapp)
+    # C++/WinRT's coroutine support needs C++20 (under C++17 it pulls in the removed <experimental/coroutine>).
+    set_source_files_properties(src/platform/WinBluetooth.cpp src/platform/MediaPlayers_win.cpp
+                                PROPERTIES COMPILE_OPTIONS "/std:c++20")
     configure_file(packaging/windows/notch.rc.in ${CMAKE_CURRENT_BINARY_DIR}/notch.rc)
     target_sources(notch PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/notch.rc)
     set_target_properties(notch PROPERTIES WIN32_EXECUTABLE TRUE) # a window, not a console

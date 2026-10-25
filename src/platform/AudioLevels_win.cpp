@@ -18,7 +18,7 @@ constexpr int TargetRate = 11025;
 constexpr int Window = 512;
 
 template<class T>
-void release(T *&p)
+void releaseCom(T *&p)
 {
     if (p) {
         p->Release();
@@ -111,10 +111,10 @@ void AudioLevels::runLoopback()
         }
         client->Stop();
     }
-    release(capture);
-    release(client);
-    release(device);
-    release(enumerator);
+    releaseCom(capture);
+    releaseCom(client);
+    releaseCom(device);
+    releaseCom(enumerator);
     if (format)
         CoTaskMemFree(format);
     CoUninitialize();
