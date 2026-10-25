@@ -14,6 +14,7 @@
 #include "platform/Theme.h"
 #include "platform/GamingMode.h"
 #include "platform/Karaoke.h"
+#include "platform/PanelBar.h"
 #include "platform/Lyrics.h"
 #include "platform/MediaPlayers.h"
 #include "platform/SystemEvents.h"
@@ -155,6 +156,7 @@ int main(int argc, char *argv[])
     Lyrics lyrics;
     Karaoke karaoke;
     GamingMode gaming;
+    PanelBar panelBar;
     // "Full screen" for gaming mode is any app that fills the screen: a maximised one looks the same.
     const auto fillsScreen = [&] { gaming.setFullScreen(dock.coveringActive()); };
     QObject::connect(&dock, &AppDock::coveringChanged, &gaming, fillsScreen);
@@ -237,6 +239,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("lyrics"), &lyrics);
     engine.rootContext()->setContextProperty(QStringLiteral("karaoke"), &karaoke);
     engine.rootContext()->setContextProperty(QStringLiteral("gaming"), &gaming);
+    engine.rootContext()->setContextProperty(QStringLiteral("topbar"), &panelBar);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
 
     // One Notch per monitor, following hotplug.
@@ -245,7 +248,23 @@ int main(int argc, char *argv[])
     // And one app dock per monitor on the edge chosen in Settings, shown while the dock is switched on.
     QQmlComponent dockWindow(&engine, "Notch", "Dock");
     QHash<QScreen *, QQuickWindow *> docks;
+    // And a status bar along the top of each monitor (Settings → Panel). Created before the notch, so the notch draws above it.
+    QQmlComponent barWindow(&engine, "Notch", "Bar");
+    QHash<QScreen *, QQuickWindow *> bars;
     auto addScreen = [&](QScreen *screen) {
+        if (auto *bar = qobject_cast<QQuickWindow *>(barWindow.create())) {
+            bar->setScreen(screen);
+            desktop.attachBar(bar);
+            const auto apply = [bar, &panelBar, &desktop] {
+                desktop.setBarReserve(bar, panelBar.behavior() == QLatin1String("always") && panelBar.reserve() ? panelBar.height() : 0);
+                bar->setVisible(panelBar.enabled());
+            };
+            apply();
+            QObject::connect(&panelBar, &PanelBar::changed, bar, apply);
+            bars.insert(screen, bar);
+        } else {
+            qCritical().noquote() << barWindow.errorString();
+        }
         auto *window = qobject_cast<QQuickWindow *>(notchWindow.create());
         if (!window) {
             qCritical().noquote() << notchWindow.errorString();
@@ -281,11 +300,13 @@ int main(int argc, char *argv[])
     QObject::connect(&app, &QGuiApplication::screenRemoved, [&](QScreen *screen) {
         delete windows.take(screen);
         delete docks.take(screen);
+        delete bars.take(screen);
     });
 
     engine.loadFromModule("Notch", "Tray");
     const int rc = app.exec();
     qDeleteAll(windows); // before the engine and controller they bind to
     qDeleteAll(docks);
+    qDeleteAll(bars);
     return rc;
 }

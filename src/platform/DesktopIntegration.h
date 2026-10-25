@@ -23,6 +23,9 @@ public:
     // The app dock's window on one edge of window->screen() (side: bottom | left | right). It never takes
     // focus from the app in front, so a click on the dock can tell which app that was.
     void attachDock(QWindow *window, const QString &side);
+    // The status bar: the whole top edge. `reserve` pixels are kept free for it (0: it floats over windows).
+    void attachBar(QWindow *window);
+    void setBarReserve(QWindow *window, int reserve);
     // Move a dock to another edge. Call while it is hidden: a layer-shell surface takes anchors when mapped.
     void moveDock(QWindow *window, const QString &side);
     bool layerShell() const { return m_layerShell; }

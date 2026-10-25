@@ -36,6 +36,8 @@ class AppDock : public QObject
     // The screen whose top edge the window in front reaches (maximized, full screen, dragged up): the idle clock
     // hides there so it doesn't cover the window's tabs or title. "" none, "*" every screen (name unknown).
     Q_PROPERTY(QString coveredScreen READ coveredScreen NOTIFY coveredScreenChanged)
+    Q_PROPERTY(QString activeAppName READ activeAppName NOTIFY activeAppChanged) // the app in front (KWin), for the bar
+    Q_PROPERTY(QString activeTitle READ activeTitle NOTIFY activeAppChanged)
     Q_PROPERTY(QString trashIcon READ trashIcon NOTIFY trashChanged) // image source, empty or full
     Q_PROPERTY(QVariantList pinnedApps READ pinnedApps NOTIFY itemsChanged) // {id, name, iconSource}, for Settings
     // {id, name, iconSource, pinned, running, active, canLaunch, kind ("app" | "folder"),
@@ -69,6 +71,8 @@ public:
     bool trashFull() const { return m_trashFull; }
     QString coveredScreen() const { return m_coveredScreen; }
     bool fullScreenActive() const { return m_fullScreen; } // the window in front is full screen (KWin)
+    QString activeAppName() const { return m_activeApp; }
+    QString activeTitle() const { return m_activeTitle; }
     bool coveringActive() const { return m_covering; }     // ... or fills the screen (maximised): gaming mode
     QString trashIcon() const { return iconSource(m_trashFull ? QStringLiteral("special:trash-full") : QStringLiteral("special:trash")); }
     void setShowRunning(bool show);
@@ -121,6 +125,7 @@ signals:
     void coveredScreenChanged();
     void fullScreenChanged(); // the window in front went full screen, or left it
     void coveringChanged();   // the window in front started or stopped filling the screen
+    void activeAppChanged();
 
 private:
     struct KWinWindow {
@@ -157,6 +162,7 @@ private:
     QString m_coveredScreen;
     bool m_fullScreen = false;
     bool m_covering = false;
+    QString m_activeApp, m_activeTitle;
     QTimer m_coverPoll; // Windows: there is no push for the window in front, so look every second or so
     void setCoveredScreen(const QString &screen);
     void checkForeground();

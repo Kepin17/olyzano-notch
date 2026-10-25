@@ -108,6 +108,45 @@ void DesktopIntegration::attachDock(QWindow *window, const QString &side)
     connect(window, &QWindow::heightChanged, window, [window] { placeDock(window); });
 }
 
+static void placeBar(QWindow *window)
+{
+    if (window->screen())
+        window->setGeometry(window->screen()->geometry().x(), window->screen()->geometry().y(), window->screen()->geometry().width(), window->height());
+}
+
+void DesktopIntegration::attachBar(QWindow *window)
+{
+#ifdef NOTCH_HAVE_LAYERSHELL
+    if (auto *ls = dockLayer(window)) {
+        ls->setScope(QStringLiteral("notch-bar"));
+#ifdef NOTCH_LAYERSHELL_SET_SCREEN
+        ls->setScreen(window->screen());
+#endif
+        ls->setLayer(LayerShellQt::Window::LayerTop);
+        ls->setAnchors(LayerShellQt::Window::Anchors(LayerShellQt::Window::AnchorTop | LayerShellQt::Window::AnchorLeft | LayerShellQt::Window::AnchorRight));
+        ls->setExclusiveZone(-1); // over everything until a reserve is asked for
+        ls->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityNone);
+        ls->setMargins(QMargins());
+        return;
+    }
+#endif
+    window->setFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool | Qt::WindowDoesNotAcceptFocus);
+    placeBar(window);
+    connect(window->screen(), &QScreen::geometryChanged, window, [window] { placeBar(window); });
+}
+
+void DesktopIntegration::setBarReserve(QWindow *window, int reserve)
+{
+#ifdef NOTCH_HAVE_LAYERSHELL
+    if (auto *ls = dockLayer(window)) {
+        ls->setExclusiveZone(reserve > 0 ? reserve : -1);
+        return;
+    }
+#endif
+    Q_UNUSED(window)
+    Q_UNUSED(reserve)
+}
+
 void DesktopIntegration::moveDock(QWindow *window, const QString &side)
 {
     window->setProperty(DockSide, side);

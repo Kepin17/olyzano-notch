@@ -541,6 +541,26 @@ void AppDock::kwinWindows(const QString &json)
         emit fullScreenChanged();
     if (m_covering != wasCovering)
         emit coveringChanged();
+    QString app, title;
+    for (const KWinWindow &w : std::as_const(m_kwinWindows)) {
+        if (!w.active)
+            continue;
+        DockApp known = m_catalog.value(w.desktopFile.endsWith(QLatin1String(".desktop")) ? w.desktopFile : w.desktopFile + QStringLiteral(".desktop"));
+        if (!known.valid())
+            known = m_catalog.value(w.desktopFile);
+        // "com.anthropic.Claude" -> "Claude", "google-chrome" -> "Google Chrome"
+        QString guess = w.windowClass.section(u'.', -1).replace(u'-', u' ').replace(u'_', u' ');
+        for (qsizetype i = 0; i < guess.size(); ++i)
+            if (i == 0 || guess[i - 1] == u' ')
+                guess[i] = guess[i].toUpper();
+        app = known.valid() ? known.name : guess;
+        title = w.caption;
+    }
+    if (app != m_activeApp || title != m_activeTitle) {
+        m_activeApp = app;
+        m_activeTitle = title;
+        emit activeAppChanged();
+    }
     setCoveredScreen(covered);
     refresh();
 }

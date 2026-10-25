@@ -22,6 +22,7 @@ RowLayout {
     readonly property var sections: [
         ["general", "General", "gear", "Start-up, how the notch sits on the screen, gaming mode and sounds."],
         ["appearance", "Appearance", "palette", "Themes and light or dark."],
+        ["panel", "Panel", "panel", "A glass status bar along the top, with Quick Settings."],
         ["alerts", "Alerts & activities", "notifications", "What the notch shows you: chargers, downloads, calls, the microphone and more."],
         ["files", "Files", "folder", "How long files stay, where they go and what is added by itself."],
         ["dock", "Dock", "dock", "The app dock at the edge of the screen."],
@@ -33,6 +34,9 @@ RowLayout {
         ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
         ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Sounds", "sound effects volume quiet mute"],
         ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha"], ["appearance", "Light or dark", "brightness dark light system mode"],
+        ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
+        ["panel", "Transparency and blur", "glass opacity bar"], ["panel", "What the bar shows", "app name date seconds battery percentage"],
+        ["panel", "Quick Settings", "wifi bluetooth volume brightness power click hover"],
         ["alerts", "Charger & Bluetooth alerts", "battery plug device connect low"], ["alerts", "Clock when idle", "time clock capsule"],
         ["alerts", "Downloads in the notch", "download browser progress"], ["alerts", "Phone calls & notifications", "kde connect phone"],
         ["alerts", "Microphone & camera indicators", "privacy dot mic camera"], ["alerts", "Notifications from this computer", "desktop apps slack"],
@@ -689,6 +693,87 @@ RowLayout {
                             }
                         }
                     }
+                }
+            }
+        }
+
+        ColumnLayout {
+            visible: settingsScroll.category === "panel"
+            Layout.fillWidth: true
+            spacing: 16
+
+            SettingCard {
+                title: "Status bar"
+                SettingToggle {
+                    title: "Show the status bar"
+                    caption: "A glass strip along the top edge of every screen: the app in front, the clock and the status icons. The middle stays free for the notch."
+                    checked: topbar.enabled
+                    onToggled: topbar.enabled = !topbar.enabled
+                }
+                ColumnLayout {
+                    visible: topbar.enabled
+                    Layout.fillWidth: true
+                    spacing: 6
+                    SectionLabel { text: "When it shows" }
+                    Row {
+                        spacing: 6
+                        PillButton { text: "Always show"; checked: topbar.behavior === "always"; onClicked: topbar.behavior = "always" }
+                        PillButton { text: "Auto-hide"; checked: topbar.behavior === "auto"; onClicked: topbar.behavior = "auto" }
+                    }
+                    Caption {
+                        Layout.fillWidth: true
+                        text: topbar.behavior === "auto" ? "It slides away. Touch the top edge of the screen to bring it back."
+                                                         : "It stays on screen."
+                    }
+                }
+                SettingToggle {
+                    visible: topbar.enabled && topbar.behavior === "always"
+                    title: "Keep windows out from under it"
+                    caption: "Maximised windows stop below the bar. Leave this off if Plasma's own panel is at the top."
+                    checked: topbar.reserve
+                    onToggled: topbar.reserve = !topbar.reserve
+                }
+            }
+
+            SettingCard {
+                visible: topbar.enabled
+                title: "Look"
+                DockSlider {
+                    title: "Transparency"
+                    valueText: Math.round(topbar.opacity * 100) + "%"
+                    from: 20; to: 100; stepSize: 5
+                    value: topbar.opacity * 100
+                    onMoved: topbar.opacity = value / 100
+                }
+                SettingToggle {
+                    title: "Blur behind the bar"
+                    caption: "Frosted glass, with KDE's blur effect (Desktop Effects → Blur)."
+                    checked: topbar.blur
+                    onToggled: topbar.blur = !topbar.blur
+                }
+            }
+
+            SettingCard {
+                visible: topbar.enabled
+                title: "What it shows"
+                SettingToggle { title: "The app in front"; caption: "Its name and the title of its window, on the left."; checked: topbar.showApp; onToggled: topbar.showApp = !topbar.showApp }
+                SettingToggle { title: "The date"; caption: "Under the time."; checked: topbar.showDate; onToggled: topbar.showDate = !topbar.showDate }
+                SettingToggle { title: "Seconds"; caption: "The clock counts seconds."; checked: topbar.showSeconds; onToggled: topbar.showSeconds = !topbar.showSeconds }
+                SettingToggle { title: "Battery percentage"; caption: "Next to the battery icon."; checked: topbar.showBattery; onToggled: topbar.showBattery = !topbar.showBattery }
+            }
+
+            SettingCard {
+                visible: topbar.enabled
+                title: "Quick Settings"
+                SectionLabel { text: "Open them" }
+                Row {
+                    spacing: 6
+                    PillButton { text: "On click"; checked: topbar.openOn === "click"; onClicked: topbar.openOn = "click" }
+                    PillButton { text: "On hover"; checked: topbar.openOn === "hover"; onClicked: topbar.openOn = "hover" }
+                }
+                Caption {
+                    Layout.fillWidth: true
+                    text: "Wi-Fi, Bluetooth, volume, brightness and power, from the icons on the right of the bar."
                 }
             }
         }
