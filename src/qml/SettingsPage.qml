@@ -76,7 +76,6 @@ ScrollView {
             }
 
             SettingToggle {
-                visible: notch.linuxDesktop
                 title: "Phone calls & notifications"
                 caption: "Through KDE Connect: incoming calls, your phone's notifications and a low phone battery show in the notch."
                 checked: activities.phoneAlerts
@@ -84,11 +83,93 @@ ScrollView {
             }
 
             SettingToggle {
-                visible: notch.linuxDesktop
                 title: "Microphone & camera indicators"
                 caption: "A green dot beside the notch while a camera is on; the open panel names the apps using the camera or the microphone."
                 checked: activities.privacyIndicators
                 onToggled: activities.privacyIndicators = !activities.privacyIndicators
+            }
+
+            SettingCard {
+                title: "Notifications from this computer"
+                SettingToggle {
+                    title: "Show them in the notch"
+                    caption: desktopNotifications.enabled && !desktopNotifications.available
+                             ? (Qt.platform.os === "windows" ? "Not available on this Windows install: Windows doesn't let Notch read notifications."
+                                                             : "Not available: the session bus doesn't allow watching notifications.")
+                             : "Other apps' notifications show as \"Notification from <app> · <title>\", never the message itself."
+                    checked: desktopNotifications.enabled
+                    onToggled: desktopNotifications.enabled = !desktopNotifications.enabled
+                }
+                Caption {
+                    Layout.fillWidth: true
+                    visible: desktopNotifications.enabled && desktopNotifications.recentApps.length > 0
+                    text: "Apps that showed notifications lately. Tap one to stop or start showing it."
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    visible: desktopNotifications.enabled && desktopNotifications.recentApps.length > 0
+                    spacing: 6
+                    Repeater {
+                        model: desktopNotifications.recentApps
+                        PillButton {
+                            required property string modelData
+                            readonly property bool off: desktopNotifications.ignored.some(a => a.toLowerCase() === modelData.toLowerCase())
+                            text: off ? modelData + " · off" : modelData
+                            checked: !off
+                            onClicked: off ? desktopNotifications.unignore(modelData) : desktopNotifications.ignore(modelData)
+                        }
+                    }
+                }
+            }
+
+            SettingCard {
+                title: "Sounds"
+                SettingToggle {
+                    title: "Sound effects"
+                    caption: "Short sounds for a dropped file, a finished timer, a call, a notification and more."
+                    checked: sounds.enabled
+                    onToggled: sounds.enabled = !sounds.enabled
+                }
+                DockSlider {
+                    visible: sounds.enabled
+                    title: "Volume"
+                    valueText: sounds.volume + "%"
+                    from: 0; to: 100; stepSize: 5
+                    value: sounds.volume
+                    onMoved: sounds.volume = value
+                }
+                Repeater {
+                    // [setting, title, caption, sound to try]
+                    model: [["shelf", "Shelf & tools", "Dropping or pasting, emptying the Trash, picking a colour", "drop"],
+                            ["timer", "Timer & wellbeing", "Timer and Pomodoro done, stretch reminder, break over", "timer"],
+                            ["phone", "Calls & notifications", "Incoming calls, notifications, files sent and received", "ring"],
+                            ["system", "System alerts", "Charger, Bluetooth devices, low battery", "plug-in"]]
+                    RowLayout {
+                        required property var modelData
+                        visible: sounds.enabled
+                        Layout.fillWidth: true
+                        spacing: 8
+                        PillButton {
+                            text: "▶"
+                            onClicked: sounds.preview(parent.modelData[3])
+                            Accessible.name: "Play " + parent.modelData[1]
+                        }
+                        SettingToggle {
+                            Layout.fillWidth: true
+                            title: parent.modelData[1]
+                            caption: parent.modelData[2]
+                            checked: sounds[parent.modelData[0]]
+                            onToggled: sounds[parent.modelData[0]] = !sounds[parent.modelData[0]]
+                        }
+                    }
+                }
+                SettingToggle {
+                    visible: sounds.enabled
+                    title: "Quiet during calls and full-screen apps"
+                    caption: "No sounds while an app uses the microphone or a video, game or slideshow fills the screen (a call still rings over a video)."
+                    checked: sounds.quietWhenBusy
+                    onToggled: sounds.quietWhenBusy = !sounds.quietWhenBusy
+                }
             }
 
             RowLayout {

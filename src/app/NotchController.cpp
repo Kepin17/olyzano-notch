@@ -238,6 +238,7 @@ int NotchController::addReceivedFiles(const QString &folder, const QStringList &
         }
     }
     if (added > 0) {
+        emit sound(QStringLiteral("receive"));
         const QString title = fromDevice.isEmpty() ? tr("Received") : tr("From %1").arg(fromDevice);
         emit notice(title, added == 1 ? lastName : tr("%1 files").arg(added),
                     added == 1 ? QMimeDatabase().mimeTypeForFile(lastName).iconName() : QStringLiteral("folder-download"), QString());
@@ -368,6 +369,8 @@ void NotchController::addUrls(const QList<QUrl> &urls, const QString &categoryId
 
 void NotchController::addDrop(const QList<QUrl> &urls, const QString &html, const QString &categoryId)
 {
+    if (m_ready && !urls.isEmpty())
+        emit sound(QStringLiteral("drop"));
     QList<QUrl> clean;
     for (const QUrl &url : urls)
         if (url.isValid() && !url.isRelative())
@@ -592,6 +595,7 @@ void NotchController::pasteClipboard(const QString &categoryId)
     const QMimeData *md = QGuiApplication::clipboard()->mimeData();
     if (!md)
         return;
+    emit sound(QStringLiteral("drop"));
     const QList<QUrl> urls = md->urls();
     if (!urls.isEmpty() && std::all_of(urls.cbegin(), urls.cend(), [](const QUrl &u) { return u.isLocalFile(); })) {
         addUrls(urls, categoryId);
@@ -641,6 +645,7 @@ void NotchController::addTextNote(const QString &text, const QString &categoryId
 {
     if (text.trimmed().isEmpty())
         return;
+    emit sound(QStringLiteral("drop"));
     QString title;
     for (const QString &line : text.split(u'\n'))
         if (!line.trimmed().isEmpty()) {
@@ -1534,6 +1539,7 @@ void NotchController::addReceived(const QString &url, const QString &deviceName)
     const QUrl u(url);
     const QString category = autoCategory(QStringLiteral("kdeconnectCategory"), tr("KDE Connect"));
     const QString title = deviceName.isEmpty() ? tr("Received") : tr("From %1").arg(deviceName);
+    emit sound(QStringLiteral("receive"));
     if (!u.isLocalFile()) { // a shared link
         addUrls({u}, category);
         emit notice(title, u.toDisplayString(), QStringLiteral("text-html"), QString());

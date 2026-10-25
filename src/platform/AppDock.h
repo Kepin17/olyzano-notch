@@ -68,6 +68,7 @@ public:
     void setShowTrash(bool show);
     bool trashFull() const { return m_trashFull; }
     QString coveredScreen() const { return m_coveredScreen; }
+    bool fullScreenActive() const { return m_fullScreen; } // the window in front is full screen (KWin)
     QString trashIcon() const { return iconSource(m_trashFull ? QStringLiteral("special:trash-full") : QStringLiteral("special:trash")); }
     void setShowRunning(bool show);
     QVariantList pinnedApps() const;
@@ -109,6 +110,7 @@ public slots:
     void launcherEntry(const QString &appUri, const QVariantMap &properties);
 
 signals:
+    void trashEmptied(); // asked to: the sound plays right away
     void enabledChanged();
     void autoHideChanged();
     void appearanceChanged();
@@ -124,6 +126,7 @@ private:
         qint64 pid = 0;
         bool active = false;
         bool atTop = false;
+        bool fullScreen = false;
     };
 
     void storeAppearance(const QString &key, const QVariant &value);
@@ -148,6 +151,7 @@ private:
     QHash<QString, QVariantMap> m_badges;     // desktop file id -> launcher entry properties
     bool m_trashFull = false;
     QString m_coveredScreen;
+    bool m_fullScreen = false;
     QTimer m_coverPoll; // Windows: there is no push for the window in front, so look every second or so
     void setCoveredScreen(const QString &screen);
     void checkForeground();

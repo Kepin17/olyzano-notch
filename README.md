@@ -32,14 +32,14 @@ Tested on Kubuntu 26.04 (Qt 6.10, KDE Plasma on Wayland).
 **[latest release](https://github.com/Kepin17/olyzano-notch/releases/latest)**, or from a terminal:
 
 ```bash
-wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.8.0/notch_0.8.0_amd64.deb
+wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.9.0/notch_0.9.0_amd64.deb
 ```
 
 **2. Install** it. `apt` pulls in everything it needs (Qt 6 runtime, `layer-shell-qt`, Poppler, Ghostscript,
 `gocryptfs`, `fuse3`, `pulseaudio-utils`, …):
 
 ```bash
-sudo apt install ./notch_0.8.0_amd64.deb
+sudo apt install ./notch_0.9.0_amd64.deb
 ```
 
 **3. Start** **Notch** from the application menu, or turn on **Settings → General → Start at login**.
@@ -116,6 +116,8 @@ account* → select **Path** → **Edit** → **New** → paste the folder → O
 | Live activities: timer, downloads, Nearby transfers in the closed notch | ✅ | ✅ |
 | Timer, stopwatch and Pomodoro | ✅ | ✅ |
 | Stretch reminder (counts real work time) · idle clock | ✅ | ✅ |
+| Sound effects | ✅ | ✅ |
+| Notifications from other apps on this computer in the notch | ✅ | ✅ (if Windows allows it, see below) |
 | Phone calls and notifications (KDE Connect) · microphone / camera indicators | ✅ | ✅ |
 | Locked (encrypted) categories | ✅ | ✅ |
 | Now-playing card with a real-sound equalizer | ✅ | ✅ |
@@ -361,6 +363,19 @@ Limits: it only talks to Notch (not Google's Quick Share), it needs both compute
 - **Colour picker:** the palette button lets you click any pixel on screen; the hex code is copied and kept in a swatch
   row. On Windows the screen freezes with a magnifier at the pointer; Esc cancels.
 
+- **Sound effects:** short, soft sounds for a file dropped or pasted, the Trash emptied, a colour picked, a timer or
+  Pomodoro done, the stretch reminder and the end of a break, an incoming call, notifications, files sent or received,
+  the charger, a Bluetooth device and a low battery. *Settings → General → Sounds* has a volume, a switch per group with
+  a ▶ to hear it, and *Quiet during calls and full-screen apps* (on by default: nothing plays while an app uses the
+  microphone, and only a call rings over a full-screen video). Linux plays them through `paplay` (PulseAudio or
+  PipeWire, in the `.deb` already); Windows through its own sound API. The sounds are made by `tools/make_sounds.py`.
+- **Notifications from this computer:** what other apps show (Slack, mail, the browser, …) also appears in the notch as
+  "Notification from Slack · John", never the message itself, with a sound. *Do not disturb* (Plasma) or *Focus*
+  (Windows) keeps them quiet. *Settings → General → Notifications from this computer* lists the apps that sent some
+  lately; tap one to stop or start showing it. Notifications from KDE Connect are left out (the phone's already show).
+  - Linux: Notch watches the session bus for notifications, the way KDE Connect does; Plasma still shows them as usual.
+  - Windows: Notch asks Windows for access to notifications. Windows may only grant that to apps installed as an
+    MSIX package, which Notch isn't; then Settings says it isn't available on this install.
 ---
 
 ## Settings and storage
@@ -370,7 +385,7 @@ Limits: it only talks to Notch (not Google's Quick Share), it needs both compute
 | Files | `~/.local/share/notch/files/<uuid>/<name>` | `%LOCALAPPDATA%\notch\files\…` |
 | Metadata | `~/.local/share/notch/notch.db` (SQLite) | `%LOCALAPPDATA%\notch\notch.db` |
 | Settings | `~/.config/notch/notch.conf` | `%LOCALAPPDATA%\notch\notch.conf` |
-| Dock, live activities, wellbeing | `~/.config/notch/dock.conf`, `activities.conf`, `wellbeing.conf` | same folder as `notch.conf` |
+| Dock, live activities, wellbeing, sounds, notifications | `~/.config/notch/dock.conf`, `activities.conf`, `wellbeing.conf`, `sounds.conf`, `notifications.conf` | same folder as `notch.conf` |
 | Locked files | `~/.local/share/notch/vault/` (encrypted; plain view only in RAM while unlocked) | `%LOCALAPPDATA%\notch\vault\` (encrypted; while unlocked in `%TEMP%\notch-vault-…`) |
 | Server keys | `~/.config/notch/servers/*.key` (owner-only) | same folder, protected by your user profile |
 | Start at login | `~/.config/autostart/notch.desktop` | `HKCU\…\Run` |
