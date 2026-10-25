@@ -12,6 +12,13 @@ Rectangle {
     property bool btOpen: false
     property bool soundOpen: false
     property bool inputOpen: false
+    property string askFor: "" // the network whose password is being typed
+    function syncWatch() {
+        quick.watchWifi(open && wifiOpen)
+        quick.watchBluetooth(open && btOpen)
+    }
+    onWifiOpenChanged: { askFor = ""; syncWatch() }
+    onBtOpenChanged: syncWatch()
     width: 372
     implicitHeight: body.implicitHeight + 28
     height: implicitHeight
@@ -22,7 +29,7 @@ Rectangle {
     opacity: open ? 1 : 0
     visible: opacity > 0
     Behavior on opacity { NumberAnimation { duration: 140 } }
-    onOpenChanged: if (open) quick.refresh()
+    onOpenChanged: { if (open) quick.refresh(); else askFor = ""; syncWatch() }
 
     readonly property color tileOff: theme.dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(0, 0, 0, 0.06)
     readonly property color tileOn: theme.accentSoft
@@ -76,12 +83,15 @@ Rectangle {
         property string label
         property string note
         property bool mark: false
+        property string glyph
+        property real glyphOpacity: 1
         Layout.fillWidth: true
         implicitHeight: 30
         background: Rectangle { radius: 8; color: row.hovered ? card.tileOff : "transparent" }
         contentItem: RowLayout {
             spacing: 8
-            Text { Layout.fillWidth: true; text: row.label; color: theme.text; font.pixelSize: 12; elide: Text.ElideRight; leftPadding: 6 }
+            LineIcon { visible: row.glyph !== ""; Layout.leftMargin: 6; glyph: row.glyph; opacity: row.glyphOpacity; sourceSize: Qt.size(15, 15); color: theme.text }
+            Text { Layout.fillWidth: true; text: row.label; color: theme.text; font.pixelSize: 12; elide: Text.ElideRight; leftPadding: row.glyph !== "" ? 0 : 6 }
             Text { text: row.note; color: theme.textDim; font.pixelSize: 11 }
             Rectangle { visible: row.mark; Layout.preferredWidth: 7; Layout.preferredHeight: 7; radius: 3.5; color: theme.accent; Layout.rightMargin: 6 }
         }
@@ -136,37 +146,90 @@ Rectangle {
                 onExpand: { card.btOpen = !card.btOpen; card.wifiOpen = false }
             }
         }
-        ColumnLayout {
+        Flickable {
             visible: card.wifiOpen && quick.wifiAvailable
             Layout.fillWidth: true
-            spacing: 0
-            Repeater {
-                model: quick.wifiNetworks
-                Row2 {
-                    required property var modelData
-                    label: modelData.name
-                    mark: modelData.active
-                    onClicked: quick.connectWifi(modelData.id)
+            Layout.preferredHeight: Math.min(wifiCol.implicitHeight, 200)
+            contentHeight: wifiCol.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            ColumnLayout {
+                id: wifiCol
+                width: parent.width
+                spacing: 0
+                Repeater {
+                    model: quick.wifiNetworks
+                    ColumnLayout {
+                        id: net
+                        required property var modelData
+                        Layout.fillWidth: true
+                        spacing: 0
+                        Row2 {
+                            label: net.modelData.name
+                            glyph: "wifi"
+                            glyphOpacity: 0.35 + 0.1625 * net.modelData.bars
+                            note: net.modelData.active ? "Connected" : net.modelData.saved ? "Saved" : net.modelData.enterprise ? "System settings" : net.modelData.secure ? "Password" : "Open"
+                            mark: net.modelData.active
+                            onClicked: {
+                                if (net.modelData.active) quick.disconnectWifi()
+                                else if (net.modelData.saved) quick.connectWifi(net.modelData.id)
+                                else if (net.modelData.enterprise) quick.openSystemSettings()
+                                else if (net.modelData.secure) card.askFor = card.askFor === net.modelData.name ? "" : net.modelData.name
+                                else quick.joinWifi(net.modelData.ap, net.modelData.name, "")
+                            }
+                        }
+                        RowLayout {
+                            visible: card.askFor === net.modelData.name
+                            Layout.fillWidth: true
+                            Layout.leftMargin: 6
+                            spacing: 6
+                            TextField {
+                                id: pass
+                                Layout.fillWidth: true
+                                placeholderText: "Password"
+                                echoMode: TextInput.Password
+                                font.pixelSize: 12
+                                color: theme.text
+                                onVisibleChanged: if (visible) forceActiveFocus(); else text = ""
+                                onAccepted: join.clicked()
+                                background: Rectangle { radius: 8; color: card.tileOff; border.width: pass.activeFocus ? 1 : 0; border.color: theme.accent }
+                            }
+                            Button {
+                                id: join
+                                text: "Join"
+                                enabled: pass.text.length >= 8
+                                onClicked: { quick.joinWifi(net.modelData.ap, net.modelData.name, pass.text); card.askFor = "" }
+                            }
+                        }
+                    }
                 }
+                Text { visible: quick.wifiNetworks.length === 0; text: "Looking for networks..."; color: theme.textDim; font.pixelSize: 11; leftPadding: 6 }
             }
-            Text { visible: quick.wifiNetworks.length === 0; text: "No saved networks."; color: theme.textDim; font.pixelSize: 11; leftPadding: 6 }
-            Text { text: "Join a new network in the system settings."; color: theme.textFaint; font.pixelSize: 10; leftPadding: 6; topPadding: 4 }
         }
-        ColumnLayout {
+        Flickable {
             visible: card.btOpen && quick.btAvailable
             Layout.fillWidth: true
-            spacing: 0
-            Repeater {
-                model: quick.btDevices
-                Row2 {
-                    required property var modelData
-                    label: modelData.name
-                    note: modelData.connected ? "Connected" : ""
-                    mark: modelData.connected
-                    onClicked: quick.toggleBtDevice(modelData.path)
+            Layout.preferredHeight: Math.min(btCol.implicitHeight, 200)
+            contentHeight: btCol.implicitHeight
+            clip: true
+            boundsBehavior: Flickable.StopAtBounds
+            ColumnLayout {
+                id: btCol
+                width: parent.width
+                spacing: 0
+                Repeater {
+                    model: quick.btDevices
+                    Row2 {
+                        required property var modelData
+                        label: modelData.name
+                        glyph: modelData.icon.indexOf("audio") === 0 ? "headphones" : "bluetooth"
+                        note: modelData.connected ? "Connected" : modelData.paired ? "Paired" : "Pair"
+                        mark: modelData.connected
+                        onClicked: modelData.paired ? quick.toggleBtDevice(modelData.path) : quick.pairBtDevice(modelData.path)
+                    }
                 }
+                Text { visible: quick.btDevices.length === 0; text: quick.btEnabled ? "Looking for devices..." : "Bluetooth is off."; color: theme.textDim; font.pixelSize: 11; leftPadding: 6 }
             }
-            Text { visible: quick.btDevices.length === 0; text: "No paired devices."; color: theme.textDim; font.pixelSize: 11; leftPadding: 6 }
         }
 
         // sound

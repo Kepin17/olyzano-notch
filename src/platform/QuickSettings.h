@@ -38,13 +38,13 @@ class QuickSettings : public QObject
     Q_PROPERTY(bool btAvailable READ btAvailable NOTIFY changed)
     Q_PROPERTY(bool btEnabled READ btEnabled NOTIFY changed)
     Q_PROPERTY(QString btConnected READ btConnected NOTIFY changed) // the names of what is connected
-    Q_PROPERTY(QVariantList btDevices READ btDevices NOTIFY changed) // [{path, name, connected}]
+    Q_PROPERTY(QVariantList btDevices READ btDevices NOTIFY changed) // [{path, name, connected, paired, icon, rssi}]; unpaired ones only while a list is open
     // Wi-Fi
     Q_PROPERTY(bool wifiAvailable READ wifiAvailable NOTIFY changed)
     Q_PROPERTY(bool wifiEnabled READ wifiEnabled NOTIFY changed)
     Q_PROPERTY(QString wifiName READ wifiName NOTIFY changed)
     Q_PROPERTY(int wifiBars READ wifiBars NOTIFY changed)         // 0-4
-    Q_PROPERTY(QVariantList wifiNetworks READ wifiNetworks NOTIFY changed) // saved networks [{id, name, active}]
+    Q_PROPERTY(QVariantList wifiNetworks READ wifiNetworks NOTIFY changed) // in range [{name, ap, id, bars, secure, enterprise, saved, active}]
 
 public:
     explicit QuickSettings(QObject *parent = nullptr);
@@ -90,6 +90,11 @@ public:
     Q_INVOKABLE void toggleBtDevice(const QString &path);
     Q_INVOKABLE void setWifiEnabled(bool on);
     Q_INVOKABLE void connectWifi(const QString &connectionPath);
+    Q_INVOKABLE void joinWifi(const QString &apPath, const QString &ssid, const QString &password); // a network not saved yet (password empty: an open one)
+    Q_INVOKABLE void disconnectWifi();
+    Q_INVOKABLE void watchWifi(bool on);      // the list is open: scan now and now and then
+    Q_INVOKABLE void watchBluetooth(bool on); // the list is open: look for devices nearby
+    Q_INVOKABLE void pairBtDevice(const QString &path);
     Q_INVOKABLE void openSystemSettings();
 
     QByteArray dump() const; // for `notch --dump-quick`: what it sees, as JSON
@@ -102,6 +107,7 @@ private:
     void readSystem();   // brightness, power, Bluetooth, Wi-Fi: D-Bus
     void listenAudio();
     void soon();
+    void scanWifi();
 private slots:
     void onProps(const QString &, const QVariantMap &, const QStringList &) { soon(); }
     void onBrightness(int) { soon(); }
@@ -126,6 +132,7 @@ private:
     int m_wifiStrength = 0;
     QVariantList m_wifiNetworks;
 
+    bool m_wifiWatch = false, m_btWatch = false;
     QProcess m_subscribe;
-    QTimer m_debounce, m_poll;
+    QTimer m_debounce, m_poll, m_scan;
 };

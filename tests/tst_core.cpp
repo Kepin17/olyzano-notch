@@ -724,6 +724,25 @@ private slots:
         QCOMPARE(mics.size(), 1); // what plays is not a microphone
         QVERIFY(mics[0].isDefault && mics[0].volume == 80);
 
+        {
+            using PanelModel::AccessPoint;
+            const QList<AccessPoint> aps{{QStringLiteral("Cafe"), QStringLiteral("/a"), 80, false, false}, {QStringLiteral("Home"), QStringLiteral("/b"), 30, true, false},
+                                         {QStringLiteral("Home"), QStringLiteral("/c"), 60, true, false}, {QString(), QStringLiteral("/d"), 99, false, false},
+                                         {QStringLiteral("Office"), QStringLiteral("/e"), 50, true, true}, {QStringLiteral("Work"), QStringLiteral("/f"), 40, true, false}};
+            const auto nets = PanelModel::mergeWifi(aps, {{QStringLiteral("/s1"), QStringLiteral("Home")}, {QStringLiteral("/s2"), QStringLiteral("Work")}}, QStringLiteral("Work"));
+            QCOMPARE(nets.size(), 4); // the hidden one is gone, "Home" is merged
+            QCOMPARE(nets[0].toMap().value(QStringLiteral("name")).toString(), QStringLiteral("Work")); // in use
+            QCOMPARE(nets[1].toMap().value(QStringLiteral("name")).toString(), QStringLiteral("Home")); // saved
+            QCOMPARE(nets[1].toMap().value(QStringLiteral("ap")).toString(), QStringLiteral("/c"));     // its strongest access point
+            QCOMPARE(nets[2].toMap().value(QStringLiteral("name")).toString(), QStringLiteral("Cafe")); // then by signal
+            QVERIFY(nets[3].toMap().value(QStringLiteral("enterprise")).toBool());
+            QVariantList bt{QVariantMap{{"name", "far"}, {"rssi", -90}}, QVariantMap{{"name", "near"}, {"rssi", -40}}, QVariantMap{{"name", "mine"}, {"paired", true}},
+                            QVariantMap{{"name", "on"}, {"paired", true}, {"connected", true}}};
+            PanelModel::orderBluetooth(bt);
+            QCOMPARE(bt[0].toMap().value("name").toString(), QStringLiteral("on"));
+            QCOMPARE(bt[1].toMap().value("name").toString(), QStringLiteral("mine"));
+            QCOMPARE(bt[2].toMap().value("name").toString(), QStringLiteral("near"));
+        }
         QCOMPARE(PanelModel::wifiBars(0), 0);
         QCOMPARE(PanelModel::wifiBars(20), 1);
         QCOMPARE(PanelModel::wifiBars(49), 2);

@@ -6,6 +6,9 @@
 #include <QJsonObject>
 #include <QList>
 #include <QString>
+#include <QVariantList>
+#include <QVariantMap>
+#include <algorithm>
 
 // What Quick Settings can work out without asking the system. Pure, for the tests.
 namespace PanelModel {
@@ -54,6 +57,58 @@ inline QList<Sink> parseSources(const QByteArray &json, const QString &defaultSo
 inline int wifiBars(int strength)
 {
     return strength <= 0 ? 0 : strength < 25 ? 1 : strength < 50 ? 2 : strength < 75 ? 3 : 4;
+}
+
+struct AccessPoint {
+    QString ssid, path;
+    int strength = 0;
+    bool secure = false;
+    bool enterprise = false; // 802.1x: needs more than a password, left to the system settings
+};
+struct SavedWifi {
+    QString id, name; // the connection's object path, its name
+};
+
+// The networks in range, one row per name (the strongest access point of it): the one in use first, then those already
+// saved, then the rest by signal. Hidden networks (no name) are left out.
+inline QVariantList mergeWifi(const QList<AccessPoint> &aps, const QList<SavedWifi> &saved, const QString &active)
+{
+    QList<AccessPoint> best;
+    for (const AccessPoint &ap : aps) {
+        if (ap.ssid.isEmpty())
+            continue;
+        auto it = std::find_if(best.begin(), best.end(), [&](const AccessPoint &b) { return b.ssid == ap.ssid; });
+        if (it == best.end())
+            best << ap;
+        else if (ap.strength > it->strength)
+            *it = ap;
+    }
+    auto savedId = [&](const QString &name) {
+        for (const SavedWifi &s : saved)
+            if (s.name == name)
+                return s.id;
+        return QString();
+    };
+    std::stable_sort(best.begin(), best.end(), [&](const AccessPoint &a, const AccessPoint &b) {
+        const int ra = a.ssid == active ? 2 : !savedId(a.ssid).isEmpty() ? 1 : 0, rb = b.ssid == active ? 2 : !savedId(b.ssid).isEmpty() ? 1 : 0;
+        return ra != rb ? ra > rb : a.strength > b.strength;
+    });
+    QVariantList out;
+    for (const AccessPoint &ap : best)
+        out << QVariantMap{{QStringLiteral("name"), ap.ssid}, {QStringLiteral("ap"), ap.path}, {QStringLiteral("id"), savedId(ap.ssid)},
+                           {QStringLiteral("strength"), ap.strength}, {QStringLiteral("bars"), wifiBars(ap.strength)}, {QStringLiteral("secure"), ap.secure},
+                           {QStringLiteral("enterprise"), ap.enterprise}, {QStringLiteral("saved"), !savedId(ap.ssid).isEmpty()}, {QStringLiteral("active"), ap.ssid == active}};
+    return out;
+}
+
+// Bluetooth devices: connected first, then the paired, then those found nearby by signal (rssi is negative: closer is larger).
+inline void orderBluetooth(QVariantList &devices)
+{
+    auto rank = [](const QVariantMap &d) { return d.value(QStringLiteral("connected")).toBool() ? 2 : d.value(QStringLiteral("paired")).toBool() ? 1 : 0; };
+    std::stable_sort(devices.begin(), devices.end(), [&](const QVariant &a, const QVariant &b) {
+        const QVariantMap x = a.toMap(), y = b.toMap();
+        return rank(x) != rank(y) ? rank(x) > rank(y) : x.value(QStringLiteral("rssi")).toInt() > y.value(QStringLiteral("rssi")).toInt();
+    });
 }
 
 // 0 muted or silent, 1 low, 2 medium, 3 high: which speaker to draw.
