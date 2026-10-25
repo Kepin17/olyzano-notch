@@ -8,8 +8,88 @@
 #include <QDBusMessage>
 #endif
 
-#ifndef NOTCH_HAVE_DBUS
-// No MPRIS here (Windows): nothing is ever "playing", so the music card never shows. Same QML-facing API.
+#if !defined(NOTCH_HAVE_DBUS) && defined(Q_OS_WIN)
+#include <memory>
+// Windows: the media sessions apps register with the system (what the volume flyout shows: browser
+// tabs, Spotify, Media Player), read on a worker thread of their own and mirrored here. Same
+// QML-facing API and the same player choice (PlayerSelection.h) as the MPRIS class below.
+class MediaPlayers : public QObject
+{
+    Q_OBJECT
+    Q_PROPERTY(bool active READ active NOTIFY changed)
+    Q_PROPERTY(bool playing READ playing NOTIFY changed)
+    Q_PROPERTY(QString title READ title NOTIFY changed)
+    Q_PROPERTY(QString artist READ artist NOTIFY changed)
+    Q_PROPERTY(QString artUrl READ artUrl NOTIFY changed)
+    Q_PROPERTY(qint64 lengthMs READ lengthMs NOTIFY changed)
+    Q_PROPERTY(bool canSeek READ canSeek NOTIFY changed)
+    Q_PROPERTY(bool canNext READ canNext NOTIFY changed)
+    Q_PROPERTY(bool canPrevious READ canPrevious NOTIFY changed)
+    Q_PROPERTY(QString identity READ identity NOTIFY changed)
+    Q_PROPERTY(int playerCount READ playerCount NOTIFY changed)
+
+public:
+    explicit MediaPlayers(QObject *parent = nullptr);
+    ~MediaPlayers() override;
+
+    // One session as the worker last read it.
+    struct Session {
+        QString key;      // AUMID#n: an app can have several (one per browser tab)
+        QString aumid;
+        QString status;   // "Playing" | "Paused" | "Stopped"
+        QString title, artist, artUrl;
+        qint64 lengthMs = 0;
+        qint64 positionMs = 0; // at positionAt (ms since the epoch)
+        qint64 positionAt = 0;
+        bool canNext = false, canPrevious = false, canSeek = false;
+    };
+
+    bool active() const { return current() != nullptr; }
+    bool playing() const;
+    QString title() const { return current() ? current()->title : QString(); }
+    QString artist() const { return current() ? current()->artist : QString(); }
+    QString artUrl() const { return current() ? current()->artUrl : QString(); }
+    qint64 lengthMs() const { return current() ? current()->lengthMs : 0; }
+    bool canSeek() const { return current() && current()->canSeek; }
+    bool canNext() const { return current() && current()->canNext; }
+    bool canPrevious() const { return current() && current()->canPrevious; }
+    QString identity() const;
+    int playerCount() const;
+
+    Q_INVOKABLE qint64 positionMs() const;
+    Q_INVOKABLE void playPause();
+    Q_INVOKABLE void next();
+    Q_INVOKABLE void previous();
+    Q_INVOKABLE void seek(qint64 ms);
+    Q_INVOKABLE void raise();
+    Q_INVOKABLE void cyclePlayer();
+
+    void sessionsRead(const QList<Session> &sessions); // from the worker, on this thread
+
+signals:
+    void changed();
+    void trackChanged(const QString &title, const QString &artist, const QString &artUrl);
+
+private:
+    struct Player {
+        Session s;
+        qint64 lastActive = 0;
+    };
+    const Session *current() const;
+    void select();
+    void command(int which, qint64 arg = 0) const;
+
+    struct Worker;
+    std::unique_ptr<Worker> m_worker;
+    QHash<QString, Player> m_players; // by Session::key
+    QString m_current;
+    QString m_manual;
+    QString m_lastTrack;
+    bool m_ready = false;
+    QElapsedTimer m_clock;
+};
+#elif !defined(NOTCH_HAVE_DBUS)
+// No MPRIS here: nothing is ever "playing", so the music card never shows. Same QML-facing API.
 class MediaPlayers : public QObject
 {
     Q_OBJECT

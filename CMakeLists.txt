@@ -92,7 +92,8 @@ else()
 endif()
 if(WIN32)
     target_sources(notch PRIVATE src/platform/WinPrivacy.h src/platform/WinPrivacy.cpp src/platform/ColorPicker_win.cpp
-                                 src/platform/WinBluetooth.h src/platform/WinBluetooth.cpp)
+                                 src/platform/WinBluetooth.h src/platform/WinBluetooth.cpp
+                                 src/platform/MediaPlayers_win.cpp src/platform/MediaNames.h src/platform/AudioLevels_win.cpp)
     # user32/shell32: AppDock lists and raises windows, and asks the Recycle Bin. ole32/advapi32: microphone, registry.
     # windowsapp: the WinRT APIs (Bluetooth, media sessions) through C++/WinRT, which ships with the Windows SDK.
     target_link_libraries(notch PRIVATE user32 shell32 ole32 advapi32 windowsapp)
