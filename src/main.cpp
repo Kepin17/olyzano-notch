@@ -15,6 +15,7 @@
 #include "platform/GamingMode.h"
 #include "platform/Karaoke.h"
 #include "platform/PanelBar.h"
+#include "platform/QuickSettings.h"
 #include "platform/Lyrics.h"
 #include "platform/MediaPlayers.h"
 #include "platform/SystemEvents.h"
@@ -157,6 +158,11 @@ int main(int argc, char *argv[])
     Karaoke karaoke;
     GamingMode gaming;
     PanelBar panelBar;
+    QuickSettings quick;
+    if (app.arguments().contains(QStringLiteral("--dump-quick"))) { // what Quick Settings sees, for checking it on a computer
+        QTimer::singleShot(600, &app, [&] { fputs(quick.dump().constData(), stdout); app.quit(); });
+        return app.exec();
+    }
     // "Full screen" for gaming mode is any app that fills the screen: a maximised one looks the same.
     const auto fillsScreen = [&] { gaming.setFullScreen(dock.coveringActive()); };
     QObject::connect(&dock, &AppDock::coveringChanged, &gaming, fillsScreen);
@@ -240,6 +246,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("karaoke"), &karaoke);
     engine.rootContext()->setContextProperty(QStringLiteral("gaming"), &gaming);
     engine.rootContext()->setContextProperty(QStringLiteral("topbar"), &panelBar);
+    engine.rootContext()->setContextProperty(QStringLiteral("quick"), &quick);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
 
     // One Notch per monitor, following hotplug.

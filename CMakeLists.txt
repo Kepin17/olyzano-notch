@@ -89,6 +89,7 @@ qt_add_executable(notch
     src/platform/Karaoke.h src/platform/Karaoke.cpp src/platform/KaraokeModel.h
     src/platform/GamingMode.h src/platform/GamingMode.cpp src/platform/GamingModel.h
     src/platform/PanelBar.h src/platform/PanelBar.cpp
+    src/platform/QuickSettings.h src/platform/QuickSettings.cpp src/platform/PanelModel.h
     src/platform/DesktopNotifications.h src/platform/DesktopNotifications.cpp src/platform/NotificationFilter.h
 )
 if(NOTCH_DBUS)

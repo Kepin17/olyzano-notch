@@ -18,6 +18,7 @@
 #include "platform/MediaNames.h"
 #include "platform/GamingModel.h"
 #include "platform/KaraokeModel.h"
+#include "platform/PanelModel.h"
 #include "platform/LrcParser.h"
 #include "platform/Lyrics.h"
 #include "platform/LyricsQuery.h"
@@ -703,6 +704,32 @@ private slots:
         QVERIFY(g.active());
         g.enabled = false;
         QVERIFY(!g.active());
+    }
+
+    void quickSettingsModel()
+    {
+        const QByteArray json = R"([{"name":"alsa_output.a","description":"Speakers","mute":false,
+            "volume":{"front-left":{"value_percent":"62%"},"front-right":{"value_percent":"58%"}}},
+            {"name":"bluez_output.b","description":"Headphones","mute":true,"volume":{"mono":{"value_percent":"100%"}}},{"description":"no name"}])";
+        const auto sinks = PanelModel::parseSinks(json, QStringLiteral("bluez_output.b"));
+        QCOMPARE(sinks.size(), 2);
+        QCOMPARE(sinks[0].description, QStringLiteral("Speakers"));
+        QCOMPARE(sinks[0].volume, 62); // the loudest channel
+        QVERIFY(!sinks[0].isDefault && sinks[1].isDefault && sinks[1].mute);
+        QVERIFY(PanelModel::parseSinks("not json", {}).isEmpty());
+
+        QCOMPARE(PanelModel::wifiBars(0), 0);
+        QCOMPARE(PanelModel::wifiBars(20), 1);
+        QCOMPARE(PanelModel::wifiBars(49), 2);
+        QCOMPARE(PanelModel::wifiBars(74), 3);
+        QCOMPARE(PanelModel::wifiBars(75), 4);
+        QCOMPARE(PanelModel::volumeLevel(80, true), 0);
+        QCOMPARE(PanelModel::volumeLevel(10, false), 1);
+        QCOMPARE(PanelModel::volumeLevel(50, false), 2);
+        QCOMPARE(PanelModel::volumeLevel(100, false), 3);
+        QCOMPARE(PanelModel::timeLeft(0), QString());
+        QCOMPARE(PanelModel::timeLeft(35 * 60), QStringLiteral("35 min"));
+        QCOMPARE(PanelModel::timeLeft(7500), QStringLiteral("2 h 05 min"));
     }
 
     void karaokeLoopModules()
