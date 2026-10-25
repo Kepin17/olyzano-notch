@@ -163,6 +163,8 @@ RowLayout {
             Layout.fillWidth: true
             spacing: 16
 
+            SettingCard {
+                title: "Notch"
             SettingToggle {
                 title: "Start at login"
                 checked: notch.autostart
@@ -196,6 +198,7 @@ RowLayout {
                         : activities.capsuleMode === "open" ? "The panel stays open at the top of the screen."
                         : "Only a thin line shows at the top edge. Rest the pointer there to open Olyzano Notch."
                 }
+            }
             }
 
             SettingCard {
