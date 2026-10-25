@@ -364,6 +364,8 @@ void Activities::readMicOutputs()
             continue;
         const QJsonObject props = stream.value(QLatin1String("properties")).toObject();
         QString name = props.value(QLatin1String("application.name")).toString();
+        if (name == QLatin1String("OlyzanoKaraoke"))
+            continue; // our own karaoke loop is not an app listening
         if (name.isEmpty())
             name = props.value(QLatin1String("application.process.binary")).toString();
         if (!name.isEmpty() && !mic.contains(name))

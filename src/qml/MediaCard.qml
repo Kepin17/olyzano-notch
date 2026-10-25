@@ -280,6 +280,33 @@ Rectangle {
                     verticalAlignment: Text.AlignVCenter
                 }
             }
+            // Karaoke: your voice through the speakers or headphones, with the music.
+            RoundButton {
+                id: mic
+                visible: karaoke.supported
+                Accessible.name: karaoke.active ? "Stop karaoke" : "Karaoke: sing along"
+                onClicked: karaoke.toggle()
+                background: Rectangle {
+                    radius: width / 2
+                    color: karaoke.active ? theme.accentSoft : mic.down ? theme.surfaceHover : mic.hovered ? theme.surface : "transparent"
+                }
+                contentItem: Item {
+                    LineIcon {
+                        anchors.centerIn: parent
+                        glyph: "mic"
+                        sourceSize: Qt.size(18, 18)
+                        color: karaoke.active ? theme.accent : theme.textDim
+                    }
+                }
+            }
+        }
+        Text {
+            visible: karaoke.active || karaoke.error !== ""
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            color: karaoke.error !== "" ? theme.danger : theme.textDim
+            font.pixelSize: 11
+            text: karaoke.error !== "" ? karaoke.error : "Your voice plays with the music. Use headphones, or a speaker will echo."
         }
     }
 }

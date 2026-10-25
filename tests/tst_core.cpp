@@ -16,6 +16,7 @@
 #include "platform/PlayerSelection.h"
 #include "platform/WinPrivacy.h"
 #include "platform/MediaNames.h"
+#include "platform/KaraokeModel.h"
 #include "platform/LrcParser.h"
 #include "platform/Lyrics.h"
 #include "platform/NotificationFilter.h"
@@ -680,6 +681,21 @@ private slots:
         web.routes.insert(QStringLiteral("/api/get"), {500, "oops"});
         l.track(QStringLiteral("P"), QStringLiteral("Q"), QString(), 90000);
         QTRY_COMPARE(l.state(), QStringLiteral("error"));
+    }
+
+    void karaokeLoopModules()
+    {
+        const QStringList args = KaraokeModel::loadArgs(25);
+        QCOMPARE(args.value(1), QStringLiteral("module-loopback"));
+        QVERIFY(args.contains(QStringLiteral("latency_msec=25")));
+        QVERIFY(args.last().contains(QStringLiteral("OlyzanoKaraoke")));
+        QCOMPARE(KaraokeModel::moduleId(QStringLiteral("42\n")), 42);
+        QCOMPARE(KaraokeModel::moduleId(QStringLiteral("Failure: Module initialization failed")), -1);
+        const QString list = QStringLiteral("1\tmodule-device-restore\t\n"
+                                            "27\tmodule-loopback\tsource=a sink=b source_output_properties=application.name=OlyzanoKaraoke\n"
+                                            "28\tmodule-loopback\tsource=x sink=y\n"
+                                            "31\tmodule-loopback\tsource_output_properties=application.name=OlyzanoKaraoke latency_msec=30\n");
+        QCOMPARE(KaraokeModel::staleModules(list), QList<int>({27, 31})); // another loopback of the user's stays
     }
 
     void lowBatteryThresholds()
