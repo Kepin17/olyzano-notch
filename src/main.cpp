@@ -369,6 +369,20 @@ int main(int argc, char *argv[])
             QTimer::singleShot(900, &app, [bar, &app, path] { bar->grabWindow().save(path); app.quit(); });
         });
     }
+    // `notch --shot-page file.png <timer|color|shelf>`: the open panel on that page, the same way.
+    if (const int i = app.arguments().indexOf(QStringLiteral("--shot-page")); i >= 0 && i + 2 < app.arguments().size()) {
+        const QString path = app.arguments().at(i + 1), page = app.arguments().at(i + 2);
+        QTimer::singleShot(1200, &app, [&windows, &app, &activities, path, page] {
+            QQuickWindow *w = windows.isEmpty() ? nullptr : windows.constBegin().value();
+            if (!w)
+                return app.quit();
+            if (page == QLatin1String("timer-run")) // a 25 minute timer running, to see the ring
+                activities.startTimer(25 * 60, QStringLiteral("Tea"));
+            w->setProperty("pinned", true);
+            w->setProperty("page", page.startsWith(QLatin1String("timer")) ? QStringLiteral("timer") : page);
+            QTimer::singleShot(1500, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+        });
+    }
     // `notch --shot-settings file.png [section]`: the open Settings page, the same way.
     if (const int i = app.arguments().indexOf(QStringLiteral("--shot-settings")); i >= 0 && i + 1 < app.arguments().size()) {
         const QString path = app.arguments().at(i + 1);
