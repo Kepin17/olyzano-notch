@@ -251,7 +251,7 @@ int main(int argc, char *argv[])
         }
         window->setScreen(screen);
         desktop.attach(window);
-        window->setVisible(!gaming.active()); // gaming mode: Notch stays out of the game's way
+        window->show();
         windows.insert(screen, window);
 
         auto *dockView = qobject_cast<QQuickWindow *>(dockWindow.create());
@@ -261,13 +261,13 @@ int main(int argc, char *argv[])
         }
         dockView->setScreen(screen);
         desktop.attachDock(dockView, dock.position());
-        dockView->setVisible(dock.enabled() && !gaming.active());
-        QObject::connect(&dock, &AppDock::enabledChanged, dockView, [dockView, &dock, &gaming] { dockView->setVisible(dock.enabled() && !gaming.active()); });
+        dockView->setVisible(dock.enabled());
+        QObject::connect(&dock, &AppDock::enabledChanged, dockView, [dockView, &dock] { dockView->setVisible(dock.enabled()); });
         // Another edge: hide, re-anchor, show again (queued so the window has taken its new size from QML).
-        QObject::connect(&dock, &AppDock::positionChanged, dockView, [dockView, &dock, &desktop, &gaming] {
+        QObject::connect(&dock, &AppDock::positionChanged, dockView, [dockView, &dock, &desktop] {
             dockView->hide();
             desktop.moveDock(dockView, dock.position());
-            dockView->setVisible(dock.enabled() && !gaming.active());
+            dockView->setVisible(dock.enabled());
         }, Qt::QueuedConnection);
         docks.insert(screen, dockView);
     };
@@ -275,21 +275,12 @@ int main(int argc, char *argv[])
         addScreen(screen);
     if (windows.isEmpty())
         return 1;
-    // Gaming mode hides every Notch and dock window (hidden windows get no pointer events at all) and brings them back.
-    QObject::connect(&gaming, &GamingMode::changed, &app, [&] {
-        const bool quiet = gaming.active();
-        for (QQuickWindow *w : std::as_const(windows))
-            w->setVisible(!quiet);
-        for (QQuickWindow *d : std::as_const(docks))
-            d->setVisible(dock.enabled() && !quiet);
-    });
     QObject::connect(&app, &QGuiApplication::screenAdded, addScreen);
     QObject::connect(&app, &QGuiApplication::screenRemoved, [&](QScreen *screen) {
         delete windows.take(screen);
         delete docks.take(screen);
     });
 
-    app.setQuitOnLastWindowClosed(false); // gaming mode hides every window: only the tray menu quits
     engine.loadFromModule("Notch", "Tray");
     const int rc = app.exec();
     qDeleteAll(windows); // before the engine and controller they bind to

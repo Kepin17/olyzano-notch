@@ -66,9 +66,9 @@ Window {
     // `notch --debug-hover` prints what the pointer does at the top edge.
     readonly property bool debugHover: Qt.application.arguments.indexOf("--debug-hover") >= 0
     function dbg(what) { if (debugHover) console.log("hover", Date.now() % 100000, what, "mode=" + mode, "open=" + open, "dwelled=" + dwelled) }
-    readonly property bool engaged: pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt")
+    readonly property bool engaged: !gaming.active && (pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt")
                                     || dragOver || anyMenu
-                                    || saveDialog.visible || addDialog.visible
+                                    || saveDialog.visible || addDialog.visible)
     // hidden: only the top-edge strip is live. peek: copy in progress. open: full panel.
     // toast: a short system alert (charger, Bluetooth). Shown even while hidden, like Dynamic Island.
     property var toast: null // {kind, title, detail, icon, level}
@@ -83,7 +83,7 @@ Window {
                                       : toast.kind === "desktop" ? theme.info
                                       : toast.kind === "color" ? toast.detail : theme.textDim
     // prompt: the stretch reminder asking. idle: the small clock pill when nothing else is going on.
-    readonly property string mode: wellbeing.state === "reminding" ? "prompt" : open ? "open" : toast ? "toast"
+    readonly property string mode: wellbeing.state === "reminding" ? "prompt" : open ? "open" : toast && !gaming.active ? "toast"
                                  : live ? "peek" : idleShown ? "idle" : "hidden"
 
     // ---- Stretch reminder ----
@@ -382,7 +382,9 @@ Window {
 
     // Everything outside the live area is click-through.
     function updateMask() {
-        if (anyMenu)
+        if (gaming.active) // gaming mode over a full-screen app: nothing here can be reached (one corner pixel stays, as an empty mask means none)
+            desktop.setInputRegion(root, Qt.rect(0, height - 1, 1, 1))
+        else if (anyMenu)
             desktop.setInputRegion(root, Qt.rect(0, 0, width, height))
         else if (mode === "hidden" || (mode === "idle" && capsuleMode !== "capsule")) // the idle clock is see-through for clicks; the top edge opens Notch (the capsule itself can be pointed at)
             desktop.setInputRegion(root, Qt.rect(edge.x, 0, edge.width, edge.height))
@@ -391,6 +393,16 @@ Window {
     }
     onVisibleChanged: updateMask()
     onModeChanged: updateMask()
+    Connections {
+        target: gaming
+        function onChanged() {
+            root.updateMask()
+            if (gaming.active) { // a full-screen app arrived: let go of the pointer and close
+                root.dwelled = false
+                root.open = false
+            }
+        }
+    }
 
     // Files or text from outside Notch; drags of Notch's own tiles/chips carry a source and are ignored.
     function isFileDrop(drag) {

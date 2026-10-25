@@ -157,7 +157,9 @@ Window {
         const h = Math.max(320, bar.height)
         return Qt.rect(side === "left" ? 0 : width - 2, (height - h) / 2, 2, h)
     }
-    readonly property rect maskRect: overlayOpen || dragIndex >= 0 ? Qt.rect(0, 0, width, height)
+    // Gaming mode over a full-screen app: nothing here can be reached (a corner pixel stays; an empty mask means none).
+    readonly property rect maskRect: gaming.active ? Qt.rect(0, 0, 1, 1)
+                                   : overlayOpen || dragIndex >= 0 ? Qt.rect(0, 0, width, height)
                                    : shown ? zoneRect() : edgeRect()
     onMaskRectChanged: desktop.setInputRegion(root, maskRect)
     readonly property rect blurRect: shown && dock.blur ? Qt.rect(bar.x, bar.y, bar.width, bar.height) : Qt.rect(0, 0, 0, 0)
