@@ -293,6 +293,19 @@ int main(int argc, char *argv[])
     // And a status bar along the top of each monitor (Settings → Panel). Created before the notch, so the notch draws above it.
     QQmlComponent barWindow(&engine, "Notch", "Bar");
     QHash<QScreen *, QQuickWindow *> bars;
+    if (const int i = app.arguments().indexOf(QStringLiteral("--super-key")); i >= 0) { // who gets the Windows key: status | on | off
+        const QString what = i + 1 < app.arguments().size() ? app.arguments().at(i + 1) : QStringLiteral("status");
+        if (what == QLatin1String("on"))
+            launcher.setSuperKey(true);
+        else if (what == QLatin1String("off"))
+            launcher.setSuperKey(false);
+        fputs(launcher.superKeyReport().constData(), stdout);
+        return 0;
+    }
+    QObject::connect(&panelBar, &PanelBar::changed, &launcher, [&] { // no bar or no launcher button: the key goes back to Plasma
+        if ((!panelBar.enabled() || !panelBar.launcher()) && launcher.superKey())
+            launcher.setSuperKey(false);
+    });
     QObject::connect(&launcher, &Launcher::toggleRequested, &app, [&bars] { // the Super key: on the screen the pointer is on
         QQuickWindow *target = nullptr;
         const QScreen *at = QGuiApplication::screenAt(QCursor::pos());

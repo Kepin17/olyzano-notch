@@ -790,7 +790,8 @@ RowLayout {
                 SettingToggle {
                     visible: launcher.superKeyAvailable
                     title: "Open with the Windows key"
-                    caption: "A tap on the Windows (Super) key opens this launcher instead of Plasma's. Turn it off to get Plasma's back."
+                    caption: "A tap on the Windows (Super) key opens this launcher instead of Plasma's. Now: "
+                             + (launcher.superKeyStatus === "notch" ? "this launcher." : launcher.superKeyStatus === "plasma" ? "Plasma's launcher." : "another action you set in System Settings.")
                     checked: launcher.superKey
                     onToggled: launcher.superKey = !launcher.superKey
                 }

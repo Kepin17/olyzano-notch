@@ -7,6 +7,7 @@
 
 #ifdef NOTCH_HAVE_DBUS
 #include <QDBusConnection>
+#include <QDBusConnectionInterface>
 #include <QDBusMessage>
 #endif
 
@@ -60,6 +61,24 @@ bool Launcher::superKeyAvailable() const
 #else
     return false;
 #endif
+}
+
+QString Launcher::superKeyStatus() const
+{
+    if (!superKeyAvailable())
+        return QStringLiteral("unavailable");
+    const QString v = kwinMeta();
+    return v == NotchKey ? QStringLiteral("notch") : v.isEmpty() || v.contains(QLatin1String("activateLauncherMenu")) ? QStringLiteral("plasma") : QStringLiteral("other");
+}
+
+QByteArray Launcher::superKeyReport() const
+{
+    bool answers = false;
+#ifdef NOTCH_HAVE_DBUS
+    answers = QDBusConnection::sessionBus().interface() && QDBusConnection::sessionBus().interface()->isServiceRegistered(QStringLiteral("org.olyzano.Notch"));
+#endif
+    return QStringLiteral("windows key: %1\nkwin value: %2\nnotch listening on D-Bus (org.olyzano.Notch): %3\n")
+        .arg(superKeyStatus(), kwinMeta().isEmpty() ? QStringLiteral("(default, Plasma's launcher)") : kwinMeta(), answers ? QStringLiteral("yes (this process)") : QStringLiteral("no")).toUtf8();
 }
 
 bool Launcher::superKey() const

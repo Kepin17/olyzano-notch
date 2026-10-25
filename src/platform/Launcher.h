@@ -19,6 +19,7 @@ class Launcher : public QObject
     Q_PROPERTY(QStringList pinned READ pinned NOTIFY changed)
     Q_PROPERTY(QStringList categories READ categories NOTIFY changed) // the groups that have apps, in a fixed order
     Q_PROPERTY(bool superKeyAvailable READ superKeyAvailable CONSTANT)  // KDE's settings tools are there
+    Q_PROPERTY(QString superKeyStatus READ superKeyStatus NOTIFY superKeyChanged) // "notch" | "plasma" | "other" | "unavailable"
     Q_PROPERTY(bool superKey READ superKey WRITE setSuperKey NOTIFY superKeyChanged) // the Windows (Super) key opens this launcher
 
 public:
@@ -30,6 +31,8 @@ public:
     // Apps matching `query` in `category` ("" = all), best first: [{id, name, iconSource, category, pinned}].
     bool superKeyAvailable() const;
     bool superKey() const;
+    QString superKeyStatus() const; // who the Windows key goes to now, as KWin has it
+    QByteArray superKeyReport() const; // `notch --super-key status`
     void setSuperKey(bool on);
 
     Q_INVOKABLE QVariantList search(const QString &query, const QString &category);

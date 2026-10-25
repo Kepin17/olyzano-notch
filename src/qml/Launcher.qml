@@ -42,7 +42,8 @@ Rectangle {
     }
 
     width: 480
-    implicitHeight: Math.min(560, 62 + scroller.contentHeight + 14)
+    readonly property bool hint: launcher.superKeyAvailable && !launcher.superKey
+    implicitHeight: Math.min(560, 62 + scroller.contentHeight + 14 + (hint ? 40 : 0))
     height: implicitHeight
     radius: theme.radiusLg
     color: theme.dark ? Qt.rgba(0.09, 0.09, 0.10, Math.min(1, topbar.opacity + 0.25)) : Qt.rgba(1, 1, 1, Math.min(1, topbar.opacity + 0.25))
@@ -155,6 +156,13 @@ Rectangle {
             Keys.onLeftPressed: (e) => { if (card.moved && card.current > 0) card.current -= 1; else e.accepted = false }
         }
 
+        RowLayout { // the Windows key, until it is switched on
+            visible: card.hint
+            Layout.fillWidth: true
+            spacing: 8
+            Text { Layout.fillWidth: true; text: "Open this with the Windows key"; color: theme.textDim; font.pixelSize: 11; elide: Text.ElideRight }
+            PillButton { text: "Turn on"; onClicked: launcher.superKey = true }
+        }
         Flickable {
             id: scroller
             Layout.fillWidth: true
