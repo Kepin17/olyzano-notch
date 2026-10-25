@@ -159,6 +159,18 @@ void DesktopIntegration::moveDock(QWindow *window, const QString &side)
     placeDock(window);
 }
 
+void DesktopIntegration::setAboveBar(QWindow *notchWindow, bool above)
+{
+#ifdef NOTCH_HAVE_LAYERSHELL
+    if (notchWindow && QGuiApplication::platformName().startsWith(QLatin1String("wayland")))
+        if (auto *ls = LayerShellQt::Window::get(notchWindow))
+            ls->setLayer(above ? LayerShellQt::Window::LayerOverlay : LayerShellQt::Window::LayerTop);
+#else
+    Q_UNUSED(notchWindow)
+    Q_UNUSED(above)
+#endif
+}
+
 void DesktopIntegration::setKeyboardInteractive(QWindow *window, bool interactive)
 {
     if (!window)

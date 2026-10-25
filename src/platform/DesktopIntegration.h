@@ -27,6 +27,8 @@ public:
     // The status bar: the whole top edge. `reserve` pixels are kept free for it (0: it floats over windows).
     void attachBar(QWindow *window);
     void setBarReserve(QWindow *window, int reserve);
+    // The notch above the status bar (both sit on the top edge): in the overlay layer while the bar is on, else the top layer.
+    void setAboveBar(QWindow *notchWindow, bool above);
     // Move a dock to another edge. Call while it is hidden: a layer-shell surface takes anchors when mapped.
     void moveDock(QWindow *window, const QString &side);
     bool layerShell() const { return m_layerShell; }

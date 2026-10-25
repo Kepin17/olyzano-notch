@@ -20,6 +20,7 @@
 #include "platform/GamingModel.h"
 #include "platform/KaraokeModel.h"
 #include "platform/CalendarModel.h"
+#include "platform/DoomscrollModel.h"
 #include "platform/LauncherModel.h"
 #include "platform/ColorFormat.h"
 #include "platform/PanelModel.h"
@@ -764,6 +765,53 @@ private slots:
         QCOMPARE(ColorFormat::format(QStringLiteral("nonsense"), QStringLiteral("rgb")), QStringLiteral("nonsense"));
         QCOMPARE(ColorFormat::readableOn(QStringLiteral("#ffffff")), QStringLiteral("#000000"));
         QCOMPARE(ColorFormat::readableOn(QStringLiteral("#101820")), QStringLiteral("#ffffff"));
+        {
+            using namespace DoomscrollModel;
+            const Options on;
+            QCOMPARE(classify({{}, QStringLiteral("google-chrome"), QStringLiteral("(86) Instagram - Google Chrome")}, on), Site::Instagram);
+            QCOMPARE(classify({{}, {}, QStringLiteral("TikTok - Make Your Day")}, on), Site::TikTok);
+            QCOMPARE(classify({{}, {}, QStringLiteral("How to cook rice - YouTube"), 30000, true}, on), Site::Shorts); // a 30 s item
+            QCOMPARE(classify({{}, {}, QStringLiteral("Lofi mix - YouTube"), 3600000, true}, on), Site::None);         // a long video is not
+            QCOMPARE(classify({{}, {}, QStringLiteral("cats #shorts - YouTube")}, on), Site::Shorts);
+            QCOMPARE(classify({{}, {}, QStringLiteral("Facebook - Reels")}, on), Site::None); // off by default
+            Options fb; fb.facebook = true; fb.custom = {QStringLiteral("snack")};
+            QCOMPARE(classify({{}, {}, QStringLiteral("Facebook - Reels")}, fb), Site::Facebook);
+            QCOMPARE(classify({{}, {}, QStringLiteral("Snackvideo")}, fb), Site::Custom);
+            Options none; none.instagram = false;
+            QCOMPARE(classify({{}, {}, QStringLiteral("Instagram")}, none), Site::None);
+
+            Tracker t;
+            qint64 now = 1000000; int warns = 0; qint64 first = 0, second = 0;
+            for (int i = 0; i < 2000; ++i, now += 2000) { // 66 minutes of Instagram
+                if (t.tick(now, Site::Instagram, true, {}) == Tracker::Event::Warn) {
+                    ++warns;
+                    if (warns == 1) first = now - 1000000;
+                    if (warns == 2) second = now - 1000000;
+                }
+            }
+            QCOMPARE(warns, 6); // at 15 min, then every 10 min
+            QVERIFY(first >= 15 * 60000 && first < 15 * 60000 + 4000);
+            QCOMPARE(second - first, qint64(10 * 60000));
+            // watching without touching anything does not count; five minutes away starts over
+            Tracker u; now = 1000000;
+            for (int i = 0; i < 600; ++i, now += 2000) u.tick(now, Site::TikTok, false, {});
+            QCOMPARE(u.totalMs(), qint64(0));
+            for (int i = 0; i < 100; ++i, now += 2000) u.tick(now, Site::TikTok, true, {});
+            QVERIFY(u.totalMs() > 190000);
+            for (int i = 0; i < 160; ++i, now += 2000) u.tick(now, Site::None, true, {}); // 5+ minutes elsewhere
+            QCOMPARE(u.totalMs(), qint64(0));
+            // swiping to new videos warns before the minutes do
+            Tracker v; now = 1000000; int w = 0;
+            for (int i = 0; i < 40 && w == 0; ++i, now += 8000)
+                w += v.tick(now, Site::Shorts, true, QStringLiteral("clip%1").arg(i)) == Tracker::Event::Warn;
+            QCOMPARE(w, 1);
+            QCOMPARE(v.swipes(), 30);
+            QCOMPARE(v.mainSite(), Site::Shorts);
+            // muted for the day, and snoozed
+            Tracker m; m.limitMs = 4000; now = 1000000;
+            m.muteFor(now, 3600000);
+            for (int i = 0; i < 20; ++i, now += 2000) QVERIFY(m.tick(now, Site::TikTok, true, {}) == Tracker::Event::None);
+        }
         QCOMPARE(LauncherModel::groupOf({QStringLiteral("Network"), QStringLiteral("WebBrowser")}), QStringLiteral("Internet"));
         QCOMPARE(LauncherModel::groupOf({QStringLiteral("Utility"), QStringLiteral("Game")}), QStringLiteral("Games"));
         QCOMPARE(LauncherModel::groupOf({QStringLiteral("Qt")}), QStringLiteral("Other"));

@@ -336,8 +336,10 @@ int main(int argc, char *argv[])
         }
         window->setScreen(screen);
         desktop.attach(window);
+        desktop.setAboveBar(window, panelBar.enabled()); // the bar must not cover the notch panel
         window->show();
         windows.insert(screen, window);
+        QObject::connect(&panelBar, &PanelBar::changed, window, [window, &desktop, &panelBar] { desktop.setAboveBar(window, panelBar.enabled()); });
 
         auto *dockView = qobject_cast<QQuickWindow *>(dockWindow.create());
         if (!dockView) {
