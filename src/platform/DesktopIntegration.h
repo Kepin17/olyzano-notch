@@ -4,6 +4,7 @@
 #include <QObject>
 #include <QPointer>
 #include <QRectF>
+#include <QVariantList>
 #include <QWindow>
 
 // All window-system specifics live here. One Notch window per monitor: on Wayland an app
@@ -32,6 +33,7 @@ public:
 
     // Only this rect of `window` receives input; clicks elsewhere fall through to windows below.
     Q_INVOKABLE void setInputRegion(QWindow *window, const QRectF &rect);
+    Q_INVOKABLE void setInputRegions(QWindow *window, const QVariantList &rects); // several rectangles at once
     // Let a dock window take the keyboard (while its search field is open) or not.
     Q_INVOKABLE void setKeyboardInteractive(QWindow *window, bool interactive);
     // Blur what's behind this rounded rect of `window` (KDE Plasma, with KF6WindowSystem); an empty rect stops it.

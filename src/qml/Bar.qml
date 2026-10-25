@@ -15,7 +15,10 @@ Window {
     color: "transparent"
     title: "Olyzano Notch Bar"
 
-    property bool quickOpen: false // Quick Settings is out (a later step fills it in)
+    property bool quickOpen: false
+    // Quick Settings opens from the status cluster (a click, or hovering it), and closes a moment after the pointer has left both.
+    Timer { id: quickCloser; interval: 700; onTriggered: if (!clusterHover.hovered && !quickHover.hovered) root.quickOpen = false }
+    Timer { id: quickOpener; interval: 160; onTriggered: if (clusterHover.hovered) root.quickOpen = true }
     property bool shown: topbar.behavior === "always"
     property bool edgeDwelled: false
     readonly property bool engaged: topbar.behavior === "always" || edgeDwelled || stripHover.hovered || quickOpen
@@ -35,12 +38,12 @@ Window {
     Timer { id: dwellTimer; interval: 150; onTriggered: root.edgeDwelled = true }
 
     // ---- the pointer: only what is visible (and nothing at all over a full-screen game) ----
-    readonly property rect maskRect: gaming.active ? Qt.rect(0, 0, 1, 1)
-                                   : quickOpen ? Qt.rect(0, 0, width, height)
-                                   : shown ? Qt.rect(0, 0, width, stripH)
-                                   : Qt.rect(0, 0, width, 2)
-    onMaskRectChanged: desktop.setInputRegion(root, maskRect)
-    onVisibleChanged: if (visible) { desktop.setInputRegion(root, maskRect); desktop.setBlurRegion(root, blurRect, 0) }
+    readonly property var maskRects: gaming.active ? [Qt.rect(0, 0, 1, 1)]
+                                   : quickOpen ? [Qt.rect(0, 0, width, stripH), Qt.rect(quick2.x, quick2.y, quick2.width, quick2.height)]
+                                   : shown ? [Qt.rect(0, 0, width, stripH)]
+                                   : [Qt.rect(0, 0, width, 2)]
+    onMaskRectsChanged: desktop.setInputRegions(root, maskRects)
+    onVisibleChanged: if (visible) { desktop.setInputRegions(root, maskRects); desktop.setBlurRegion(root, blurRect, 0) }
     readonly property rect blurRect: shown && topbar.blur ? Qt.rect(0, 0, width, stripH) : Qt.rect(0, 0, 0, 0)
     onBlurRectChanged: desktop.setBlurRegion(root, blurRect, 0)
 
@@ -93,13 +96,26 @@ Window {
             }
         }
 
-        // right: status and the clock
+        // right: status and the clock; pointing at it, or a click, opens Quick Settings
         RowLayout {
             id: right
             anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
             spacing: 12
+            HoverHandler {
+                id: clusterHover
+                onHoveredChanged: {
+                    if (hovered && topbar.openOn === "hover") quickOpener.restart()
+                    if (!hovered) { quickOpener.stop(); if (root.quickOpen) quickCloser.restart() }
+                }
+            }
+            TapHandler { onTapped: root.quickOpen = !root.quickOpen }
             LineIcon { visible: activities.micApps.length > 0; glyph: "mic"; sourceSize: Qt.size(15, 15); color: theme.warn }
             LineIcon { visible: activities.cameraApps.length > 0; glyph: "camera"; sourceSize: Qt.size(15, 15); color: theme.success }
+            // Wi-Fi, Bluetooth, sound
+            LineIcon { visible: quick.wifiAvailable; glyph: "wifi"; sourceSize: Qt.size(16, 16); color: quick.wifiEnabled && quick.wifiName !== "" ? theme.text : theme.textFaint
+                       opacity: quick.wifiEnabled ? 0.45 + 0.1375 * quick.wifiBars : 1 }
+            LineIcon { visible: quick.btAvailable && quick.btEnabled; glyph: "bluetooth"; sourceSize: Qt.size(15, 15); color: quick.btConnected !== "" ? theme.accent : theme.textDim }
+            LineIcon { visible: quick.audioAvailable; glyph: quick.muted || quick.volume === 0 ? "volume-off" : "volume"; sourceSize: Qt.size(16, 16); color: quick.muted ? theme.danger : theme.text }
             // battery
             RowLayout {
                 visible: systemEvents.batteryLevel >= 0
@@ -147,6 +163,22 @@ Window {
                 }
             }
         }
+    }
+
+    // ---- Quick Settings ----
+    QuickSettings {
+        id: quick2
+        x: root.width - width - 10
+        y: root.stripH + 6
+        open: root.quickOpen && root.shown
+        HoverHandler {
+            id: quickHover
+            onHoveredChanged: if (!hovered && root.quickOpen) quickCloser.restart()
+        }
+    }
+    Connections {
+        target: gaming
+        function onChanged() { if (gaming.active) root.quickOpen = false }
     }
 
     // ---- the top edge, while the bar is away ----

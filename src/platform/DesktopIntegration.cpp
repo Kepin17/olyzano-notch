@@ -211,6 +211,16 @@ void DesktopIntegration::setInputRegion(QWindow *window, const QRectF &rect)
         window->setMask(QRegion(rect.toAlignedRect()));
 }
 
+void DesktopIntegration::setInputRegions(QWindow *window, const QVariantList &rects)
+{
+    if (!window)
+        return;
+    QRegion region;
+    for (const QVariant &v : rects)
+        region += v.toRectF().toAlignedRect();
+    window->setMask(region);
+}
+
 void DesktopIntegration::toggleFromTray(const QString &page)
 {
     m_windows.removeAll(nullptr);

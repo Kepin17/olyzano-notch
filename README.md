@@ -242,6 +242,21 @@ A dock of its own on the **bottom, left or right** edge of every monitor (*Setti
 On KDE Plasma the dock learns the open windows from KWin; on other Linux desktops it can only start apps and guesses
 which are running. Window thumbnails aren't possible: Wayland doesn't let an app capture other apps' windows.
 
+## Status bar and Quick Settings
+
+*Settings → Panel → Show the status bar* adds a glass strip along the top edge of every screen: the app in front on the left
+(its name and window title), the status icons and the clock on the right, the middle left free for the notch. It either
+**stays** (*Always show*, optionally keeping maximised windows out from under it) or **hides** until the pointer touches the top
+edge (*Auto-hide*), with a blur behind it (KDE's blur effect) and a transparency you set. Gaming mode puts it out of reach too.
+
+Click the icons on the right (or, if you choose so in Settings, point at them) and **Quick Settings** opens:
+**Wi-Fi** and **Bluetooth** tiles (tap to switch; the chevron lists saved networks or paired devices to connect), **volume** with
+mute and the **output** to play through, **brightness**, the battery with the time left and the **power mode** (power saver,
+balanced, performance), and who is using the microphone or a camera. Linux (KDE Plasma): Wi-Fi through NetworkManager,
+Bluetooth through BlueZ, sound through PipeWire / PulseAudio, brightness through PowerDevil, the power mode through
+power-profiles-daemon; a part the computer doesn't have simply isn't shown. Joining a new Wi-Fi network (a password) is left
+to the system settings. Not on Windows yet.
+
 ## Live activities and the idle clock
 
 While the notch is closed it shows what is going on as a small pill, the most important first:

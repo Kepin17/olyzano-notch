@@ -310,6 +310,18 @@ int main(int argc, char *argv[])
         delete bars.take(screen);
     });
 
+    // `notch --shot file.png` (offscreen, software rendering): the status bar with Quick Settings open, saved as a picture,
+    // to see the layout where nobody is looking at a screen.
+    if (const int i = app.arguments().indexOf(QStringLiteral("--shot")); i >= 0 && i + 1 < app.arguments().size()) {
+        const QString path = app.arguments().at(i + 1);
+        QTimer::singleShot(1200, &app, [&bars, &app, path] {
+            QQuickWindow *bar = bars.isEmpty() ? nullptr : bars.constBegin().value();
+            if (!bar)
+                return app.quit();
+            bar->setProperty("quickOpen", true);
+            QTimer::singleShot(900, &app, [bar, &app, path] { bar->grabWindow().save(path); app.quit(); });
+        });
+    }
     engine.loadFromModule("Notch", "Tray");
     const int rc = app.exec();
     qDeleteAll(windows); // before the engine and controller they bind to
