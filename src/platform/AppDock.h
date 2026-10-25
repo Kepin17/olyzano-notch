@@ -113,6 +113,8 @@ private:
     QTimer m_timer;
     bool m_catalogLoaded = false;
     bool m_kwin = false;
+    int m_actions = 0;             // numbers each click's KWin script
+    QStringList m_pendingActions;  // their plugin names until unloaded
     QList<KWinWindow> m_kwinWindows;
 };
 
