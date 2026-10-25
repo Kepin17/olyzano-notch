@@ -71,7 +71,7 @@ Window {
                                       : toast.kind === "color" ? toast.detail : theme.textDim
     // prompt: the stretch reminder asking. idle: the small clock pill when nothing else is going on.
     readonly property string mode: wellbeing.state === "reminding" ? "prompt" : open ? "open" : toast ? "toast"
-                                 : live ? "peek" : activities.idleClock ? "idle" : "hidden"
+                                 : live ? "peek" : activities.idleClock && !idleCovered ? "idle" : "hidden"
 
     // ---- Stretch reminder ----
     // A film, a call or a Pomodoro holds the reminder back (each can be switched off in Settings).
@@ -98,6 +98,9 @@ Window {
     }
 
     // ---- Idle clock ----
+    // Hidden while the window in front reaches this screen's top edge (a maximized browser's tabs, a title bar).
+    readonly property bool idleCovered: dock.coveredScreen !== ""
+                                        && (dock.coveredScreen === "*" || !root.screen || dock.coveredScreen === root.screen.name)
     property date idleNow: new Date()
     Timer {
         interval: 5000
@@ -288,7 +291,7 @@ Window {
     function updateMask() {
         if (anyMenu)
             desktop.setInputRegion(root, Qt.rect(0, 0, width, height))
-        else if (mode === "hidden")
+        else if (mode === "hidden" || mode === "idle") // the idle clock is see-through for clicks; the top edge opens Notch
             desktop.setInputRegion(root, Qt.rect(edge.x, 0, edge.width, edge.height))
         else
             desktop.setInputRegion(root, Qt.rect(island.x, 0, island.width, Math.max(island.height, edge.height)))
@@ -494,7 +497,7 @@ Window {
              : root.mode === "peek" ? (root.live && root.live.kind !== "copy" ? 320 : 230)
              : root.mode === "idle" ? (systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         height: root.mode === "open" ? panel.implicitHeight + (root.dragOver ? 8 : 0)
-              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : root.mode === "idle" ? 28 : 0
+              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : root.mode === "idle" ? 26 : 0
         focus: true
 
         readonly property real shoulder: Math.min(10, Math.max(0, height) / 3)

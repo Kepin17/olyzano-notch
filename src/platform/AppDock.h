@@ -33,6 +33,9 @@ class AppDock : public QObject
     Q_PROPERTY(bool showRunning READ showRunning WRITE setShowRunning NOTIFY appearanceChanged) // running apps that aren't pinned
     Q_PROPERTY(bool showTrash READ showTrash WRITE setShowTrash NOTIFY appearanceChanged)
     Q_PROPERTY(bool trashFull READ trashFull NOTIFY trashChanged)
+    // The screen whose top edge the window in front reaches (maximized, full screen, dragged up): the idle clock
+    // hides there so it doesn't cover the window's tabs or title. "" none, "*" every screen (name unknown).
+    Q_PROPERTY(QString coveredScreen READ coveredScreen NOTIFY coveredScreenChanged)
     Q_PROPERTY(QString trashIcon READ trashIcon NOTIFY trashChanged) // image source, empty or full
     Q_PROPERTY(QVariantList pinnedApps READ pinnedApps NOTIFY itemsChanged) // {id, name, iconSource}, for Settings
     // {id, name, iconSource, pinned, running, active, canLaunch, kind ("app" | "folder"),
@@ -64,6 +67,7 @@ public:
     bool showTrash() const { return m_settings.value(QStringLiteral("showTrash"), true).toBool(); }
     void setShowTrash(bool show);
     bool trashFull() const { return m_trashFull; }
+    QString coveredScreen() const { return m_coveredScreen; }
     QString trashIcon() const { return iconSource(m_trashFull ? QStringLiteral("special:trash-full") : QStringLiteral("special:trash")); }
     void setShowRunning(bool show);
     QVariantList pinnedApps() const;
@@ -111,12 +115,15 @@ signals:
     void positionChanged(); // also signalled through appearanceChanged; the window has to move
     void itemsChanged();
     void trashChanged();
+    void coveredScreenChanged();
 
 private:
     struct KWinWindow {
         QString id, desktopFile, windowClass, caption;
+        QString screen;
         qint64 pid = 0;
         bool active = false;
+        bool atTop = false;
     };
 
     void storeAppearance(const QString &key, const QVariant &value);
@@ -140,6 +147,10 @@ private:
     QHash<QString, QString> m_windowTitles;   // window id -> title
     QHash<QString, QVariantMap> m_badges;     // desktop file id -> launcher entry properties
     bool m_trashFull = false;
+    QString m_coveredScreen;
+    QTimer m_coverPoll; // Windows: there is no push for the window in front, so look every second or so
+    void setCoveredScreen(const QString &screen);
+    void checkForeground();
     QFileSystemWatcher m_trashWatcher;        // Linux: the freedesktop trash folder
     void checkTrash();
     QVariantList m_items;
