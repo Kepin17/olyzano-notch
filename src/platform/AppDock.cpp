@@ -276,16 +276,20 @@ static const QString ActionPlugin = QStringLiteral("notch-dock-action");
 static const char WatchScript[] = R"JS(
 function windows() { return workspace.windowList ? workspace.windowList() : workspace.clientList(); }
 function current() { return workspace.activeWindow !== undefined ? workspace.activeWindow : workspace.activeClient; }
+// Windows are compared by id: the same window can come back as a different script object.
 function push(gone) {
     var active = current();
+    var activeId = active ? String(active.internalId) : "";
+    var goneId = gone ? String(gone.internalId) : "";
     var list = windows();
     var out = [];
     for (var i = 0; i < list.length; ++i) {
         var w = list[i];
-        if (w === gone || !w.normalWindow || w.skipTaskbar)
+        var id = String(w.internalId);
+        if (id === goneId || !w.normalWindow || w.skipTaskbar)
             continue;
-        out.push({ id: String(w.internalId), app: String(w.desktopFileName || ""), cls: String(w.resourceClass || ""),
-                   pid: w.pid || 0, active: w === active });
+        out.push({ id: id, app: String(w.desktopFileName || ""), cls: String(w.resourceClass || ""),
+                   pid: w.pid || 0, active: id === activeId });
     }
     callDBus("@SERVICE@", "/Dock", "org.olyzano.Notch.Dock", "kwinWindows", JSON.stringify(out));
 }
@@ -306,6 +310,11 @@ for (var i = 0; i < list.length; ++i)
     if (ids.indexOf(String(list[i].internalId)) >= 0)
         mine.push(list[i]);
 var active = workspace.activeWindow !== undefined ? workspace.activeWindow : workspace.activeClient;
+var activeId = active ? String(active.internalId) : "";
+var front = -1;
+for (var k = 0; k < mine.length; ++k)
+    if (String(mine[k].internalId) === activeId)
+        front = k;
 function raise(w) {
     if (w.minimized)
         w.minimized = false;
@@ -318,12 +327,12 @@ if (mine.length > 0) {
     if (mode === "close") {
         for (var j = 0; j < mine.length; ++j)
             mine[j].closeWindow();
-    } else if (mine.indexOf(active) < 0) {
+    } else if (front < 0) {
         raise(mine[mine.length - 1]);
     } else if (mine.length === 1) {
-        active.minimized = true;
+        mine[front].minimized = true;
     } else {
-        raise(mine[0]);
+        raise(mine[front === 0 ? 1 : 0]); // the lowest other window: repeated clicks cycle through them
     }
 }
 )JS";
@@ -375,16 +384,24 @@ void AppDock::startKWin()
 void AppDock::runKWinAction(const QString &mode, const QStringList &windows)
 {
     const QString ids = QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(windows)).toJson(QJsonDocument::Compact));
-    const QString path = writeScript(QStringLiteral("dock-action.js"), QString::fromUtf8(ActionScript)
-                                                                           .replace(QStringLiteral("@IDS@"), ids)
-                                                                           .replace(QStringLiteral("@MODE@"), mode));
+    // Every click gets its own script name and file. KWin removes an unloaded script later, not right away, so
+    // reusing one name made every other click's loadScript fail ("already loaded") and the click did nothing.
+    const int n = ++m_actions;
+    const QString plugin = ActionPlugin + u'-' + QString::number(n);
+    const QString path = writeScript(QStringLiteral("dock-action-%1.js").arg(n % 16), QString::fromUtf8(ActionScript)
+                                                                                     .replace(QStringLiteral("@IDS@"), ids)
+                                                                                     .replace(QStringLiteral("@MODE@"), mode));
     if (path.isEmpty())
         return;
-    // Queued in order on one connection, so KWin unloads the previous click's script before loading this one.
     QDBusConnection bus = QDBusConnection::sessionBus();
-    bus.asyncCall(scriptingCall(QStringLiteral("unloadScript"), {ActionPlugin}));
-    bus.asyncCall(scriptingCall(QStringLiteral("loadScript"), {path, ActionPlugin}));
+    bus.asyncCall(scriptingCall(QStringLiteral("loadScript"), {path, plugin}));
     bus.asyncCall(scriptingCall(QStringLiteral("start")));
+    m_pendingActions << plugin;
+    // It has run by then; unload it so finished scripts don't pile up in KWin.
+    QTimer::singleShot(3000, this, [this, plugin] {
+        m_pendingActions.removeOne(plugin);
+        QDBusConnection::sessionBus().asyncCall(scriptingCall(QStringLiteral("unloadScript"), {plugin}));
+    });
 }
 
 AppDock::~AppDock()
@@ -393,7 +410,8 @@ AppDock::~AppDock()
         return;
     QDBusConnection bus = QDBusConnection::sessionBus();
     bus.call(scriptingCall(QStringLiteral("unloadScript"), {WatchPlugin}));
-    bus.call(scriptingCall(QStringLiteral("unloadScript"), {ActionPlugin}));
+    for (const QString &plugin : std::as_const(m_pendingActions))
+        bus.call(scriptingCall(QStringLiteral("unloadScript"), {plugin}));
 }
 #else
 void AppDock::startKWin() {}
