@@ -773,6 +773,7 @@ private slots:
         QVERIFY(more.value(QStringLiteral("submenu")).toBool());
         QCOMPARE(more.value(QStringLiteral("children")).toList()[0].toMap().value(QStringLiteral("label")).toString(), QStringLiteral("A_B"));
         QCOMPARE(DbusMenuModel::shortcutText(QVariant()), QString());
+        QCOMPARE(DbusMenuModel::shortcutText(QVariantList{QStringList{QStringLiteral("Shift"), QString(QChar(0x1b))}}), QStringLiteral("Shift+Esc"));
     }
 
     void karaokeLoopModules()

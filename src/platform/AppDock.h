@@ -38,6 +38,7 @@ class AppDock : public QObject
     Q_PROPERTY(QString coveredScreen READ coveredScreen NOTIFY coveredScreenChanged)
     Q_PROPERTY(QString activeAppName READ activeAppName NOTIFY activeAppChanged) // the app in front (KWin), for the bar
     Q_PROPERTY(QString activeTitle READ activeTitle NOTIFY activeAppChanged)
+    Q_PROPERTY(qint64 activePid READ activePid NOTIFY activeAppChanged)
     Q_PROPERTY(QString trashIcon READ trashIcon NOTIFY trashChanged) // image source, empty or full
     Q_PROPERTY(QVariantList pinnedApps READ pinnedApps NOTIFY itemsChanged) // {id, name, iconSource}, for Settings
     // {id, name, iconSource, pinned, running, active, canLaunch, kind ("app" | "folder"),
@@ -73,6 +74,7 @@ public:
     bool fullScreenActive() const { return m_fullScreen; } // the window in front is full screen (KWin)
     QString activeAppName() const { return m_activeApp; }
     QString activeTitle() const { return m_activeTitle; }
+    qint64 activePid() const { return m_activePid; }
     bool coveringActive() const { return m_covering; }     // ... or fills the screen (maximised): gaming mode
     QString trashIcon() const { return iconSource(m_trashFull ? QStringLiteral("special:trash-full") : QStringLiteral("special:trash")); }
     void setShowRunning(bool show);
@@ -163,6 +165,7 @@ private:
     bool m_fullScreen = false;
     bool m_covering = false;
     QString m_activeApp, m_activeTitle;
+    qint64 m_activePid = 0;
     QTimer m_coverPoll; // Windows: there is no push for the window in front, so look every second or so
     void setCoveredScreen(const QString &screen);
     void checkForeground();

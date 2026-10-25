@@ -542,9 +542,11 @@ void AppDock::kwinWindows(const QString &json)
     if (m_covering != wasCovering)
         emit coveringChanged();
     QString app, title;
+    qint64 appPid = 0;
     for (const KWinWindow &w : std::as_const(m_kwinWindows)) {
         if (!w.active)
             continue;
+        appPid = w.pid;
         DockApp known = m_catalog.value(w.desktopFile.endsWith(QLatin1String(".desktop")) ? w.desktopFile : w.desktopFile + QStringLiteral(".desktop"));
         if (!known.valid())
             known = m_catalog.value(w.desktopFile);
@@ -556,9 +558,10 @@ void AppDock::kwinWindows(const QString &json)
         app = known.valid() ? known.name : guess;
         title = w.caption;
     }
-    if (app != m_activeApp || title != m_activeTitle) {
+    if (app != m_activeApp || title != m_activeTitle || appPid != m_activePid) {
         m_activeApp = app;
         m_activeTitle = title;
+        m_activePid = appPid;
         emit activeAppChanged();
     }
     setCoveredScreen(covered);

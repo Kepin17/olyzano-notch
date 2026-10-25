@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QString>
 #include <QStringList>
 #include <QVariant>
@@ -34,6 +35,12 @@ inline QString shortcutText(const QVariant &v)
     QStringList parts;
     for (const QVariant &p : ways.first().toStringList()) {
         const QString k = p.toString();
+        static const QHash<QChar, QString> raw{{QChar(0x1b), QStringLiteral("Esc")}, {QChar(0x7f), QStringLiteral("Del")}, {QChar(0x08), QStringLiteral("Backspace")},
+                                               {QChar(0x09), QStringLiteral("Tab")}, {QChar(0x0d), QStringLiteral("Enter")}, {QChar(0x0a), QStringLiteral("Enter")}};
+        if (k.size() == 1 && raw.contains(k.at(0))) { // some apps send the key itself, not its name
+            parts << raw.value(k.at(0));
+            continue;
+        }
         parts << (k == QLatin1String("Control") ? QStringLiteral("Ctrl") : k == QLatin1String("Super") ? QStringLiteral("Meta")
                   : k.size() == 1 ? k.toUpper() : k.left(1).toUpper() + k.mid(1));
     }

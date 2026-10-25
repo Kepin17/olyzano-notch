@@ -13,6 +13,7 @@
 #include "platform/KdeConnect.h"
 #include "platform/Theme.h"
 #include "platform/GamingMode.h"
+#include "platform/AppMenu.h"
 #include "platform/Karaoke.h"
 #include "platform/PanelBar.h"
 #include "platform/QuickSettings.h"
@@ -159,6 +160,12 @@ int main(int argc, char *argv[])
     GamingMode gaming;
     PanelBar panelBar;
     QuickSettings quick;
+    AppMenu appMenu;
+    if (const int i = app.arguments().indexOf(QStringLiteral("--dump-menu")); i >= 0 && i + 1 < app.arguments().size()) { // the menu of a process, for checking
+        fputs(appMenu.dump(app.arguments().at(i + 1).toLongLong()).constData(), stdout);
+        return 0;
+    }
+    QObject::connect(&dock, &AppDock::activeAppChanged, &appMenu, [&] { appMenu.setPid(dock.activePid()); });
     if (app.arguments().contains(QStringLiteral("--dump-quick"))) { // what Quick Settings sees, for checking it on a computer
         QTimer::singleShot(600, &app, [&] { fputs(quick.dump().constData(), stdout); app.quit(); });
         return app.exec();
@@ -247,6 +254,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("gaming"), &gaming);
     engine.rootContext()->setContextProperty(QStringLiteral("topbar"), &panelBar);
     engine.rootContext()->setContextProperty(QStringLiteral("quick"), &quick);
+    engine.rootContext()->setContextProperty(QStringLiteral("appMenu"), &appMenu);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
 
     // One Notch per monitor, following hotplug.
