@@ -32,14 +32,14 @@ Tested on Kubuntu 26.04 (Qt 6.10, KDE Plasma on Wayland).
 **[latest release](https://github.com/Kepin17/olyzano-notch/releases/latest)**, or from a terminal:
 
 ```bash
-wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.7.1/notch_0.7.1_amd64.deb
+wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.8.0/notch_0.8.0_amd64.deb
 ```
 
 **2. Install** it. `apt` pulls in everything it needs (Qt 6 runtime, `layer-shell-qt`, Poppler, Ghostscript,
 `gocryptfs`, `fuse3`, `pulseaudio-utils`, …):
 
 ```bash
-sudo apt install ./notch_0.7.1_amd64.deb
+sudo apt install ./notch_0.8.0_amd64.deb
 ```
 
 **3. Start** **Notch** from the application menu, or turn on **Settings → General → Start at login**.
@@ -82,12 +82,13 @@ Notch runs without these; each one switches on a feature. Notch finds them by it
 | **Tesseract OCR** + a language | *OCR* in the Tools menu (text from images and scanned PDFs) | `sudo apt install tesseract-ocr tesseract-ocr-eng`<br>(more languages: `tesseract-ocr-ind`, `tesseract-ocr-deu`, …) | [UB Mannheim installer](https://github.com/UB-Mannheim/tesseract/wiki): tick the languages you need, then add `C:\Program Files\Tesseract-OCR` to `PATH` |
 | **Poppler** | PDF page count, split, extract, PDF → image, OCR of PDFs | included in the `.deb` (`poppler-utils`) | [poppler-windows releases](https://github.com/oschwartz10612/poppler-windows/releases/latest): unzip, add its `Library\bin` folder to `PATH` |
 | **Ghostscript** | *Compress PDF* | included in the `.deb` (`ghostscript`) | [Ghostscript downloads](https://ghostscript.com/releases/gsdnld.html) (64-bit AGPL release); its installer adds it to `PATH` |
-| **KDE Connect** (computer + phone) | *Send to device*, files from your phone, incoming calls, phone notifications and a low phone battery in the notch | `sudo apt install kdeconnect` and on the phone [KDE Connect for Android](https://play.google.com/store/apps/details?id=org.kde.kdeconnect_tp) ([F-Droid](https://f-droid.org/packages/org.kde.kdeconnect_tp/)) or [iOS](https://apps.apple.com/app/kde-connect/id1580245991); pair them once | – (Linux only) |
+| **KDE Connect** (computer + phone) | *Send to device*, files from your phone, incoming calls, phone notifications and a low phone battery in the notch | `sudo apt install kdeconnect` and on the phone [KDE Connect for Android](https://play.google.com/store/apps/details?id=org.kde.kdeconnect_tp) ([F-Droid](https://f-droid.org/packages/org.kde.kdeconnect_tp/)) or [iOS](https://apps.apple.com/app/kde-connect/id1580245991); pair them once | [KDE Connect for Windows](https://kdeconnect.kde.org/download.html) (the installer; Notch looks for it in its install folder, so the Microsoft Store version is not found) and the same phone app; pair them once |
 | **KDE Plasma's KWin** | Dock: real running apps, a click raises or minimizes the app's window, the window list | part of Plasma | built in (Windows windows) |
 | **Plasma blur effect** | Frosted-glass blur behind the dock | *System Settings → Window Management → Desktop Effects → Blur* | – |
 | **Spectacle** auto-save | *Add new screenshots* | in Spectacle: *Configure → Save → save automatically* (Notch has a button for it) | built in (Win + PrtSc) |
 | **Dolphin** / `ktrash6` | Dock Trash: open and empty it | part of Plasma (`sudo apt install dolphin kio-extras`) | built in (Recycle Bin) |
-| **PipeWire or PulseAudio** (`pactl`) | Equalizer, the microphone indicator and its mute state | included in the `.deb` (`pulseaudio-utils`; works with PipeWire) | – |
+| **PipeWire or PulseAudio** (`pactl`) | Equalizer, the microphone indicator and its mute state | included in the `.deb` (`pulseaudio-utils`; works with PipeWire) | built in (Windows audio) |
+| **gocryptfs** + FUSE | Locked categories | included in the `.deb` (`gocryptfs`, `fuse3`) | built in (Notch encrypts the files itself) |
 | **Noto CJK fonts** | The Washi theme's serif headings (和紙) | included in the `.deb` (`fonts-noto-cjk`) | [Noto Serif JP](https://fonts.google.com/noto/specimen/Noto+Serif+JP) (optional) |
 
 **Adding a folder to `PATH` on Windows:** Start → type *environment variables* → *Edit the environment variables for your
@@ -115,10 +116,10 @@ account* → select **Path** → **Edit** → **New** → paste the folder → O
 | Live activities: timer, downloads, Nearby transfers in the closed notch | ✅ | ✅ |
 | Timer, stopwatch and Pomodoro | ✅ | ✅ |
 | Stretch reminder (counts real work time) · idle clock | ✅ | ✅ |
-| Phone calls and notifications (KDE Connect) · microphone / camera indicators | ✅ | – |
-| Locked (encrypted) categories | ✅ | – |
-| Now-playing card with a real-sound equalizer | ✅ | – |
-| Bluetooth alerts · KDE Connect · colour picker | ✅ | – |
+| Phone calls and notifications (KDE Connect) · microphone / camera indicators | ✅ | ✅ |
+| Locked (encrypted) categories | ✅ | ✅ |
+| Now-playing card with a real-sound equalizer | ✅ | ✅ |
+| Bluetooth alerts · KDE Connect · colour picker | ✅ | ✅ |
 
 Controls that a platform cannot offer are hidden or greyed out.
 
@@ -132,7 +133,7 @@ Controls that a platform cannot offer are hidden or greyed out.
 | **Looking** | Preview, Quick Look (hold Space), an in-place note editor with a small toolkit |
 | **Working** | Merge / split / compress PDFs, images → PDF, convert and resize images, OCR, zip, save to folder |
 | **Sharing** | QR code to a phone over WiFi or through your own server, with PIN or password and an expiry; several shares at once |
-| **Privacy** | Locked categories encrypted on disk (Linux); server shares are end-to-end encrypted; dots show when the microphone or a camera is on |
+| **Privacy** | Locked categories encrypted on disk; server shares are end-to-end encrypted; dots show when the microphone or a camera is on |
 | **Dock** | A macOS-style dock on the bottom, left or right edge: pinned and running apps, folders as stacks, Trash, badges, glass look |
 | **Focus** | Timer, stopwatch, Pomodoro, and a stretch reminder that only counts the time you actually work |
 
@@ -331,19 +332,34 @@ Limits: it only talks to Notch (not Google's Quick Share), it needs both compute
 
 ---
 
-## Linux extras
+## More features
 
-- **Locked categories:** right-click a chip → **Lock with password…**. Files in it are encrypted on disk with
-  [gocryptfs](https://nuetzlich.net/gocryptfs/), never expire and stay hidden until you unlock. The password has at least 8
-  characters and **cannot be recovered**. Everything locks again a few seconds after Notch closes, when it quits, or with
-  the unlock button in the header. *Remove lock* moves files back to normal storage. Locked files can be shared too.
-- **Now playing:** when YouTube (any browser tab), Spotify, Elisa or another MPRIS player plays or pauses, an equalizer
-  button appears. It opens a player with cover, title, a seekable bar and previous / play / next. The bars follow the real
-  sound through `parec`, only while they are on screen; levels are computed, nothing is stored.
-- **Alerts:** plugging the charger in or out, a Bluetooth device connecting, and low battery (20 %, 10 %, 5 %) make Notch
-  peek out. Read from UPower and BlueZ; nothing is polled. (On Windows: charger and low battery only.)
-- **KDE Connect:** right-click → **Send to device ▸**; files a phone sends arrive in a *KDE Connect* category.
-- **Colour picker:** the palette button lets you click any pixel on screen; the hex code is copied and kept in a swatch row.
+- **Locked categories:** right-click a chip → **Lock with password…**. Files in it are encrypted on disk, never expire
+  and stay hidden until you unlock. The password has at least 8 characters and **cannot be recovered**. Everything locks
+  again a few seconds after Notch closes, when it quits, or with the unlock button in the header. *Remove lock* moves
+  files back to normal storage. Locked files can be shared too.
+  - Linux: [gocryptfs](https://nuetzlich.net/gocryptfs/) (the engine behind Plasma Vault); while unlocked the plain view
+    exists only in RAM.
+  - Windows: each file is encrypted by Notch itself (AES-256-GCM, a key protected by your password). While unlocked the
+    files sit decrypted in your user's Temp folder, kept out of Windows Search; locking encrypts what changed and deletes
+    them. A file still open in another app keeps the vault unlocked until you close it and lock again.
+- **Now playing:** when YouTube (any browser tab), Spotify or another player plays or pauses, an equalizer button
+  appears. It opens a player with cover, title, a seekable bar and previous / play / next. The bars follow the real
+  sound, only while they are on screen; levels are computed, nothing is stored.
+  - Linux: MPRIS players (Elisa, browsers, Spotify…); sound through `parec`.
+  - Windows: the media sessions the volume flyout shows (browsers, Spotify, Media Player…); sound from the speakers'
+    loopback (no microphone permission).
+- **Alerts:** plugging the charger in or out, a Bluetooth device connecting or disconnecting, and low battery
+  (20 %, 10 %, 5 %, the laptop's and a headset's) make Notch peek out. Linux reads UPower and BlueZ; Windows its own
+  power status and Bluetooth device list.
+- **KDE Connect:** right-click → **Send to device ▸**; files a phone sends arrive in a *KDE Connect* category. Calls and
+  phone notifications show in the notch. On Windows install [KDE Connect for Windows](https://kdeconnect.kde.org/download.html)
+  and pair it with the phone; Notch joins it by itself.
+- **Microphone and camera:** a green dot beside the notch while a camera is on, and the open panel names the apps using
+  the camera or the microphone; the idle clock shows whether the microphone is muted and toggles it. Windows reads the
+  same list as its own taskbar microphone icon.
+- **Colour picker:** the palette button lets you click any pixel on screen; the hex code is copied and kept in a swatch
+  row. On Windows the screen freezes with a magnifier at the pointer; Esc cancels.
 
 ---
 
@@ -355,7 +371,7 @@ Limits: it only talks to Notch (not Google's Quick Share), it needs both compute
 | Metadata | `~/.local/share/notch/notch.db` (SQLite) | `%LOCALAPPDATA%\notch\notch.db` |
 | Settings | `~/.config/notch/notch.conf` | `%LOCALAPPDATA%\notch\notch.conf` |
 | Dock, live activities, wellbeing | `~/.config/notch/dock.conf`, `activities.conf`, `wellbeing.conf` | same folder as `notch.conf` |
-| Locked files | `~/.local/share/notch/vault/` (encrypted; plain view only in RAM while unlocked) | – |
+| Locked files | `~/.local/share/notch/vault/` (encrypted; plain view only in RAM while unlocked) | `%LOCALAPPDATA%\notch\vault\` (encrypted; while unlocked in `%TEMP%\notch-vault-…`) |
 | Server keys | `~/.config/notch/servers/*.key` (owner-only) | same folder, protected by your user profile |
 | Start at login | `~/.config/autostart/notch.desktop` | `HKCU\…\Run` |
 

@@ -382,9 +382,9 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between}
       <div class="feature reveal"><div class="ic">⏱️</div><b>Timer &amp; Pomodoro</b><span>Timers, a stopwatch, and focus / break rounds, from the clock button in the header.</span><br><button class="see" data-scene="timer">See it</button></div>
       <div class="feature reveal"><div class="ic">🧘</div><b>Stretch reminder</b><span>Counts the time you actually work. After 50 minutes it asks: break, later or skip. You decide.</span><br><button class="see" data-scene="stretch">See it</button></div>
       <div class="feature reveal"><div class="ic">🕒</div><b>Idle clock</b><span>When nothing's going on: the time, your microphone (muted / recording) and the battery.</span><br><button class="see" data-scene="idle">See it</button></div>
-      <div class="feature reveal"><div class="ic">📱</div><b>Phone &amp; privacy</b><span>Calls and notifications from your phone (KDE Connect); a green dot while a camera is on.</span><br><button class="see" data-scene="phone">See it</button><small>Linux</small></div>
+      <div class="feature reveal"><div class="ic">📱</div><b>Phone &amp; privacy</b><span>Calls and notifications from your phone (KDE Connect); a green dot while a camera is on.</span><br><button class="see" data-scene="phone">See it</button><small>Linux · Windows (KDE Connect)</small></div>
       <div class="feature reveal"><div class="ic">🔗</div><b>Share via QR &amp; Nearby</b><span>To a phone over WiFi or your own encrypted server; to another computer after matching a 4-digit code.</span><br><button class="see" data-scene="share">See it</button></div>
-      <div class="feature reveal"><div class="ic">🛠️</div><b>Tools</b><span>Merge, split and compress PDFs, convert images, OCR, zip. Locked categories encrypted on disk (Linux).</span><br><button class="see" data-scene="tools">See it</button></div>
+      <div class="feature reveal"><div class="ic">🛠️</div><b>Tools</b><span>Merge, split and compress PDFs, convert images, OCR, zip. Locked categories encrypted on disk.</span><br><button class="see" data-scene="tools">See it</button></div>
       <div class="feature reveal"><div class="ic">🎨</div><b>Eight themes</b><span>Classic, Washi 和紙, Frost, Ocean, Forest, Sunset, Lavender and Mocha, each in dark and light.</span><br><button class="see" data-scene="themes">See it</button></div>
     </div>
   </div>
@@ -459,7 +459,8 @@ rm -r ~/.local/share/notch ~/.config/notch   # delete the shelf and settings too
             <li><span>📄</span><span>PDF tools and OCR need Poppler, Ghostscript and Tesseract: see <a href="#optional">optional components</a>.</span></li>
             <li><span>📁</span><span>Settings and files live in <code>%LOCALAPPDATA%\notch</code>.</span></li>
             <li><span>🗑️</span><span>Remove: <i>Settings → Apps → Notch → Uninstall</i>.</span></li>
-            <li><span>➖</span><span>Linux-only: KDE Connect, phone alerts, the camera dot, locked categories, dock blur and badges.</span></li>
+            <li><span>📱</span><span>Phone calls and notifications: install <a href="https://kdeconnect.kde.org/download.html">KDE Connect for Windows</a> (the installer) and pair your phone.</span></li>
+            <li><span>➖</span><span>Linux-only: dock blur and unread badges.</span></li>
           </ul>
         </div>
       </div>
@@ -487,7 +488,7 @@ rm -r ~/.local/share/notch ~/.config/notch   # delete the shelf and settings too
             <td><a class="dl" href="https://ghostscript.com/releases/gsdnld.html">Ghostscript downloads</a><br><span class="what">64-bit release; its installer adds it to PATH.</span></td></tr>
           <tr><td><b>KDE Connect</b><br><span class="what">computer + phone</span></td><td class="what">Send to your phone, files from it, incoming calls, phone notifications and a low phone battery in the notch.</td>
             <td><code>sudo apt install kdeconnect</code><br><span class="what">Phone app: <a class="dl" href="https://play.google.com/store/apps/details?id=org.kde.kdeconnect_tp">Google Play</a> · <a class="dl" href="https://f-droid.org/packages/org.kde.kdeconnect_tp/">F-Droid</a> · <a class="dl" href="https://apps.apple.com/app/kde-connect/id1580245991">App Store</a>. Pair them once.</span></td>
-            <td><span class="tag no">Linux only</span></td></tr>
+            <td><a class="dl" href="https://kdeconnect.kde.org/download.html">KDE Connect for Windows</a><br><span class="what">The installer (Notch finds it in its install folder; not the Microsoft Store version). Same phone app; pair once.</span></td></tr>
           <tr><td><b>KDE Plasma (KWin)</b></td><td class="what">Dock: real running apps, a click raises or minimizes the window, the window list.</td>
             <td>Part of Plasma</td><td><span class="tag">built in</span></td></tr>
           <tr><td><b>Plasma blur effect</b></td><td class="what">Frosted-glass blur behind the dock.</td>
@@ -497,7 +498,9 @@ rm -r ~/.local/share/notch ~/.config/notch   # delete the shelf and settings too
           <tr><td><b>Dolphin · ktrash6</b></td><td class="what">Dock Trash: open and empty it.</td>
             <td><code>sudo apt install dolphin kio-extras</code><br><span class="what">Part of Plasma.</span></td><td><span class="tag">built in</span> Recycle Bin</td></tr>
           <tr><td><b>PipeWire / PulseAudio</b> (<code>pactl</code>)</td><td class="what">Equalizer, microphone indicator and mute state.</td>
-            <td><span class="tag">in the .deb</span> <code>pulseaudio-utils</code><br><span class="what">Works with PipeWire.</span></td><td><span class="tag no">–</span></td></tr>
+            <td><span class="tag">in the .deb</span> <code>pulseaudio-utils</code><br><span class="what">Works with PipeWire.</span></td><td><span class="tag">built in</span> Windows audio</td></tr>
+          <tr><td><b>gocryptfs</b> + FUSE</td><td class="what">Locked (encrypted) categories.</td>
+            <td><span class="tag">in the .deb</span> <code>gocryptfs</code>, <code>fuse3</code></td><td><span class="tag">built in</span> Notch encrypts the files itself</td></tr>
           <tr><td><b>Noto Serif JP</b></td><td class="what">The Washi theme's serif headings.</td>
             <td><span class="tag">in the .deb</span> <code>fonts-noto-cjk</code></td>
             <td><a class="dl" href="https://fonts.google.com/noto/specimen/Noto+Serif+JP">Google Fonts</a> <span class="what">(optional)</span></td></tr>
