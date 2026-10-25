@@ -690,26 +690,19 @@ private slots:
         QTRY_COMPARE(l.state(), QStringLiteral("error"));
     }
 
-    void gamingModeFollowsTheSwitchAndTheFullScreenWindow()
+    void gamingModeOnlyHidesNotchOverAFullScreenApp()
     {
         GamingModel g;
-        QVERIFY(!g.active());
-        g.setFullScreen(true);
-        QVERIFY(!g.active()); // a full-screen window alone does nothing while "by itself" is off
-        g.autoDetect = true;
+        g.fullScreen = true;
+        QVERIFY(!g.active()); // switched off: a full-screen window changes nothing
+        g.enabled = true;
+        QVERIFY(g.active());  // on, with a game full screen: Notch keeps away
+        g.fullScreen = false;
+        QVERIFY(!g.active()); // the game is minimised or in a window: Notch is back
+        g.fullScreen = true;
         QVERIFY(g.active());
-        g.wake(); // over a full-screen app nothing opens: the tray icon does nothing
-        QVERIFY(g.active() && !g.canWake());
-        g.setFullScreen(false);
-        QVERIFY(!g.active()); // the game is gone: Notch is back
-        g.manual = true;
-        QVERIFY(g.active()); // by hand, with nothing full screen
-        g.setFullScreen(true);
-        g.wake();
-        QVERIFY(g.manual && g.active()); // by hand, over a game: stays until the game ends
-        g.setFullScreen(false);
-        g.wake();
-        QVERIFY(!g.manual && !g.active()); // now the tray icon wakes it
+        g.enabled = false;
+        QVERIFY(!g.active());
     }
 
     void karaokeLoopModules()

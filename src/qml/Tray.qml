@@ -10,16 +10,14 @@ Labs.SystemTrayIcon {
     onActivated: (reason) => {
         if (reason !== Labs.SystemTrayIcon.Trigger)
             return
-        if (gaming.active) // the icon is how it wakes up (not over a full-screen app)
-            gaming.wake()
-        else
+        if (!gaming.active) // over a full-screen app nothing opens
             desktop.toggleFromTray("")
     }
     menu: Labs.Menu {
-        Labs.MenuItem { text: gaming.active ? "Leave gaming mode" : "Gaming mode"; onTriggered: gaming.active ? gaming.wake() : gaming.manual = true }
-        Labs.MenuItem { text: "Show / hide Olyzano Notch"; onTriggered: { if (gaming.wake()) desktop.toggleFromTray("") } }
+        Labs.MenuItem { text: gaming.enabled ? "Gaming mode: on (turn off)" : "Gaming mode: off (turn on)"; onTriggered: gaming.enabled = !gaming.enabled }
+        Labs.MenuItem { text: "Show / hide Olyzano Notch"; enabled: !gaming.active; onTriggered: desktop.toggleFromTray("") }
         Labs.MenuItem { text: nearby.receiving ? "Stop receiving from nearby" : "Receive from nearby (10 min)"; onTriggered: nearby.receiving ? nearby.stopReceiving() : nearby.startReceiving() }
-        Labs.MenuItem { text: "Settings…"; onTriggered: { if (gaming.wake()) desktop.toggleFromTray("settings") } }
+        Labs.MenuItem { text: "Settings…"; enabled: !gaming.active; onTriggered: desktop.toggleFromTray("settings") }
         Labs.MenuSeparator {}
         Labs.MenuItem { text: "Quit Olyzano Notch"; onTriggered: Qt.quit() }
     }

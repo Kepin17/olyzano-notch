@@ -1214,8 +1214,13 @@ Window {
                     IconButton {
                         visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "color") && !root.selecting
                         iconName: "gamepad"
-                        Accessible.name: "Gaming mode: hide Olyzano Notch until the tray icon is clicked"
-                        onClicked: gaming.manual = true
+                        checked: gaming.enabled
+                        Accessible.name: gaming.enabled ? "Gaming mode is on: turn it off" : "Gaming mode: keep away from full-screen games"
+                        onClicked: {
+                            gaming.enabled = !gaming.enabled
+                            root.infoText = gaming.enabled ? "Gaming mode on: Notch hides while a full-screen app is in front" : "Gaming mode off"
+                            infoTimer.restart()
+                        }
                     }
                     IconButton {
                         visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "color") && !root.selecting

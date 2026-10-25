@@ -121,16 +121,10 @@ ScrollView {
             SettingCard {
                 title: "Gaming mode"
                 SettingToggle {
-                    title: "Gaming mode"
-                    caption: "Olyzano Notch and the dock hide and ignore the pointer, and sounds and reminders stay quiet, so nothing gets in the way of a game. The tray icon brings it back. It starts off every time."
-                    checked: gaming.manual
-                    onToggled: gaming.manual = !gaming.manual
-                }
-                SettingToggle {
-                    title: "Start it by itself"
-                    caption: "Also while a full-screen app or game is in front, and only for as long as it is."
-                    checked: gaming.autoDetect
-                    onToggled: gaming.autoDetect = !gaming.autoDetect
+                    title: "Keep away from full-screen apps and games"
+                    caption: "While a full-screen app or game is in front, Olyzano Notch and the dock hide and ignore the pointer, and sounds and reminders stay quiet. Minimise it or run it in a window and Olyzano Notch is back."
+                    checked: gaming.enabled
+                    onToggled: gaming.enabled = !gaming.enabled
                 }
             }
 
