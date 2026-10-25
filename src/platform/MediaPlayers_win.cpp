@@ -33,7 +33,7 @@
 using namespace winrt::Windows::Media::Control;
 using Manager = GlobalSystemMediaTransportControlsSessionManager;
 using MediaSession = GlobalSystemMediaTransportControlsSession;
-using Status = GlobalSystemMediaTransportControlsSessionPlaybackStatus;
+using PlaybackStatus = GlobalSystemMediaTransportControlsSessionPlaybackStatus;
 using winrt::Windows::Storage::Streams::DataReader;
 using winrt::Windows::Storage::Streams::IRandomAccessStreamReference;
 
@@ -185,10 +185,10 @@ struct MediaPlayers::Worker {
             r.status = QStringLiteral("Stopped");
             try {
                 const auto info = s.GetPlaybackInfo();
-                const Status status = info.PlaybackStatus();
-                if (status == Status::Playing)
+                const PlaybackStatus status = info.PlaybackStatus();
+                if (status == PlaybackStatus::Playing)
                     r.status = QStringLiteral("Playing");
-                else if (status == Status::Paused)
+                else if (status == PlaybackStatus::Paused)
                     r.status = QStringLiteral("Paused");
                 const auto controls = info.Controls();
                 r.canNext = controls.IsNextEnabled();
