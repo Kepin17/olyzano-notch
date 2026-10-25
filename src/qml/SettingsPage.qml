@@ -761,6 +761,7 @@ RowLayout {
                 title: "What it shows"
                 SettingToggle { title: "The app in front"; caption: "Its name and the title of its window, on the left."; checked: topbar.showApp; onToggled: topbar.showApp = !topbar.showApp }
                 SettingToggle { title: "The app's menu"; caption: "File, Edit, View... of the app in front, beside its name (for apps that share their menu, such as Chrome)."; checked: topbar.showMenu; onToggled: topbar.showMenu = !topbar.showMenu }
+                SettingToggle { title: "Apps in the tray"; caption: "The apps running in the background (Steam, Discord...), left of the status icons. Click to open, right-click for their menu."; checked: topbar.showTray; onToggled: topbar.showTray = !topbar.showTray }
                 SettingToggle { title: "The date"; caption: "Under the time."; checked: topbar.showDate; onToggled: topbar.showDate = !topbar.showDate }
                 SettingToggle { title: "Seconds"; caption: "The clock counts seconds."; checked: topbar.showSeconds; onToggled: topbar.showSeconds = !topbar.showSeconds }
                 SettingToggle { title: "Battery percentage"; caption: "Next to the battery icon."; checked: topbar.showBattery; onToggled: topbar.showBattery = !topbar.showBattery }

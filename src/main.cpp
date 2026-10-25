@@ -14,6 +14,7 @@
 #include "platform/Theme.h"
 #include "platform/GamingMode.h"
 #include "platform/AppMenu.h"
+#include "platform/TrayHost.h"
 #include "platform/Karaoke.h"
 #include "platform/PanelBar.h"
 #include "platform/QuickSettings.h"
@@ -41,6 +42,22 @@
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
+
+// image://tray/<item key>/<revision> -> the icon of a tray item.
+class TrayIconProvider : public QQuickImageProvider
+{
+public:
+    explicit TrayIconProvider(TrayHost *host) : QQuickImageProvider(Pixmap), m_host(host) {}
+    QPixmap requestPixmap(const QString &id, QSize *size, const QSize &requested) override
+    {
+        const QSize s = requested.isValid() ? requested : QSize(32, 32);
+        if (size)
+            *size = s;
+        return m_host->pixmap(id.section(u'/', 0, 0), s);
+    }
+private:
+    TrayHost *m_host;
+};
 
 // image://mime/<icon-name> -> themed icon for a MIME type.
 class MimeIconProvider : public QQuickImageProvider
@@ -161,11 +178,16 @@ int main(int argc, char *argv[])
     PanelBar panelBar;
     QuickSettings quick;
     AppMenu appMenu;
+    TrayHost trayHost;
     if (const int i = app.arguments().indexOf(QStringLiteral("--dump-menu")); i >= 0 && i + 1 < app.arguments().size()) { // the menu of a process, for checking
         fputs(appMenu.dump(app.arguments().at(i + 1).toLongLong()).constData(), stdout);
         return 0;
     }
     QObject::connect(&dock, &AppDock::activeAppChanged, &appMenu, [&] { appMenu.setPid(dock.activePid()); });
+    if (app.arguments().contains(QStringLiteral("--dump-tray"))) { // the tray items it sees
+        QTimer::singleShot(1500, &app, [&] { fputs(trayHost.dump().constData(), stdout); app.quit(); });
+        return app.exec();
+    }
     if (app.arguments().contains(QStringLiteral("--dump-quick"))) { // what Quick Settings sees, for checking it on a computer
         QTimer::singleShot(600, &app, [&] { fputs(quick.dump().constData(), stdout); app.quit(); });
         return app.exec();
@@ -232,6 +254,7 @@ int main(int argc, char *argv[])
     QObject::connect(&kdeconnect, &KdeConnect::received, &controller, &NotchController::addReceived);
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("mime"), new MimeIconProvider);
+    engine.addImageProvider(QStringLiteral("tray"), new TrayIconProvider(&trayHost));
     engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider);
     engine.addImageProvider(QStringLiteral("thumb"), new ThumbImageProvider);
     engine.addImageProvider(QStringLiteral("appicon"), new DockIconProvider(&dock));
@@ -255,6 +278,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("topbar"), &panelBar);
     engine.rootContext()->setContextProperty(QStringLiteral("quick"), &quick);
     engine.rootContext()->setContextProperty(QStringLiteral("appMenu"), &appMenu);
+    engine.rootContext()->setContextProperty(QStringLiteral("trayHost"), &trayHost);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
 
     // One Notch per monitor, following hotplug.

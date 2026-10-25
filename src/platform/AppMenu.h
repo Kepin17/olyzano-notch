@@ -25,6 +25,10 @@ public:
     void setPid(qint64 pid);                  // the app in front changed
     Q_INVOKABLE void trigger(int id);         // an item was clicked
     Q_INVOKABLE void aboutToShow(int id);     // a menu is about to open: apps fill some lazily
+    // the same, for a menu at a known place (a tray item's)
+    static QVariantList layoutAt(const QString &service, const QString &path) { return readMenus({service, path}); }
+    static void clickAt(const QString &service, const QString &path, int id);
+    static void aboutToShowAt(const QString &service, const QString &path, int id);
     QByteArray dump(qint64 pid);              // `notch --dump-menu <pid>`: what this finds, as JSON (blocks)
 
 signals:

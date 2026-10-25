@@ -254,8 +254,14 @@ Chrome and other Chromium browsers, Qt / KDE apps that publish theirs). Click a 
 submenus; with one open, pointing at another title switches to it. Apps that share no menu (Electron, many GTK apps) just show
 the name. Turn it off in *Settings → Panel*. `notch --dump-menu <pid>` prints what an app shares.
 
+The **tray** sits left of the status icons: the apps running in the background (Steam, Discord, Claude...) as small icons.
+Click one to open the app, middle-click for its secondary action, right-click for its menu; more than six fold into a `»` card.
+It speaks the StatusNotifierItem protocol as one more host next to Plasma's (`notch --dump-tray` lists what it sees). Click the
+**clock** and a **calendar** opens (month grid, today marked, optional week numbers; the first day of the week follows the
+system or is set in *Settings → Panel*).
+
 Click the icons on the right (or, if you choose so in Settings, point at them) and **Quick Settings** opens:
-**Wi-Fi** and **Bluetooth** tiles (tap to switch; the chevron lists saved networks or paired devices to connect), **volume** with
+**Wi-Fi** and **Bluetooth** tiles (tap to switch; the chevron lists the networks and devices in range, the one in use on top: tap to connect, type the password of a new network, pair a device found nearby; scanning runs only while a list is open), **volume** with
 mute and the **output** to play through, **brightness**, the battery with the time left and the **power mode** (power saver,
 balanced, performance), and who is using the microphone or a camera. Linux (KDE Plasma): Wi-Fi through NetworkManager,
 Bluetooth through BlueZ, sound through PipeWire / PulseAudio, brightness through PowerDevil, the power mode through

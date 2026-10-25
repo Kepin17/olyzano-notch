@@ -20,9 +20,26 @@ Window {
     property real menuX: 0
     readonly property bool menuShown: menuOpen >= 0 && menuOpen < appMenu.menus.length
     property bool calOpen: false // the calendar, from the clock
-    onQuickOpenChanged: if (quickOpen) { menuOpen = -1; calOpen = false }
-    onMenuOpenChanged: if (menuOpen >= 0) { quickOpen = false; calOpen = false }
-    onCalOpenChanged: if (calOpen) { quickOpen = false; menuOpen = -1 }
+    property bool trayMenu: false // the menu of a tray item
+    property bool trayMore: false // the tray items that did not fit
+    property var trayItems: []
+    property real trayX: 0
+    readonly property int trayShown: 6
+    onQuickOpenChanged: if (quickOpen) { menuOpen = -1; calOpen = false; trayMenu = false; trayMore = false }
+    onMenuOpenChanged: if (menuOpen >= 0) { quickOpen = false; calOpen = false; trayMenu = false; trayMore = false }
+    onCalOpenChanged: if (calOpen) { quickOpen = false; menuOpen = -1; trayMenu = false; trayMore = false }
+    onTrayMenuChanged: if (trayMenu) { quickOpen = false; calOpen = false; menuOpen = -1; trayMore = false }
+    onTrayMoreChanged: if (trayMore) { quickOpen = false; calOpen = false; menuOpen = -1; trayMenu = false }
+    Timer { id: trayCloser; interval: 900; onTriggered: if (!trayHover.hovered && !moreHover.hovered) { root.trayMenu = false; root.trayMore = false } }
+    function openTray(key, item) { // right click on a tray icon: its menu under it
+        const m = trayHost.menu(key)
+        if (m.length === 0) return
+        trayItems = m
+        trayX = Math.max(4, Math.min(width - 304, item.mapToItem(null, 0, 0).x - 8))
+        trayMore = false
+        trayMenu = true
+        trayCloser.restart()
+    }
     Timer { id: calCloser; interval: 700; onTriggered: if (!clockHover.hovered && !calHover.hovered) root.calOpen = false }
     Connections { target: appMenu; function onChanged() { if (root.menuOpen >= appMenu.menus.length) root.menuOpen = -1 } }
     Timer { id: menuCloser; interval: 600; onTriggered: if (!menuHover.hovered && !titlesHover.hovered) root.menuOpen = -1 }
@@ -31,7 +48,7 @@ Window {
     Timer { id: quickOpener; interval: 160; onTriggered: if (clusterHover.hovered) root.quickOpen = true }
     property bool shown: topbar.behavior === "always"
     property bool edgeDwelled: false
-    readonly property bool engaged: topbar.behavior === "always" || edgeDwelled || stripHover.hovered || quickOpen || menuShown || calOpen
+    readonly property bool engaged: topbar.behavior === "always" || edgeDwelled || stripHover.hovered || quickOpen || menuShown || calOpen || trayMenu || trayMore
     onEngagedChanged: {
         if (engaged) {
             hideTimer.stop()
@@ -50,6 +67,8 @@ Window {
     // ---- the pointer: only what is visible (and nothing at all over a full-screen game) ----
     readonly property var maskRects: gaming.active ? [Qt.rect(0, 0, 1, 1)]
                                    : menuShown ? [Qt.rect(0, 0, width, stripH), Qt.rect(menuPop.x, menuPop.y, menuPop.reachW, menuPop.reachH)]
+                                   : trayMenu ? [Qt.rect(0, 0, width, stripH), Qt.rect(trayPop.x, trayPop.y, trayPop.reachW, trayPop.reachH)]
+                                   : trayMore ? [Qt.rect(0, 0, width, stripH), Qt.rect(moreCard.x, moreCard.y, moreCard.width, moreCard.height)]
                                    : calOpen ? [Qt.rect(0, 0, width, stripH), Qt.rect(cal.x, cal.y, cal.width, cal.height)]
                                    : quickOpen ? [Qt.rect(0, 0, width, stripH), Qt.rect(quick2.x, quick2.y, quick2.width, quick2.height)]
                                    : shown ? [Qt.rect(0, 0, width, stripH)]
@@ -155,6 +174,19 @@ Window {
             id: right
             anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
             spacing: 12
+            Row { // the apps in the background
+                id: trayRow
+                visible: topbar.showTray && trayHost.items.length > 0
+                spacing: 4
+                Repeater {
+                    model: trayHost.items.slice(0, root.trayShown)
+                    TrayIcon { }
+                }
+                TrayButton {
+                    visible: trayHost.items.length > root.trayShown
+                    onClicked: root.trayMore = !root.trayMore
+                }
+            }
             RowLayout {
             id: icons
             spacing: 12
@@ -244,6 +276,79 @@ Window {
         }
     }
 
+    // ---- tray: one icon, its menu, and the overflow ----
+    component TrayIcon: Item {
+        id: ti
+        required property var modelData
+        width: 24; height: 24
+        opacity: modelData.status === "NeedsAttention" ? 1 : 0.92
+        HoverHandler { id: tih }
+        Rectangle { anchors.fill: parent; radius: 6; color: theme.accentSoft; visible: tih.hovered }
+        Image {
+            anchors.centerIn: parent
+            source: ti.modelData.icon
+            sourceSize: Qt.size(32, 32)
+            width: 16; height: 16
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+        }
+        Rectangle { visible: ti.modelData.status === "NeedsAttention"; x: 15; y: 3; width: 6; height: 6; radius: 3; color: theme.danger }
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+            onClicked: mouse => {
+                const p = ti.mapToItem(null, mouse.x, mouse.y)
+                if (mouse.button === Qt.RightButton || (mouse.button === Qt.LeftButton && ti.modelData.isMenu)) root.openTray(ti.modelData.key, ti)
+                else if (mouse.button === Qt.MiddleButton) trayHost.secondary(ti.modelData.key, p.x, p.y)
+                else { root.trayMore = false; trayHost.activate(ti.modelData.key, p.x, p.y) }
+            }
+        }
+    }
+    component TrayButton: AbstractButton {
+        implicitWidth: 20; implicitHeight: 24
+        contentItem: Item { LineIcon { anchors.centerIn: parent; glyph: "chevron"; sourceSize: Qt.size(13, 13); color: theme.textDim; rotation: -90 } }
+    }
+    AppMenuPopup {
+        id: trayPop
+        sink: trayHost
+        x: root.trayX
+        y: root.stripH + 2
+        visible: root.trayMenu && root.shown
+        items: root.trayItems
+        onItemsChanged: openSub = -1
+        onCloseAll: root.trayMenu = false
+        HoverHandler {
+            id: trayHover
+            onHoveredChanged: if (!hovered && root.trayMenu) trayCloser.restart()
+        }
+    }
+    Rectangle {
+        id: moreCard
+        width: moreFlow.implicitWidth + 16
+        height: moreFlow.implicitHeight + 16
+        x: Math.max(4, root.width - width - 160)
+        y: root.stripH + 2
+        radius: 12
+        visible: root.trayMore && root.shown
+        color: theme.dark ? Qt.rgba(0.09, 0.09, 0.10, Math.min(1, topbar.opacity + 0.25)) : Qt.rgba(1, 1, 1, Math.min(1, topbar.opacity + 0.25))
+        border.width: 1
+        border.color: theme.dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.12)
+        HoverHandler {
+            id: moreHover
+            onHoveredChanged: if (!hovered && root.trayMore) trayCloser.restart()
+        }
+        Flow {
+            id: moreFlow
+            x: 8; y: 8
+            width: Math.min(implicitWidth, 200)
+            spacing: 4
+            Repeater {
+                model: trayHost.items.slice(root.trayShown)
+                TrayIcon { }
+            }
+        }
+    }
+
     // ---- the calendar ----
     CalendarCard {
         id: cal
@@ -269,7 +374,7 @@ Window {
     }
     Connections {
         target: gaming
-        function onChanged() { if (gaming.active) { root.quickOpen = false; root.menuOpen = -1; root.calOpen = false } }
+        function onChanged() { if (gaming.active) { root.quickOpen = false; root.menuOpen = -1; root.calOpen = false; root.trayMenu = false; root.trayMore = false } }
     }
 
     // ---- the top edge, while the bar is away ----

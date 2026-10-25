@@ -20,6 +20,7 @@ class PanelBar : public QObject
     Q_PROPERTY(QString weekStart READ weekStart WRITE setWeekStart NOTIFY changed) // "system" | "monday" | "sunday"
     Q_PROPERTY(bool weekNumbers READ weekNumbers WRITE setWeekNumbers NOTIFY changed)
     Q_PROPERTY(int firstDay READ firstDay NOTIFY changed) // Qt::DayOfWeek the calendar starts on
+    Q_PROPERTY(bool showTray READ showTray WRITE setShowTray NOTIFY changed)   // the apps in the background, left of the status icons
     Q_PROPERTY(bool showDate READ showDate WRITE setShowDate NOTIFY changed)
     Q_PROPERTY(bool showSeconds READ showSeconds WRITE setShowSeconds NOTIFY changed)
     Q_PROPERTY(bool showBattery READ showBattery WRITE setShowBattery NOTIFY changed)
@@ -50,6 +51,8 @@ public:
     void setWeekNumbers(bool on) { store("weekNumbers", on); }
     int firstDay() const;
     Q_INVOKABLE QVariantList monthGrid(int year, int month) const; // 42 days, see CalendarModel.h
+    bool showTray() const { return flag("showTray", true); }
+    void setShowTray(bool on) { store("showTray", on); }
     bool showDate() const { return flag("showDate", true); }
     void setShowDate(bool on) { store("showDate", on); }
     bool showSeconds() const { return flag("showSeconds", false); }

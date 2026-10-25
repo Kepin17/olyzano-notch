@@ -190,31 +190,40 @@ void AppMenu::listen()
 #endif
 }
 
-void AppMenu::trigger(int id)
+void AppMenu::clickAt(const QString &service, const QString &path, int id)
 {
 #ifdef NOTCH_HAVE_DBUS
-    if (!m_found.ok())
-        return;
-    QDBusMessage m = QDBusMessage::createMethodCall(m_found.service, m_found.path, MenuIface, QStringLiteral("Event"));
+    QDBusMessage m = QDBusMessage::createMethodCall(service, path, MenuIface, QStringLiteral("Event"));
     m.setArguments({id, QStringLiteral("clicked"), QVariant::fromValue(QDBusVariant(0)), uint(QDateTime::currentSecsSinceEpoch())});
     QDBusConnection::sessionBus().asyncCall(m);
 #else
-    Q_UNUSED(id)
+    Q_UNUSED(service) Q_UNUSED(path) Q_UNUSED(id)
 #endif
+}
+
+void AppMenu::aboutToShowAt(const QString &service, const QString &path, int id)
+{
+#ifdef NOTCH_HAVE_DBUS
+    QDBusMessage m = QDBusMessage::createMethodCall(service, path, MenuIface, QStringLiteral("AboutToShow"));
+    m.setArguments({id});
+    QDBusConnection::sessionBus().asyncCall(m);
+#else
+    Q_UNUSED(service) Q_UNUSED(path) Q_UNUSED(id)
+#endif
+}
+
+void AppMenu::trigger(int id)
+{
+    if (m_found.ok())
+        clickAt(m_found.service, m_found.path, id);
 }
 
 void AppMenu::aboutToShow(int id)
 {
-#ifdef NOTCH_HAVE_DBUS
     if (!m_found.ok())
         return;
-    QDBusMessage m = QDBusMessage::createMethodCall(m_found.service, m_found.path, MenuIface, QStringLiteral("AboutToShow"));
-    m.setArguments({id});
-    QDBusConnection::sessionBus().asyncCall(m);
+    aboutToShowAt(m_found.service, m_found.path, id);
     m_reload.start(); // some apps fill a menu in when it is asked to show
-#else
-    Q_UNUSED(id)
-#endif
 }
 
 QByteArray AppMenu::dump(qint64 pid)

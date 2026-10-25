@@ -6,6 +6,7 @@ import QtQuick.Controls.Basic
 Rectangle {
     id: pop
     property var items: []
+    property var sink: appMenu // who gets the clicks: the app in front, or a tray item
     property bool lead: false // the level under the bar: submenus beside it open to the right unless there is no room
     readonly property real maxH: 740
     property int openSub: -1
@@ -27,7 +28,7 @@ Rectangle {
     function showSub(i) {
         if (i === openSub) return
         openSub = i
-        if (i >= 0) appMenu.aboutToShow(items[i].id)
+        if (i >= 0) sink.aboutToShow(items[i].id)
     }
 
     Flickable {
@@ -93,7 +94,7 @@ Rectangle {
                             enabled: row.modelData.enabled
                             onTapped: {
                                 if (row.modelData.submenu) { pop.showSub(row.index); return }
-                                appMenu.trigger(row.modelData.id)
+                                pop.sink.trigger(row.modelData.id)
                                 pop.closeAll()
                             }
                         }
@@ -116,6 +117,7 @@ Rectangle {
         source: "AppMenuPopup.qml" // by file: a component can't name itself
         onLoaded: {
             item.items = Qt.binding(() => pop.openSub >= 0 ? pop.items[pop.openSub].children : [])
+            item.sink = Qt.binding(() => pop.sink)
             item.closeAll.connect(pop.closeAll)
         }
     }
