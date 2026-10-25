@@ -1307,6 +1307,80 @@ private slots:
         QDir().rmdir(vault.mountDir());
     }
 
+    // The engine Windows uses, run here too.
+    void vaultFilesEngine()
+    {
+        const QString cipher = m_tmp.filePath(QStringLiteral("files-cipher"));
+        const QString mount = m_tmp.filePath(QStringLiteral("files-plain"));
+        auto write = [](const QString &path, const QByteArray &data) {
+            QFile f(path);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(data);
+        };
+        auto read = [](const QString &path) {
+            QFile f(path);
+            return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+        };
+        {
+            Vault vault(cipher, mount, Vault::Files);
+            QVERIFY(!vault.exists());
+            QVERIFY(!vault.create(QStringLiteral("short")).isEmpty());
+            QCOMPARE(vault.create(QStringLiteral("correct horse battery")), QString());
+            QVERIFY(vault.exists());
+            QVERIFY(!vault.isUnlocked());
+            QCOMPARE(vault.unlock(QStringLiteral("wrong password!")), QStringLiteral("wrong password"));
+            QVERIFY(!vault.isUnlocked());
+            QCOMPARE(vault.unlock(QStringLiteral("correct horse battery")), QString());
+            QVERIFY(vault.isUnlocked());
+
+            write(mount + QStringLiteral("/ktp.txt"), "NIK 3201234567890001");
+            write(mount + QStringLiteral("/gone.txt"), "temporary");
+            write(mount + QStringLiteral("/empty"), "");
+            QCOMPARE(vault.lock(), QString());
+            QVERIFY(!vault.isUnlocked());
+            QVERIFY(!QFileInfo::exists(mount));
+            // Nothing readable on disk: neither the content nor the file name.
+            QDirIterator it(cipher, QDir::Files);
+            int count = 0;
+            while (it.hasNext()) {
+                const QString path = it.next();
+                ++count;
+                QVERIFY(!read(path).contains("NIK 3201234567890001"));
+                QVERIFY(!path.contains(QStringLiteral("ktp")));
+            }
+            QCOMPARE(count, 4); // three files and the config
+
+            QCOMPARE(vault.unlock(QStringLiteral("correct horse battery")), QString());
+            QCOMPARE(read(mount + QStringLiteral("/ktp.txt")), QByteArray("NIK 3201234567890001"));
+            QVERIFY(QFileInfo::exists(mount + QStringLiteral("/empty")));
+            QVERIFY(QFile::remove(mount + QStringLiteral("/gone.txt")));
+            write(mount + QStringLiteral("/ktp.txt"), "NIK 3201234567890002");
+            QCOMPARE(vault.lock(), QString());
+        }
+        {
+            // A session that ends without locking (a crash) leaves the plain files: the next unlock keeps them.
+            Vault vault(cipher, mount, Vault::Files);
+            QCOMPARE(vault.unlock(QStringLiteral("correct horse battery")), QString());
+            QVERIFY(!QFileInfo::exists(mount + QStringLiteral("/gone.txt")));
+            QCOMPARE(read(mount + QStringLiteral("/ktp.txt")), QByteArray("NIK 3201234567890002"));
+            write(mount + QStringLiteral("/new.txt"), "added before the crash");
+        }
+        {
+            Vault vault(cipher, mount, Vault::Files);
+            QVERIFY(!vault.isUnlocked());
+            QCOMPARE(vault.lock(), QString()); // nothing to do without the key
+            QVERIFY(QFileInfo::exists(mount + QStringLiteral("/new.txt")));
+            QCOMPARE(vault.unlock(QStringLiteral("correct horse battery")), QString());
+            QCOMPARE(read(mount + QStringLiteral("/new.txt")), QByteArray("added before the crash"));
+            QCOMPARE(vault.lock(), QString());
+            QVERIFY(!QFileInfo::exists(mount));
+            QCOMPARE(vault.unlock(QStringLiteral("correct horse battery")), QString());
+            QCOMPARE(read(mount + QStringLiteral("/new.txt")), QByteArray("added before the crash"));
+            QCOMPARE(QDir(mount).entryList(QDir::Files).size(), 3);
+            QCOMPARE(vault.lock(), QString());
+        }
+    }
+
     void vaultItemsNeverExpire()
     {
         const QDateTime now = QDateTime::currentDateTimeUtc();

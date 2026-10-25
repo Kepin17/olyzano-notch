@@ -2233,7 +2233,7 @@ Window {
         Action {
             readonly property bool locked: notch.categories.some(c => c.id === categoryMenu.catId && c.locked)
             enabled: notch.vaultSupported
-            text: !notch.vaultSupported ? "Lock with password… (Linux only for now)"
+            text: !notch.vaultSupported ? "Lock with password… (not available here)"
                   : locked ? (notch.vaultUnlocked ? "Lock now" : "Unlock…") : "Lock with password…"
             onTriggered: {
                 const id = categoryMenu.catId
