@@ -4,9 +4,12 @@
 - A dock of its own on the bottom, left or right edge of each monitor, like the macOS Dock: pinned apps, a divider, then the other running apps.
 - Glass look: translucent bar with a soft shadow, and blur behind it on KDE Plasma.
 - Icons grow a little as the pointer nears them and their neighbours make room. Running apps get a dot, the app in front an accent pill.
-- Click brings the app's window forward (KDE Plasma and Windows), or starts the app. Middle-click opens a new window; right-click for Keep in Dock, New window and Quit.
+- Click brings the app's window forward (KDE Plasma and Windows), or starts the app; clicking the app in front minimizes it, and apps with several windows cycle through them. Middle-click opens a new window; right-click for Keep in Dock, New window and Quit.
 - Drag pinned icons to reorder them, or off the dock to remove them. Drag a running app among the pinned ones to keep it. **+** adds an installed app.
 - Hides past the screen edge and comes back when the pointer touches it, or stays on screen with *Always show*.
+
+### Themes
+- Six new themes alongside Classic and Washi: Frost, Ocean, Forest, Sunset, Lavender and Mocha, each in dark and light. Pick one from the swatches in Settings > Appearance.
 
 ### Settings
 - Split into General, Files, Dock, Sharing and Appearance tabs.
