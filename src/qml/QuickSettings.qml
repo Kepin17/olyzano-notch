@@ -29,7 +29,11 @@ Rectangle {
     opacity: open ? 1 : 0
     visible: opacity > 0
     Behavior on opacity { NumberAnimation { duration: 140 } }
-    onOpenChanged: { if (open) quick.refresh(); else askFor = ""; syncWatch() }
+    onOpenChanged: {
+        if (open) quick.refresh()
+        else { askFor = ""; wifiOpen = false; btOpen = false; soundOpen = false; inputOpen = false } // closing the card folds its lists
+        syncWatch()
+    }
 
     readonly property color tileOff: theme.dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(0, 0, 0, 0.06)
     readonly property color tileOn: theme.accentSoft

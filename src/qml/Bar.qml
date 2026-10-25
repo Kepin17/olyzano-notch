@@ -19,8 +19,11 @@ Window {
     property int menuOpen: -1 // which of the app's menus is down (an index into appMenu.menus)
     property real menuX: 0
     readonly property bool menuShown: menuOpen >= 0 && menuOpen < appMenu.menus.length
-    onQuickOpenChanged: if (quickOpen) menuOpen = -1
-    onMenuOpenChanged: if (menuOpen >= 0) quickOpen = false
+    property bool calOpen: false // the calendar, from the clock
+    onQuickOpenChanged: if (quickOpen) { menuOpen = -1; calOpen = false }
+    onMenuOpenChanged: if (menuOpen >= 0) { quickOpen = false; calOpen = false }
+    onCalOpenChanged: if (calOpen) { quickOpen = false; menuOpen = -1 }
+    Timer { id: calCloser; interval: 700; onTriggered: if (!clockHover.hovered && !calHover.hovered) root.calOpen = false }
     Connections { target: appMenu; function onChanged() { if (root.menuOpen >= appMenu.menus.length) root.menuOpen = -1 } }
     Timer { id: menuCloser; interval: 600; onTriggered: if (!menuHover.hovered && !titlesHover.hovered) root.menuOpen = -1 }
     // Quick Settings opens from the status cluster (a click, or hovering it), and closes a moment after the pointer has left both.
@@ -28,7 +31,7 @@ Window {
     Timer { id: quickOpener; interval: 160; onTriggered: if (clusterHover.hovered) root.quickOpen = true }
     property bool shown: topbar.behavior === "always"
     property bool edgeDwelled: false
-    readonly property bool engaged: topbar.behavior === "always" || edgeDwelled || stripHover.hovered || quickOpen || menuShown
+    readonly property bool engaged: topbar.behavior === "always" || edgeDwelled || stripHover.hovered || quickOpen || menuShown || calOpen
     onEngagedChanged: {
         if (engaged) {
             hideTimer.stop()
@@ -47,6 +50,7 @@ Window {
     // ---- the pointer: only what is visible (and nothing at all over a full-screen game) ----
     readonly property var maskRects: gaming.active ? [Qt.rect(0, 0, 1, 1)]
                                    : menuShown ? [Qt.rect(0, 0, width, stripH), Qt.rect(menuPop.x, menuPop.y, menuPop.reachW, menuPop.reachH)]
+                                   : calOpen ? [Qt.rect(0, 0, width, stripH), Qt.rect(cal.x, cal.y, cal.width, cal.height)]
                                    : quickOpen ? [Qt.rect(0, 0, width, stripH), Qt.rect(quick2.x, quick2.y, quick2.width, quick2.height)]
                                    : shown ? [Qt.rect(0, 0, width, stripH)]
                                    : [Qt.rect(0, 0, width, 2)]
@@ -151,6 +155,9 @@ Window {
             id: right
             anchors { right: parent.right; rightMargin: 14; verticalCenter: parent.verticalCenter }
             spacing: 12
+            RowLayout {
+            id: icons
+            spacing: 12
             HoverHandler {
                 id: clusterHover
                 onHoveredChanged: {
@@ -195,8 +202,15 @@ Window {
                     font.pixelSize: 12
                 }
             }
+            }
             ColumnLayout {
+                id: clock
                 spacing: -1
+                HoverHandler {
+                    id: clockHover
+                    onHoveredChanged: if (!hovered && root.calOpen) calCloser.restart()
+                }
+                TapHandler { onTapped: root.calOpen = !root.calOpen }
                 Text {
                     Layout.alignment: Qt.AlignRight
                     text: topbar.showSeconds ? Qt.formatTime(root.now, "hh:mm:ss") : Qt.formatTime(root.now, Qt.locale().timeFormat(Locale.ShortFormat))
@@ -230,6 +244,18 @@ Window {
         }
     }
 
+    // ---- the calendar ----
+    CalendarCard {
+        id: cal
+        x: root.width - width - 10
+        y: root.stripH + 6
+        open: root.calOpen && root.shown
+        HoverHandler {
+            id: calHover
+            onHoveredChanged: if (!hovered && root.calOpen) calCloser.restart()
+        }
+    }
+
     // ---- Quick Settings ----
     QuickSettings {
         id: quick2
@@ -243,7 +269,7 @@ Window {
     }
     Connections {
         target: gaming
-        function onChanged() { if (gaming.active) { root.quickOpen = false; root.menuOpen = -1 } }
+        function onChanged() { if (gaming.active) { root.quickOpen = false; root.menuOpen = -1; root.calOpen = false } }
     }
 
     // ---- the top edge, while the bar is away ----

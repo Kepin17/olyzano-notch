@@ -19,6 +19,7 @@
 #include "platform/DbusMenuModel.h"
 #include "platform/GamingModel.h"
 #include "platform/KaraokeModel.h"
+#include "platform/CalendarModel.h"
 #include "platform/PanelModel.h"
 #include "platform/LrcParser.h"
 #include "platform/Lyrics.h"
@@ -742,6 +743,18 @@ private slots:
             QCOMPARE(bt[0].toMap().value("name").toString(), QStringLiteral("on"));
             QCOMPARE(bt[1].toMap().value("name").toString(), QStringLiteral("mine"));
             QCOMPARE(bt[2].toMap().value("name").toString(), QStringLiteral("near"));
+        }
+        {
+            const QVariantList g = CalendarModel::grid(2028, 2, 1, QDate(2028, 2, 29)); // February 2028 (leap), weeks from Monday
+            QCOMPARE(g.size(), 42);
+            QCOMPARE(g[0].toMap().value("day").toInt(), 31); // Mon 31 Jan
+            QVERIFY(!g[0].toMap().value("inMonth").toBool());
+            QCOMPARE(g[1].toMap().value("day").toInt(), 1);
+            QVERIFY(g[1].toMap().value("inMonth").toBool());
+            QVERIFY(g[29].toMap().value("today").toBool()); // 29 Feb
+            QCOMPARE(g[0].toMap().value("week").toInt(), 5);
+            QCOMPARE(CalendarModel::grid(2026, 11, 7, QDate()).at(0).toMap().value("day").toInt(), 1); // 1 Nov 2026 is a Sunday
+            QVERIFY(CalendarModel::grid(2026, 13, 1, QDate()).isEmpty());
         }
         QCOMPARE(PanelModel::wifiBars(0), 0);
         QCOMPARE(PanelModel::wifiBars(20), 1);

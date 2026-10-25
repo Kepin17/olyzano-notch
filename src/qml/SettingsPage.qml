@@ -780,6 +780,23 @@ RowLayout {
                     text: "Wi-Fi, Bluetooth, volume, brightness and power, from the icons on the right of the bar."
                 }
             }
+
+            SettingCard {
+                visible: topbar.enabled
+                title: "Calendar"
+                SectionLabel { text: "The week starts on" }
+                Row {
+                    spacing: 6
+                    PillButton { text: "System"; checked: topbar.weekStart === "system"; onClicked: topbar.weekStart = "system" }
+                    PillButton { text: "Monday"; checked: topbar.weekStart === "monday"; onClicked: topbar.weekStart = "monday" }
+                    PillButton { text: "Sunday"; checked: topbar.weekStart === "sunday"; onClicked: topbar.weekStart = "sunday" }
+                }
+                SettingToggle { title: "Week numbers"; caption: "A column with the week of the year."; checked: topbar.weekNumbers; onToggled: topbar.weekNumbers = !topbar.weekNumbers }
+                Caption {
+                    Layout.fillWidth: true
+                    text: "Click the clock on the bar to open it."
+                }
+            }
         }
 
         ColumnLayout {

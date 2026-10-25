@@ -1,5 +1,7 @@
 #include "platform/PanelBar.h"
 
+#include "platform/CalendarModel.h"
+
 #include <QStandardPaths>
 #include <QtGlobal>
 
@@ -45,4 +47,26 @@ QString PanelBar::openOn() const
 void PanelBar::setOpenOn(const QString &m)
 {
     store("openOn", m == QLatin1String("hover") ? QStringLiteral("hover") : QStringLiteral("click"));
+}
+
+QString PanelBar::weekStart() const
+{
+    const QString w = m_settings.value(QStringLiteral("weekStart"), QStringLiteral("system")).toString();
+    return w == QLatin1String("monday") || w == QLatin1String("sunday") ? w : QStringLiteral("system");
+}
+
+void PanelBar::setWeekStart(const QString &w)
+{
+    store("weekStart", w == QLatin1String("monday") || w == QLatin1String("sunday") ? w : QStringLiteral("system"));
+}
+
+int PanelBar::firstDay() const
+{
+    const QString w = weekStart();
+    return w == QLatin1String("monday") ? Qt::Monday : w == QLatin1String("sunday") ? Qt::Sunday : int(QLocale().firstDayOfWeek());
+}
+
+QVariantList PanelBar::monthGrid(int year, int month) const
+{
+    return CalendarModel::grid(year, month, firstDay(), QDate::currentDate());
 }
