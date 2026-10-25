@@ -20,6 +20,7 @@
 #include "platform/GamingModel.h"
 #include "platform/KaraokeModel.h"
 #include "platform/CalendarModel.h"
+#include "platform/ColorFormat.h"
 #include "platform/PanelModel.h"
 #include "platform/LrcParser.h"
 #include "platform/Lyrics.h"
@@ -756,6 +757,12 @@ private slots:
             QCOMPARE(CalendarModel::grid(2026, 11, 7, QDate()).at(0).toMap().value("day").toInt(), 1); // 1 Nov 2026 is a Sunday
             QVERIFY(CalendarModel::grid(2026, 13, 1, QDate()).isEmpty());
         }
+        QCOMPARE(ColorFormat::format(QStringLiteral("#3daee9"), QStringLiteral("hex")), QStringLiteral("#3DAEE9"));
+        QCOMPARE(ColorFormat::format(QStringLiteral("#3DAEE9"), QStringLiteral("rgb")), QStringLiteral("rgb(61, 174, 233)"));
+        QCOMPARE(ColorFormat::format(QStringLiteral("#ff0000"), QStringLiteral("hsl")), QStringLiteral("hsl(0, 100%, 50%)"));
+        QCOMPARE(ColorFormat::format(QStringLiteral("nonsense"), QStringLiteral("rgb")), QStringLiteral("nonsense"));
+        QCOMPARE(ColorFormat::readableOn(QStringLiteral("#ffffff")), QStringLiteral("#000000"));
+        QCOMPARE(ColorFormat::readableOn(QStringLiteral("#101820")), QStringLiteral("#ffffff"));
         QCOMPARE(PanelModel::wifiBars(0), 0);
         QCOMPARE(PanelModel::wifiBars(20), 1);
         QCOMPARE(PanelModel::wifiBars(49), 2);

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "platform/ColorFormat.h"
+
 #include <QObject>
 #include <QVariantMap>
 
@@ -19,6 +21,8 @@ public:
     ~ColorPicker() override { close(); }
     bool supported() const { return true; }
     Q_INVOKABLE void pick();
+    Q_INVOKABLE QString format(const QString &hex, const QString &kind) const { return ColorFormat::format(hex, kind); }
+    Q_INVOKABLE QString readableOn(const QString &hex) const { return ColorFormat::readableOn(hex); }
     void finish(const QString &hex); // empty: cancelled
 
 signals:
@@ -40,6 +44,8 @@ public:
     using QObject::QObject;
     bool supported() const { return false; }
     Q_INVOKABLE void pick() { emit failed(tr("Picking a color from the screen is not available here")); }
+    Q_INVOKABLE QString format(const QString &hex, const QString &kind) const { return ColorFormat::format(hex, kind); }
+    Q_INVOKABLE QString readableOn(const QString &hex) const { return ColorFormat::readableOn(hex); }
 
 signals:
     void picked(const QString &hex);
@@ -57,6 +63,8 @@ public:
     using QObject::QObject;
     bool supported() const { return true; }
     Q_INVOKABLE void pick();
+    Q_INVOKABLE QString format(const QString &hex, const QString &kind) const { return ColorFormat::format(hex, kind); }
+    Q_INVOKABLE QString readableOn(const QString &hex) const { return ColorFormat::readableOn(hex); }
 
 signals:
     void picked(const QString &hex); // "#3DAEE9"

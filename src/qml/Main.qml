@@ -1462,86 +1462,8 @@ Window {
                 }
 
                 // ---- Color: pick one from the screen, and the ones picked before ----
-                ColumnLayout {
-                    visible: root.page === "color"
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 12
-                    Layout.rightMargin: 12
-                    spacing: 12
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 10
-                        PillButton {
-                            visible: colorPicker.supported
-                            text: "Pick a color from the screen"
-                            iconName: "palette"
-                            checked: true
-                            onClicked: {
-                                // Get out of the way so anything on screen (even under Notch) can be picked
-                                // (not in "Always open": it would not come back).
-                                if (root.capsuleMode !== "open") {
-                                    root.pinned = false
-                                    root.open = false
-                                }
-                                colorPicker.pick()
-                            }
-                        }
-                        Caption {
-                            Layout.fillWidth: true
-                            text: !colorPicker.supported ? "Picking a color from the screen isn't available here."
-                                 : "The panel hides; click a pixel anywhere (Esc cancels)."
-                        }
-                    }
-                    Caption {
-                        visible: notch.recentColors.length === 0
-                        Layout.fillWidth: true
-                        text: "No colors yet. The ones you pick are kept here: click one to copy it."
-                    }
-                    Flow {
-                        visible: notch.recentColors.length > 0
-                        Layout.fillWidth: true
-                        spacing: 10
-                        Repeater {
-                            model: notch.recentColors
-                            Column {
-                                id: swatch
-                                required property string modelData
-                                spacing: 4
-                                Rectangle {
-                                    width: 56
-                                    height: 40
-                                    radius: theme.radiusMd
-                                    color: swatch.modelData
-                                    border.width: swatchHover.hovered ? 2 : 1
-                                    border.color: swatchHover.hovered ? theme.text : theme.outline
-                                    HoverHandler { id: swatchHover }
-                                    ToolTip.visible: swatchHover.hovered
-                                    ToolTip.delay: 300
-                                    ToolTip.text: "Click to copy · right-click to remove"
-                                    TapHandler {
-                                        onTapped: {
-                                            notch.copyText(swatch.modelData)
-                                            root.infoText = "Copied " + swatch.modelData
-                                            infoTimer.restart()
-                                        }
-                                    }
-                                    TapHandler {
-                                        acceptedButtons: Qt.RightButton
-                                        onTapped: notch.removeColor(swatch.modelData)
-                                    }
-                                }
-                                Text {
-                                    width: 56
-                                    horizontalAlignment: Text.AlignHCenter
-                                    text: swatch.modelData
-                                    color: theme.textDim
-                                    font.pixelSize: 10
-                                    font.family: "monospace"
-                                }
-                            }
-                        }
-                    }
-                    Item { Layout.preferredHeight: 4 }
+                ColorPage {
+                    shell: root
                 }
 
                 // ---- Locked category, vault closed ----
