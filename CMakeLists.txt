@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(notch VERSION 0.7.1 LANGUAGES CXX)
+project(notch VERSION 0.8.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -91,7 +91,20 @@ else()
     target_sources(notch PRIVATE src/platform/SystemEvents_other.cpp) # the rest are header-only stubs
 endif()
 if(WIN32)
-    target_link_libraries(notch PRIVATE user32 shell32) # AppDock lists and raises windows, and asks the Recycle Bin
+    # KDE Connect for Windows runs a D-Bus of its own; QtDBus loads its libdbus at runtime (KdeConnect.cpp).
+    find_package(Qt6 6.5 REQUIRED COMPONENTS DBus)
+    target_sources(notch PRIVATE src/platform/KdeConnect.cpp)
+    target_link_libraries(notch PRIVATE Qt6::DBus)
+    target_compile_definitions(notch PRIVATE NOTCH_HAVE_KDECONNECT)
+    target_sources(notch PRIVATE src/platform/WinPrivacy.h src/platform/WinPrivacy.cpp src/platform/ColorPicker_win.cpp
+                                 src/platform/WinBluetooth.h src/platform/WinBluetooth.cpp
+                                 src/platform/MediaPlayers_win.cpp src/platform/MediaNames.h src/platform/AudioLevels_win.cpp)
+    # user32/shell32: AppDock lists and raises windows, and asks the Recycle Bin. ole32/advapi32: microphone, registry.
+    # windowsapp: the WinRT APIs (Bluetooth, media sessions) through C++/WinRT, which ships with the Windows SDK.
+    target_link_libraries(notch PRIVATE user32 shell32 ole32 advapi32 windowsapp)
+    # C++/WinRT's coroutine support needs C++20 (under C++17 it pulls in the removed <experimental/coroutine>).
+    set_source_files_properties(src/platform/WinBluetooth.cpp src/platform/MediaPlayers_win.cpp
+                                PROPERTIES COMPILE_OPTIONS "/std:c++20")
     configure_file(packaging/windows/notch.rc.in ${CMAKE_CURRENT_BINARY_DIR}/notch.rc)
     target_sources(notch PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/notch.rc)
     set_target_properties(notch PROPERTIES WIN32_EXECUTABLE TRUE) # a window, not a console
@@ -111,7 +124,7 @@ qt_add_qml_module(notch
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg
         src/qml/icons/unlock.svg src/qml/icons/trash.svg src/qml/icons/palette.svg src/qml/icons/pen.svg
         src/qml/icons/gear.svg src/qml/icons/sort.svg src/qml/icons/camera.svg src/qml/icons/download.svg
-        src/qml/icons/phone.svg src/qml/icons/search.svg src/qml/icons/share.svg src/qml/icons/wifi.svg src/qml/icons/server.svg src/qml/icons/notch.png src/qml/icons/laptop.svg
+        src/qml/icons/phone.svg src/qml/icons/search.svg src/qml/icons/share.svg src/qml/icons/wifi.svg src/qml/icons/server.svg src/qml/icons/notch.png src/qml/icons/laptop.svg src/qml/icons/bluetooth.svg src/qml/icons/headphones.svg
         src/qml/icons/timer.svg src/qml/icons/mic.svg src/qml/icons/mic-off.svg
 )
 # Widgets: QApplication backs the tray icon (Qt.labs.platform falls back to QSystemTrayIcon).

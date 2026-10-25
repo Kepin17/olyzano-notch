@@ -113,8 +113,12 @@ static QString autostartPath()
 // A private tmpfs-like folder: XDG_RUNTIME_DIR on Linux, the temp folder where there is no such thing.
 static QString runtimeDir()
 {
+#ifdef Q_OS_WIN
+    return QStandardPaths::writableLocation(QStandardPaths::TempLocation); // RuntimeLocation is the home folder there
+#else
     const QString dir = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation);
     return dir.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::TempLocation) : dir;
+#endif
 }
 
 #ifdef Q_OS_WIN

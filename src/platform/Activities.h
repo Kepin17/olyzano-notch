@@ -13,7 +13,8 @@
 // What the notch shows while something is going on, as `activities` in QML:
 // - a timer, stopwatch or Pomodoro (shared by every monitor's notch),
 // - downloads still being written to the Downloads folder (browsers' .part / .crdownload files),
-// - which apps are using the microphone or a camera right now (Linux: PulseAudio/PipeWire and /dev/video*).
+// - which apps are using the microphone or a camera right now (Linux: PulseAudio/PipeWire and /dev/video*;
+//   Windows: the registry list behind its taskbar mic icon).
 // Switches live in notch/activities.conf.
 class Activities : public QObject
 {

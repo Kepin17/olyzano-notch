@@ -82,7 +82,7 @@ class NotchController : public QObject
     // Automatic category per file type (FileService::typeGroup): {group: categoryId}.
     Q_PROPERTY(QVariantMap typeRules READ typeRules NOTIFY typeRulesChanged)
     // Encrypted vault for locked categories (gocryptfs). Unlocked = mounted in $XDG_RUNTIME_DIR.
-    Q_PROPERTY(bool vaultSupported READ vaultSupported CONSTANT)   // locked categories need gocryptfs (Linux)
+    Q_PROPERTY(bool vaultSupported READ vaultSupported CONSTANT)   // locked categories (Vault: gocryptfs on Linux)
     Q_PROPERTY(bool linuxDesktop READ linuxDesktop CONSTANT)       // Spectacle, KDE Connect, … live here
     Q_PROPERTY(QString platform READ platform CONSTANT)            // linux | windows | other
     Q_PROPERTY(bool vaultExists READ vaultExists NOTIFY vaultChanged)
