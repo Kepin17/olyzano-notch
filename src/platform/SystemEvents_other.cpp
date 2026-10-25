@@ -5,6 +5,8 @@
 #include "platform/BatteryThreshold.h"
 
 #ifdef Q_OS_WIN
+#include "platform/WinBluetooth.h"
+
 #include <windows.h>
 #endif
 
@@ -16,6 +18,7 @@ SystemEvents::SystemEvents(QObject *parent)
     connect(&m_timer, &QTimer::timeout, this, &SystemEvents::poll);
     m_timer.start();
     poll(); // learn the starting state without raising an alert
+    connect(new WinBluetooth(this), &WinBluetooth::alert, this, &SystemEvents::alert);
 #endif
 }
 
