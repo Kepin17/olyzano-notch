@@ -60,7 +60,13 @@ Window {
                                     || sortMenu.visible || removedMenu.visible
                                     || removedChipMenu.visible
     readonly property bool dragOver: dragLive && (edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver)
-    readonly property bool engaged: pinned || dwelled || (islandHover.hovered && mode !== "idle" && mode !== "prompt")
+    // Once it has started to open it stays open a moment, so a hover that blinks while the panel grows under a
+    // still pointer (the input region changes with it) can't shut it again.
+    Timer { id: holdTimer; interval: 900 }
+    // `notch --debug-hover` prints what the pointer does at the top edge.
+    readonly property bool debugHover: Qt.application.arguments.indexOf("--debug-hover") >= 0
+    function dbg(what) { if (debugHover) console.log("hover", Date.now() % 100000, what, "mode=" + mode, "open=" + open, "dwelled=" + dwelled) }
+    readonly property bool engaged: pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt")
                                     || dragOver || anyMenu
                                     || saveDialog.visible || addDialog.visible
     // hidden: only the top-edge strip is live. peek: copy in progress. open: full panel.
@@ -323,7 +329,10 @@ Window {
     }
 
     onEngagedChanged: {
+        dbg("engaged=" + engaged)
         if (engaged) {
+            if (!open)
+                holdTimer.restart()
             closeTimer.stop()
             if ((mode === "toast" && toast && toast.kind === "media") || (mode === "idle" && musicShown))
                 page = "music" // pointing at the now-playing alert or the capsule opens just the player
@@ -333,6 +342,7 @@ Window {
         }
     }
     onOpenChanged: {
+        dbg("open=" + open)
         if (open)
             return
         page = "shelf"
@@ -1810,6 +1820,7 @@ Window {
             id: islandHover
             property point last
             onHoveredChanged: {
+                root.dbg("island hovered=" + hovered)
                 if (hovered && root.mode === "idle") {
                     if (root.capsuleMode === "capsule") { // the capsule is there to be pointed at: open at once
                         dwellTimer.stop()
@@ -1867,6 +1878,7 @@ Window {
         HoverHandler {
             id: edgeHover
             onHoveredChanged: {
+                root.dbg("edge hovered=" + hovered)
                 if (hovered) {
                     dwellTimer.restart()
                 } else if (!islandHover.hovered) { // sliding down from the strip into the capsule is not leaving
