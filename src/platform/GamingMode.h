@@ -16,6 +16,7 @@ class GamingMode : public QObject
     Q_PROPERTY(bool active READ active NOTIFY changed)
     Q_PROPERTY(bool manual READ manual WRITE setManual NOTIFY changed)
     Q_PROPERTY(bool autoDetect READ autoDetect WRITE setAutoDetect NOTIFY changed)
+    Q_PROPERTY(bool fullScreen READ fullScreen NOTIFY changed) // a full-screen app is in front
 
 public:
     explicit GamingMode(QObject *parent = nullptr);
@@ -23,13 +24,15 @@ public:
     bool active() const { return m_state.active(); }
     bool manual() const { return m_state.manual; }
     bool autoDetect() const { return m_state.autoDetect; }
+    bool fullScreen() const { return m_state.fullScreen; }
     void setManual(bool on);
     void setAutoDetect(bool on);
 
     // Linux: from the dock's window watcher. (Windows asks the system itself.)
     void setFullScreen(bool on);
-    // The tray icon: leave gaming mode, whichever way it came on.
-    Q_INVOKABLE void wake();
+    // The tray icon: leave gaming mode. True when Notch may open now; false while a full-screen app is in front
+    // (the panel can't be opened over it, so the tray does nothing).
+    Q_INVOKABLE bool wake();
 
 signals:
     void changed();

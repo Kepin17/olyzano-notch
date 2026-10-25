@@ -698,22 +698,18 @@ private slots:
         QVERIFY(!g.active()); // a full-screen window alone does nothing while "by itself" is off
         g.autoDetect = true;
         QVERIFY(g.active());
-        g.wake(); // the tray icon: Notch is back while this window lasts...
-        QVERIFY(!g.active());
+        g.wake(); // over a full-screen app nothing opens: the tray icon does nothing
+        QVERIFY(g.active() && !g.canWake());
         g.setFullScreen(false);
-        g.setFullScreen(true);
-        QVERIFY(g.active()); // ...and quiet again for the next one
-        g.setFullScreen(false);
-        QVERIFY(!g.active());
+        QVERIFY(!g.active()); // the game is gone: Notch is back
         g.manual = true;
         QVERIFY(g.active()); // by hand, with nothing full screen
-        g.wake();
-        QVERIFY(!g.manual && !g.active());
-        g.manual = true;
-        g.autoDetect = false;
         g.setFullScreen(true);
         g.wake();
-        QVERIFY(!g.active() && !g.suspended); // nothing to suspend when "by itself" is off
+        QVERIFY(g.manual && g.active()); // by hand, over a game: stays until the game ends
+        g.setFullScreen(false);
+        g.wake();
+        QVERIFY(!g.manual && !g.active()); // now the tray icon wakes it
     }
 
     void karaokeLoopModules()

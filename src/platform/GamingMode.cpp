@@ -20,19 +20,17 @@ GamingMode::GamingMode(QObject *parent)
 {
     m_state.autoDetect = m_settings.value(QStringLiteral("auto"), false).toBool();
 #ifdef Q_OS_WIN
-    m_poll.setInterval(2000); // Windows has no event for "a game went full screen"
+    m_poll.setInterval(2000); // Windows has no event for "a game went full screen"; the tray needs to know too
     connect(&m_poll, &QTimer::timeout, this, &GamingMode::poll);
-    if (m_state.autoDetect)
-        m_poll.start();
+    m_poll.start();
 #endif
 }
 
 void GamingMode::apply(const GamingModel &next)
 {
-    const bool was = m_state.active();
-    const bool same = next.manual == m_state.manual && next.autoDetect == m_state.autoDetect;
+    const bool same = next.manual == m_state.manual && next.autoDetect == m_state.autoDetect && next.fullScreen == m_state.fullScreen;
     m_state = next;
-    if (was != m_state.active() || !same)
+    if (!same)
         emit changed();
 }
 
@@ -50,14 +48,7 @@ void GamingMode::setAutoDetect(bool on)
     m_settings.setValue(QStringLiteral("auto"), on);
     GamingModel next = m_state;
     next.autoDetect = on;
-    if (!on)
-        next.suspended = false;
     apply(next);
-#ifdef Q_OS_WIN
-    on ? m_poll.start() : m_poll.stop();
-    if (on)
-        poll();
-#endif
 }
 
 void GamingMode::setFullScreen(bool on)
@@ -69,11 +60,12 @@ void GamingMode::setFullScreen(bool on)
     apply(next);
 }
 
-void GamingMode::wake()
+bool GamingMode::wake()
 {
     GamingModel next = m_state;
     next.wake();
     apply(next);
+    return !m_state.active() && m_state.canWake();
 }
 
 void GamingMode::poll()

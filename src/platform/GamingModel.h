@@ -1,26 +1,21 @@
 #pragma once
 
 // When the notch keeps out of the way: switched on by hand, or by itself while a full-screen app or game is in
-// front (a setting). Waking it up (the tray icon) ends the manual mode, and ends the automatic one for as long
-// as that same full-screen window lasts. Pure, for the tests.
+// front (a setting). Waking it up (the tray icon) only works while nothing is full screen: over a full-screen
+// app the panel can't be opened at all. Pure, for the tests.
 struct GamingModel {
     bool manual = false;
     bool autoDetect = false;
     bool fullScreen = false;
-    bool suspended = false; // woken up while the full-screen window is still there
 
-    bool active() const { return manual || (autoDetect && fullScreen && !suspended); }
+    bool active() const { return manual || (autoDetect && fullScreen); }
+    bool canWake() const { return !fullScreen; }
 
-    void setFullScreen(bool on)
-    {
-        fullScreen = on;
-        if (!on)
-            suspended = false; // the next game starts quiet again
-    }
+    void setFullScreen(bool on) { fullScreen = on; }
+    // Leaves the manual mode. Not while a full-screen window is in front: nothing opens over it.
     void wake()
     {
-        manual = false;
-        if (autoDetect && fullScreen)
-            suspended = true;
+        if (canWake())
+            manual = false;
     }
 };

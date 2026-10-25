@@ -370,7 +370,8 @@ Limits: it only talks to Olyzano Notch (not Google's Quick Share), it needs both
   the words, keeping only the right artist.
 - **Gaming mode:** while it is on, Olyzano Notch and the dock hide and ignore the pointer (nothing at the screen edges can be
   hit by accident), and sounds and reminders stay quiet. Switch it on with the gamepad button in the header,
-  *Settings → General → Gaming mode* or the tray menu; the tray icon (a click, or *Leave gaming mode*) brings Notch back.
+  *Settings → General → Gaming mode* or the tray menu; the tray icon (a click, or *Leave gaming mode*) brings Notch back. Over a full-screen app the panel cannot be opened at all: the
+  tray icon waits until that window is gone.
   It starts off every time. *Start it by itself* (off by default) also turns it on while a full-screen app or game is in
   front, for as long as that window lasts (Linux: KDE Plasma; Windows: the system's full-screen / presentation state).
 - **Alerts:** plugging the charger in or out, a Bluetooth device connecting or disconnecting, and low battery
