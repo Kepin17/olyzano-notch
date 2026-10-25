@@ -134,7 +134,8 @@ Window {
     property real capPos: 0 // ms, read once a second while the capsule shows the song
     // What the capsule says (the line being sung, else the song) and how wide it must be to say all of it: it
     // widens up to nearly the window; a line longer than that wraps onto a second line, never cut off.
-    readonly property string capLine: lyrics.currentText !== "" ? lyrics.currentText
+    readonly property bool capLyric: lyrics.enabled && lyrics.currentText !== "" // only a sung line widens the capsule; the song name stays one line
+    readonly property string capLine: capLyric ? lyrics.currentText
         : media.title !== "" ? media.title + (media.artist !== "" ? " · " + media.artist : "") : media.identity
     readonly property string capTime: clock(capPos) + (media.lengthMs > 0 ? " / " + clock(media.lengthMs) : "")
     TextMetrics { id: capLineSize; font.pixelSize: 14; font.weight: Font.DemiBold; text: root.capLine }
@@ -142,8 +143,8 @@ Window {
     // margins + wave + gaps + the time + the microphone icon, and a little spare
     readonly property real capOverhead: 2 * 24 + 22 + 3 * 10 + capTimeSize.advanceWidth + (activities.micApps.length > 0 ? 25 : 0) + 16
     readonly property real capMaxWidth: root.width - 40
-    readonly property bool capWraps: capLineSize.advanceWidth + capOverhead > capMaxWidth
-    readonly property real capWidth: capWraps ? capMaxWidth : Math.max(400, capLineSize.advanceWidth + capOverhead)
+    readonly property bool capWraps: capLyric && capLineSize.advanceWidth + capOverhead > capMaxWidth
+    readonly property real capWidth: !capLyric ? 400 : capWraps ? capMaxWidth : Math.max(400, capLineSize.advanceWidth + capOverhead)
     Timer { id: pauseTimer; interval: 120000; onTriggered: root.musicStale = true }
     Timer {
         interval: 1000
