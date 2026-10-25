@@ -83,8 +83,11 @@ Window {
                                       : toast.kind === "desktop" ? theme.info
                                       : toast.kind === "color" ? toast.detail : theme.textDim
     // prompt: the stretch reminder asking. idle: the small clock pill when nothing else is going on.
-    readonly property string mode: wellbeing.state === "reminding" ? "prompt" : open ? "open" : toast && !gaming.active ? "toast"
+    readonly property string mode: wellbeing.state === "reminding" || doomscroll.reminding ? "prompt" : open ? "open" : toast && !gaming.active ? "toast"
                                  : live ? "peek" : idleShown ? "idle" : "hidden"
+
+    // ---- Doomscrolling: quiet in a game or on a call ----
+    Binding { target: doomscroll; property: "quiet"; value: gaming.active || root.call !== null }
 
     // ---- Stretch reminder ----
     // A film, a call or a Pomodoro holds the reminder back (each can be switched off in Settings).
@@ -241,6 +244,9 @@ Window {
         // capsule keeps its place and shows a small mark instead.)
         if (sharingNow && !musicShown)
             return { kind: "share", title: "Sharing " + shareSessions + (shareSessions === 1 ? " session" : " sessions"), detail: "tap to open", progress: -1, color: theme.accent }
+        // Scrolling a short-form feed for a while (under a song the capsule keeps its place: the warning still comes)
+        if (doomscroll.site !== "" && doomscroll.minutes >= 5 && !musicShown)
+            return { kind: "doomscroll", title: "Scrolling " + doomscroll.siteName, detail: doomscroll.minutes + " min", progress: -1, color: theme.warn }
         if (notch.copying > 0)
             return { kind: "copy", title: "Copying " + notch.copying + (notch.copying === 1 ? " file" : " files"),
                      detail: String(notch.count), progress: -1, color: theme.accent }
@@ -860,7 +866,7 @@ Window {
             }
             Text {
                 visible: !(liveRow.l.kind === "copy" || liveRow.l.kind === "call" || liveRow.l.kind === "share")
-                text: liveRow.l.kind === "timer" ? "⏱" : liveRow.l.kind === "break" ? "🧘" : liveRow.l.kind === "download" ? "↓" : "⇄"
+                text: liveRow.l.kind === "timer" ? "⏱" : liveRow.l.kind === "doomscroll" ? "📱" : liveRow.l.kind === "break" ? "🧘" : liveRow.l.kind === "download" ? "↓" : "⇄"
                 color: liveRow.l.color
                 font.pixelSize: 13
                 font.weight: Font.Bold
@@ -1017,19 +1023,19 @@ Window {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
-                Text { text: "🧘"; font.pixelSize: 20 }
+                Text { text: doomscroll.reminding ? "📱" : "🧘"; font.pixelSize: 20 }
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 1
                     Text {
-                        text: "Time to stretch"
+                        text: doomscroll.reminding ? "Still scrolling?" : "Time to stretch"
                         color: root.textPrimary
                         font.pixelSize: 13
                         font.weight: Font.DemiBold
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "You've worked for " + Math.round(wellbeing.workedMs / 60000) + " min. A short break helps."
+                        text: doomscroll.reminding ? doomscroll.message + " Time for something else?" : "You've worked for " + Math.round(wellbeing.workedMs / 60000) + " min. A short break helps."
                         color: root.textSecondary
                         font.pixelSize: 11
                         elide: Text.ElideRight
@@ -1040,9 +1046,13 @@ Window {
                 Layout.fillWidth: true
                 spacing: 6
                 Item { Layout.fillWidth: true }
-                PillButton { text: "Later (" + wellbeing.snoozeMinutes + " min)"; onClicked: wellbeing.later() }
-                PillButton { text: "Skip"; onClicked: wellbeing.skip() }
-                PillButton { text: "Start break"; checked: true; onClicked: wellbeing.startBreak() }
+                PillButton { text: doomscroll.reminding ? "5 more min" : "Later (" + wellbeing.snoozeMinutes + " min)"; onClicked: doomscroll.reminding ? doomscroll.snooze(5) : wellbeing.later() }
+                PillButton { text: doomscroll.reminding ? "Not today" : "Skip"; onClicked: doomscroll.reminding ? doomscroll.stopToday() : wellbeing.skip() }
+                PillButton {
+                    text: doomscroll.reminding ? "Take a break" : "Start break"
+                    checked: true
+                    onClicked: { if (doomscroll.reminding) doomscroll.dismiss(); wellbeing.startBreak() }
+                }
             }
         }
 

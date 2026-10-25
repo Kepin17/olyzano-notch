@@ -407,10 +407,14 @@ int main(int argc, char *argv[])
     // `notch --shot-page file.png <timer|color|shelf>`: the open panel on that page, the same way.
     if (const int i = app.arguments().indexOf(QStringLiteral("--shot-page")); i >= 0 && i + 2 < app.arguments().size()) {
         const QString path = app.arguments().at(i + 1), page = app.arguments().at(i + 2);
-        QTimer::singleShot(1200, &app, [&windows, &app, &activities, path, page] {
+        QTimer::singleShot(1200, &app, [&windows, &app, &activities, &doomscroll, path, page] {
             QQuickWindow *w = windows.isEmpty() ? nullptr : windows.constBegin().value();
             if (!w)
                 return app.quit();
+            if (page == QLatin1String("doom")) { // twenty minutes of Instagram, and the warning it brings
+                doomscroll.debugFeed(QStringLiteral("instagram"), 1200);
+                return QTimer::singleShot(1500, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+            }
             if (page == QLatin1String("timer-run")) // a 25 minute timer running, to see the ring
                 activities.startTimer(25 * 60, QStringLiteral("Tea"));
             w->setProperty("pinned", true);

@@ -242,6 +242,8 @@ A dock of its own on the **bottom, left or right** edge of every monitor (*Setti
 On KDE Plasma the dock learns the open windows from KWin; on other Linux desktops it can only start apps and guesses
 which are running. Window thumbnails aren't possible: Wayland doesn't let an app capture other apps' windows.
 
+**Doomscrolling** (*Settings → Wellbeing*): when Instagram, TikTok or YouTube Shorts is in front while you are using the computer, Notch adds it up over the last hour and asks "Still scrolling?" past a limit you set (15 minutes or 30 videos by default). It goes by the window in front, what the browser plays (a Short is a video of a minute or less) and your idle time; nothing is read from the pages and only the kind of site is kept. `notch --doom-debug <site> <seconds>` shows what it would say.
+
 Quick look at the panels: the **Timer** has preset cards, a stepper and a ring with round controls; **Color** shows the last pick
 big with HEX / RGB / HSL (a click copies it in the chosen format); **Files** use soft cards and tinted category chips; **Share**
 scrolls inside the window on small screens, and while anything is being shared the closed notch shows a *Sharing* pill (a small

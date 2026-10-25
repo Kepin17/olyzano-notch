@@ -32,7 +32,7 @@ RowLayout {
     ]
     // What a search can find: section, setting, words that also describe it.
     readonly property var index: [
-        ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
+        ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
         ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Sounds", "sound effects volume quiet mute"],
         ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"],
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
@@ -1000,6 +1000,87 @@ RowLayout {
                     caption: "Every 20 minutes of work, a small note to look at something far away for 20 seconds."
                     checked: wellbeing.eyeReminder
                     onToggled: wellbeing.eyeReminder = !wellbeing.eyeReminder
+                }
+            }
+
+            SettingCard {
+                title: "Doomscrolling"
+                SettingToggle {
+                    title: "Warn me about endless scrolling"
+                    caption: "Notices when Instagram, TikTok or YouTube Shorts is in front while you use the computer, and speaks up when it adds up. Everything stays here: only the kind of site is kept, never what you look at."
+                    checked: doomscroll.enabled
+                    onToggled: doomscroll.enabled = !doomscroll.enabled
+                }
+                SectionLabel { visible: doomscroll.enabled; text: "Count" }
+                Flow {
+                    visible: doomscroll.enabled
+                    Layout.fillWidth: true
+                    spacing: 6
+                    PillButton { text: "Instagram"; checked: doomscroll.instagram; onClicked: doomscroll.instagram = !doomscroll.instagram }
+                    PillButton { text: "TikTok"; checked: doomscroll.tiktok; onClicked: doomscroll.tiktok = !doomscroll.tiktok }
+                    PillButton { text: "YouTube Shorts"; checked: doomscroll.shorts; onClicked: doomscroll.shorts = !doomscroll.shorts }
+                    PillButton { text: "Facebook Reels"; checked: doomscroll.facebook; onClicked: doomscroll.facebook = !doomscroll.facebook }
+                }
+                DockSlider {
+                    visible: doomscroll.enabled
+                    title: "Warn after"
+                    valueText: doomscroll.limitMinutes + " min"
+                    from: 5; to: 60; stepSize: 5
+                    value: doomscroll.limitMinutes
+                    onMoved: doomscroll.limitMinutes = value
+                }
+                DockSlider {
+                    visible: doomscroll.enabled
+                    title: "Or after this many videos"
+                    valueText: doomscroll.swipeLimit
+                    from: 10; to: 100; stepSize: 5
+                    value: doomscroll.swipeLimit
+                    onMoved: doomscroll.swipeLimit = value
+                }
+                DockSlider {
+                    visible: doomscroll.enabled
+                    title: "Ask again every"
+                    valueText: doomscroll.repeatMinutes + " min"
+                    from: 3; to: 30; stepSize: 1
+                    value: doomscroll.repeatMinutes
+                    onMoved: doomscroll.repeatMinutes = value
+                }
+                TextField {
+                    visible: doomscroll.enabled
+                    Layout.fillWidth: true
+                    implicitHeight: 32
+                    leftPadding: 12
+                    placeholderText: "Other words in a window's title, separated by commas"
+                    placeholderTextColor: theme.placeholder
+                    text: doomscroll.custom
+                    color: theme.text
+                    selectionColor: theme.accent
+                    font.pixelSize: 12
+                    background: Rectangle { radius: 16; color: theme.well; border.width: 1; border.color: parent.activeFocus ? theme.accent : theme.outline }
+                    onEditingFinished: doomscroll.custom = text
+                }
+                Caption {
+                    visible: doomscroll.enabled
+                    Layout.fillWidth: true
+                    text: "Notch cannot see your scrolling itself: it goes by the window in front, and Shorts are told apart by their length. Instagram counts as a whole."
+                }
+                RowLayout {
+                    visible: doomscroll.enabled
+                    Layout.fillWidth: true
+                    Text {
+                        Layout.fillWidth: true
+                        text: {
+                            const t = doomscroll.today
+                            const parts = []
+                            for (const k of [["instagram", "Instagram"], ["tiktok", "TikTok"], ["shorts", "Shorts"], ["facebook", "Facebook"], ["custom", "Other"]])
+                                if (t[k[0]] > 0) parts.push(k[1] + " " + t[k[0]])
+                            return "Today: " + t.total + " min" + (parts.length ? " · " + parts.join(" · ") : "")
+                        }
+                        color: theme.text
+                        font.pixelSize: 13
+                        wrapMode: Text.Wrap
+                    }
+                    PillButton { text: "Reset today"; onClicked: doomscroll.resetToday() }
                 }
             }
 
