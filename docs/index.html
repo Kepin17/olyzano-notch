@@ -382,7 +382,7 @@ footer .wrap{display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between}
       <div class="feature reveal"><div class="ic">⏱️</div><b>Timer &amp; Pomodoro</b><span>Timers, a stopwatch, and focus / break rounds, from the clock button in the header.</span><br><button class="see" data-scene="timer">See it</button></div>
       <div class="feature reveal"><div class="ic">🧘</div><b>Stretch reminder</b><span>Counts the time you actually work. After 50 minutes it asks: break, later or skip. You decide.</span><br><button class="see" data-scene="stretch">See it</button></div>
       <div class="feature reveal"><div class="ic">🕒</div><b>Idle clock</b><span>When nothing's going on: the time, your microphone (muted / recording) and the battery.</span><br><button class="see" data-scene="idle">See it</button></div>
-      <div class="feature reveal"><div class="ic">📱</div><b>Phone &amp; privacy</b><span>Calls and notifications from your phone (KDE Connect); dots while the microphone or a camera is on.</span><br><button class="see" data-scene="phone">See it</button><small>Linux</small></div>
+      <div class="feature reveal"><div class="ic">📱</div><b>Phone &amp; privacy</b><span>Calls and notifications from your phone (KDE Connect); a green dot while a camera is on.</span><br><button class="see" data-scene="phone">See it</button><small>Linux</small></div>
       <div class="feature reveal"><div class="ic">🔗</div><b>Share via QR &amp; Nearby</b><span>To a phone over WiFi or your own encrypted server; to another computer after matching a 4-digit code.</span><br><button class="see" data-scene="share">See it</button></div>
       <div class="feature reveal"><div class="ic">🛠️</div><b>Tools</b><span>Merge, split and compress PDFs, convert images, OCR, zip. Locked categories encrypted on disk (Linux).</span><br><button class="see" data-scene="tools">See it</button></div>
       <div class="feature reveal"><div class="ic">🎨</div><b>Eight themes</b><span>Classic, Washi 和紙, Frost, Ocean, Forest, Sunset, Lavender and Mocha, each in dark and light.</span><br><button class="see" data-scene="themes">See it</button></div>
@@ -459,7 +459,7 @@ rm -r ~/.local/share/notch ~/.config/notch   # delete the shelf and settings too
             <li><span>📄</span><span>PDF tools and OCR need Poppler, Ghostscript and Tesseract: see <a href="#optional">optional components</a>.</span></li>
             <li><span>📁</span><span>Settings and files live in <code>%LOCALAPPDATA%\notch</code>.</span></li>
             <li><span>🗑️</span><span>Remove: <i>Settings → Apps → Notch → Uninstall</i>.</span></li>
-            <li><span>➖</span><span>Linux-only: KDE Connect, phone alerts, privacy dots, locked categories, dock blur and badges.</span></li>
+            <li><span>➖</span><span>Linux-only: KDE Connect, phone alerts, the camera dot, locked categories, dock blur and badges.</span></li>
           </ul>
         </div>
       </div>
@@ -973,8 +973,8 @@ cd build &amp;&amp; cpack                               # makes notch_&lt;versio
         $("phone").classList.remove("on");
         idleState({ mic: "rec" });
         $("callView").classList.add("on"); $("win2title").textContent = "Video call";
-        dots(true, true, 200);
-        cap("<b>Green</b> while a camera is on, <b>orange</b> while the microphone records");
+        dots(true, false, 200);
+        cap("A <b>green</b> dot while a camera is on; the panel names the apps using the camera and the microphone");
       });
     } },
     { id: "share", name: "Share & Nearby", dur: 9400, run: function () {
