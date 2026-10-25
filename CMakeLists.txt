@@ -125,6 +125,16 @@ endif()
 if(LayerShellQt_FOUND)
     target_link_libraries(notch PRIVATE LayerShellQt::Interface)
     target_compile_definitions(notch PRIVATE NOTCH_HAVE_LAYERSHELL)
+    # Window::setScreen is newer than the layer-shell-qt of some distributions (Debian 13 has none);
+    # without it the surface goes to the window's own screen, which is what Notch asks for anyway.
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_LIBRARIES LayerShellQt::Interface)
+    check_cxx_source_compiles("#include <LayerShellQt/window.h>
+        int main() { LayerShellQt::Window *w = nullptr; w->setScreen(nullptr); }" NOTCH_LAYERSHELL_SET_SCREEN)
+    unset(CMAKE_REQUIRED_LIBRARIES)
+    if(NOTCH_LAYERSHELL_SET_SCREEN)
+        target_compile_definitions(notch PRIVATE NOTCH_LAYERSHELL_SET_SCREEN)
+    endif()
     message(STATUS "LayerShellQt found: Wayland layer-shell placement enabled")
 else()
     message(WARNING "LayerShellQt not found: on Wayland the pill cannot be pinned to the top edge")
