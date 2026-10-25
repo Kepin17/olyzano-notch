@@ -268,6 +268,7 @@ signals:
     void spectacleAutoSaveChanged();
     // Something finished that deserves a toast (file auto-added, files saved, zip ready).
     void notice(const QString &title, const QString &detail, const QString &icon, const QString &art);
+    void sound(const QString &name); // "drop" (dropped or pasted onto the shelf), "receive" (a phone or computer sent files)
 
 private:
     void addLocalFile(const QString &path, const QString &categoryId, QStringList &errors);

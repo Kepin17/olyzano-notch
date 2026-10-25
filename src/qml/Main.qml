@@ -68,6 +68,7 @@ Window {
                                       : toast.kind === "file" ? theme.info
                                       : toast.kind === "timer" ? theme.accent
                                       : toast.kind === "call" || toast.kind === "phone" || toast.kind === "wellbeing" ? theme.success
+                                      : toast.kind === "desktop" ? theme.info
                                       : toast.kind === "color" ? toast.detail : theme.textDim
     // prompt: the stretch reminder asking. idle: the small clock pill when nothing else is going on.
     readonly property string mode: wellbeing.state === "reminding" ? "prompt" : open ? "open" : toast ? "toast"
@@ -208,8 +209,17 @@ Window {
             } else if (charge <= 15 && !warned[device]) {
                 warned[device] = true
                 root.showToast("lowbattery", device + " battery low", charge + "%", "smartphone", 5000)
+                sounds.play("warning") // every screen's notch gets here: Sounds plays it once
             }
             root.phoneLowWarned = warned
+        }
+    }
+
+    Connections {
+        target: desktopNotifications
+        // Other apps on this computer: who it's from and the title, like the phone's.
+        function onNotification(app, title, icon) {
+            root.showToast("desktop", app ? "Notification from " + app : "Notification", title, "notifications", 4500)
         }
     }
 
