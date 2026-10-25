@@ -3,10 +3,13 @@ import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
 // The app dock: its own window on one edge of each monitor (bottom, left or right), like the macOS Dock.
-// Pinned apps, a divider, then the other running apps (dot on the screen-edge side). Click brings the app
-// forward (or starts it), middle-click opens a new window, right-click for more, + pins an installed app.
-// With auto-hide it waits past the edge until the pointer rests on that edge of the screen.
-// Size, magnification, opacity and edge come from Settings (dock.*).
+// Pinned apps, a divider, then the other running apps. Icons grow a little as the pointer nears them and
+// their neighbours make room; drag a pinned icon to reorder it (or off the dock to remove it), drag a
+// running app among the pinned ones to keep it. Click brings the app forward (or starts it), middle-click
+// opens a new window, right-click for more, + adds an installed app.
+// With auto-hide it waits past the edge until the pointer touches that edge, and stays while the pointer
+// is anywhere over the dock or between it and the edge.
+// Size, magnification, opacity, blur, animation and edge come from Settings (dock.*).
 Window {
     id: root
     readonly property string side: dock.position
@@ -20,15 +23,20 @@ Window {
 
     readonly property int iconSize: dock.iconSize
     readonly property real magnify: dock.magnification
-    readonly property int slotSize: iconSize + 12      // along the dock
-    readonly property int thickness: iconSize + 22     // across it
-    readonly property int edgeGap: 6
-    readonly property real headroom: iconSize * (magnify - 1) + 12 // icons grow this far inwards
+    readonly property int slotSize: iconSize + 14       // along the dock
+    readonly property int thickness: iconSize + 22      // across it
+    readonly property int dividerSize: 15
+    readonly property int plusSize: 44
+    readonly property int padding: 10
+    readonly property int edgeGap: 8
+    readonly property real headroom: iconSize * (magnify - 1) + 16 // icons grow this far inwards
+    readonly property bool animated: dock.animation !== "none"
+    readonly property real barRadius: Math.min(thickness / 2.6, theme.washi ? theme.chipRadius + 8 : 22)
+
     readonly property bool overlayOpen: appMenu.visible || picker.visible
     property bool edgeDwelled: false
-    readonly property bool engaged: !dock.autoHide || edgeDwelled || zoneHover.hovered || overlayOpen
+    readonly property bool engaged: !dock.autoHide || edgeDwelled || zoneHover.hovered || overlayOpen || dragIndex >= 0
     property bool shown: !dock.autoHide
-    property int hoveredIndex: -1
 
     onEngagedChanged: {
         if (engaged) {
@@ -42,11 +50,47 @@ Window {
     onVisibleChanged: {
         dock.setWatching(visible && shown)
         desktop.setInputRegion(root, maskRect)
+        desktop.setBlurRegion(root, blurRect, barRadius)
     }
-    Timer { id: hideTimer; interval: 700; onTriggered: root.shown = false }
-    Timer { id: dwellTimer; interval: 150; onTriggered: root.edgeDwelled = true }
+    Timer { id: hideTimer; interval: 400; onTriggered: root.shown = false }
+    Timer { id: dwellTimer; interval: 120; onTriggered: root.edgeDwelled = true }
 
-    // The bar at rest plus the space its icons grow into: hovering here keeps the dock up.
+    // ---- Geometry. The layout is worked out unmagnified, centred on the window, so the pointer can be
+    // compared with fixed slot centres (magnifying doesn't move the target under the pointer). ----
+    readonly property real mainCenter: vertical ? height / 2 : width / 2
+    readonly property int pinnedCount: {
+        let n = 0
+        for (const item of dock.items)
+            if (item.pinned)
+                ++n
+        return n
+    }
+    readonly property var baseCenters: {
+        const items = dock.items
+        const offsets = []
+        let pos = 0
+        for (let i = 0; i < items.length; ++i) {
+            const divider = i > 0 && !items[i].pinned && items[i - 1].pinned ? dividerSize : 0
+            offsets.push(pos + divider + slotSize / 2)
+            pos += divider + slotSize
+        }
+        const start = mainCenter - (pos + plusSize) / 2
+        return offsets.map(o => start + o)
+    }
+    // Pointer position along the dock, in window coordinates; NaN when it's elsewhere or dragging.
+    readonly property real pointer: zoneHover.hovered && dragIndex < 0
+                                    ? (vertical ? zone.y + zoneHover.point.position.y : zone.x + zoneHover.point.position.x)
+                                    : NaN
+    readonly property int hoveredIndex: {
+        if (isNaN(pointer))
+            return -1
+        for (let i = 0; i < baseCenters.length; ++i)
+            if (Math.abs(pointer - baseCenters[i]) <= slotSize / 2)
+                return i
+        return -1
+    }
+
+    // The bar at rest plus the space its icons grow into, out to the screen edge.
     function zoneRect() {
         if (side === "left")
             return Qt.rect(0, bar.restY, bar.restX + bar.width + headroom, bar.height)
@@ -63,50 +107,138 @@ Window {
         const h = Math.max(320, bar.height)
         return Qt.rect(side === "left" ? 0 : width - 2, (height - h) / 2, 2, h)
     }
-    readonly property rect maskRect: overlayOpen ? Qt.rect(0, 0, width, height) : shown ? zoneRect() : edgeRect()
+    readonly property rect maskRect: overlayOpen || dragIndex >= 0 ? Qt.rect(0, 0, width, height)
+                                   : shown ? zoneRect() : edgeRect()
     onMaskRectChanged: desktop.setInputRegion(root, maskRect)
+    readonly property rect blurRect: shown && dock.blur ? Qt.rect(bar.x, bar.y, bar.width, bar.height) : Qt.rect(0, 0, 0, 0)
+    onBlurRectChanged: desktop.setBlurRegion(root, blurRect, barRadius)
 
-    Item {
-        readonly property rect r: root.edgeRect()
-        x: r.x; y: r.y; width: r.width; height: r.height
-        HoverHandler {
-            onHoveredChanged: {
-                if (hovered) {
-                    dwellTimer.start()
-                } else {
-                    dwellTimer.stop()
-                    root.edgeDwelled = false
-                }
-            }
+    // ---- Drag and drop ----
+    property int dragIndex: -1
+    property string dragId: ""
+    property real dragDx: 0
+    property real dragDy: 0
+    property real dragPos: 0   // along the dock
+    property real dragCross: 0 // across it
+    readonly property bool dragPinned: dragIndex >= 0 && dragIndex < dock.items.length && dock.items[dragIndex].pinned === true
+    // Pulled well off the dock: dropping removes it.
+    readonly property bool dragOut: dragPinned && (side === "left" ? dragCross > bar.restX + bar.width + 50
+                                                 : side === "right" ? dragCross < bar.restX - 50
+                                                 : dragCross < bar.restY - 50)
+    // Where the dragged app would land among the pinned ones, or -1.
+    readonly property int dropIndex: {
+        if (dragIndex < 0 || dragOut)
+            return -1
+        if (dragPinned) {
+            let best = 0
+            for (let i = 1; i < pinnedCount; ++i)
+                if (Math.abs(dragPos - baseCenters[i]) < Math.abs(dragPos - baseCenters[best]))
+                    best = i
+            return best
         }
+        // A running app joins the pinned ones when dropped before the first running slot.
+        if (dragPos > baseCenters[pinnedCount] - slotSize / 2)
+            return -1
+        let n = 0
+        for (let i = 0; i < pinnedCount; ++i)
+            if (baseCenters[i] < dragPos)
+                ++n
+        return n
+    }
+    function finishDrag() {
+        const id = dragId, pinned = dragPinned, out = dragOut, target = dropIndex
+        dragIndex = -1
+        dragId = ""
+        if (pinned && out)
+            dock.unpin(id)
+        else if (target >= 0)
+            dock.pinAt(id, target)
     }
 
+    // ---- Glass bar ----
     Item {
-        readonly property rect r: root.zoneRect()
-        x: r.x; y: r.y; width: r.width; height: r.height
-        HoverHandler { id: zoneHover }
-    }
-
-    Rectangle {
         id: bar
+        readonly property real length: grid.width + 2 * root.padding
         readonly property real restX: root.side === "left" ? root.edgeGap
                                      : root.side === "right" ? root.width - width - root.edgeGap
-                                     : (root.width - width) / 2
-        readonly property real restY: root.vertical ? (root.height - height) / 2 : root.height - height - root.edgeGap
+                                     : root.mainCenter - width / 2
+        readonly property real restY: root.vertical ? root.mainCenter - height / 2 : root.height - height - root.edgeGap
         // 0 = in place, 1 = tucked past the edge.
         property real tucked: root.shown ? 0 : 1
-        readonly property real away: root.thickness + root.edgeGap + 12
+        readonly property real away: root.thickness + root.edgeGap + 16
         x: restX + (root.side === "left" ? -away : root.side === "right" ? away : 0) * tucked
         y: restY + (root.vertical ? 0 : away) * tucked
-        width: root.vertical ? root.thickness : grid.width + 18
-        height: root.vertical ? grid.height + 18 : root.thickness
-        radius: Math.min(root.thickness / 3, theme.washi ? theme.chipRadius + 6 : 22)
-        color: Qt.rgba(theme.surface.r, theme.surface.g, theme.surface.b, dock.backgroundOpacity)
-        border.width: 1
-        border.color: Qt.rgba(theme.outline.r, theme.outline.g, theme.outline.b, theme.outline.a * Math.max(0.5, dock.backgroundOpacity))
-        Behavior on tucked { SpringAnimation { spring: 4; damping: root.shown ? 0.34 : 0.9; epsilon: 0.005 } }
-        Behavior on width { enabled: !root.vertical; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-        Behavior on height { enabled: root.vertical; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+        width: root.vertical ? root.thickness : grid.width + 2 * root.padding
+        height: root.vertical ? grid.height + 2 * root.padding : root.thickness
+        Behavior on tucked {
+            enabled: root.animated
+            SpringAnimation {
+                spring: dock.animation === "bouncy" ? 3.6 : 5
+                damping: !root.shown ? 1 : dock.animation === "bouncy" ? 0.28 : 0.6
+                epsilon: 0.004
+            }
+        }
+
+        // Soft shadow: rings outside the edge, so a see-through bar doesn't darken.
+        Repeater {
+            model: [[2, 0.10], [5, 0.07], [9, 0.04]]
+            Rectangle {
+                required property var modelData
+                anchors.fill: parent
+                anchors.margins: -modelData[0]
+                anchors.topMargin: -modelData[0] + (root.vertical ? 0 : 2)
+                radius: root.barRadius + modelData[0]
+                color: "transparent"
+                border.width: modelData[0]
+                border.color: Qt.rgba(0, 0, 0, modelData[1])
+            }
+        }
+        Rectangle {
+            id: glass
+            anchors.fill: parent
+            radius: root.barRadius
+            color: Qt.rgba(theme.surface.r, theme.surface.g, theme.surface.b, dock.backgroundOpacity)
+            border.width: 1
+            border.color: theme.dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.12)
+        }
+        // Sheen from the inner side, and a hairline of light just inside the edge.
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: root.barRadius - 1
+            gradient: Gradient {
+                orientation: root.vertical ? Gradient.Horizontal : Gradient.Vertical
+                GradientStop { position: 0; color: root.side === "right" ? "transparent" : Qt.rgba(1, 1, 1, theme.dark ? 0.10 : 0.35) }
+                GradientStop { position: 0.55; color: "transparent" }
+                GradientStop { position: 1; color: root.side === "right" ? Qt.rgba(1, 1, 1, theme.dark ? 0.10 : 0.35) : "transparent" }
+            }
+        }
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1.5
+            radius: root.barRadius - 1.5
+            color: "transparent"
+            border.width: 1
+            border.color: Qt.rgba(1, 1, 1, theme.dark ? 0.06 : 0.4)
+        }
+
+        // Drop marker when a running app is dragged among the pinned ones.
+        Rectangle {
+            readonly property real at: {
+                const t = root.dropIndex
+                if (t < 0 || root.dragPinned)
+                    return NaN
+                return t < root.pinnedCount || root.pinnedCount === 0 ? root.baseCenters[t] - root.slotSize / 2
+                                                                      : root.baseCenters[root.pinnedCount - 1] + root.slotSize / 2
+            }
+            visible: !isNaN(at)
+            x: root.vertical ? 8 : at - bar.x - 1.5
+            y: root.vertical ? at - bar.y - 1.5 : 8
+            width: root.vertical ? parent.width - 16 : 3
+            height: root.vertical ? 3 : parent.height - 16
+            radius: 1.5
+            color: theme.accent
+        }
 
         Grid {
             id: grid
@@ -122,114 +254,178 @@ Window {
                     required property var modelData
                     required property int index
                     readonly property bool divider: index > 0 && !modelData.pinned && dock.items[index - 1].pinned
-                    readonly property int dividerSize: divider ? 13 : 0
-                    readonly property bool hovered: root.hoveredIndex === index
-                    readonly property bool near: root.hoveredIndex >= 0 && Math.abs(root.hoveredIndex - index) === 1
-                    width: root.vertical ? root.thickness : root.slotSize + dividerSize
-                    height: root.vertical ? root.slotSize + dividerSize : root.thickness
-                    z: hovered ? 2 : near ? 1 : 0 // the grown icon and its label draw over the neighbours
+                    readonly property int dividerSize: divider ? root.dividerSize : 0
+                    readonly property bool dragged: root.dragIndex === index
+                    // Cosine falloff over ~2.5 slots around the pointer.
+                    readonly property real targetMag: {
+                        if (isNaN(root.pointer) || root.magnify <= 1 || index >= root.baseCenters.length)
+                            return 1
+                        const d = Math.abs(root.pointer - root.baseCenters[index])
+                        const r = root.slotSize * 2.5
+                        return d >= r ? 1 : 1 + (root.magnify - 1) * (Math.cos(Math.PI * d / r) + 1) / 2
+                    }
+                    property real mag: targetMag
+                    Behavior on mag { enabled: root.animated; NumberAnimation { duration: 110; easing.type: Easing.OutQuad } }
+                    // Pinned icons step aside while another pinned icon is dragged past them.
+                    readonly property real shift: {
+                        const f = root.dragIndex, t = root.dropIndex
+                        if (f < 0 || dragged || t < 0 || !root.dragPinned)
+                            return 0
+                        if (f < t && index > f && index <= t)
+                            return -root.slotSize
+                        if (f > t && index >= t && index < f)
+                            return root.slotSize
+                        return 0
+                    }
+                    property real offset: shift
+                    Behavior on offset { enabled: root.animated; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+
+                    width: root.vertical ? root.thickness : dividerSize + root.slotSize * mag
+                    height: root.vertical ? dividerSize + root.slotSize * mag : root.thickness
+                    z: dragged ? 3 : index === root.hoveredIndex ? 2 : 0
 
                     Rectangle {
                         visible: slot.divider
-                        x: root.vertical ? (parent.width - width) / 2 : 6
-                        y: root.vertical ? 6 : (parent.height - height) / 2
-                        width: root.vertical ? root.iconSize * 0.85 : 1
-                        height: root.vertical ? 1 : root.iconSize * 0.85
-                        color: theme.outline
+                        x: root.vertical ? (parent.width - width) / 2 : (slot.dividerSize - width) / 2
+                        y: root.vertical ? (slot.dividerSize - height) / 2 : (parent.height - height) / 2
+                        width: root.vertical ? root.iconSize * 0.8 : 1
+                        height: root.vertical ? 1 : root.iconSize * 0.8
+                        color: theme.dark ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(0, 0, 0, 0.18)
                     }
 
                     Item {
                         id: cell
                         x: root.vertical ? 0 : slot.dividerSize
                         y: root.vertical ? slot.dividerSize : 0
-                        width: root.vertical ? root.thickness : root.slotSize
-                        height: root.vertical ? root.slotSize : root.thickness
+                        width: root.vertical ? root.thickness : root.slotSize * slot.mag
+                        height: root.vertical ? root.slotSize * slot.mag : root.thickness
+                        transform: Translate {
+                            x: slot.dragged ? root.dragDx : root.vertical ? 0 : slot.offset
+                            y: slot.dragged ? root.dragDy : root.vertical ? slot.offset : 0
+                        }
 
                         Image {
                             id: icon
                             property real lift: 0
-                            x: root.side === "left" ? 14 : root.side === "right" ? cell.width - width - 14 : (cell.width - width) / 2
-                            y: root.vertical ? (cell.height - height) / 2 : 8
-                            width: root.iconSize
-                            height: root.iconSize
+                            readonly property real size: root.iconSize * slot.mag
+                            // Anchored to the screen-edge side, so it grows inwards.
+                            x: root.side === "left" ? 14 : root.side === "right" ? cell.width - 14 - size : (cell.width - size) / 2
+                            y: root.vertical ? (cell.height - size) / 2 : cell.height - 14 - size
+                            width: size
+                            height: size
                             source: slot.modelData.iconSource
                             sourceSize: Qt.size(128, 128)
                             smooth: true
                             mipmap: true
-                            // Grows away from the screen edge.
-                            transformOrigin: root.side === "left" ? Item.Left : root.side === "right" ? Item.Right : Item.Bottom
-                            scale: slot.hovered ? root.magnify : slot.near ? 1 + (root.magnify - 1) * 0.4 : 1
-                            opacity: slot.modelData.canLaunch || slot.modelData.running ? 1 : 0.45 // pinned but uninstalled
+                            opacity: root.dragOut && slot.dragged ? 0.45
+                                   : slot.modelData.canLaunch || slot.modelData.running ? 1 : 0.45 // pinned but uninstalled
                             transform: Translate {
                                 x: root.side === "left" ? icon.lift : root.side === "right" ? -icon.lift : 0
                                 y: root.vertical ? 0 : -icon.lift
                             }
-                            Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
                         }
-                        // Starting an app: a couple of hops, like the Mac.
+                        // Starting an app: a hop (two when the animation is bouncy).
                         SequentialAnimation {
                             id: bounce
-                            loops: 2
-                            NumberAnimation { target: icon; property: "lift"; to: 16; duration: 230; easing.type: Easing.OutQuad }
-                            NumberAnimation { target: icon; property: "lift"; to: 0; duration: 230; easing.type: Easing.InQuad }
+                            loops: dock.animation === "bouncy" ? 2 : 1
+                            NumberAnimation { target: icon; property: "lift"; to: root.iconSize * 0.3; duration: 220; easing.type: Easing.OutQuad }
+                            NumberAnimation { target: icon; property: "lift"; to: 0; duration: 240; easing.type: Easing.OutBounce }
                         }
 
-                        Rectangle {
-                            readonly property real length: slot.modelData.active ? 10 : 5
-                            visible: slot.modelData.running
+                        // Running: a small dot. Active (in front): a longer accent pill with a glow. Not running: nothing.
+                        Item {
+                            visible: slot.modelData.running === true
+                            readonly property bool active: slot.modelData.active === true
+                            readonly property real length: active ? 14 : 5
                             x: root.side === "left" ? 4 : root.side === "right" ? cell.width - 9 : (cell.width - width) / 2
                             y: root.vertical ? (cell.height - height) / 2 : cell.height - 9
                             width: root.vertical ? 5 : length
                             height: root.vertical ? length : 5
-                            radius: 2.5
-                            color: slot.modelData.active ? theme.accent : theme.textDim
+                            Behavior on length { enabled: root.animated; NumberAnimation { duration: 160 } }
+                            Rectangle {
+                                visible: parent.active
+                                anchors.centerIn: parent
+                                width: parent.width + 6
+                                height: parent.height + 6
+                                radius: Math.min(width, height) / 2
+                                color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.3)
+                            }
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 2.5
+                                color: parent.active ? theme.accent : theme.dark ? Qt.rgba(1, 1, 1, 0.65) : Qt.rgba(0, 0, 0, 0.55)
+                            }
                         }
 
-                        // Name label beside the hovered icon, on the screen side away from the edge.
+                        // Name label beside the hovered icon, away from the edge ("Remove" while being dragged off).
                         Rectangle {
-                            readonly property real grown: root.iconSize * root.magnify
-                            visible: slot.hovered && !root.overlayOpen
-                            x: root.side === "left" ? icon.x + grown + 10
-                             : root.side === "right" ? icon.x + root.iconSize - grown - width - 10
+                            readonly property bool removing: slot.dragged && root.dragOut
+                            visible: removing || (slot.index === root.hoveredIndex && root.dragIndex < 0 && !root.overlayOpen)
+                            x: root.side === "left" ? icon.x + icon.size + 12
+                             : root.side === "right" ? icon.x - width - 12
                              : (cell.width - width) / 2
-                            y: root.vertical ? (cell.height - height) / 2 : icon.y + root.iconSize - grown - height - 8
-                            width: nameText.implicitWidth + 20
-                            height: 24
-                            radius: 12
-                            color: theme.surface
+                            y: root.vertical ? (cell.height - height) / 2 : icon.y - height - 10
+                            width: nameText.implicitWidth + 22
+                            height: 26
+                            radius: 13
+                            color: removing ? theme.danger : theme.surface
                             border.width: 1
-                            border.color: theme.outline
+                            border.color: theme.dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.1)
                             Text {
                                 id: nameText
                                 anchors.centerIn: parent
-                                text: slot.modelData.name
-                                color: theme.text
+                                text: parent.removing ? "Remove" : slot.modelData.name
+                                color: parent.removing ? "white" : theme.text
                                 font.pixelSize: 12
+                                font.weight: Font.Medium
                             }
                         }
 
                         MouseArea {
+                            id: tap
+                            property point pressAt
+                            property bool moved: false
                             anchors.fill: parent
-                            hoverEnabled: true
+                            preventStealing: true
                             acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
-                            onContainsMouseChanged: {
-                                if (containsMouse)
-                                    root.hoveredIndex = slot.index
-                                else if (root.hoveredIndex === slot.index)
-                                    root.hoveredIndex = -1
+                            onPressed: (mouse) => {
+                                pressAt = mapToItem(null, mouse.x, mouse.y)
+                                moved = false
                             }
+                            onPositionChanged: (mouse) => {
+                                if (!(pressedButtons & Qt.LeftButton))
+                                    return
+                                const p = mapToItem(null, mouse.x, mouse.y)
+                                const app = slot.modelData
+                                if (!moved && Math.hypot(p.x - pressAt.x, p.y - pressAt.y) > 8 && (app.pinned || app.canLaunch)) {
+                                    moved = true
+                                    root.dragId = app.id
+                                    root.dragIndex = slot.index
+                                }
+                                if (moved) {
+                                    root.dragDx = p.x - pressAt.x
+                                    root.dragDy = p.y - pressAt.y
+                                    root.dragPos = root.vertical ? p.y : p.x
+                                    root.dragCross = root.vertical ? p.x : p.y
+                                }
+                            }
+                            onReleased: if (moved) root.finishDrag()
+                            onCanceled: if (moved) root.finishDrag()
                             onClicked: (mouse) => {
+                                if (moved)
+                                    return
                                 const app = slot.modelData
                                 if (mouse.button === Qt.RightButton) {
                                     appMenu.app = app
                                     appMenu.popup()
                                 } else if (mouse.button === Qt.MiddleButton) {
                                     if (app.canLaunch) {
-                                        bounce.restart()
+                                        if (root.animated)
+                                            bounce.restart()
                                         dock.launchNew(app.id)
                                     }
                                 } else {
-                                    if (!app.running && app.canLaunch)
+                                    if (!app.running && app.canLaunch && root.animated)
                                         bounce.restart()
                                     dock.activate(app.id)
                                 }
@@ -240,12 +436,36 @@ Window {
             }
 
             Item {
-                width: root.vertical ? root.thickness : 40
-                height: root.vertical ? 40 : root.thickness
+                width: root.vertical ? root.thickness : root.plusSize
+                height: root.vertical ? root.plusSize : root.thickness
                 IconButton {
                     anchors.centerIn: parent
                     iconName: "plus"
+                    Accessible.name: "Add an app to the dock"
                     onClicked: picker.open()
+                }
+            }
+        }
+    }
+
+    // On top of the bar and only listening, so hover is seen everywhere over the dock (icons included)
+    // while clicks and drags still reach the icons underneath.
+    Item {
+        id: zone
+        readonly property rect r: root.zoneRect()
+        x: r.x; y: r.y; width: r.width; height: r.height
+        HoverHandler { id: zoneHover }
+    }
+    Item {
+        readonly property rect r: root.edgeRect()
+        x: r.x; y: r.y; width: r.width; height: r.height
+        HoverHandler {
+            onHoveredChanged: {
+                if (hovered) {
+                    dwellTimer.start()
+                } else {
+                    dwellTimer.stop()
+                    root.edgeDwelled = false
                 }
             }
         }

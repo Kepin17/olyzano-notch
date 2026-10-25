@@ -3,11 +3,15 @@
 #include "models/FileItem.h"
 
 #include <QGuiApplication>
+#include <QPainterPath>
 #include <QRegion>
 #include <QScreen>
 
 #ifdef NOTCH_HAVE_LAYERSHELL
 #include <LayerShellQt/window.h>
+#endif
+#ifdef NOTCH_HAVE_KWINDOWSYSTEM
+#include <KWindowEffects>
 #endif
 
 static void centerOnScreen(QWindow *window)
@@ -128,6 +132,34 @@ void DesktopIntegration::setKeyboardInteractive(QWindow *window, bool interactiv
     window->setFlag(Qt::WindowDoesNotAcceptFocus, !interactive);
     if (interactive)
         window->requestActivate();
+}
+
+bool DesktopIntegration::canBlur() const
+{
+#ifdef NOTCH_HAVE_KWINDOWSYSTEM
+    return KWindowEffects::isEffectAvailable(KWindowEffects::BlurBehind);
+#else
+    return false;
+#endif
+}
+
+void DesktopIntegration::setBlurRegion(QWindow *window, const QRectF &rect, qreal radius)
+{
+#ifdef NOTCH_HAVE_KWINDOWSYSTEM
+    if (!window)
+        return;
+    if (rect.isEmpty()) {
+        KWindowEffects::enableBlurBehind(window, false);
+        return;
+    }
+    QPainterPath path;
+    path.addRoundedRect(rect, radius, radius);
+    KWindowEffects::enableBlurBehind(window, true, QRegion(path.toFillPolygon().toPolygon()));
+#else
+    Q_UNUSED(window)
+    Q_UNUSED(rect)
+    Q_UNUSED(radius)
+#endif
 }
 
 void DesktopIntegration::setInputRegion(QWindow *window, const QRectF &rect)
