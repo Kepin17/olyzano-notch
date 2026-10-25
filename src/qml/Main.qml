@@ -1740,23 +1740,15 @@ Window {
         }
     }
 
-    // Privacy dots, like iOS / macOS: green while a camera is on, orange while the microphone records.
-    // Beside the notch at the top edge, shown even while it's closed. Visual only.
-    Row {
-        visible: activities.privacyIndicators && root.mode !== "open"
+    // Privacy dot, like iOS / macOS: green while a camera is on. Beside the notch at the top edge, shown even
+    // while it's closed. Visual only. (The microphone has no dot: apps often keep it open, and the idle clock's
+    // mic icon already turns orange.)
+    Rectangle {
+        visible: activities.privacyIndicators && root.mode !== "open" && activities.cameraApps.length > 0
         x: root.width / 2 + Math.max(island.width, 44) / 2 + 6
         y: 3
-        spacing: 4
-        Rectangle {
-            visible: activities.cameraApps.length > 0
-            width: 7; height: 7; radius: 3.5
-            color: "#30d158"
-        }
-        Rectangle {
-            visible: activities.micApps.length > 0
-            width: 7; height: 7; radius: 3.5
-            color: "#ff9f0a"
-        }
+        width: 7; height: 7; radius: 3.5
+        color: "#30d158"
     }
 
     // Faint handle hinting where Notch lives; red when there's an unread error. Visual only.
