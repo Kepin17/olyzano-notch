@@ -1,4 +1,4 @@
-## Olyzano Notch 0.9.1
+## Olyzano Notch 0.9.2
 
 A fix for sounds that never played, and for images that came out huge when dragged.
 
@@ -10,6 +10,6 @@ A fix for sounds that never played, and for images that came out huge when dragg
 - **Dragging an image out of the shelf** showed it at full size under the pointer. It is now a small thumbnail.
 
 ### Downloads
-- **Linux:** `notch_0.9.1_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.9.1_amd64.deb`, then restart Olyzano Notch.
-- **Windows:** `Notch-0.9.1-windows-x64-setup.exe`, or the portable `.zip`.
+- **Linux:** `notch_0.9.2_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.9.2_amd64.deb`, then restart Olyzano Notch.
+- **Windows:** `Notch-0.9.2-windows-x64-setup.exe`, or the portable `.zip`.
 - Optional components (OCR, KDE Connect, PDF tools on Windows): see the [install page](https://kepin17.github.io/olyzano-notch/#optional).
