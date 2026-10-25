@@ -14,6 +14,7 @@
 #include "services/Vault.h"
 #include "platform/BatteryThreshold.h"
 #include "platform/PlayerSelection.h"
+#include "platform/WinPrivacy.h"
 #include "platform/AudioBands.h"
 #include "platform/DockModel.h"
 #include "platform/WellbeingModel.h"
@@ -433,6 +434,14 @@ private slots:
         QVERIFY(m_repo->visible().first().pinned);
         QVERIFY(m_repo->setPinned(kept.id, false));
         QCOMPARE(CleanupService::purge(*m_repo, m_files, now, DefaultRetentionDays), QStringList{kept.id});
+    }
+
+    void consentStoreAppNames()
+    {
+        QCOMPARE(WinPrivacy::appName(QStringLiteral("C:#Program Files#Zoom#bin#Zoom.exe")), QStringLiteral("Zoom"));
+        QCOMPARE(WinPrivacy::appName(QStringLiteral("C:#Users#me#AppData#Local#Discord#app-1.0#Discord.EXE")), QStringLiteral("Discord"));
+        QCOMPARE(WinPrivacy::appName(QStringLiteral("Microsoft.WindowsCamera_8wekyb3d8bbwe")), QStringLiteral("WindowsCamera"));
+        QCOMPARE(WinPrivacy::appName(QStringLiteral("5319275A.WhatsAppDesktop_cv1g1gvanyjgm")), QStringLiteral("WhatsAppDesktop"));
     }
 
     void lowBatteryThresholds()

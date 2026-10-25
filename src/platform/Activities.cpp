@@ -8,6 +8,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
+#ifdef Q_OS_WIN
+#include "platform/WinPrivacy.h"
+#endif
 
 static QString configPath()
 {
@@ -39,7 +42,7 @@ Activities::Activities(QObject *parent)
     connect(&m_privacyPoll, &QTimer::timeout, this, &Activities::pollPrivacy);
     connect(&m_pactl, &QProcess::readyReadStandardOutput, this, [this] { m_pactlOut += m_pactl.readAllStandardOutput(); });
     connect(&m_pactl, &QProcess::finished, this, &Activities::readMicOutputs);
-#ifdef Q_OS_LINUX
+#if defined(Q_OS_LINUX) || defined(Q_OS_WIN)
     m_privacyPoll.start(); // the microphone's mute state is also shown by the idle clock
 #endif
 }
@@ -75,9 +78,14 @@ void Activities::setIdleClock(bool on)
 
 void Activities::toggleMicMute()
 {
+#ifdef Q_OS_WIN
+    WinPrivacy::toggleMicMute();
+    pollPrivacy();
+#else
     QProcess::startDetached(QStringLiteral("pactl"), {QStringLiteral("set-source-mute"), QStringLiteral("@DEFAULT_SOURCE@"),
                                                       QStringLiteral("toggle")});
     QTimer::singleShot(300, this, &Activities::pollPrivacy);
+#endif
 }
 
 void Activities::setPhoneAlerts(bool on)
@@ -265,6 +273,18 @@ void Activities::scanDownloads()
 
 void Activities::pollPrivacy()
 {
+#ifdef Q_OS_WIN
+    // Both from what Windows records for its own taskbar icon (WinPrivacy), so no audio API is polled for apps.
+    const QStringList camera = privacyIndicators() ? WinPrivacy::appsUsing(L"webcam") : QStringList();
+    const QStringList mic = WinPrivacy::appsUsing(L"microphone");
+    const int muted = WinPrivacy::micMuted();
+    if (camera != m_camera || mic != m_mic || muted != m_micMuted) {
+        m_camera = camera;
+        m_mic = mic;
+        m_micMuted = muted;
+        emit privacyChanged();
+    }
+#endif
 #ifdef Q_OS_LINUX
     // Camera: a process holding /dev/video* open. Only looked for when there is a camera device.
     QStringList camera;
