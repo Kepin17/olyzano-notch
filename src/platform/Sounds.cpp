@@ -101,7 +101,7 @@ void Sounds::play(const QString &name)
     s.enabled = enabled();
     s.groupOn = value(SoundsModel::groupKey(group), true);
     s.quietWhenBusy = quietWhenBusy();
-    s.micInUse = s.quietWhenBusy && m_micInUse && m_micInUse();
+    s.micInUse = s.quietWhenBusy && quietOnMic() && m_micInUse && m_micInUse();
     s.fullScreen = s.quietWhenBusy && fullScreenNow();
     const auto last = m_last.constFind(name);
     s.sinceSameMs = last == m_last.cend() ? -1 : last->elapsed();

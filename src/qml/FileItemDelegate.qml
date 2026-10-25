@@ -381,7 +381,7 @@ Item {
     }
     Drag.dragType: Drag.Automatic
     Drag.supportedActions: Qt.CopyAction // never Move: a file manager would take our managed copy away
-    Drag.imageSource: tile.showThumbnail ? tile.fileUrl : icon.source
+    Drag.imageSource: tile.showThumbnail ? "image://thumb/" + encodeURIComponent(tile.fileUrl.toString()) : icon.source
     Drag.onDragFinished: {
         tile.Drag.active = false
         notch.setDragging(tile.draggedIds, false)

@@ -166,9 +166,16 @@ ScrollView {
                 SettingToggle {
                     visible: sounds.enabled
                     title: "Quiet during calls and full-screen apps"
-                    caption: "No sounds while an app uses the microphone or a video, game or slideshow fills the screen (a call still rings over a video)."
+                    caption: "No sounds while a video, game or slideshow fills the screen (a call still rings over a video)."
                     checked: sounds.quietWhenBusy
                     onToggled: sounds.quietWhenBusy = !sounds.quietWhenBusy
+                }
+                SettingToggle {
+                    visible: sounds.enabled && sounds.quietWhenBusy
+                    title: "Also quiet while the microphone is in use"
+                    caption: "Off by default: apps like Discord or a browser keep the microphone open all day, even outside a call."
+                    checked: sounds.quietOnMic
+                    onToggled: sounds.quietOnMic = !sounds.quietOnMic
                 }
             }
 

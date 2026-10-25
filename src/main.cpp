@@ -19,6 +19,7 @@
 #include <QApplication>
 #include <QFile>
 #include <QIcon>
+#include <QImageReader>
 #include <QLockFile>
 #include <QQmlApplicationEngine>
 #include <QQmlComponent>
@@ -50,6 +51,29 @@ public:
         if (!QIcon::hasThemeIcon(id) && QFile::exists(bundled))
             return QIcon(bundled).pixmap(s);
         return QIcon::fromTheme(id, QIcon::fromTheme(QStringLiteral("text-x-generic"))).pixmap(s);
+    }
+};
+
+// image://thumb/<percent-encoded file url> -> the picture scaled down to fit 96 px, for the drag pixmap
+// (the drag used the full-size file, so a photo dragged out of the shelf came out huge).
+class ThumbImageProvider : public QQuickImageProvider
+{
+public:
+    ThumbImageProvider() : QQuickImageProvider(Image) {}
+    QImage requestImage(const QString &id, QSize *size, const QSize &) override
+    {
+        QString path = QUrl(id).toLocalFile();
+        if (path.isEmpty() || !QFile::exists(path))
+            path = QUrl(QUrl::fromPercentEncoding(id.toUtf8())).toLocalFile();
+        QImageReader reader(path);
+        reader.setAutoTransform(true);
+        QSize s = reader.size();
+        if (s.isValid())
+            reader.setScaledSize(s.scaled(96, 96, Qt::KeepAspectRatio));
+        const QImage image = reader.read();
+        if (size)
+            *size = image.size();
+        return image;
     }
 };
 
@@ -180,6 +204,7 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("mime"), new MimeIconProvider);
     engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider);
+    engine.addImageProvider(QStringLiteral("thumb"), new ThumbImageProvider);
     engine.addImageProvider(QStringLiteral("appicon"), new DockIconProvider(&dock));
     engine.rootContext()->setContextProperty(QStringLiteral("share"), &share);
     engine.rootContext()->setContextProperty(QStringLiteral("nearby"), &nearby);

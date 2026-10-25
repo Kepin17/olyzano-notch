@@ -23,6 +23,7 @@ class Sounds : public QObject
     Q_PROPERTY(bool phone READ phone WRITE setPhone NOTIFY settingsChanged)
     Q_PROPERTY(bool system READ system WRITE setSystem NOTIFY settingsChanged)
     Q_PROPERTY(bool quietWhenBusy READ quietWhenBusy WRITE setQuietWhenBusy NOTIFY settingsChanged)
+    Q_PROPERTY(bool quietOnMic READ quietOnMic WRITE setQuietOnMic NOTIFY settingsChanged)
 
 public:
     explicit Sounds(QObject *parent = nullptr);
@@ -42,6 +43,10 @@ public:
     void setSystem(bool on) { store("system", on); }
     bool quietWhenBusy() const { return value("quietWhenBusy", true); }
     void setQuietWhenBusy(bool on) { store("quietWhenBusy", on); }
+    // Off by default: Discord, a browser tab or a voice assistant keep a recording stream open all day, which
+    // is not a call, and it used to silence every sound.
+    bool quietOnMic() const { return value("quietOnMic", false); }
+    void setQuietOnMic(bool on) { store("quietOnMic", on); }
 
     // What "busy" means is learnt from elsewhere: a microphone in use, a full-screen window.
     void setBusyChecks(std::function<bool()> micInUse, std::function<bool()> fullScreen);
