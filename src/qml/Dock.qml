@@ -609,7 +609,7 @@ Window {
                     Behavior on size { NumberAnimation { duration: 120 } }
                 }
                 Rectangle { // name label, like the apps'
-                    visible: trashArea.containsMouse && !root.overlayOpen
+                    visible: trashArea.containsMouse && zoneHover.hovered && !root.overlayOpen // containsMouse alone sticks when the dock hides under the pointer
                     x: root.side === "left" ? trashIcon.x + trashIcon.size + 12 : root.side === "right" ? trashIcon.x - width - 12 : trashIcon.x + (trashIcon.size - width) / 2
                     y: root.vertical ? trashIcon.y + (trashIcon.size - height) / 2 : trashIcon.y - height - 10
                     width: trashLabel.implicitWidth + 22
