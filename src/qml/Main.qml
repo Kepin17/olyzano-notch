@@ -613,7 +613,7 @@ Window {
         id: island
         x: (root.width - width) / 2
         width: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 380
-             : root.mode === "peek" ? (root.live && root.live.kind !== "copy" ? 320 : 230)
+             : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
              : root.mode === "idle" ? (root.musicShown ? root.capWidth : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         height: root.mode === "open" ? panel.implicitHeight + (root.dragOver ? 8 : 0)
               : root.mode === "prompt" ? 92 : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? (root.capWraps ? 58 : 38) : 26) : 0

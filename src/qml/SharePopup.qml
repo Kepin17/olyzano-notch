@@ -49,7 +49,7 @@ Popup {
     // what does not fit scrolls inside instead of running off the screen.
     x: (shell.width - width) / 2
     y: 64
-    width: Math.min(view === "sessions" ? 400 : 380, shell.width - 32)
+    width: Math.min(view === "sessions" ? 460 : 440, shell.width - 32)
     height: Math.min(implicitHeight, Math.max(240, shell.height - y - 24))
     padding: 16
     focus: true
