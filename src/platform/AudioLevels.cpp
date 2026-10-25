@@ -52,6 +52,12 @@ void AudioLevels::release()
 
 void AudioLevels::start()
 {
+#ifdef Q_OS_WIN
+    if (!m_available || m_loopback.joinable())
+        return;
+    m_capturing = true;
+    m_loopback = std::thread([this] { runLoopback(); });
+#else
     if (!m_available || m_process.state() != QProcess::NotRunning)
         return;
     m_buffer.clear();
@@ -60,10 +66,16 @@ void AudioLevels::start()
                      QStringLiteral("--channels=1"), QStringLiteral("--format=float32le"),
                      QStringLiteral("--latency-msec=25"), QStringLiteral("--raw"),
                      QStringLiteral("--client-name=Notch"), QStringLiteral("--stream-name=Equalizer")});
+#endif
 }
 
 void AudioLevels::stop()
 {
+#ifdef Q_OS_WIN
+    m_capturing = false;
+    if (m_loopback.joinable())
+        m_loopback.join();
+#endif
     if (m_process.state() != QProcess::NotRunning) {
         m_process.terminate();
         if (!m_process.waitForFinished(300))
@@ -79,16 +91,19 @@ void AudioLevels::onData()
     m_buffer += m_process.readAllStandardOutput();
     if (m_buffer.size() > 8 * WindowBytes) // fell behind: only the newest audio matters
         m_buffer.remove(0, m_buffer.size() - WindowBytes - m_buffer.size() % WindowBytes);
-    bool updated = false;
     while (m_buffer.size() >= WindowBytes) {
-        const QList<double> fresh = bandLevels(reinterpret_cast<const float *>(m_buffer.constData()), Window, Rate);
-        for (int i = 0; i < BandCount; ++i) // jump up, fall back slowly: reads like a VU meter
-            m_levels[i] = fresh[i] > m_levels[i] ? fresh[i] : m_levels[i] * 0.8 + fresh[i] * 0.2;
+        apply(bandLevels(reinterpret_cast<const float *>(m_buffer.constData()), Window, Rate));
         m_buffer.remove(0, WindowBytes);
-        updated = true;
     }
-    if (updated)
-        emit levelsChanged();
+}
+
+void AudioLevels::apply(const QList<double> &fresh)
+{
+    if (m_users == 0 && !m_stopTimer.isActive())
+        return; // a late reading after stop()
+    for (int i = 0; i < BandCount && i < fresh.size(); ++i) // jump up, fall back slowly: reads like a VU meter
+        m_levels[i] = fresh[i] > m_levels[i] ? fresh[i] : m_levels[i] * 0.8 + fresh[i] * 0.2;
+    emit levelsChanged();
 }
 
 void AudioLevels::setAvailable(bool available)

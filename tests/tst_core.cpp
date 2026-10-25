@@ -15,6 +15,7 @@
 #include "platform/BatteryThreshold.h"
 #include "platform/PlayerSelection.h"
 #include "platform/WinPrivacy.h"
+#include "platform/MediaNames.h"
 #include "platform/AudioBands.h"
 #include "platform/DockModel.h"
 #include "platform/WellbeingModel.h"
@@ -442,6 +443,20 @@ private slots:
         QCOMPARE(WinPrivacy::appName(QStringLiteral("C:#Users#me#AppData#Local#Discord#app-1.0#Discord.EXE")), QStringLiteral("Discord"));
         QCOMPARE(WinPrivacy::appName(QStringLiteral("Microsoft.WindowsCamera_8wekyb3d8bbwe")), QStringLiteral("WindowsCamera"));
         QCOMPARE(WinPrivacy::appName(QStringLiteral("5319275A.WhatsAppDesktop_cv1g1gvanyjgm")), QStringLiteral("WhatsAppDesktop"));
+    }
+
+    void mediaSessionNames()
+    {
+        QCOMPARE(MediaNames::displayName(QStringLiteral("Chrome")), QStringLiteral("Chrome"));
+        QCOMPARE(MediaNames::displayName(QStringLiteral("Spotify.exe")), QStringLiteral("Spotify"));
+        QCOMPARE(MediaNames::displayName(QStringLiteral("308046B0AF4A39CB")), QStringLiteral("Firefox"));
+        QCOMPARE(MediaNames::displayName(QStringLiteral("Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic")),
+                 QStringLiteral("Media Player"));
+        QCOMPARE(MediaNames::displayName(QStringLiteral("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify")), QStringLiteral("Spotify"));
+        QCOMPARE(MediaNames::displayName(QStringLiteral("C:\\Program Files\\foobar2000\\foobar2000.exe")), QStringLiteral("Foobar2000"));
+        QCOMPARE(MediaNames::processName(QStringLiteral("MSEdge")), QStringLiteral("msedge"));
+        QCOMPARE(MediaNames::processName(QStringLiteral("308046B0AF4A39CB")), QStringLiteral("firefox"));
+        QCOMPARE(MediaNames::processName(QStringLiteral("Spotify.exe")), QStringLiteral("spotify"));
     }
 
     void lowBatteryThresholds()
