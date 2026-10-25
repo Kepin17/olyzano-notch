@@ -8,7 +8,7 @@ import QtQuick.Shapes
 
 Window {
     id: root
-    width: 720
+    width: 840 // the widest panel (the Music page with lyrics, 780) and a margin; the rest of the window is click-through
     height: 620
     visible: false
     color: "transparent"
@@ -78,7 +78,7 @@ Window {
                                       : toast.kind === "color" ? toast.detail : theme.textDim
     // prompt: the stretch reminder asking. idle: the small clock pill when nothing else is going on.
     readonly property string mode: wellbeing.state === "reminding" ? "prompt" : open ? "open" : toast ? "toast"
-                                 : live ? "peek" : (activities.idleClock || capsuleMode === "capsule") && !idleCovered ? "idle" : "hidden"
+                                 : live ? "peek" : idleShown ? "idle" : "hidden"
 
     // ---- Stretch reminder ----
     // A film, a call or a Pomodoro holds the reminder back (each can be switched off in Settings).
@@ -108,6 +108,9 @@ Window {
     // Hidden while the window in front reaches this screen's top edge (a maximized browser's tabs, a title bar).
     readonly property bool idleCovered: dock.coveredScreen !== ""
                                         && (dock.coveredScreen === "*" || !root.screen || dock.coveredScreen === root.screen.name)
+    // The capsule stays up whatever is in front (a maximised browser playing music used to hide it); only the
+    // plain idle clock gives way to a window that reaches the top edge.
+    readonly property bool idleShown: capsuleMode === "capsule" || (activities.idleClock && !idleCovered)
     property date idleNow: new Date()
     Timer {
         interval: 5000

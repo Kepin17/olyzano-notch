@@ -365,6 +365,9 @@ Limits: it only talks to Olyzano Notch (not Google's Quick Share), it needs both
   (*Forget the saved lyrics* clears them). The mic button on the player (Linux) plays your voice through the speakers
   or headphones with the music, with larger lyrics; use headphones (a speaker echoes, and Bluetooth ones add a delay).
   It is switched off when you press it again or quit.
+  Not every song is there: lrclib.net is community-made, and newer or less known artists are often missing ("No lyrics found").
+  The artist and title are cleaned first ("Name - Topic", "(Official Video)"), then it searches by artist and title, then by
+  the words, keeping only the right artist.
 - **Alerts:** plugging the charger in or out, a Bluetooth device connecting or disconnecting, and low battery
   (20 %, 10 %, 5 %, the laptop's and a headset's) make Olyzano Notch peek out. Linux reads UPower and BlueZ; Windows its own
   power status and Bluetooth device list.

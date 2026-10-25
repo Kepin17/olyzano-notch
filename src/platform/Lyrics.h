@@ -59,7 +59,8 @@ private:
         qint64 lengthMs = 0;
     };
     void lookup();
-    void ask(const QUrl &url, bool exact);
+    void ask(const QUrl &url, int stage);
+    static bool hasWords(QNetworkReply *reply); // a search answer with something to show
     void finish(const QString &state, const QString &synced, const QString &plain, bool store);
     void setState(const QString &state);
     QString cachePath(const Query &q) const;

@@ -1,5 +1,7 @@
 #include "platform/Lyrics.h"
 
+#include "platform/LyricsQuery.h"
+
 #include <QCoreApplication>
 #include <QCryptographicHash>
 #include <QDateTime>
@@ -80,7 +82,8 @@ void Lyrics::setOffsetMs(int ms)
 
 void Lyrics::track(const QString &artist, const QString &title, const QString &album, qint64 lengthMs)
 {
-    Query q{artist.trimmed(), title.trimmed(), album.trimmed(), lengthMs};
+    const QString cleanArtist = LyricsQuery::cleanArtist(artist);
+    Query q{cleanArtist, LyricsQuery::cleanTitle(title.trimmed(), cleanArtist), album.trimmed(), lengthMs};
     const QString key = (q.artist + u'\x1f' + q.title + u'\x1f' + QString::number(lengthMs / 1000)).toLower();
     if (key == m_key)
         return; // the same song: nothing to ask again
@@ -122,10 +125,11 @@ void Lyrics::lookup()
     params.addQueryItem(QStringLiteral("album_name"), m_query.album);
     params.addQueryItem(QStringLiteral("duration"), QString::number(m_query.lengthMs / 1000));
     url.setQuery(params);
-    ask(url, true);
+    ask(url, 0);
 }
 
-void Lyrics::ask(const QUrl &url, bool exact)
+// stage 0: the exact lookup; 1: a search by artist and title; 2: a search for the words, keeping the right artist.
+void Lyrics::ask(const QUrl &url, int stage)
 {
     ++m_requests;
     QNetworkRequest request(url);
@@ -136,22 +140,26 @@ void Lyrics::ask(const QUrl &url, bool exact)
     const QString key = m_key;
     QNetworkReply *reply = m_nam.get(request);
     m_reply = reply;
-    connect(reply, &QNetworkReply::finished, this, [this, reply, exact, key] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, stage, key] {
         reply->deleteLater();
         if (m_reply == reply)
             m_reply = nullptr;
         if (key != m_key || reply->error() == QNetworkReply::OperationCanceledError)
             return; // another song since, or switched off
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
-        if (status == 404) {
-            if (exact) { // the exact lookup needs the right album and length: try a search
+        if (status == 404 || (stage > 0 && reply->error() == QNetworkReply::NoError && !hasWords(reply))) {
+            if (stage < 2) { // the exact lookup needs the right album and length: search; then search wider
                 QUrl url(m_base);
                 url.setPath(QStringLiteral("/api/search"));
                 QUrlQuery params;
-                params.addQueryItem(QStringLiteral("artist_name"), m_query.artist);
-                params.addQueryItem(QStringLiteral("track_name"), m_query.title);
+                if (stage == 0) {
+                    params.addQueryItem(QStringLiteral("artist_name"), m_query.artist);
+                    params.addQueryItem(QStringLiteral("track_name"), m_query.title);
+                } else {
+                    params.addQueryItem(QStringLiteral("q"), m_query.title + u' ' + m_query.artist);
+                }
                 url.setQuery(params);
-                ask(url, false);
+                ask(url, stage + 1);
             } else {
                 finish(QStringLiteral("none"), {}, {}, true);
             }
@@ -163,12 +171,15 @@ void Lyrics::ask(const QUrl &url, bool exact)
         }
         const QJsonDocument doc = QJsonDocument::fromJson(reply->readAll());
         QJsonObject best;
+        const bool wide = stage == 2;
         if (doc.isObject()) {
             best = doc.object();
         } else if (doc.isArray()) { // search: the closest in length that has words, synced first
             qint64 gap = -1;
             for (const QJsonValue &v : doc.array()) {
                 const QJsonObject o = v.toObject();
+                if (wide && !LyricsQuery::sameArtist(o.value(QLatin1String("artistName")).toString(), m_query.artist))
+                    continue; // a search by words finds other songs with those words
                 const bool synced = !o.value(QLatin1String("syncedLyrics")).toString().isEmpty();
                 const bool plain = !o.value(QLatin1String("plainLyrics")).toString().isEmpty();
                 if (!synced && !plain)
@@ -213,6 +224,20 @@ void Lyrics::finish(const QString &state, const QString &synced, const QString &
         m_state = !m_lines.isEmpty() ? QStringLiteral("synced") : !m_plain.isEmpty() ? QStringLiteral("plain") : QStringLiteral("none");
     emit changed();
     emit indexChanged();
+}
+
+bool Lyrics::hasWords(QNetworkReply *reply)
+{
+    const QJsonDocument doc = QJsonDocument::fromJson(reply->peek(reply->bytesAvailable())); // read again later
+    const auto words = [](const QJsonObject &o) {
+        return !o.value(QLatin1String("syncedLyrics")).toString().isEmpty() || !o.value(QLatin1String("plainLyrics")).toString().isEmpty();
+    };
+    if (doc.isObject())
+        return words(doc.object());
+    for (const QJsonValue &v : doc.array())
+        if (words(v.toObject()))
+            return true;
+    return false;
 }
 
 QString Lyrics::cachePath(const Query &q) const

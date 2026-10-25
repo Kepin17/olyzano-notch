@@ -19,6 +19,7 @@
 #include "platform/KaraokeModel.h"
 #include "platform/LrcParser.h"
 #include "platform/Lyrics.h"
+#include "platform/LyricsQuery.h"
 #include "platform/NotificationFilter.h"
 #include "platform/SoundsModel.h"
 #include "platform/AudioBands.h"
@@ -157,8 +158,11 @@ struct FakeLyricsServer {
                     if (!head.contains("\r\n\r\n"))
                         return;
                     ++hits;
-                    const QString path = QUrl(QString::fromLatin1(head.split(' ').value(1))).path();
-                    const auto r = routes.value(path, {404, "{}"});
+                    const QUrl asked(QString::fromLatin1(head.split(' ').value(1)));
+                    const QString path = asked.path();
+                    // "/api/search?q" answers the search by words, the plain path every other one
+                    const auto r = asked.query().contains(QStringLiteral("q=")) && routes.contains(path + QStringLiteral("?q"))
+                                       ? routes.value(path + QStringLiteral("?q")) : routes.value(path, {404, "{}"});
                     s->write("HTTP/1.1 " + QByteArray::number(r.first) + " X\r\nContent-Type: application/json\r\nContent-Length: "
                              + QByteArray::number(r.second.size()) + "\r\nConnection: close\r\n\r\n" + r.second);
                     s->disconnectFromHost();
@@ -696,6 +700,38 @@ private slots:
                                             "28\tmodule-loopback\tsource=x sink=y\n"
                                             "31\tmodule-loopback\tsource_output_properties=application.name=OlyzanoKaraoke latency_msec=30\n");
         QCOMPARE(KaraokeModel::staleModules(list), QList<int>({27, 31})); // another loopback of the user's stays
+    }
+
+    void lyricsQueriesAreCleaned()
+    {
+        QCOMPARE(LyricsQuery::cleanArtist(QStringLiteral("MAZZEL - Topic")), QStringLiteral("MAZZEL"));
+        QCOMPARE(LyricsQuery::cleanArtist(QStringLiteral("YOASOBIVEVO")), QStringLiteral("YOASOBI"));
+        QCOMPARE(LyricsQuery::cleanArtist(QStringLiteral("Main, Guest")), QStringLiteral("Main"));
+        QCOMPARE(LyricsQuery::cleanTitle(QStringLiteral("Touch (Official Video) [MV]"), QStringLiteral("MAZZEL")), QStringLiteral("Touch"));
+        QCOMPARE(LyricsQuery::cleanTitle(QStringLiteral("MAZZEL - Touch"), QStringLiteral("MAZZEL")), QStringLiteral("Touch"));
+        QCOMPARE(LyricsQuery::cleanTitle(QStringLiteral("Song (feat. Someone)"), QStringLiteral("A")), QStringLiteral("Song (feat. Someone)")); // kept
+        QCOMPARE(LyricsQuery::cleanTitle(QStringLiteral("Tune [Live at the Hall]"), {}), QStringLiteral("Tune"));
+        QVERIFY(LyricsQuery::sameArtist(QStringLiteral("ADO"), QStringLiteral("Ado")));
+        QVERIFY(LyricsQuery::sameArtist(QStringLiteral("Mr.Children"), QStringLiteral("Mr. Children")));
+        QVERIFY(!LyricsQuery::sameArtist(QStringLiteral("Ado"), QStringLiteral("Someone")));
+        QVERIFY(!LyricsQuery::sameArtist({}, QStringLiteral("Ado")));
+    }
+
+    void lyricsSearchByWordsKeepsTheRightArtist()
+    {
+        FakeLyricsServer web;
+        web.routes.insert(QStringLiteral("/api/get"), {404, "{}"});
+        web.routes.insert(QStringLiteral("/api/search"), {200, "[]"}); // by artist and title: nothing
+        web.routes.insert(QStringLiteral("/api/search?q"), {200, R"([{"artistName":"Other Band","duration":200,"syncedLyrics":"[00:01.00] wrong"},)"
+                                                                 R"({"artistName":"The Band & Friends","duration":205,"syncedLyrics":"[00:01.00] right"}])"});
+        Lyrics l(m_tmp.filePath(QStringLiteral("lyrics-c.conf")), m_tmp.filePath(QStringLiteral("lyrics-cache-c")));
+        l.setBaseUrl(web.url());
+        l.setEnabled(true);
+        l.track(QStringLiteral("The Band - Topic"), QStringLiteral("Tune (Official Video)"), QString(), 200000);
+        QTRY_COMPARE(l.state(), QStringLiteral("synced"));
+        QCOMPARE(web.hits, 3); // exact, search, search by words
+        l.setPosition(1200);
+        QCOMPARE(l.currentText(), QStringLiteral("right"));
     }
 
     void lowBatteryThresholds()
