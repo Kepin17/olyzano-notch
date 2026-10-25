@@ -272,7 +272,8 @@ ctest --test-dir build --output-on-failure
 ./build/notch
 ```
 
-Optional: `libkf6windowsystem-dev` lets the dock blur what's behind it on KDE Plasma.
+Optional: `libkf6windowsystem-dev` lets the dock blur what's behind it on KDE Plasma, and `libkf6idletime-dev` gives the
+stretch reminder the idle time on Wayland (without it, it asks the ScreenSaver D-Bus service).
 
 Try it without touching your real shelf:
 `XDG_DATA_HOME=/tmp/notch-test XDG_CONFIG_HOME=/tmp/notch-test-config ./build/notch`.

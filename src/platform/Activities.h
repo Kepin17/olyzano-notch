@@ -28,6 +28,9 @@ class Activities : public QObject
     Q_PROPERTY(QVariantList downloads READ downloads NOTIFY downloadsChanged)
     Q_PROPERTY(QStringList micApps READ micApps NOTIFY privacyChanged)
     Q_PROPERTY(QStringList cameraApps READ cameraApps NOTIFY privacyChanged)
+    Q_PROPERTY(int micMuted READ micMuted NOTIFY privacyChanged) // default microphone: 1 muted, 0 live, -1 unknown
+    // The small clock pill shown while nothing else is (Settings).
+    Q_PROPERTY(bool idleClock READ idleClock WRITE setIdleClock NOTIFY settingsChanged)
     // Settings
     Q_PROPERTY(bool showDownloads READ showDownloads WRITE setShowDownloads NOTIFY settingsChanged)
     Q_PROPERTY(bool privacyIndicators READ privacyIndicators WRITE setPrivacyIndicators NOTIFY settingsChanged)
@@ -46,6 +49,9 @@ public:
     QVariantList downloads() const { return m_downloadList; }
     QStringList micApps() const { return m_mic; }
     QStringList cameraApps() const { return m_camera; }
+    int micMuted() const { return m_micMuted; }
+    bool idleClock() const { return m_settings.value(QStringLiteral("idleClock"), true).toBool(); }
+    void setIdleClock(bool on);
 
     bool showDownloads() const { return m_settings.value(QStringLiteral("downloads"), true).toBool(); }
     void setShowDownloads(bool on);
@@ -67,6 +73,7 @@ public:
     Q_INVOKABLE void resume();
     Q_INVOKABLE void stop();
     Q_INVOKABLE void addMinute();
+    Q_INVOKABLE void toggleMicMute();
 
 signals:
     void timerChanged();
@@ -106,4 +113,5 @@ private:
     QProcess m_pactl;
     QByteArray m_pactlOut;
     QStringList m_mic, m_camera;
+    int m_micMuted = -1;
 };
