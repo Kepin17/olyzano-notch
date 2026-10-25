@@ -8,6 +8,8 @@
 #include "platform/Wellbeing.h"
 #include "platform/AudioLevels.h"
 #include "platform/ColorPicker.h"
+#include "platform/DesktopNotifications.h"
+#include "platform/Sounds.h"
 #include "platform/KdeConnect.h"
 #include "platform/Theme.h"
 #include "platform/MediaPlayers.h"
@@ -122,7 +124,54 @@ int main(int argc, char *argv[])
     AppDock dock;
     Activities activities;
     Wellbeing wellbeing;
+    Sounds sounds;
+    DesktopNotifications desktopNotifications;
     QObject::connect(&colorPicker, &ColorPicker::picked, &controller, &NotchController::addColor);
+
+    // Sound effects: wired here, once, rather than in each screen's notch.
+    sounds.setBusyChecks([&] { return !activities.micApps().isEmpty(); }, [&] { return dock.fullScreenActive(); });
+    auto play = [&](const char *name) { return [&sounds, name] { sounds.play(QString::fromLatin1(name)); }; };
+    QObject::connect(&controller, &NotchController::sound, &sounds, &Sounds::play);
+    QObject::connect(&colorPicker, &ColorPicker::picked, &sounds, play("pick"));
+    QObject::connect(&dock, &AppDock::trashEmptied, &sounds, play("trash"));
+    QObject::connect(&activities, &Activities::timerFinished, &sounds, play("timer"));
+    QObject::connect(&wellbeing, &Wellbeing::reminder, &sounds, play("stretch"));
+    QObject::connect(&wellbeing, &Wellbeing::eyeBreak, &sounds, play("stretch"));
+    QObject::connect(&wellbeing, &Wellbeing::breakOver, &sounds, play("break-over"));
+    QObject::connect(&nearby, &NearbyController::incomingRequest, &sounds, play("notify"));
+    QObject::connect(&nearby, &NearbyController::transferDone, &sounds, [&](const QString &direction) {
+        if (direction == QLatin1String("out"))
+            sounds.play(QStringLiteral("send"));
+    });
+    QObject::connect(&kdeconnect, &KdeConnect::sent, &sounds, [&](int, const QString &, const QString &error) {
+        if (error.isEmpty())
+            sounds.play(QStringLiteral("send"));
+    });
+    QObject::connect(&kdeconnect, &KdeConnect::phoneCall, &sounds, [&](const QString &event) {
+        if (event == QLatin1String("ringing") && activities.phoneAlerts())
+            sounds.playRing();
+        else
+            sounds.stopRing();
+        if (event == QLatin1String("missedCall") && activities.phoneAlerts())
+            sounds.play(QStringLiteral("notify"));
+    });
+    QObject::connect(&kdeconnect, &KdeConnect::phoneNotification, &sounds, [&] {
+        if (activities.phoneAlerts())
+            sounds.play(QStringLiteral("notify"));
+    });
+    QObject::connect(&desktopNotifications, &DesktopNotifications::notification, &sounds, play("notify"));
+    QObject::connect(&systemEvents, &SystemEvents::alert, &sounds, [&](const QString &kind, const QString &title) {
+        if (!controller.alerts())
+            return;
+        // Plugged in: "charging" titled "Charging"; unplugged: "battery" on Linux, "charging" titled "On battery" on Windows.
+        if (kind == QLatin1String("charging") || kind == QLatin1String("battery"))
+            sounds.play(kind == QLatin1String("charging") && title == SystemEvents::tr("Charging") ? QStringLiteral("plug-in")
+                                                                                                : QStringLiteral("plug-out"));
+        else if (kind == QLatin1String("bluetooth"))
+            sounds.play(QStringLiteral("device"));
+        else if (kind == QLatin1String("lowbattery"))
+            sounds.play(QStringLiteral("warning"));
+    });
     theme.setMode(controller.themeMode());
     theme.setStyle(controller.uiStyle());
     QObject::connect(&controller, &NotchController::uiStyleChanged, &theme, [&] { theme.setStyle(controller.uiStyle()); });
@@ -145,6 +194,8 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("dock"), &dock);
     engine.rootContext()->setContextProperty(QStringLiteral("activities"), &activities);
     engine.rootContext()->setContextProperty(QStringLiteral("wellbeing"), &wellbeing);
+    engine.rootContext()->setContextProperty(QStringLiteral("sounds"), &sounds);
+    engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
 
     // One Notch per monitor, following hotplug.
     QQmlComponent notchWindow(&engine, "Notch", "Main");

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(notch VERSION 0.8.0 LANGUAGES CXX)
+project(notch VERSION 0.9.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -83,6 +83,8 @@ qt_add_executable(notch
     src/platform/AppDock.h src/platform/AppDock.cpp src/platform/DockModel.h
     src/platform/Activities.h src/platform/Activities.cpp
     src/platform/Wellbeing.h src/platform/Wellbeing.cpp src/platform/WellbeingModel.h
+    src/platform/Sounds.h src/platform/Sounds.cpp src/platform/SoundsModel.h
+    src/platform/DesktopNotifications.h src/platform/DesktopNotifications.cpp src/platform/NotificationFilter.h
 )
 if(NOTCH_DBUS)
     target_sources(notch PRIVATE src/platform/SystemEvents.cpp src/platform/MediaPlayers.cpp
@@ -98,12 +100,14 @@ if(WIN32)
     target_compile_definitions(notch PRIVATE NOTCH_HAVE_KDECONNECT)
     target_sources(notch PRIVATE src/platform/WinPrivacy.h src/platform/WinPrivacy.cpp src/platform/ColorPicker_win.cpp
                                  src/platform/WinBluetooth.h src/platform/WinBluetooth.cpp
-                                 src/platform/MediaPlayers_win.cpp src/platform/MediaNames.h src/platform/AudioLevels_win.cpp)
+                                 src/platform/MediaPlayers_win.cpp src/platform/MediaNames.h src/platform/AudioLevels_win.cpp
+                                 src/platform/DesktopNotifications_win.cpp)
     # user32/shell32: AppDock lists and raises windows, and asks the Recycle Bin. ole32/advapi32: microphone, registry.
     # windowsapp: the WinRT APIs (Bluetooth, media sessions) through C++/WinRT, which ships with the Windows SDK.
-    target_link_libraries(notch PRIVATE user32 shell32 ole32 advapi32 windowsapp)
+    target_link_libraries(notch PRIVATE user32 shell32 ole32 advapi32 windowsapp winmm) # winmm: PlaySound
     # C++/WinRT's coroutine support needs C++20 (under C++17 it pulls in the removed <experimental/coroutine>).
     set_source_files_properties(src/platform/WinBluetooth.cpp src/platform/MediaPlayers_win.cpp
+                                src/platform/DesktopNotifications_win.cpp
                                 PROPERTIES COMPILE_OPTIONS "/std:c++20")
     configure_file(packaging/windows/notch.rc.in ${CMAKE_CURRENT_BINARY_DIR}/notch.rc)
     target_sources(notch PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/notch.rc)
@@ -125,7 +129,11 @@ qt_add_qml_module(notch
         src/qml/icons/unlock.svg src/qml/icons/trash.svg src/qml/icons/palette.svg src/qml/icons/pen.svg
         src/qml/icons/gear.svg src/qml/icons/sort.svg src/qml/icons/camera.svg src/qml/icons/download.svg
         src/qml/icons/phone.svg src/qml/icons/search.svg src/qml/icons/share.svg src/qml/icons/wifi.svg src/qml/icons/server.svg src/qml/icons/notch.png src/qml/icons/laptop.svg src/qml/icons/bluetooth.svg src/qml/icons/headphones.svg
-        src/qml/icons/timer.svg src/qml/icons/mic.svg src/qml/icons/mic-off.svg
+        src/qml/icons/timer.svg src/qml/icons/mic.svg src/qml/icons/mic-off.svg src/qml/icons/notifications.svg
+        # made by tools/make_sounds.py
+        src/qml/sounds/break-over.wav src/qml/sounds/device.wav src/qml/sounds/drop.wav src/qml/sounds/notify.wav src/qml/sounds/pick.wav
+        src/qml/sounds/plug-in.wav src/qml/sounds/plug-out.wav src/qml/sounds/receive.wav src/qml/sounds/ring.wav src/qml/sounds/send.wav
+        src/qml/sounds/stretch.wav src/qml/sounds/timer.wav src/qml/sounds/trash.wav src/qml/sounds/warning.wav
 )
 # Widgets: QApplication backs the tray icon (Qt.labs.platform falls back to QSystemTrayIcon).
 target_link_libraries(notch PRIVATE notch_core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::Concurrent Qt6::Network)
@@ -133,6 +141,17 @@ target_compile_definitions(notch PRIVATE NOTCH_VERSION="${PROJECT_VERSION}")
 if(NOTCH_DBUS)
     target_link_libraries(notch PRIVATE Qt6::DBus)
     target_compile_definitions(notch PRIVATE NOTCH_HAVE_DBUS)
+    # libdbus itself: watching other apps' notifications needs a monitor connection, which QtDBus can't be.
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(DBUS1 QUIET IMPORTED_TARGET dbus-1)
+    endif()
+    if(DBUS1_FOUND)
+        target_link_libraries(notch PRIVATE PkgConfig::DBUS1)
+        target_compile_definitions(notch PRIVATE NOTCH_HAVE_LIBDBUS)
+    else()
+        message(STATUS "libdbus-1 development files not found: notifications from other apps won't show in the notch")
+    endif()
 endif()
 if(KF6IdleTime_FOUND)
     target_link_libraries(notch PRIVATE KF6::IdleTime)

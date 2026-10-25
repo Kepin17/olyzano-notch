@@ -20,7 +20,7 @@ Window {
     height: vertical ? Math.min(1200, Screen.height > 0 ? Screen.height : 1200) : 520
     visible: false
     color: "transparent"
-    title: "Notch Dock"
+    title: "Olyzano Notch Dock"
 
     readonly property int iconSize: dock.iconSize
     readonly property real magnify: dock.magnification

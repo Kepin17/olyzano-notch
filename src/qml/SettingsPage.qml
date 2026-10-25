@@ -56,7 +56,7 @@ ScrollView {
 
             SettingToggle {
                 title: "Charger & Bluetooth alerts"
-                caption: "Notch peeks out when you plug in, a device connects, or a battery runs low."
+                caption: "Olyzano Notch peeks out when you plug in, a device connects, or a battery runs low."
                 checked: notch.alerts
                 onToggled: notch.alerts = !notch.alerts
             }
@@ -76,7 +76,6 @@ ScrollView {
             }
 
             SettingToggle {
-                visible: notch.linuxDesktop
                 title: "Phone calls & notifications"
                 caption: "Through KDE Connect: incoming calls, your phone's notifications and a low phone battery show in the notch."
                 checked: activities.phoneAlerts
@@ -84,17 +83,99 @@ ScrollView {
             }
 
             SettingToggle {
-                visible: notch.linuxDesktop
                 title: "Microphone & camera indicators"
                 caption: "A green dot beside the notch while a camera is on; the open panel names the apps using the camera or the microphone."
                 checked: activities.privacyIndicators
                 onToggled: activities.privacyIndicators = !activities.privacyIndicators
             }
 
+            SettingCard {
+                title: "Notifications from this computer"
+                SettingToggle {
+                    title: "Show them in the notch"
+                    caption: desktopNotifications.enabled && !desktopNotifications.available
+                             ? (Qt.platform.os === "windows" ? "Not available on this Windows install: Windows doesn't let Olyzano Notch read notifications."
+                                                             : "Not available: the session bus doesn't allow watching notifications.")
+                             : "Other apps' notifications show as \"Notification from <app> · <title>\", never the message itself."
+                    checked: desktopNotifications.enabled
+                    onToggled: desktopNotifications.enabled = !desktopNotifications.enabled
+                }
+                Caption {
+                    Layout.fillWidth: true
+                    visible: desktopNotifications.enabled && desktopNotifications.recentApps.length > 0
+                    text: "Apps that showed notifications lately. Tap one to stop or start showing it."
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    visible: desktopNotifications.enabled && desktopNotifications.recentApps.length > 0
+                    spacing: 6
+                    Repeater {
+                        model: desktopNotifications.recentApps
+                        PillButton {
+                            required property string modelData
+                            readonly property bool off: desktopNotifications.ignored.some(a => a.toLowerCase() === modelData.toLowerCase())
+                            text: off ? modelData + " · off" : modelData
+                            checked: !off
+                            onClicked: off ? desktopNotifications.unignore(modelData) : desktopNotifications.ignore(modelData)
+                        }
+                    }
+                }
+            }
+
+            SettingCard {
+                title: "Sounds"
+                SettingToggle {
+                    title: "Sound effects"
+                    caption: "Short sounds for a dropped file, a finished timer, a call, a notification and more."
+                    checked: sounds.enabled
+                    onToggled: sounds.enabled = !sounds.enabled
+                }
+                DockSlider {
+                    visible: sounds.enabled
+                    title: "Volume"
+                    valueText: sounds.volume + "%"
+                    from: 0; to: 100; stepSize: 5
+                    value: sounds.volume
+                    onMoved: sounds.volume = value
+                }
+                Repeater {
+                    // [setting, title, caption, sound to try]
+                    model: [["shelf", "Shelf & tools", "Dropping or pasting, emptying the Trash, picking a colour", "drop"],
+                            ["timer", "Timer & wellbeing", "Timer and Pomodoro done, stretch reminder, break over", "timer"],
+                            ["phone", "Calls & notifications", "Incoming calls, notifications, files sent and received", "ring"],
+                            ["system", "System alerts", "Charger, Bluetooth devices, low battery", "plug-in"]]
+                    RowLayout {
+                        required property var modelData
+                        visible: sounds.enabled
+                        Layout.fillWidth: true
+                        spacing: 8
+                        PillButton {
+                            text: "▶"
+                            onClicked: sounds.preview(parent.modelData[3])
+                            Accessible.name: "Play " + parent.modelData[1]
+                        }
+                        SettingToggle {
+                            Layout.fillWidth: true
+                            title: parent.modelData[1]
+                            caption: parent.modelData[2]
+                            checked: sounds[parent.modelData[0]]
+                            onToggled: sounds[parent.modelData[0]] = !sounds[parent.modelData[0]]
+                        }
+                    }
+                }
+                SettingToggle {
+                    visible: sounds.enabled
+                    title: "Quiet during calls and full-screen apps"
+                    caption: "No sounds while an app uses the microphone or a video, game or slideshow fills the screen (a call still rings over a video)."
+                    checked: sounds.quietWhenBusy
+                    onToggled: sounds.quietWhenBusy = !sounds.quietWhenBusy
+                }
+            }
+
             RowLayout {
                 Layout.fillWidth: true
-                Caption { Layout.fillWidth: true; text: "Notch " + Qt.application.version }
-                PillButton { text: "Quit Notch"; onClicked: Qt.quit() }
+                Caption { Layout.fillWidth: true; text: "Olyzano Notch " + Qt.application.version }
+                PillButton { text: "Quit Olyzano Notch"; onClicked: Qt.quit() }
             }
         }
 
@@ -219,7 +300,7 @@ ScrollView {
                     Caption {
                         Layout.fillWidth: true
                         color: theme.warn
-                        text: "Spectacle doesn't save screenshots automatically, so they never reach a folder Notch can see."
+                        text: "Spectacle doesn't save screenshots automatically, so they never reach a folder Olyzano Notch can see."
                     }
                     PillButton {
                         Layout.alignment: Qt.AlignVCenter
@@ -307,7 +388,7 @@ ScrollView {
                 SettingToggle {
                     title: "Blur behind the dock"
                     caption: desktop.canBlur ? "Frosted glass: what's behind the dock is blurred."
-                                             : "Needs KDE Plasma with its blur effect on (and Notch built with KF6WindowSystem)."
+                                             : "Needs KDE Plasma with its blur effect on (and Olyzano Notch built with KF6WindowSystem)."
                     checked: dock.blur
                     onToggled: dock.blur = !dock.blur
                 }
@@ -560,7 +641,7 @@ ScrollView {
                 SectionLabel { text: "Nearby" }
                 Caption {
                     Layout.fillWidth: true
-                    text: "The name other Notch computers see while you have Receive switched on in the Share window."
+                    text: "The name other Olyzano Notch computers see while you have Receive switched on in the Share window."
                 }
                 TextField {
                     id: deviceField
@@ -823,7 +904,7 @@ ScrollView {
 
     FolderDialog {
         id: folderDialog
-        title: "Choose where Notch stores files"
+        title: "Choose where Olyzano Notch stores files"
         currentFolder: "file://" + notch.storageDir
         onAccepted: notch.setStorageDir(selectedFolder)
     }
