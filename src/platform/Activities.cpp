@@ -40,8 +40,7 @@ Activities::Activities(QObject *parent)
     connect(&m_pactl, &QProcess::readyReadStandardOutput, this, [this] { m_pactlOut += m_pactl.readAllStandardOutput(); });
     connect(&m_pactl, &QProcess::finished, this, &Activities::readMicOutputs);
 #ifdef Q_OS_LINUX
-    if (privacyIndicators())
-        m_privacyPoll.start();
+    m_privacyPoll.start(); // the microphone's mute state is also shown by the idle clock
 #endif
 }
 
@@ -62,19 +61,23 @@ void Activities::setShowDownloads(bool on)
 void Activities::setPrivacyIndicators(bool on)
 {
     store(QStringLiteral("privacy"), on);
-#ifdef Q_OS_LINUX
-    if (on) {
-        m_privacyPoll.start();
-        pollPrivacy();
-        return;
-    }
-#endif
-    m_privacyPoll.stop();
-    if (!m_mic.isEmpty() || !m_camera.isEmpty()) {
-        m_mic.clear();
+    if (!on && !m_camera.isEmpty()) {
         m_camera.clear();
         emit privacyChanged();
     }
+    pollPrivacy();
+}
+
+void Activities::setIdleClock(bool on)
+{
+    store(QStringLiteral("idleClock"), on);
+}
+
+void Activities::toggleMicMute()
+{
+    QProcess::startDetached(QStringLiteral("pactl"), {QStringLiteral("set-source-mute"), QStringLiteral("@DEFAULT_SOURCE@"),
+                                                      QStringLiteral("toggle")});
+    QTimer::singleShot(300, this, &Activities::pollPrivacy);
 }
 
 void Activities::setPhoneAlerts(bool on)
@@ -265,7 +268,7 @@ void Activities::pollPrivacy()
 #ifdef Q_OS_LINUX
     // Camera: a process holding /dev/video* open. Only looked for when there is a camera device.
     QStringList camera;
-    if (!QDir(QStringLiteral("/dev")).entryList({QStringLiteral("video*")}, QDir::System).isEmpty()) {
+    if (privacyIndicators() && !QDir(QStringLiteral("/dev")).entryList({QStringLiteral("video*")}, QDir::System).isEmpty()) {
         const QString self = QString::number(QCoreApplication::applicationPid());
         const QStringList pids = QDir(QStringLiteral("/proc")).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
         for (const QString &pid : pids) {
@@ -293,14 +296,28 @@ void Activities::pollPrivacy()
     if (m_pactl.state() == QProcess::NotRunning) {
         m_pactlOut.clear();
         m_pactl.start(QStringLiteral("sh"), {QStringLiteral("-c"),
-                                             QStringLiteral("pactl -f json list sources && echo && pactl -f json list source-outputs")});
+                                             QStringLiteral("pactl -f json list sources && echo && pactl -f json list source-outputs"
+                                                            " && echo && pactl get-source-mute @DEFAULT_SOURCE@")});
     }
 #endif
 }
 
 void Activities::readMicOutputs()
 {
-    const QList<QByteArray> docs = m_pactlOut.trimmed().split('\n');
+    // Lines: the sources (JSON), the recording streams (JSON), then "Mute: yes|no".
+    QList<QByteArray> docs;
+    int muted = -1;
+    for (const QByteArray &line : m_pactlOut.split('\n')) {
+        const QByteArray l = line.trimmed();
+        if (l.startsWith('['))
+            docs << l;
+        else if (l.startsWith("Mute:"))
+            muted = l.endsWith("yes") ? 1 : 0;
+    }
+    if (muted != m_micMuted) {
+        m_micMuted = muted;
+        emit privacyChanged();
+    }
     if (docs.size() < 2)
         return; // no pactl, or one without JSON output
     QHash<int, bool> monitor;

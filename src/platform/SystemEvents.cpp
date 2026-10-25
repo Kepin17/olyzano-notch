@@ -38,6 +38,7 @@ SystemEvents::SystemEvents(QObject *parent)
     const QString device = QStringLiteral("org.freedesktop.UPower.Device");
     m_powerState = busProperty(UPower, DisplayDevice, device, QStringLiteral("State")).toInt();
     m_percentage = busProperty(UPower, DisplayDevice, device, QStringLiteral("Percentage")).toDouble();
+    m_hasBattery = busProperty(UPower, DisplayDevice, device, QStringLiteral("IsPresent")).toBool(); // false on a desktop PC
     const bool power = bus.connect(UPower, DisplayDevice, Properties, QStringLiteral("PropertiesChanged"), this,
                                    SLOT(onPowerChanged(QString, QVariantMap, QStringList)));
     // Empty path: every BlueZ object, filtered to Device1 in the slot.
@@ -47,8 +48,18 @@ SystemEvents::SystemEvents(QObject *parent)
                     << m_percentage << "% | bluetooth" << (bluetooth ? "on" : "unavailable");
 }
 
+bool SystemEvents::batteryCharging() const
+{
+    return onMains(m_powerState);
+}
+
 void SystemEvents::onPowerChanged(const QString &, const QVariantMap &changed, const QStringList &)
 {
+    if (changed.contains(QStringLiteral("IsPresent")))
+        m_hasBattery = changed.value(QStringLiteral("IsPresent")).toBool();
+    if (changed.contains(QStringLiteral("Percentage")) || changed.contains(QStringLiteral("State"))
+        || changed.contains(QStringLiteral("IsPresent")))
+        QMetaObject::invokeMethod(this, &SystemEvents::batteryChanged, Qt::QueuedConnection); // after the state is stored below
     if (changed.contains(QStringLiteral("Percentage"))) {
         const double now = changed.value(QStringLiteral("Percentage")).toDouble();
         const int level = crossedLowBattery(qRound(m_percentage), qRound(now));

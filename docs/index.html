@@ -4,150 +4,1131 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Notch · Install</title>
-<meta name="description" content="Notch, a temporary file shelf for your desktop. Download for Linux and Windows.">
+<meta name="description" content="Notch: a file shelf, an app dock, live activities, a Pomodoro timer and a stretch reminder at the edges of your screen. Watch the demo, then download for Linux or Windows.">
 <link rel="icon" href="site/notch.svg">
 <style>
-:root{--bg:#f6f2ea;--card:#fffdf8;--ink:#1d1a16;--dim:#6b645a;--line:#e3dccd;--accent:#d4493b;--accent-ink:#fff;--code:#efe9dc}
-@media (prefers-color-scheme:dark){:root{--bg:#14120f;--card:#1d1a16;--ink:#efe9dc;--dim:#a39b8c;--line:#2e2a24;--accent:#e0584a;--code:#26221d}}
+:root{
+  --bg:#f5f3ef;--bg2:#ece8e1;--card:#fffdfa;--ink:#1b1916;--dim:#6a645b;--faint:#a49d92;--line:#e2dcd2;
+  --accent:#d4493b;--accent2:#e8873a;--accent-ink:#fff;--code:#f0ebe3;--ok:#2e9e5b;--warn:#c97a12;
+  --island:#0d0d0f;--island-ink:#f5f5f7;--island-dim:#8e8e93;--screen:linear-gradient(135deg,#c9d6e8,#e9d8cf 55%,#d9cfe6);
+  --shadow:0 1px 2px rgba(0,0,0,.04),0 8px 30px rgba(0,0,0,.06);
+}
+:root[data-theme="dark"]{
+  --bg:#111012;--bg2:#18161a;--card:#1b191d;--ink:#f1eee9;--dim:#a39d94;--faint:#6d675f;--line:#2b282d;
+  --accent:#ff6a55;--accent2:#ffa24c;--code:#232026;--ok:#3ddc84;--warn:#ffb347;
+  --screen:linear-gradient(135deg,#1f2a3c,#3a2a2a 55%,#2b2440);--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 40px rgba(0,0,0,.35);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#111012;--bg2:#18161a;--card:#1b191d;--ink:#f1eee9;--dim:#a39d94;--faint:#6d675f;--line:#2b282d;
+  --accent:#ff6a55;--accent2:#ffa24c;--code:#232026;--ok:#3ddc84;--warn:#ffb347;
+  --screen:linear-gradient(135deg,#1f2a3c,#3a2a2a 55%,#2b2440);--shadow:0 1px 2px rgba(0,0,0,.3),0 10px 40px rgba(0,0,0,.35);
+}}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
-main{max-width:860px;margin:0 auto;padding:48px 16px 64px}
-header{text-align:center;margin-bottom:36px}
-header img{width:84px;height:84px}
-h1{font-size:2.2rem;margin:12px 0 4px;letter-spacing:-.02em}
-.lead{color:var(--dim);max-width:520px;margin:0 auto 24px}
-.btn{display:inline-block;background:var(--accent);color:var(--accent-ink);text-decoration:none;font-weight:600;padding:12px 22px;border-radius:12px}
-.btn.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
-.btn:focus-visible,a:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
-.meta{color:var(--dim);font-size:.85rem;margin-top:10px;min-height:1.3em}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-@media (max-width:700px){.grid{grid-template-columns:1fr}}
-.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px}
-.card.me{border-color:var(--accent)}
-h2{margin:0 0 4px;font-size:1.3rem}
-.sub{color:var(--dim);font-size:.9rem;margin:0 0 14px}
-.row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
-pre{background:var(--code);border-radius:10px;padding:10px 12px;overflow-x:auto;font-size:.85rem;margin:8px 0}
-code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-ol,ul{padding-left:20px;margin:8px 0}
-li{margin:4px 0}
-details{margin-top:10px;color:var(--dim);font-size:.9rem}
-summary{cursor:pointer;color:var(--ink)}
-.feat{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin:36px 0 0}
-.feat div{border-top:2px solid var(--line);padding-top:8px}
-.feat b{display:block}.feat span{color:var(--dim);font-size:.9rem}
-footer{margin-top:40px;text-align:center;color:var(--dim);font-size:.9rem}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 a{color:var(--accent)}
+a:focus-visible,button:focus-visible{outline:3px solid var(--accent);outline-offset:2px;border-radius:8px}
+.wrap{max-width:1080px;margin:0 auto;padding:0 16px}
+code,pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+
+/* nav */
+nav{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(14px);border-bottom:1px solid var(--line)}
+nav .wrap{display:flex;align-items:center;gap:20px;height:58px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--ink);text-decoration:none;font-size:1.05rem}
+.brand img{width:28px;height:28px}
+nav .links{display:flex;gap:18px;margin-left:auto;font-size:.92rem}
+nav .links a{color:var(--dim);text-decoration:none}
+nav .links a:hover{color:var(--ink)}
+.theme-btn{background:none;border:1px solid var(--line);color:var(--dim);border-radius:10px;padding:5px 9px;cursor:pointer;font-size:.9rem}
+@media (max-width:720px){nav .links a:not(.gh){display:none}}
+
+/* hero */
+.eyebrow{display:inline-flex;gap:8px;align-items:center;font-size:.82rem;color:var(--dim);background:var(--card);border:1px solid var(--line);border-radius:99px;padding:4px 12px 4px 6px}
+.eyebrow b{background:linear-gradient(90deg,var(--accent),var(--accent2));color:#fff;border-radius:99px;padding:1px 8px;font-size:.75rem}
+h1{font-size:clamp(2.1rem,4.6vw,3.3rem);line-height:1.08;letter-spacing:-.03em;margin:18px 0 14px}
+h1 span{background:linear-gradient(90deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.lead{color:var(--dim);font-size:1.1rem;max-width:520px;margin:0 0 26px}
+.cta{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.btn{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:var(--accent-ink);text-decoration:none;font-weight:600;padding:12px 20px;border-radius:12px;border:0;cursor:pointer;font-size:1rem;box-shadow:0 6px 20px color-mix(in srgb,var(--accent) 35%,transparent)}
+.btn:hover{filter:brightness(1.06)}
+.btn.alt{background:var(--card);color:var(--ink);border:1px solid var(--line);box-shadow:none}
+.meta{color:var(--dim);font-size:.85rem;margin-top:12px;min-height:1.4em}
+
+/* sections */
+section{padding:56px 0}
+h2{font-size:clamp(1.6rem,3vw,2.1rem);letter-spacing:-.02em;margin:0 0 8px}
+.sub{color:var(--dim);margin:0 0 28px;max-width:640px}
+.features{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px}
+.feature{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 18px 16px;box-shadow:var(--shadow)}
+.feature .ic{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-size:1.15rem;background:var(--bg2);margin-bottom:10px}
+.feature b{display:block;margin-bottom:4px}
+.feature span{color:var(--dim);font-size:.92rem}
+.feature small{display:inline-block;margin-top:8px;color:var(--faint);font-size:.78rem}
+
+/* install */
+.tabs{display:inline-flex;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:4px;gap:4px;margin-bottom:18px}
+.tabs button{border:0;background:none;color:var(--dim);font:inherit;font-weight:600;padding:8px 18px;border-radius:9px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--card);color:var(--ink);box-shadow:var(--shadow)}
+.panel{display:none}.panel.on{display:block}
+.install{display:grid;grid-template-columns:1.3fr 1fr;gap:18px}
+.install>*,.hero>*,.card,.cmd{min-width:0} /* long commands scroll inside their box instead of widening the page */
+@media (max-width:860px){.install{grid-template-columns:1fr}}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:22px;box-shadow:var(--shadow)}
+.card h3{margin:0 0 4px;font-size:1.1rem}
+.card .muted{color:var(--dim);font-size:.9rem;margin:0 0 14px}
+.steps{counter-reset:s;list-style:none;padding:0;margin:0}
+.steps>li{counter-increment:s;position:relative;padding-left:40px;margin:0 0 18px}
+.steps>li:before{content:counter(s);position:absolute;left:0;top:0;width:26px;height:26px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;font-size:.85rem;display:grid;place-items:center}
+.steps b{display:block;margin-bottom:4px}
+.cmd{position:relative;background:var(--code);border:1px solid var(--line);border-radius:10px;margin:8px 0 0}
+.cmd pre{margin:0;padding:11px 74px 11px 13px;overflow-x:auto;font-size:.84rem;white-space:pre}
+.copy{position:absolute;right:7px;top:7px;border:1px solid var(--line);background:var(--card);color:var(--dim);font:inherit;font-size:.75rem;padding:3px 9px;border-radius:7px;cursor:pointer}
+.copy.done{color:var(--ok);border-color:var(--ok)}
+.req{list-style:none;padding:0;margin:0}
+.req li{display:flex;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line);font-size:.93rem}
+.req li:last-child{border:0}
+.req li span:first-child{width:22px;flex:none;text-align:center}
+.note{background:color-mix(in srgb,var(--warn) 12%,transparent);border:1px solid color-mix(in srgb,var(--warn) 35%,transparent);border-radius:12px;padding:12px 14px;font-size:.9rem;margin-top:14px}
+
+/* optional table */
+.table{overflow-x:auto;border:1px solid var(--line);border-radius:16px;background:var(--card);box-shadow:var(--shadow)}
+table{border-collapse:collapse;width:100%;min-width:760px;font-size:.92rem}
+th,td{text-align:left;padding:13px 16px;vertical-align:top;border-bottom:1px solid var(--line)}
+tr:last-child td{border-bottom:0}
+th{font-size:.78rem;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);background:var(--bg2)}
+td b{display:block}
+td .what{color:var(--dim);font-size:.86rem}
+td code{background:var(--code);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:.8rem;display:inline-block;margin:2px 0}
+.tag{display:inline-block;font-size:.72rem;font-weight:600;border-radius:99px;padding:1px 8px;background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok)}
+.tag.no{background:var(--bg2);color:var(--faint)}
+.dl{display:inline-flex;align-items:center;gap:4px;font-weight:600;text-decoration:none}
+.dl:after{content:"↗";font-size:.8em}
+
+/* faq */
+.faq details{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 18px;margin-bottom:10px}
+.faq summary{cursor:pointer;font-weight:600;padding:12px 0;list-style:none}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary:after{content:"+";float:right;color:var(--dim)}
+.faq details[open] summary:after{content:"–"}
+.faq p,.faq ul{color:var(--dim);margin:0 0 14px}
+footer{border-top:1px solid var(--line);padding:28px 0 40px;color:var(--dim);font-size:.9rem}
+footer .wrap{display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}html{scroll-behavior:auto}}
+
+/* hero */
+.hero{display:block;text-align:center;padding:40px 0 24px} 
+.hero h1{margin:26px auto 14px;max-width:820px}
+.hero .lead{margin:0 auto 26px}
+.hero .cta{justify-content:center}
+.hero .meta{text-align:center}
+.showcase{position:relative;height:210px;margin:6px auto 0;max-width:760px;border-radius:0 0 28px 28px;
+  background:radial-gradient(120% 140% at 50% -20%,#2a3550 0%,#1b1626 45%,#0f0e12 100%);overflow:hidden;
+  border:1px solid var(--line);border-top:0;box-shadow:var(--shadow)}
+.showcase:after{content:"";position:absolute;inset:auto 0 0;height:60px;background:linear-gradient(transparent,color-mix(in srgb,var(--bg) 0%,transparent))}
+.showcase .isl{--isl:#000;position:absolute;left:50%;top:0;transform:translateX(-50%) scale(var(--hs,1.45));transform-origin:50% 0}
+.hero .eyebrow{margin-top:22px}
+
+/* the island, shared by the hero and the demo stage */
+.isl{background:var(--isl,#000);color:var(--ink2,#f5f5f7);border-radius:0 0 22px 22px;width:190px;height:30px;
+  transition:width .55s cubic-bezier(.3,1.32,.5,1),height .5s cubic-bezier(.3,1.25,.5,1),border-radius .4s;
+  box-shadow:0 6px 22px rgba(0,0,0,.35);font-size:12px;font-weight:600}
+.isl:before,.isl:after{content:"";position:absolute;top:0;width:12px;height:12px;background:radial-gradient(circle at 0 100%,transparent 11.5px,var(--isl,#000) 12px)}
+.isl:before{left:-12px;transform:scaleX(-1)}
+.isl:after{right:-12px}
+.isl .nc{position:absolute;inset:0;display:flex;align-items:center;gap:9px;padding:0 16px;white-space:nowrap;transition:opacity .14s}
+.isl .nc.out{opacity:0}
+.isl .r{margin-left:auto;display:flex;align-items:center;gap:7px;color:var(--dim2,#8e8e93);font-weight:500}
+.isl .hl{position:absolute;left:18px;right:18px;bottom:5px;height:2px;border-radius:1px;background:rgba(255,255,255,.12);overflow:hidden}
+.isl .hl:before{content:"";position:absolute;inset:0;width:calc(var(--p,0) * 100%);background:var(--hc,#3daee9);transition:width .5s}
+.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+.pulse{width:8px;height:8px;border-radius:50%;background:#30d158;animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.25}}
+.batt{width:20px;height:10px;border:1.3px solid currentColor;border-radius:3px;position:relative;opacity:.9}
+.batt:after{content:"";position:absolute;right:-3.5px;top:2.5px;width:2px;height:3px;border-radius:1px;background:currentColor}
+.batt i{position:absolute;left:1.5px;top:1.5px;bottom:1.5px;width:calc(var(--b,.7) * 14px);border-radius:1.5px;background:var(--bc,#f5f5f7);transition:width .6s,background .3s}
+.btnrow{display:flex;gap:6px;margin-left:auto}
+.btnrow span{background:rgba(255,255,255,.1);border-radius:99px;padding:3px 10px;font-size:11px}
+.btnrow span.on{background:#30d158;color:#06240f}
+
+/* demo */
+#demo{padding-top:24px}
+.demo-head{display:flex;align-items:end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px}
+.demo-head .sub{margin:0}
+.ctrl{display:flex;gap:6px}
+.ctrl button{width:38px;height:38px;border-radius:11px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer;font-size:.95rem}
+.ctrl button:hover{border-color:var(--accent)}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 10px;scrollbar-width:thin}
+.chips button{flex:none;position:relative;overflow:hidden;border:1px solid var(--line);background:var(--card);color:var(--dim);font:inherit;font-size:.86rem;font-weight:600;
+  padding:7px 13px 9px;border-radius:11px;cursor:pointer}
+.chips button[aria-current="true"]{color:var(--ink);border-color:var(--accent)}
+.chips button i{position:absolute;left:0;bottom:0;height:3px;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2))}
+.stage-wrap{position:relative;width:100%;aspect-ratio:960/600;border-radius:18px;overflow:hidden;border:1px solid var(--line);box-shadow:var(--shadow);background:#111}
+.stage{position:absolute;left:0;top:0;width:960px;height:600px;transform-origin:0 0;overflow:hidden;
+  --wall:linear-gradient(140deg,#24375a 0%,#4a3550 48%,#8a5a4a 100%);--isl:#000;--ink2:#f5f5f7;--dim2:#8e8e93;--acc:#3daee9;--sur:#1c1c1e;--sur2:#2c2c2e;--line2:#2a2a2e;
+  font:13px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--ink2);user-select:none}
+.stage .wall{position:absolute;inset:0;background:var(--wall);transition:background .6s}
+.stage .wall:after{content:"";position:absolute;inset:0;background:radial-gradient(60% 50% at 30% 30%,rgba(255,255,255,.12),transparent 70%)}
+.cap{min-height:1.5em;margin-top:12px;color:var(--dim);text-align:center;font-size:.95rem;transition:opacity .2s}
+.cap b{color:var(--ink)}
+
+/* desktop windows */
+.win{position:absolute;background:rgba(250,250,252,.92);color:#222;border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.35);overflow:hidden;transition:transform .5s,opacity .5s}
+.win .tb{height:30px;display:flex;align-items:center;gap:7px;padding:0 12px;background:rgba(0,0,0,.05);font-size:12px;font-weight:600;color:#555}
+.win .tb i{width:10px;height:10px;border-radius:50%;display:inline-block}
+.win .body{padding:14px;display:flex;flex-wrap:wrap;gap:14px;align-content:flex-start}
+.fileico{width:70px;text-align:center;font-size:11px;color:#333}
+.fileico div{width:46px;height:56px;margin:0 auto 4px;border-radius:6px;background:#fff;border:1px solid #ddd;position:relative;box-shadow:0 2px 6px rgba(0,0,0,.08)}
+.fileico div:after{content:attr(data-t);position:absolute;left:-4px;bottom:8px;font-size:9px;font-weight:800;color:#fff;background:var(--c,#e5484d);border-radius:3px;padding:1px 4px}
+.call{position:absolute;inset:30px 0 0;background:linear-gradient(135deg,#334,#556);display:none;align-items:center;justify-content:center;flex-direction:column;color:#fff;gap:10px}
+.call.on{display:flex}
+.call .face{width:90px;height:90px;border-radius:50%;background:radial-gradient(circle at 50% 38%,#f2c9a4 0 22px,transparent 23px),radial-gradient(circle at 50% 110%,#6b8bd6 0 44px,transparent 45px),#8899bb}
+
+/* notch on the stage */
+.stage .isl{position:absolute;left:50%;top:0;transform:translateX(-50%);z-index:5}
+.isl.drop{box-shadow:0 0 0 2px var(--acc),0 6px 22px rgba(0,0,0,.35)}
+.isl.toast{box-shadow:0 0 0 1.5px var(--tc,#30d158),0 6px 22px rgba(0,0,0,.35)}
+.pdots{position:absolute;top:6px;left:50%;display:flex;gap:5px;z-index:6;transition:margin .5s}
+.pdots i{width:8px;height:8px;border-radius:50%;opacity:0;transform:scale(.3);transition:opacity .3s,transform .3s}
+.pdots i.on{opacity:1;transform:none}
+
+/* panel content inside the island */
+.pn{position:absolute;inset:0;padding:12px 18px;display:flex;flex-direction:column;gap:10px;white-space:normal}
+.pn .hd{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700}
+.pn .hd .cnt{background:var(--sur);color:var(--dim2);font-size:11px;border-radius:10px;padding:1px 8px;font-weight:600}
+.pn .hd .b{margin-left:auto;display:flex;gap:6px}
+.pn .hd .b span{width:26px;height:26px;border-radius:13px;background:var(--sur);display:grid;place-items:center;font-size:12px}
+.pn .hd .b span.on{background:color-mix(in srgb,var(--acc) 35%,transparent)}
+.pn .chipsrow{display:flex;gap:6px}
+.pn .chipsrow span{border-radius:99px;background:var(--sur);color:var(--dim2);padding:3px 11px;font-size:11px;font-weight:600;transition:background .3s,color .3s,transform .3s}
+.pn .chipsrow span.on{background:var(--acc);color:#fff}
+.pn .chipsrow span.hit{transform:scale(1.12);box-shadow:0 0 0 2px var(--acc)}
+.tiles{display:flex;gap:10px}
+.tile{width:92px;height:104px;border-radius:12px;background:var(--sur);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;font-size:10.5px;color:var(--ink2);
+  animation:pop .45s cubic-bezier(.3,1.6,.5,1) both;transition:transform .4s,opacity .4s}
+.tile .ic{width:40px;height:48px;border-radius:6px;background:#f4f4f6;position:relative}
+.tile .ic:after{content:attr(data-t);position:absolute;left:-4px;bottom:7px;font-size:8.5px;font-weight:800;color:#fff;background:var(--c,#e5484d);border-radius:3px;padding:1px 4px}
+.tile.sel{box-shadow:0 0 0 2px var(--acc)}
+.tile.gone{transform:translate(120px,-48px) scale(.2);opacity:0}
+@keyframes pop{from{transform:scale(.4);opacity:0}}
+.menu{position:absolute;background:var(--sur);border:1px solid var(--line2);border-radius:10px;padding:5px;font-size:11.5px;width:150px;z-index:8;animation:pop .25s both}
+.menu div{padding:5px 8px;border-radius:6px}
+.menu div.hl2{background:var(--sur2)}
+.pill2{border-radius:99px;background:var(--sur);padding:4px 11px;font-size:11.5px;font-weight:600;display:inline-block}
+.pill2.on{background:var(--acc);color:#fff}
+.big{font-size:40px;font-weight:300;text-align:center;font-family:ui-monospace,monospace;letter-spacing:.02em}
+.qr{width:120px;height:120px;background:#fff;border-radius:10px;padding:8px;flex:none}
+.code4{display:flex;gap:8px;justify-content:center}
+.code4 b{width:34px;height:44px;border-radius:8px;background:var(--sur);display:grid;place-items:center;font-size:22px}
+
+/* dock */
+.dock{position:absolute;left:50%;bottom:10px;height:62px;transform:translate(-50%,90px);border-radius:20px;background:rgba(28,28,30,.55);backdrop-filter:blur(18px);
+  border:1px solid rgba(255,255,255,.16);box-shadow:0 12px 40px rgba(0,0,0,.35);transition:transform .55s cubic-bezier(.3,1.3,.5,1),width .3s;z-index:4}
+.dock.on{transform:translate(-50%,0)}
+.dock .di{position:absolute;bottom:9px;width:44px;height:44px;border-radius:12px;transform-origin:50% 100%;
+  transform:translateY(calc((var(--s,1) - 1) * -10px)) scale(var(--s,1));transition:transform .22s ease-out,left .38s cubic-bezier(.3,1.2,.5,1);box-shadow:0 3px 8px rgba(0,0,0,.25)}
+.dock .di.run:after{content:"";position:absolute;left:50%;bottom:-7px;width:4px;height:4px;margin-left:-2px;border-radius:2px;background:rgba(255,255,255,.75)}
+.dock .di.act:after{width:12px;margin-left:-6px;background:var(--acc)}
+.dock .di em{position:absolute;right:-6px;top:-6px;min-width:18px;height:18px;border-radius:9px;background:#ff453a;color:#fff;font:700 10px/18px system-ui;text-align:center;font-style:normal;padding:0 4px;transition:transform .25s}
+.dock .di em.bump{transform:scale(1.35)}
+.dock .di.trash{background:linear-gradient(#c9ced6,#8d939c)}
+.dock .di.trash:before{content:"";position:absolute;left:11px;right:11px;top:13px;bottom:9px;border:2px solid rgba(255,255,255,.85);border-top:0;border-radius:0 0 5px 5px}
+.dock .di.trash.full:before{background:repeating-linear-gradient(90deg,transparent 0 4px,rgba(255,255,255,.5) 4px 6px)}
+.dock .sep{position:absolute;bottom:14px;width:1px;height:34px;background:rgba(255,255,255,.25)}
+.dock .di.lift{transform:translateY(-14px) scale(1.15);z-index:2;transition:transform .2s,left 0s}
+
+/* phone, laptop, tools, swatches */
+.phone{position:absolute;right:34px;top:110px;width:170px;height:340px;border-radius:30px;background:#0d0d10;padding:10px;box-shadow:0 20px 60px rgba(0,0,0,.45);
+  transform:translateX(260px);transition:transform .6s cubic-bezier(.3,1.2,.5,1);z-index:7}
+.phone.on{transform:none}
+.phone .scr{position:absolute;inset:10px;border-radius:22px;background:#f2f2f7;color:#111;overflow:hidden;font-size:11px}
+.phone .note{margin:34px 10px 0;background:#fff;border-radius:14px;padding:9px 10px;box-shadow:0 4px 14px rgba(0,0,0,.12);animation:pop .4s both}
+.phone .note b{display:flex;gap:6px;align-items:center;font-size:10.5px;color:#555;margin-bottom:3px}
+.phone .note b:before{content:"";width:14px;height:14px;border-radius:4px;background:#25d366}
+.phone .vf{position:absolute;inset:0;background:#222;display:grid;place-items:center}
+.phone .vf .qr{width:96px;height:96px;outline:2px solid #fff;outline-offset:10px;border-radius:6px}
+.phone .ok{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;background:#f2f2f7}
+.phone .ok i{width:46px;height:46px;border-radius:50%;background:#30d158;color:#fff;display:grid;place-items:center;font-style:normal;font-size:22px}
+.laptop{position:absolute;right:26px;top:150px;width:260px;height:170px;border-radius:12px;background:#1c1c1e;border:6px solid #2c2c2e;color:#f5f5f7;
+  transform:translateX(330px);transition:transform .6s cubic-bezier(.3,1.2,.5,1);z-index:7;padding:12px;display:flex;flex-direction:column;gap:10px;align-items:center;font-size:11.5px}
+.laptop:after{content:"";position:absolute;left:-30px;right:-30px;bottom:-20px;height:10px;border-radius:0 0 10px 10px;background:#3a3a3c}
+.laptop.on{transform:none}
+.tools{position:absolute;left:50%;top:330px;width:420px;height:170px;transform:translateX(-50%);display:none;z-index:3}
+.tools.on{display:block}
+.page{position:absolute;width:88px;height:116px;border-radius:8px;background:#fff;box-shadow:0 10px 30px rgba(0,0,0,.35);transition:all .7s cubic-bezier(.3,1.2,.5,1);color:#333;font-size:10px;padding:10px}
+.page:before{content:"";position:absolute;left:10px;right:10px;top:30px;height:60px;background:repeating-linear-gradient(#ddd 0 3px,transparent 3px 9px)}
+.page b{position:absolute;left:8px;top:8px;font-size:8.5px;color:#fff;background:#e5484d;border-radius:3px;padding:1px 4px}
+.toolsLabel{position:absolute;left:0;right:0;bottom:-6px;text-align:center;font-weight:700;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,.6);font-size:14px;transition:opacity .3s}
+.sw{position:absolute;left:50%;bottom:92px;transform:translateX(-50%);display:flex;gap:8px;opacity:0;transition:opacity .4s;z-index:4}
+.sw.on{opacity:1}
+.sw span{width:64px;height:40px;border-radius:9px;border:2px solid transparent;position:relative;transition:transform .3s,border-color .3s;font-size:9px;font-weight:700;color:#fff;display:flex;align-items:end;padding:3px 5px}
+.sw span.on{border-color:#fff;transform:translateY(-4px)}
+
+/* cursor */
+.cursor{position:absolute;left:0;top:0;width:22px;height:22px;z-index:20;transition-property:transform;transition-timing-function:cubic-bezier(.45,0,.2,1);pointer-events:none}
+.cursor svg{filter:drop-shadow(0 2px 3px rgba(0,0,0,.4))}
+.cursor:after{content:"";position:absolute;left:-10px;top:-10px;width:20px;height:20px;border-radius:50%;border:2px solid rgba(255,255,255,.9);opacity:0}
+.cursor.click:after{animation:ring .45s ease-out}
+@keyframes ring{from{opacity:1;transform:scale(.3)}to{opacity:0;transform:scale(1.6)}}
+.ghost{position:absolute;left:10px;top:12px;opacity:0;transform:scale(.5);transition:opacity .2s,transform .2s}
+.ghost.on{opacity:.95;transform:none}
+
+/* features: demo links */
+.feature .see{display:inline-flex;margin-top:10px;font-size:.84rem;font-weight:600;color:var(--accent);background:none;border:0;padding:0;cursor:pointer;font-family:inherit}
+.feature .see:after{content:" ▶";font-size:.7em}
+
+/* scroll reveal */
+.reveal{opacity:0;transform:translateY(18px);transition:opacity .6s ease,transform .6s cubic-bezier(.2,.8,.2,1);transition-delay:var(--d,0s)}
+.reveal.in{opacity:1;transform:none}
+@media (prefers-reduced-motion:reduce){.reveal{opacity:1;transform:none}}
 </style>
 </head>
 <body>
-<main>
-<header>
-  <img src="site/notch.svg" alt="">
-  <h1>Notch</h1>
-  <p class="lead">A temporary shelf for the files you are working with. Drop them at the top of the screen, share them, send them to another computer.</p>
-  <a class="btn" id="hero" href="https://github.com/Kepin17/olyzano-notch/releases/latest">Download</a>
-  <div class="meta" id="heroMeta"></div>
-  <p><a href="#linux" id="other">Linux</a> · <a href="#windows">Windows</a></p>
-</header>
-
-<div class="grid">
-  <section class="card" id="linux">
-    <h2>Linux</h2>
-    <p class="sub">Debian, Ubuntu, Kubuntu · 64-bit · tested on KDE Plasma (Wayland)</p>
-    <div class="row"><a class="btn" id="deb" href="https://github.com/Kepin17/olyzano-notch/releases/latest">Download .deb</a></div>
-    <ol>
-      <li>Download the package.</li>
-      <li>Install it; <code>apt</code> brings everything it needs:</li>
-    </ol>
-    <pre><code id="debCmd">sudo apt install ./notch_VERSION_amd64.deb</code></pre>
-    <ol start="3"><li>Start <b>Notch</b> from the application menu.</li></ol>
-    <details><summary>Optional and removal</summary>
-      <pre><code>sudo apt install tesseract-ocr   # OCR tool
-sudo apt remove notch            # remove (your shelf is kept)</code></pre>
-    </details>
-    <details><summary>Other distributions: build from source</summary>
-      <pre><code>git clone https://github.com/Kepin17/olyzano-notch
-cd olyzano-notch
-sudo apt install cmake ninja-build g++ qt6-base-dev \
-  qt6-declarative-dev liblayershellqtinterface-dev
-cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build &amp;&amp; ./build/notch</code></pre>
-    </details>
-  </section>
-
-  <section class="card" id="windows">
-    <h2>Windows</h2>
-    <p class="sub">Windows 10 and 11 · 64-bit</p>
-    <div class="row">
-      <a class="btn" id="exe" href="https://github.com/Kepin17/olyzano-notch/releases/latest">Download installer</a>
-      <a class="btn alt" id="zip" href="https://github.com/Kepin17/olyzano-notch/releases/latest">Portable .zip</a>
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#"><img src="site/notch.svg" alt="">Notch</a>
+    <div class="links">
+      <a href="#demo">Demo</a>
+      <a href="#features">Features</a>
+      <a href="#install">Install</a>
+      <a href="#optional">Optional</a>
+      <a href="#faq">FAQ</a>
+      <a class="gh" href="https://github.com/Kepin17/olyzano-notch">GitHub</a>
     </div>
-    <ol>
-      <li>Run the installer. It installs for your user, no administrator prompt.</li>
-      <li>Windows may say <i>“Windows protected your PC”</i> because the build is not code-signed: click <b>More info → Run anyway</b>.</li>
-      <li>Start <b>Notch</b> from the Start menu.</li>
-    </ol>
-    <details><summary>Good to know</summary>
-      <ul>
-        <li>The portable zip needs no install: extract it and run <code>notch.exe</code>.</li>
-        <li>Sharing over WiFi or Nearby: allow Notch through the firewall on <b>private</b> networks.</li>
-        <li>PDF and OCR tools need Poppler, Ghostscript and Tesseract on your PATH.</li>
-        <li>Remove: Settings → Apps → Notch → Uninstall.</li>
-      </ul>
-    </details>
-  </section>
+    <button class="theme-btn" id="themeBtn" aria-label="Switch light or dark">◐</button>
+  </div>
+</nav>
+
+<main>
+<div class="wrap">
+  <div class="hero">
+    <div class="showcase" aria-hidden="true"><div class="isl" id="heroIsl"><div class="nc"></div></div></div>
+    <span class="eyebrow"><b id="verTag">New</b> App dock, live activities, Pomodoro and a stretch reminder</span>
+    <h1>Your files, apps and focus, <span>at the edges of your screen.</span></h1>
+    <p class="lead">Notch slides out from the top of the screen with a shelf for the files you're working with,
+      shows what's going on in a little live pill, and adds a dock at the bottom. For KDE Plasma and Windows.</p>
+    <div class="cta">
+      <a class="btn" id="hero" href="https://github.com/Kepin17/olyzano-notch/releases/latest">⬇ Download</a>
+      <a class="btn alt" href="#demo">▶ Watch the demo</a>
+    </div>
+    <div class="meta" id="heroMeta">Free and open source · Linux (.deb) and Windows 10/11</div>
+  </div>
 </div>
 
-<div class="feat">
-  <div><b>The shelf</b><span>Drop files, folders, images, links and notes; preview and organize them.</span></div>
-  <div><b>Share via QR</b><span>Over your WiFi or your own encrypted server, with PIN or password.</span></div>
-  <div><b>Nearby</b><span>Send to another computer running Notch, after matching a 4-digit code.</span></div>
-  <div><b>Tools</b><span>Merge and split PDFs, convert images, OCR, zip.</span></div>
-</div>
+<section id="demo">
+  <div class="wrap">
+    <div class="demo-head">
+      <div>
+        <h2>See it in action</h2>
+        <p class="sub">Every feature, played on a pretend desktop. Pick one, or let the tour run.</p>
+      </div>
+      <div class="ctrl">
+        <button id="prev" aria-label="Previous feature">◀</button>
+        <button id="pause" aria-label="Pause the tour">⏸</button>
+        <button id="next" aria-label="Next feature">▶</button>
+      </div>
+    </div>
+    <div class="chips" id="chips" role="tablist" aria-label="Features"></div>
+    <div class="stage-wrap" id="stageWrap">
+      <div class="stage" id="stage" aria-hidden="true">
+        <div class="wall"></div>
+        <div class="win" id="win1" style="left:110px;top:120px;width:430px;height:270px">
+          <div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>&nbsp;Files — Documents</div>
+          <div class="body">
+            <div class="fileico" id="srcFile"><div data-t="PDF"></div>report.pdf</div>
+            <div class="fileico"><div data-t="IMG" style="--c:#30a46c"></div>photo.jpg</div>
+            <div class="fileico"><div data-t="ZIP" style="--c:#f59e0b"></div>assets.zip</div>
+            <div class="fileico" id="srcFile2"><div data-t="TXT" style="--c:#3b82f6"></div>notes.txt</div>
+          </div>
+        </div>
+        <div class="win" id="win2" style="left:460px;top:190px;width:400px;height:250px">
+          <div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i>&nbsp;<span id="win2title">Editor</span></div>
+          <div class="body" style="display:block;color:#666;font-size:12px;line-height:1.9">
+            <div style="height:8px;width:70%;background:#e5e5ea;border-radius:4px;margin:6px 0"></div>
+            <div style="height:8px;width:85%;background:#e5e5ea;border-radius:4px;margin:10px 0"></div>
+            <div style="height:8px;width:60%;background:#e5e5ea;border-radius:4px;margin:10px 0"></div>
+            <div style="height:8px;width:78%;background:#e5e5ea;border-radius:4px;margin:10px 0"></div>
+          </div>
+          <div class="call" id="callView"><div class="face"></div><div>Video call · 12:04</div></div>
+        </div>
+        <div class="tools" id="tools">
+          <div class="page" id="pg1" style="left:40px;top:10px"><b>PDF</b></div>
+          <div class="page" id="pg2" style="left:290px;top:10px"><b>PDF</b></div>
+          <div class="toolsLabel" id="toolsLabel"></div>
+        </div>
+        <div class="sw" id="swatches"></div>
+        <div class="dock" id="dock"></div>
+        <div class="pdots" id="pdots"><i style="background:#30d158"></i><i style="background:#ff9f0a"></i></div>
+        <div class="isl" id="notch"><div class="nc" id="nc"></div></div>
+        <div class="phone" id="phone"><div class="scr" id="phoneScr"></div></div>
+        <div class="laptop" id="laptop"></div>
+        <div class="cursor" id="cursor">
+          <svg width="22" height="22" viewBox="0 0 24 24"><path d="M4 2l15 10.5-6.3 1.3 3.8 7.2-2.7 1.4-3.8-7.3L4 19.5z" fill="#fff" stroke="#111" stroke-width="1.3" stroke-linejoin="round"/></svg>
+          <div class="ghost" id="ghost"></div>
+        </div>
+      </div>
+    </div>
+    <div class="cap" id="cap" aria-live="polite"></div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2 class="reveal">Everything it does</h2>
+    <p class="sub reveal">A few small things, close at hand, that stay out of the way until you need them.</p>
+    <div class="features">
+      <div class="feature reveal"><div class="ic">🗂️</div><b>The shelf</b><span>Drop files, folders, images, links and notes at the top edge. Preview, sort into categories, search; cleaned up after a few days.</span><br><button class="see" data-scene="shelf">See it</button></div>
+      <div class="feature reveal"><div class="ic">🚀</div><b>App dock</b><span>Pinned and running apps, folders as stacks, Trash, unread badges, glass look. Bottom, left or right.</span><br><button class="see" data-scene="dock">See it</button><small>Window focusing: KDE Plasma · Windows</small></div>
+      <div class="feature reveal"><div class="ic">💊</div><b>Live activities</b><span>Timer, downloads, Nearby transfers and incoming calls in a pill in the closed notch, with progress.</span><br><button class="see" data-scene="live">See it</button></div>
+      <div class="feature reveal"><div class="ic">⏱️</div><b>Timer &amp; Pomodoro</b><span>Timers, a stopwatch, and focus / break rounds, from the clock button in the header.</span><br><button class="see" data-scene="timer">See it</button></div>
+      <div class="feature reveal"><div class="ic">🧘</div><b>Stretch reminder</b><span>Counts the time you actually work. After 50 minutes it asks: break, later or skip. You decide.</span><br><button class="see" data-scene="stretch">See it</button></div>
+      <div class="feature reveal"><div class="ic">🕒</div><b>Idle clock</b><span>When nothing's going on: the time, your microphone (muted / recording) and the battery.</span><br><button class="see" data-scene="idle">See it</button></div>
+      <div class="feature reveal"><div class="ic">📱</div><b>Phone &amp; privacy</b><span>Calls and notifications from your phone (KDE Connect); dots while the microphone or a camera is on.</span><br><button class="see" data-scene="phone">See it</button><small>Linux</small></div>
+      <div class="feature reveal"><div class="ic">🔗</div><b>Share via QR &amp; Nearby</b><span>To a phone over WiFi or your own encrypted server; to another computer after matching a 4-digit code.</span><br><button class="see" data-scene="share">See it</button></div>
+      <div class="feature reveal"><div class="ic">🛠️</div><b>Tools</b><span>Merge, split and compress PDFs, convert images, OCR, zip. Locked categories encrypted on disk (Linux).</span><br><button class="see" data-scene="tools">See it</button></div>
+      <div class="feature reveal"><div class="ic">🎨</div><b>Eight themes</b><span>Classic, Washi 和紙, Frost, Ocean, Forest, Sunset, Lavender and Mocha, each in dark and light.</span><br><button class="see" data-scene="themes">See it</button></div>
+    </div>
+  </div>
+</section>
+
+<section id="install" style="background:var(--bg2);border-block:1px solid var(--line)">
+  <div class="wrap">
+    <h2>Install</h2>
+    <p class="sub">Pick your system. The buttons always point at the newest release.</p>
+    <div class="tabs" role="tablist">
+      <button role="tab" id="tab-linux" aria-selected="true" data-os="linux">🐧 Linux</button>
+      <button role="tab" id="tab-windows" aria-selected="false" data-os="windows">🪟 Windows</button>
+    </div>
+
+    <div class="panel on" id="panel-linux" role="tabpanel">
+      <div class="install">
+        <div class="card">
+          <h3>Debian · Ubuntu · Kubuntu · KDE neon</h3>
+          <p class="muted">64-bit, Qt 6.5 or newer. Made for KDE Plasma (Wayland or X11).</p>
+          <ol class="steps">
+            <li><b>Download the package</b>
+              <a class="btn" id="deb" href="https://github.com/Kepin17/olyzano-notch/releases/latest" style="margin-top:6px">⬇ Download .deb</a>
+              <div class="cmd"><pre id="wgetCmd">wget https://github.com/Kepin17/olyzano-notch/releases/latest/download/notch_VERSION_amd64.deb</pre><button class="copy">Copy</button></div>
+            </li>
+            <li><b>Install it</b> <span class="muted">apt brings everything it needs.</span>
+              <div class="cmd"><pre id="debCmd">sudo apt install ./notch_VERSION_amd64.deb</pre><button class="copy">Copy</button></div>
+            </li>
+            <li><b>Start Notch</b> from the application menu. Rest the mouse on the top-centre edge to open it; turn on
+              <i>Settings → General → Start at login</i> to have it always.</li>
+          </ol>
+          <details class="faq" style="margin-top:6px"><summary>Update or remove</summary>
+            <p>Update: install the newer <code>.deb</code> the same way, then restart Notch. Your shelf and settings stay.</p>
+            <div class="cmd"><pre>pkill notch; notch &amp;          # restart after an update
+sudo apt remove notch          # remove (your shelf is kept)
+rm -r ~/.local/share/notch ~/.config/notch   # delete the shelf and settings too</pre><button class="copy">Copy</button></div>
+          </details>
+        </div>
+        <div class="card">
+          <h3>What you get where</h3>
+          <ul class="req">
+            <li><span>✅</span><span><b>KDE Plasma</b>: everything: dock window focusing, blur, badges, KDE Connect, idle time on Wayland.</span></li>
+            <li><span>🟡</span><span><b>Other desktops</b>: the shelf, timer and sharing work; the dock can start apps but not raise their windows.</span></li>
+            <li><span>🧩</span><span>Extras like OCR and KDE Connect are <a href="#optional">optional components</a>.</span></li>
+          </ul>
+          <div class="note">Older Ubuntu (24.04 and before) ships Qt 6.4, which is too old. Use a newer release, KDE neon, or
+            <a href="#source">build from source</a> with a newer Qt.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="panel-windows" role="tabpanel">
+      <div class="install">
+        <div class="card">
+          <h3>Windows 10 and 11</h3>
+          <p class="muted">64-bit. Installs for your user, no administrator prompt.</p>
+          <ol class="steps">
+            <li><b>Download the installer</b>
+              <div class="cta" style="margin-top:6px">
+                <a class="btn" id="exe" href="https://github.com/Kepin17/olyzano-notch/releases/latest">⬇ Installer (.exe)</a>
+                <a class="btn alt" id="zip" href="https://github.com/Kepin17/olyzano-notch/releases/latest">Portable .zip</a>
+              </div>
+            </li>
+            <li><b>Run it</b>. Windows may say <i>"Windows protected your PC"</i> because the build isn't code-signed:
+              click <b>More info → Run anyway</b>. The portable zip needs no install: extract it and run <code>notch.exe</code>.</li>
+            <li><b>Start Notch</b> from the Start menu. Allow it through the firewall on <b>private</b> networks if you
+              share over WiFi or use Nearby.</li>
+          </ol>
+        </div>
+        <div class="card">
+          <h3>Good to know</h3>
+          <ul class="req">
+            <li><span>📄</span><span>PDF tools and OCR need Poppler, Ghostscript and Tesseract: see <a href="#optional">optional components</a>.</span></li>
+            <li><span>📁</span><span>Settings and files live in <code>%LOCALAPPDATA%\notch</code>.</span></li>
+            <li><span>🗑️</span><span>Remove: <i>Settings → Apps → Notch → Uninstall</i>.</span></li>
+            <li><span>➖</span><span>Linux-only: KDE Connect, phone alerts, privacy dots, locked categories, dock blur and badges.</span></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="optional">
+  <div class="wrap">
+    <h2>Optional components</h2>
+    <p class="sub">Notch runs without these. Each switches on a feature, and Notch finds it by itself once installed
+      (restart Notch afterwards). Things marked <span class="tag">in the .deb</span> come with the Linux package.</p>
+    <div class="table">
+      <table>
+        <thead><tr><th style="width:24%">Component</th><th style="width:28%">What it adds</th><th>Linux</th><th>Windows</th></tr></thead>
+        <tbody>
+          <tr><td><b>Tesseract OCR</b></td><td class="what">OCR in the Tools menu: text from images and scanned PDFs.</td>
+            <td><code>sudo apt install tesseract-ocr tesseract-ocr-eng</code><br><span class="what">More languages: <code>tesseract-ocr-ind</code>, <code>tesseract-ocr-deu</code>, …</span></td>
+            <td><a class="dl" href="https://github.com/UB-Mannheim/tesseract/wiki">UB Mannheim installer</a><br><span class="what">Tick your languages; add <code>C:\Program Files\Tesseract-OCR</code> to PATH.</span></td></tr>
+          <tr><td><b>Poppler</b></td><td class="what">PDF split, extract, page count, PDF → image, OCR of PDFs.</td>
+            <td><span class="tag">in the .deb</span> <code>poppler-utils</code></td>
+            <td><a class="dl" href="https://github.com/oschwartz10612/poppler-windows/releases/latest">poppler-windows</a><br><span class="what">Unzip; add its <code>Library\bin</code> folder to PATH.</span></td></tr>
+          <tr><td><b>Ghostscript</b></td><td class="what">Compress PDF.</td>
+            <td><span class="tag">in the .deb</span> <code>ghostscript</code></td>
+            <td><a class="dl" href="https://ghostscript.com/releases/gsdnld.html">Ghostscript downloads</a><br><span class="what">64-bit release; its installer adds it to PATH.</span></td></tr>
+          <tr><td><b>KDE Connect</b><br><span class="what">computer + phone</span></td><td class="what">Send to your phone, files from it, incoming calls, phone notifications and a low phone battery in the notch.</td>
+            <td><code>sudo apt install kdeconnect</code><br><span class="what">Phone app: <a class="dl" href="https://play.google.com/store/apps/details?id=org.kde.kdeconnect_tp">Google Play</a> · <a class="dl" href="https://f-droid.org/packages/org.kde.kdeconnect_tp/">F-Droid</a> · <a class="dl" href="https://apps.apple.com/app/kde-connect/id1580245991">App Store</a>. Pair them once.</span></td>
+            <td><span class="tag no">Linux only</span></td></tr>
+          <tr><td><b>KDE Plasma (KWin)</b></td><td class="what">Dock: real running apps, a click raises or minimizes the window, the window list.</td>
+            <td>Part of Plasma</td><td><span class="tag">built in</span></td></tr>
+          <tr><td><b>Plasma blur effect</b></td><td class="what">Frosted-glass blur behind the dock.</td>
+            <td><i>System Settings → Window Management → Desktop Effects → Blur</i></td><td><span class="tag no">–</span></td></tr>
+          <tr><td><b>Spectacle auto-save</b></td><td class="what">Add new screenshots to the shelf.</td>
+            <td>Spectacle → Configure → Save automatically<br><span class="what">Notch has a button that turns it on.</span></td><td><span class="tag">built in</span> Win + PrtSc</td></tr>
+          <tr><td><b>Dolphin · ktrash6</b></td><td class="what">Dock Trash: open and empty it.</td>
+            <td><code>sudo apt install dolphin kio-extras</code><br><span class="what">Part of Plasma.</span></td><td><span class="tag">built in</span> Recycle Bin</td></tr>
+          <tr><td><b>PipeWire / PulseAudio</b> (<code>pactl</code>)</td><td class="what">Equalizer, microphone indicator and mute state.</td>
+            <td><span class="tag">in the .deb</span> <code>pulseaudio-utils</code><br><span class="what">Works with PipeWire.</span></td><td><span class="tag no">–</span></td></tr>
+          <tr><td><b>Noto Serif JP</b></td><td class="what">The Washi theme's serif headings.</td>
+            <td><span class="tag">in the .deb</span> <code>fonts-noto-cjk</code></td>
+            <td><a class="dl" href="https://fonts.google.com/noto/specimen/Noto+Serif+JP">Google Fonts</a> <span class="what">(optional)</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <details class="faq" style="margin-top:14px"><summary>How do I add a folder to PATH on Windows?</summary>
+      <p>Start → type <i>environment variables</i> → <i>Edit the environment variables for your account</i> → select <b>Path</b> →
+        <b>Edit</b> → <b>New</b> → paste the folder → OK. Then restart Notch.</p>
+    </details>
+  </div>
+</section>
+
+<section id="source" style="background:var(--bg2);border-block:1px solid var(--line)">
+  <div class="wrap">
+    <h2>Build from source</h2>
+    <p class="sub">Needs Qt 6.5 or newer (Debian 13, Ubuntu 25.04+). The optional libraries are found automatically.</p>
+    <div class="card">
+      <div class="cmd"><pre>git clone https://github.com/Kepin17/olyzano-notch
+cd olyzano-notch
+# required
+sudo apt install cmake ninja-build g++ libssl-dev qt6-base-dev qt6-base-private-dev qt6-declarative-dev
+# optional
+sudo apt install liblayershellqtinterface-dev   # Wayland: pin the notch and dock to the screen edges
+sudo apt install libkf6windowsystem-dev         # blur behind the dock (KDE Plasma)
+sudo apt install libkf6idletime-dev             # stretch reminder: idle time on Wayland
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build &amp;&amp; ./build/notch
+cd build &amp;&amp; cpack                               # makes notch_&lt;version&gt;_amd64.deb</pre><button class="copy">Copy</button></div>
+      <p class="muted" style="margin:12px 0 0">Windows builds need Qt 6.8 (MSVC 2022), CMake, Ninja and OpenSSL; the exact steps are in
+        <a href="https://github.com/Kepin17/olyzano-notch/blob/main/.github/workflows/windows.yml">windows.yml</a>.</p>
+    </div>
+  </div>
+</section>
+
+<section id="faq" class="faq">
+  <div class="wrap">
+    <h2>Questions</h2>
+    <p class="sub">Short answers; the <a href="https://github.com/Kepin17/olyzano-notch#readme">README</a> has the rest.</p>
+    <details><summary>Where does the notch appear, and how do I open it?</summary>
+      <p>At the top-centre of every monitor. Rest the mouse on the top edge (or drag a file there) and it slides out. When idle it shows a small clock; rest on it to open.</p></details>
+    <details><summary>Where's the dock, and how do I keep apps in it?</summary>
+      <p>On the bottom edge by default (Settings → Dock → Position). It hides until the pointer touches the edge, or switch on <i>Always show</i>. Press <b>+</b> to add apps or folders, right-click an app → <i>Keep in Dock</i>, or drag a running app among the pinned ones.</p></details>
+    <details><summary>Why does a click on a dock app open a new window instead of switching?</summary>
+      <p>Raising existing windows needs KDE Plasma (KWin) on Linux, or Windows. On other desktops the dock can only start apps.</p></details>
+    <details><summary>How does the stretch reminder know I'm working?</summary>
+      <p>It asks the system how long ago you last used the mouse or keyboard. Time with input counts as work; a few minutes away counts as a break. Nothing about what you type is read.</p></details>
+    <details><summary>Windows says "Windows protected your PC". Is it safe?</summary>
+      <p>The build isn't code-signed, so SmartScreen warns about any new download. Click <b>More info → Run anyway</b>. The installer is built by GitHub Actions from this repository's source.</p></details>
+    <details><summary>Where are my files and settings?</summary>
+      <ul><li>Linux: <code>~/.local/share/notch</code> (files) and <code>~/.config/notch</code> (settings).</li><li>Windows: <code>%LOCALAPPDATA%\notch</code>.</li></ul></details>
+  </div>
+</section>
+</main>
 
 <footer>
-  <a href="https://github.com/Kepin17/olyzano-notch">Source and documentation</a> ·
-  <a href="https://github.com/Kepin17/olyzano-notch/releases">All releases</a>
+  <div class="wrap">
+    <span>Notch · open source</span>
+    <span><a href="https://github.com/Kepin17/olyzano-notch">Source &amp; docs</a> · <a href="https://github.com/Kepin17/olyzano-notch/releases">All releases</a> · <a href="https://github.com/Kepin17/olyzano-notch/blob/main/docs/wayland-limitations.md">Wayland notes</a></span>
+  </div>
 </footer>
-</main>
 
 <script>
 (function () {
   var repo = "Kepin17/olyzano-notch";
+  var $ = function (id) { return document.getElementById(id); };
   var ua = navigator.userAgent || "";
   var os = /Windows/i.test(ua) ? "windows" : /Linux|X11/i.test(ua) && !/Android/i.test(ua) ? "linux" : "";
-  var $ = function (id) { return document.getElementById(id); };
-  var releases = "https://github.com/" + repo + "/releases/latest";
+  var REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  function mb(n) { return (n / 1048576).toFixed(1) + " MB"; }
-  function label(el, text, a) { el.textContent = text + (a ? " (" + mb(a.size) + ")" : ""); }
+  // ---------- Light / dark (remembered when the browser allows it) ----------
+  var root = document.documentElement;
+  try { var saved = localStorage.getItem("theme"); if (saved) root.dataset.theme = saved; } catch (e) {}
+  $("themeBtn").addEventListener("click", function () {
+    var dark = root.dataset.theme ? root.dataset.theme === "dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    root.dataset.theme = dark ? "light" : "dark";
+    try { localStorage.setItem("theme", root.dataset.theme); } catch (e) {}
+  });
 
-  if (os) {
-    $(os).classList.add("me");
-    $("other").textContent = os === "linux" ? "Windows" : "Linux";
-    $("other").href = os === "linux" ? "#windows" : "#linux";
-    $("hero").textContent = "Download for " + (os === "linux" ? "Linux" : "Windows");
-    $("hero").href = "#" + os;
-    $("heroMeta").textContent = "Looking up the latest version…";
+  // ---------- Install tabs and copy buttons ----------
+  function showTab(which) {
+    ["linux", "windows"].forEach(function (k) {
+      $("tab-" + k).setAttribute("aria-selected", k === which ? "true" : "false");
+      $("panel-" + k).classList.toggle("on", k === which);
+    });
+  }
+  document.querySelectorAll(".tabs button").forEach(function (b) { b.addEventListener("click", function () { showTab(b.dataset.os); }); });
+  if (os) showTab(os);
+  document.querySelectorAll(".copy").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var text = b.previousElementSibling.textContent;
+      var done = function () { b.textContent = "Copied"; b.classList.add("done"); setTimeout(function () { b.textContent = "Copy"; b.classList.remove("done"); }, 1500); };
+      if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {});
+    });
+  });
+
+  // ---------- Scroll reveal ----------
+  var reveals = document.querySelectorAll(".reveal, .card, .table, .faq details");
+  document.querySelectorAll(".features .feature").forEach(function (f, i) { f.style.setProperty("--d", (i % 4) * 0.06 + "s"); });
+  if ("IntersectionObserver" in window && !REDUCED) {
+    reveals.forEach(function (el) { el.classList.add("reveal"); });
+    var ro = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("in"); ro.unobserve(e.target); } });
+    }, { rootMargin: "0px 0px -8% 0px" });
+    reveals.forEach(function (el) { ro.observe(el); });
+  } else {
+    reveals.forEach(function (el) { el.classList.add("in"); });
   }
 
+  // ---------- Pieces of the notch's content (shared by the hero and the stage) ----------
+  var instant = false; // reduced motion: jump to a scene's last frame
+  function swap(el, html) {
+    if (el._html === html) return;
+    el._html = html;
+    if (instant || REDUCED) { el.innerHTML = html; return; }
+    el.classList.add("out");
+    clearTimeout(el._t);
+    el._t = setTimeout(function () { el.innerHTML = html; el.classList.remove("out"); }, 140);
+  }
+  function micSvg(off) {
+    return '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">' +
+      '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/>' + (off ? '<path d="M4 4l16 16"/>' : "") + "</svg>";
+  }
+  function idle(o) {
+    o = Object.assign({ time: "12:33", mic: "live", batt: 0.76, charging: false, extra: "" }, o || {});
+    var micColor = o.mic === "muted" ? "#ff453a" : o.mic === "rec" ? "#ff9f0a" : "currentColor";
+    return "<span>" + o.time + '</span><span class="r">' + o.extra +
+      '<span style="display:flex;color:' + micColor + '">' + micSvg(o.mic === "muted") + "</span>" +
+      '<span class="batt" style="--b:' + o.batt + ";--bc:" + (o.charging ? "#30d158" : "#f5f5f7") + '"><i></i></span>' +
+      (o.charging ? "⚡" : "") + Math.round(o.batt * 100) + "%</span>";
+  }
+  function pill(icon, title, detail, color, p) {
+    return '<span style="color:' + color + ';font-weight:800">' + icon + "</span><span>" + title + "</span>" +
+      '<span class="r" style="color:' + color + '">' + detail + "</span>" +
+      (p == null ? "" : '<i class="hl" style="--p:' + p + ";--hc:" + color + '"></i>');
+  }
+  function prompt(minutes, withId) {
+    return '<div style="position:absolute;inset:0;padding:13px 18px;display:flex;flex-direction:column;gap:10px;white-space:normal">' +
+      '<div style="display:flex;gap:10px;align-items:center"><span style="font-size:22px">🧘</span><div>' +
+      '<div style="font-size:13.5px">Time to stretch</div><div style="color:var(--dim2,#8e8e93);font-weight:500;font-size:11.5px">You\'ve worked for ' +
+      minutes + " min. A short break helps.</div></div></div>" +
+      '<div class="btnrow"><span>Later (10 min)</span><span>Skip</span><span class="on"' + (withId ? ' id="startBreak"' : "") + ">Start break</span></div></div>";
+  }
+
+  // ---------- Hero: the notch changing shape ----------
+  var H = $("heroIsl"), HC = H.querySelector(".nc");
+  var heroStates = [
+    [200, 30, idle()],
+    [330, 38, pill("⏱", "Focus", "16:53", "#3daee9", 0.32)],
+    [380, 46, '<span>📱 Notification from WhatsApp</span><span class="r">Mom</span>'],
+    [440, 96, prompt(50, false)],
+    [330, 38, pill("↓", "ubuntu-26.04.iso", "1.2 GB · 8 MB/s", "#5ac8fa")]
+  ];
+  var hi = 0;
+  function heroStep() {
+    var s = heroStates[hi++ % heroStates.length];
+    H.style.width = s[0] + "px"; H.style.height = s[1] + "px";
+    H.style.borderRadius = s[1] > 80 ? "0 0 28px 28px" : "";
+    swap(HC, s[2]);
+  }
+  heroStep();
+  if (!REDUCED) setInterval(heroStep, 2600);
+  // Big on wide screens, but never wider than its box (the widest state is 440 px).
+  var showcase = H.parentNode;
+  function fitHero() { H.style.setProperty("--hs", Math.min(1.45, (showcase.clientWidth - 24) / 452).toFixed(3)); }
+  fitHero();
+  addEventListener("resize", fitHero);
+
+  // ---------- The demo stage ----------
+  var S = $("stage"), W = $("stageWrap"), N = $("notch"), NC = $("nc"), C = $("cursor"), G = $("ghost"), D = $("dock"), CAP = $("cap");
+  var k = 1;
+  function fit() { k = W.clientWidth / 960; S.style.transform = "scale(" + k + ")"; }
+  fit();
+  if ("ResizeObserver" in window) new ResizeObserver(fit).observe(W); else addEventListener("resize", fit);
+
+  var timers = [];
+  function later(ms, fn) { if (instant) { fn(); return; } timers.push(setTimeout(fn, ms)); }
+  function clearTimers() { timers.forEach(clearTimeout); timers = []; }
+
+  function at(el) {
+    var r = el.getBoundingClientRect(), s = S.getBoundingClientRect();
+    return [(r.left - s.left + r.width / 2) / k, (r.top - s.top + r.height / 2) / k];
+  }
+  function cursor(x, y, ms) {
+    C.style.transitionDuration = (instant || REDUCED ? 0 : ms == null ? 700 : ms) + "ms";
+    C.style.transform = "translate(" + x + "px," + y + "px)";
+  }
+  function cursorTo(el, ms) { if (!el) return; var p = at(el); cursor(p[0] - 3, p[1] - 2, ms); }
+  function click() { C.classList.remove("click"); void C.offsetWidth; C.classList.add("click"); }
+  function grab(html) { G.innerHTML = html; G.classList.add("on"); }
+  function drop() { G.classList.remove("on"); }
+  function cap(t) { CAP.innerHTML = t; }
+
+  function notch(w, h, html, cls) {
+    N.style.width = w + "px"; N.style.height = h + "px";
+    N.className = "isl " + (cls || "");
+    N.style.borderRadius = h > 80 ? "0 0 28px 28px" : "";
+    swap(NC, html || "");
+  }
+  function idleState(o) { notch(200, 30, idle(o)); }
+  function pillState(html) { notch(330, 38, html); }
+  function toast(html, color) { notch(380, 46, html, "toast"); N.style.setProperty("--tc", color); }
+  function setDetail(t) { var r = NC.querySelector(".r"); if (r) r.textContent = t; }
+  function setProgress(p, t) { var h = NC.querySelector(".hl"); if (h) h.style.setProperty("--p", p); if (t) setDetail(t); }
+
+  var TYPES = { pdf: ["PDF", "#e5484d"], img: ["IMG", "#30a46c"], zip: ["ZIP", "#f59e0b"], txt: ["TXT", "#3b82f6"] };
+  function tile(name, type, cls) {
+    var t = TYPES[type];
+    return '<div class="tile ' + (cls || "") + '" data-n="' + name + '"><div class="ic" data-t="' + t[0] + '" style="--c:' + t[1] + '"></div>' + name + "</div>";
+  }
+  function ghostTile(name, type) {
+    var t = TYPES[type];
+    return '<div class="tile" style="width:74px;height:84px;animation:none;font-size:9.5px"><div class="ic" data-t="' + t[0] + '" style="--c:' + t[1] + '"></div>' + name + "</div>";
+  }
+  function shelf(o) {
+    o = Object.assign({ tiles: [["photo.jpg", "img"], ["assets.zip", "zip"]], chip: "All" }, o || {});
+    var chips = ["All", "Documents", "Images", "Downloads"].map(function (c) {
+      return '<span class="' + (c === o.chip ? "on" : "") + '" data-c="' + c + '">' + c + "</span>";
+    }).join("");
+    return '<div class="pn"><div class="hd">Notch <span class="cnt">' + o.tiles.length + "</span>" +
+      '<div class="b"><span id="bTimer">⏱</span><span>🔗</span><span>⚙</span></div></div>' +
+      '<div class="chipsrow">' + chips + '</div><div class="tiles">' +
+      o.tiles.map(function (t) { return tile(t[0], t[1], t[2]); }).join("") + "</div></div>";
+  }
+  function panel(html, h) { notch(560, h || 222, html); }
+  function timerPage() {
+    var pre = [1, 5, 10, 15, 25, 45, 60].map(function (m) { return '<span class="pill2">' + m + " min</span>"; }).join("");
+    return '<div class="pn"><div class="hd">‹&nbsp; Timer</div><div style="display:flex;flex-wrap:wrap;gap:6px">' + pre + "</div>" +
+      '<div style="display:flex;align-items:center;gap:8px;margin-top:6px"><span style="color:var(--dim2);font-size:11.5px;flex:1;font-weight:500">' +
+      'Pomodoro · 25 min focus, 5 min break, round after round</span><span class="pill2 on" id="pomo">Start Pomodoro</span></div></div>';
+  }
+  function qrSvg(seed) {
+    var s = seed || 7, n = 21, r = "";
+    var rnd = function () { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+    var finder = function (x, y) {
+      return '<rect x="' + x + '" y="' + y + '" width="7" height="7"/><rect x="' + (x + 1) + '" y="' + (y + 1) + '" width="5" height="5" fill="#fff"/>' +
+        '<rect x="' + (x + 2) + '" y="' + (y + 2) + '" width="3" height="3"/>';
+    };
+    for (var y = 0; y < n; y++) for (var x = 0; x < n; x++) {
+      var inFinder = (x < 8 && y < 8) || (x > 12 && y < 8) || (x < 8 && y > 12);
+      if (!inFinder && rnd() > 0.52) r += '<rect x="' + x + '" y="' + y + '" width="1" height="1"/>';
+    }
+    return '<svg viewBox="0 0 21 21" width="100%" height="100%" shape-rendering="crispEdges"><g fill="#000">' + r +
+      finder(0, 0) + finder(14, 0) + finder(0, 14) + "</g></svg>";
+  }
+  function qrPanel() {
+    return '<div class="pn"><div class="hd">‹&nbsp; Share via QR</div><div style="display:flex;gap:16px;align-items:center">' +
+      '<div class="qr">' + qrSvg(11) + '</div><div style="font-weight:500;color:var(--dim2);font-size:12px;line-height:1.8">' +
+      '<b style="color:var(--ink2);font-size:13px">report.pdf</b><br>This WiFi · expires in 10 min<br>PIN 4821 · 2.4 MB</div></div></div>';
+  }
+  var code4 = '<div class="code4"><b>4</b><b>8</b><b>1</b><b>7</b></div>';
+  function nearbyPanel() {
+    return '<div class="pn"><div class="hd">‹&nbsp; Nearby</div><div style="font-weight:500">Sending report.pdf to <b>Kevin\'s laptop</b>…</div>' +
+      code4 + '<div style="text-align:center;color:var(--dim2);font-weight:500;font-size:11px">Check that the other computer shows the same number</div></div>';
+  }
+  function laptopHTML() {
+    return '<b>Notch · Nearby</b><div style="color:#aaa">MacBook wants to send report.pdf</div>' +
+      '<div style="transform:scale(.8)">' + code4 + '</div><div style="display:flex;gap:6px"><span class="pill2">Decline</span><span class="pill2 on" id="accept">Accept</span></div>';
+  }
+  function menu(x, y, items, hl) {
+    var m = document.createElement("div");
+    m.className = "menu";
+    m.style.left = x + "px"; m.style.top = y + "px";
+    m.innerHTML = items.map(function (t, i) { return '<div class="' + (i === hl ? "hl2" : "") + '">' + t + "</div>"; }).join("");
+    S.appendChild(m);
+  }
+  function removeMenus() { S.querySelectorAll(".menu").forEach(function (m) { m.remove(); }); }
+  function dots(cam, mic, w) {
+    var d = $("pdots").children;
+    d[0].classList.toggle("on", cam); d[1].classList.toggle("on", mic);
+    $("pdots").style.marginLeft = (w / 2 + 14) + "px";
+  }
+
+  // Dock
+  var dockApps = [
+    { bg: "linear-gradient(135deg,#3daee9,#1d6fb8)", run: 1, act: 1 },
+    { bg: "linear-gradient(135deg,#4cc2ff,#0b7bd6)", run: 1, badge: 7 },
+    { bg: "linear-gradient(135deg,#ff9f43,#ee5a24)", run: 1 },
+    { bg: "linear-gradient(135deg,#a78bfa,#6d28d9)" },
+    { bg: "linear-gradient(135deg,#f472b6,#be185d)" },
+    { sep: 1 },
+    { bg: "linear-gradient(135deg,#4b5563,#111827)", run: 1 },
+    { sep: 1 },
+    { trash: 1 }
+  ];
+  var order;
+  function buildDock() {
+    D.innerHTML = "";
+    order = dockApps.map(function (a, i) { return i; });
+    dockApps.forEach(function (a) {
+      var e = document.createElement("div");
+      e.className = a.sep ? "sep" : "di" + (a.run ? " run" : "") + (a.act ? " act" : "") + (a.trash ? " trash" : "");
+      if (a.bg) e.style.background = a.bg;
+      if (a.badge) { var b = document.createElement("em"); b.textContent = a.badge; e.appendChild(b); }
+      a.el = e;
+      D.appendChild(e);
+    });
+    layoutDock();
+  }
+  function layoutDock() {
+    var x = 12;
+    order.forEach(function (i) {
+      var a = dockApps[i];
+      if (a.sep) { a.el.style.left = (x + 3) + "px"; x += 8; } else { a.el.style.left = x + "px"; a.cx = x + 22; x += 54; }
+    });
+    D.style.width = (x + 2) + "px";
+  }
+  function dockX(a) { return 480 - parseFloat(D.style.width) / 2 + a.cx; }
+  function magnify(px) {
+    dockApps.forEach(function (a) {
+      if (a.sep) return;
+      var d = px == null ? 999 : Math.abs(px - dockX(a)), r = 110;
+      var s = d >= r ? 1 : 1 + 0.32 * (Math.cos(Math.PI * d / r) + 1) / 2;
+      a.el.style.setProperty("--s", s.toFixed(3));
+    });
+  }
+  function dockShow(on) { D.classList.toggle("on", on); if (!on) magnify(null); }
+
+  // Themes
+  var palettes = [
+    { name: "Classic", wall: "linear-gradient(140deg,#24375a 0%,#4a3550 48%,#8a5a4a 100%)", isl: "#000", acc: "#3daee9", sur: "#1c1c1e", sur2: "#2c2c2e", ink: "#f5f5f7", dim: "#8e8e93" },
+    { name: "Washi 和紙", wall: "linear-gradient(140deg,#3b2f25,#6b4f3a 50%,#a8875f)", isl: "#14120f", acc: "#d4493b", sur: "#211e1a", sur2: "#2b2722", ink: "#efe9dc", dim: "#9b917f" },
+    { name: "Frost", wall: "linear-gradient(140deg,#2e3440,#4c566a 50%,#88c0d0)", isl: "#1b1f27", acc: "#88c0d0", sur: "#242933", sur2: "#2e3440", ink: "#eceff4", dim: "#8f9bb3" },
+    { name: "Ocean", wall: "linear-gradient(140deg,#03203a,#0b4f6c 50%,#2ec4d6)", isl: "#06121c", acc: "#2ec4d6", sur: "#0d1f2d", sur2: "#15293a", ink: "#e6f1f8", dim: "#7f98ab" },
+    { name: "Forest", wall: "linear-gradient(140deg,#13261a,#2f5233 50%,#8fb07a)", isl: "#0f140f", acc: "#7fbf6a", sur: "#182018", sur2: "#212b20", ink: "#e8efe4", dim: "#8a9a84" },
+    { name: "Sunset", wall: "linear-gradient(140deg,#3a1c3d,#a8475a 50%,#ff9a6a)", isl: "#1a1014", acc: "#ff7a59", sur: "#24161b", sur2: "#301e24", ink: "#fbeee8", dim: "#a8877f" },
+    { name: "Lavender", wall: "linear-gradient(140deg,#231d3a,#5b4b8a 50%,#c3a6e8)", isl: "#14111c", acc: "#b392f0", sur: "#1d1828", sur2: "#272134", ink: "#efeaf8", dim: "#958ba9" },
+    { name: "Mocha", wall: "linear-gradient(140deg,#2a2018,#5c4535 50%,#c9a385)", isl: "#1b1714", acc: "#d39b6a", sur: "#25201b", sur2: "#2f2822", ink: "#f1e9e1", dim: "#a08f80" }
+  ];
+  function applyTheme(p) {
+    S.style.setProperty("--wall", p.wall); S.style.setProperty("--isl", p.isl); S.style.setProperty("--acc", p.acc);
+    S.style.setProperty("--sur", p.sur); S.style.setProperty("--sur2", p.sur2); S.style.setProperty("--ink2", p.ink); S.style.setProperty("--dim2", p.dim);
+  }
+  var SW = $("swatches");
+  palettes.forEach(function (p) {
+    var e = document.createElement("span");
+    e.style.background = "linear-gradient(135deg," + p.isl + " 0 58%," + p.acc + " 58%)";
+    e.textContent = p.name.split(" ")[0];
+    SW.appendChild(e);
+  });
+
+  // Back to a calm desktop between scenes.
+  function reset() {
+    clearTimers();
+    removeMenus();
+    applyTheme(palettes[0]);
+    idleState();
+    N.style.setProperty("--tc", "#30d158");
+    buildDock();
+    dockShow(false);
+    drop();
+    ["phone", "laptop", "tools", "swatches"].forEach(function (id) { $(id).classList.remove("on"); });
+    [].forEach.call(SW.children, function (c) { c.classList.remove("on"); });
+    var a = $("pg1"), b = $("pg2");
+    a.style.cssText = "left:40px;top:10px"; b.style.cssText = "left:290px;top:10px";
+    b.querySelector("b").textContent = "PDF"; b.querySelector("b").style.background = "";
+    $("toolsLabel").textContent = "";
+    $("callView").classList.remove("on");
+    $("win2title").textContent = "Editor";
+    dots(false, false, 200);
+    cursor(600, 340, 500);
+  }
+
+  // ---------- Scenes ----------
+  var scenes = [
+    { id: "shelf", name: "Shelf", dur: 8800, run: function () {
+      cap("Rest the pointer on the <b>top edge</b>…");
+      cursor(480, 6, 900);
+      later(950, function () { panel(shelf()); cap("…and the <b>shelf</b> slides out."); });
+      later(2300, function () { idleState(); cap("<b>Drag a file</b> to the top of the screen"); cursorTo($("srcFile"), 800); });
+      later(3300, function () { click(); grab(ghostTile("report.pdf", "pdf")); cursor(480, 14, 1000); });
+      later(4350, function () { panel(shelf()); N.classList.add("drop"); cap("Drop it: it's <b>copied</b> onto the shelf, your original stays put"); });
+      later(5100, function () { drop(); panel(shelf({ tiles: [["photo.jpg", "img"], ["assets.zip", "zip"], ["report.pdf", "pdf", "sel"]] })); });
+      later(6400, function () {
+        var t = NC.querySelector('[data-n="report.pdf"]'), c = NC.querySelector('[data-c="Documents"]');
+        if (c) c.classList.add("hit"); if (t) t.classList.add("gone");
+        cap("Sort it into <b>categories</b>, preview it, share it");
+      });
+      later(7300, function () { panel(shelf({ chip: "Documents", tiles: [["report.pdf", "pdf"], ["notes.txt", "txt"]] })); });
+    } },
+    { id: "dock", name: "App dock", dur: 9400, run: function () {
+      cap("The <b>dock</b> waits just below the screen edge");
+      cursor(480, 594, 900);
+      later(950, function () { dockShow(true); cap("Touch the edge and it <b>slides up</b>"); });
+      [330, 400, 470, 540, 610].forEach(function (x, j) { later(1700 + j * 380, function () { cursor(x, 556, 380); magnify(x); }); });
+      later(1700, function () { cap("Icons <b>grow</b> as the pointer passes"); });
+      later(3700, function () {
+        magnify(null);
+        var em = dockApps[1].el.querySelector("em");
+        em.textContent = "8"; em.classList.add("bump");
+        later(260, function () { em.classList.remove("bump"); });
+        cap("Unread <b>badges</b> from your apps");
+      });
+      later(4500, function () { cursor(dockX(dockApps[3]) - 3, 557, 500); });
+      later(5050, function () {
+        var a = dockApps[3];
+        click(); a.el.classList.add("lift");
+        a.el.style.transition = "left .7s cubic-bezier(.45,0,.2,1), transform .2s";
+        a.el.style.left = (parseFloat(a.el.style.left) - 108) + "px";
+        cursor(dockX(dockApps[1]) - 3, 543, 700);
+        cap("<b>Drag</b> icons to rearrange them");
+      });
+      later(5850, function () {
+        var a = dockApps[3];
+        a.el.classList.remove("lift"); a.el.style.transition = "";
+        order = [0, 3, 1, 2, 4, 5, 6, 7, 8]; layoutDock();
+      });
+      later(6400, function () { cursorTo($("srcFile2"), 700); cap("Drop files on the <b>Trash</b>"); });
+      later(7150, function () { click(); grab(ghostTile("notes.txt", "txt")); cursor(dockX(dockApps[8]) - 3, 552, 800); magnify(null); });
+      later(8000, function () { drop(); dockApps[8].el.classList.add("full"); magnify(dockX(dockApps[8])); cap("…they're moved to the trash. Right-click it to empty it."); });
+    } },
+    { id: "live", name: "Live activities", dur: 7800, run: function () {
+      cap("A <b>download</b> in progress shows in the closed notch");
+      pillState(pill("↓", "ubuntu-26.04.iso", "0.4 GB · 8.1 MB/s", "#5ac8fa"));
+      ["0.6 GB · 8.4 MB/s", "0.8 GB · 8.0 MB/s", "1.0 GB · 8.3 MB/s", "1.2 GB · 8.2 MB/s"].forEach(function (d, j) {
+        later(500 + j * 450, function () { setDetail(d); });
+      });
+      later(2600, function () { pillState(pill("⇄", "Sending to Kevin's laptop", "12%", "#5ac8fa", 0.12)); cap("A <b>Nearby</b> transfer, with its progress"); });
+      [0.3, 0.52, 0.74, 0.96].forEach(function (p, j) { later(3000 + j * 450, function () { setProgress(p, Math.round(p * 100) + "%"); }); });
+      later(5200, function () {
+        pillState('<span class="pulse"></span><span>Mom</span><span class="r" style="color:#30d158">Calling</span>');
+        cap("Your phone <b>ringing</b>, through KDE Connect");
+      });
+    } },
+    { id: "timer", name: "Timer & Pomodoro", dur: 9000, run: function () {
+      cap("Open Notch and press the <b>clock</b>");
+      cursor(480, 6, 800);
+      later(850, function () { panel(shelf()); });
+      later(1650, function () { cursorTo($("bTimer"), 600); });
+      later(2350, function () { click(); panel(timerPage(), 190); cap("Pick a timer, or start a <b>Pomodoro</b>"); });
+      later(3150, function () { cursorTo($("pomo"), 600); });
+      later(3850, function () { click(); });
+      later(4150, function () {
+        cursor(600, 360, 700);
+        pillState(pill("⏱", "Focus", "25:00", "#3daee9", 0));
+        cap("It counts down in the closed notch <span style=\"opacity:.6\">(sped up here)</span>");
+      });
+      for (var m = 24; m >= 0; m -= 3) (function (m) {
+        later(4500 + (24 - m) * 95, function () { setProgress(1 - m / 25, (m < 10 ? "0" : "") + m + ":00"); });
+      })(m);
+      later(7100, function () { toast('<span>⏱ Time for a break</span><span class="r">Round 1 done · 5 min</span>', "#3daee9"); cap("…and tells you when <b>time is up</b>"); });
+    } },
+    { id: "stretch", name: "Stretch reminder", dur: 9200, run: function () {
+      cap("Notch counts the time you <b>actually work</b>: mouse and keyboard");
+      idleState({ extra: '<span id="wk" style="color:#30d158">⌨ 46 min</span>' });
+      [47, 48, 49, 50].forEach(function (m, j) { later(450 + j * 380, function () { var e = $("wk"); if (e) e.textContent = "⌨ " + m + " min"; }); });
+      later(2200, function () { notch(440, 96, prompt(50, true)); cap("Then it <b>asks</b>: start a break, later, or skip. You decide."); });
+      later(3300, function () { cursorTo($("startBreak"), 700); });
+      later(4100, function () { click(); });
+      later(4350, function () {
+        cursor(620, 380, 700);
+        pillState(pill("🧘", "Roll your shoulders back", "04:59", "#30d158", 0));
+        cap("A short break, with a <b>stretch</b> to try");
+      });
+      [["Look far away for 20 seconds", "04:12", 0.16], ["Stand up and reach up high", "03:25", 0.32], ["Breathe in… and out", "02:38", 0.47]].forEach(function (t, j) {
+        later(5500 + j * 1100, function () { var sp = NC.querySelectorAll("span")[1]; if (sp) sp.textContent = t[0]; setProgress(t[2], t[1]); });
+      });
+    } },
+    { id: "idle", name: "Idle clock", dur: 7000, run: function () {
+      idleState();
+      cap("When nothing's going on: the <b>time</b>, your <b>microphone</b> and the <b>battery</b>");
+      later(1800, function () { idleState({ mic: "muted" }); cap("A muted microphone shows <b>red</b>"); });
+      later(3300, function () { idleState({ mic: "muted", charging: true, batt: 0.77 }); cap("Plugged in: <b>charging</b>"); });
+      later(4200, function () { idleState({ mic: "muted", charging: true, batt: 0.78, time: "12:34" }); });
+      later(5100, function () { idleState({ mic: "rec", charging: true, batt: 0.78, time: "12:34" }); cap("<b>Orange</b> while an app records you. Rest the pointer on it to open Notch."); });
+    } },
+    { id: "phone", name: "Phone & privacy", dur: 7600, run: function () {
+      $("phone").classList.add("on");
+      $("phoneScr").innerHTML = '<div class="note"><b>WhatsApp · now</b><div style="font-weight:600">Mom</div><div style="color:#555">Are you coming for dinner tonight? 🍜</div></div>';
+      cap("A message arrives on your phone…");
+      later(1400, function () { toast('<span>📱 Notification from WhatsApp</span><span class="r">Mom</span>', "#30d158"); cap("…Notch says <b>who</b> it's from, never the message itself"); });
+      later(3900, function () {
+        $("phone").classList.remove("on");
+        idleState({ mic: "rec" });
+        $("callView").classList.add("on"); $("win2title").textContent = "Video call";
+        dots(true, true, 200);
+        cap("<b>Green</b> while a camera is on, <b>orange</b> while the microphone records");
+      });
+    } },
+    { id: "share", name: "Share & Nearby", dur: 9400, run: function () {
+      cap("Right-click a file on the shelf → <b>Share via QR</b>");
+      cursor(480, 6, 700);
+      later(750, function () { panel(shelf({ tiles: [["photo.jpg", "img"], ["assets.zip", "zip"], ["report.pdf", "pdf"]] })); });
+      later(1550, function () { cursorTo(NC.querySelector('[data-n="report.pdf"]'), 600); });
+      later(2200, function () {
+        click();
+        var t = NC.querySelector('[data-n="report.pdf"]');
+        if (t) { var p = at(t); menu(p[0] + 8, p[1] + 6, ["Open", "Copy", "Share via QR…", "Send to device ▸"], 2); }
+      });
+      later(2950, function () {
+        removeMenus(); panel(qrPanel(), 196);
+        $("phone").classList.add("on"); $("phoneScr").innerHTML = '<div class="vf"><div class="qr">' + qrSvg(11) + "</div></div>";
+        cap("Scan it with a phone: over your <b>WiFi</b>, or through your own <b>encrypted server</b>");
+      });
+      later(4400, function () { $("phoneScr").innerHTML = '<div class="ok"><i>✓</i><b>report.pdf</b><span style="color:#666">Downloaded · 2.4 MB</span></div>'; });
+      later(5300, function () {
+        $("phone").classList.remove("on"); panel(nearbyPanel(), 196);
+        $("laptop").innerHTML = laptopHTML(); $("laptop").classList.add("on");
+        cap("<b>Nearby</b>: both computers show the same code before anything is sent");
+      });
+      later(6400, function () { cursorTo($("accept"), 700); });
+      later(7150, function () { click(); });
+      later(7400, function () { $("laptop").classList.remove("on"); cursor(600, 380, 600); pillState(pill("⇄", "Sending to Kevin's laptop", "100%", "#5ac8fa", 1)); cap("Accepted: the files land in a <b>Nearby</b> category, encrypted on the way"); });
+    } },
+    { id: "tools", name: "Tools", dur: 7600, run: function () {
+      var a = $("pg1"), b = $("pg2"), L = $("toolsLabel");
+      $("tools").classList.add("on");
+      panel(shelf({ tiles: [["part-1.pdf", "pdf", "sel"], ["part-2.pdf", "pdf", "sel"], ["photo.png", "img"]] }));
+      L.textContent = "part-1.pdf  +  part-2.pdf";
+      cap("Tools work right on the shelf: <b>merge</b> PDFs…");
+      later(1000, function () { a.style.left = "150px"; a.style.transform = "rotate(-5deg)"; b.style.left = "172px"; b.style.transform = "rotate(4deg)"; });
+      later(1900, function () { L.textContent = "merged.pdf · 12 pages"; });
+      later(2900, function () { cap("…<b>compress</b> them…"); a.style.transform = "rotate(-5deg) scale(.72)"; b.style.transform = "rotate(4deg) scale(.72)"; L.textContent = "8.2 MB → 2.1 MB"; });
+      later(4500, function () {
+        cap("…convert images, pull text out with <b>OCR</b>, zip anything");
+        a.style.opacity = "0"; b.style.transform = "rotate(0) scale(.95)";
+        var tag = b.querySelector("b"); tag.textContent = "WEBP"; tag.style.background = "#30a46c";
+        L.textContent = "photo.png → photo.webp";
+      });
+      later(6000, function () { L.textContent = "Text copied from the image ✓"; });
+    } },
+    { id: "themes", name: "Themes", dur: 8600, run: function () {
+      panel(shelf()); dockShow(true); SW.classList.add("on");
+      cap("Eight themes, each in dark and light");
+      palettes.forEach(function (p, j) {
+        later(500 + j * 950, function () {
+          applyTheme(p);
+          [].forEach.call(SW.children, function (c, i) { c.classList.toggle("on", i === j); });
+          cap("<b>" + p.name + "</b>" + (j === 0 ? " · follows your KDE accent colour" : ""));
+        });
+      });
+    } }
+  ];
+
+  // ---------- Tour: chips, controls, autoplay ----------
+  var CH = $("chips"), cur = 0, auto = !REDUCED, hold = false, finished = false, started = false, onScreen = false;
+  scenes.forEach(function (sc, i) {
+    var b = document.createElement("button");
+    b.setAttribute("role", "tab");
+    b.innerHTML = sc.name + "<i></i>";
+    b.addEventListener("click", function () { play(i); });
+    CH.appendChild(b);
+  });
+  function markChips(dur) {
+    [].forEach.call(CH.children, function (b, i) {
+      var bar = b.querySelector("i");
+      b.setAttribute("aria-current", i === cur ? "true" : "false");
+      bar.style.transition = "none"; bar.style.width = "0";
+      if (i === cur) {
+        // Scroll the chip row only (never the page, which the visitor may be reading elsewhere).
+        CH.scrollTo({ left: b.offsetLeft - CH.clientWidth / 2 + b.offsetWidth / 2, behavior: REDUCED ? "auto" : "smooth" });
+        if (!REDUCED) { void bar.offsetWidth; bar.style.transition = "width " + dur + "ms linear"; bar.style.width = "100%"; }
+        else bar.style.width = "100%";
+      }
+    });
+  }
+  function play(i) {
+    started = true;
+    cur = (i + scenes.length) % scenes.length;
+    var sc = scenes[cur];
+    instant = true; reset(); instant = false;
+    finished = false;
+    markChips(sc.dur);
+    if (REDUCED) { instant = true; sc.run(); instant = false; finished = true; return; }
+    sc.run();
+    later(sc.dur, function () { finished = true; if (auto && !hold && onScreen) play(cur + 1); });
+  }
+  function next() { play(cur + 1); }
+  $("prev").addEventListener("click", function () { play(cur - 1); });
+  $("next").addEventListener("click", next);
+  function setAuto(on) {
+    auto = on;
+    $("pause").textContent = on ? "⏸" : "▶";
+    $("pause").setAttribute("aria-label", on ? "Pause the tour" : "Play the tour");
+    if (on && finished && !hold && onScreen) next();
+  }
+  setAuto(auto);
+  $("pause").addEventListener("click", function () { setAuto(!auto); });
+  W.addEventListener("mouseenter", function () { hold = true; });
+  W.addEventListener("mouseleave", function () { hold = false; if (auto && finished && onScreen) next(); });
+  document.querySelectorAll(".see").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var i = scenes.findIndex(function (s) { return s.id === b.dataset.scene; });
+      $("demo").scrollIntoView({ behavior: REDUCED ? "auto" : "smooth", block: "start" });
+      play(i);
+    });
+  });
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) clearTimers(); else if (started) play(cur);
+  });
+
+  // Start the tour when the stage first comes into view; until then, a calm desktop.
+  instant = true; reset(); instant = false;
+  cap("Pick a feature above, or watch the tour");
+  // The tour only moves on while the stage is on screen.
+  if ("IntersectionObserver" in window) {
+    new IntersectionObserver(function (es) {
+      es.forEach(function (e) {
+        onScreen = e.isIntersecting;
+        if (!onScreen) return;
+        if (!started) play(0); else if (auto && finished && !hold) next();
+      });
+    }, { threshold: 0.35 }).observe(W);
+  } else { onScreen = true; play(0); }
+  window.notchDemo = { play: play, scenes: scenes.map(function (s) { return s.id; }) };
+
+  // ---------- Newest release: real file links, sizes and commands ----------
+  function mb(n) { return (n / 1048576).toFixed(1) + " MB"; }
   fetch("https://api.github.com/repos/" + repo + "/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
     .then(function (r) { if (!r.ok) throw 0; return r.json(); })
     .then(function (rel) {
       var find = function (re) { return (rel.assets || []).filter(function (a) { return re.test(a.name); })[0]; };
       var deb = find(/\.deb$/), exe = find(/setup\.exe$/), zip = find(/portable\.zip$/);
       var ver = (rel.tag_name || "").replace(/^v/, "");
-      if (deb) { $("deb").href = deb.browser_download_url; label($("deb"), "Download .deb", deb); $("debCmd").textContent = "sudo apt install ./" + deb.name; }
-      if (exe) { $("exe").href = exe.browser_download_url; label($("exe"), "Download installer", exe); }
-      if (zip) { $("zip").href = zip.browser_download_url; label($("zip"), "Portable .zip", zip); }
+      if (ver) $("verTag").textContent = "v" + ver;
+      if (deb) {
+        $("deb").href = deb.browser_download_url;
+        $("deb").textContent = "⬇ Download .deb (" + mb(deb.size) + ")";
+        $("wgetCmd").textContent = "wget " + deb.browser_download_url;
+        $("debCmd").textContent = "sudo apt install ./" + deb.name;
+      }
+      if (exe) { $("exe").href = exe.browser_download_url; $("exe").textContent = "⬇ Installer (" + mb(exe.size) + ")"; }
+      if (zip) { $("zip").href = zip.browser_download_url; $("zip").textContent = "Portable .zip (" + mb(zip.size) + ")"; }
       var mine = os === "linux" ? deb : os === "windows" ? exe : null;
-      if (mine) $("hero").href = mine.browser_download_url;
-      $("heroMeta").textContent = ver ? "Version " + ver + (mine ? "" : " · no file for your system in this release yet") : "";
+      if (os) $("hero").textContent = "⬇ Download for " + (os === "linux" ? "Linux" : "Windows");
+      $("hero").href = mine ? mine.browser_download_url : "#install";
+      $("heroMeta").textContent = (ver ? "Version " + ver : "") + (mine ? " · " + mine.name + " · " + mb(mine.size)
+                                   : os ? " · no file for your system in this release yet" : "");
     })
     .catch(function () {
-      $("hero").href = os ? "#" + os : releases;
-      $("heroMeta").textContent = os ? "Could not reach GitHub; the buttons below open the releases page." : "";
+      if (os) { $("hero").textContent = "⬇ Download for " + (os === "linux" ? "Linux" : "Windows"); $("hero").href = "#install"; }
     });
 })();
 </script>

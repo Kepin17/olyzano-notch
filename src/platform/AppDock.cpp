@@ -25,6 +25,15 @@
 #endif
 #ifdef Q_OS_WIN
 #include <windows.h>
+#include <shellapi.h>
+#endif
+
+#ifndef Q_OS_WIN
+// The freedesktop trash in the home folder (what Dolphin's Trash shows for the home partition).
+static QString homeTrash()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation) + QStringLiteral("/Trash");
+}
 #endif
 
 static QString configPath()
@@ -41,6 +50,13 @@ AppDock::AppDock(QObject *parent)
     m_timer.setInterval(2000);
     connect(&m_timer, &QTimer::timeout, this, &AppDock::refresh);
     startKWin();
+#ifndef Q_OS_WIN
+    // Watch the trash folder (and its parent, for when the first file ever trashed creates it).
+    QDir().mkpath(homeTrash() + QStringLiteral("/files"));
+    m_trashWatcher.addPath(homeTrash() + QStringLiteral("/files"));
+    connect(&m_trashWatcher, &QFileSystemWatcher::directoryChanged, this, &AppDock::checkTrash);
+#endif
+    checkTrash();
 #ifdef NOTCH_HAVE_DBUS
     // Any sender, any path: apps (Telegram, Thunderbird, Discord, …) broadcast this for their launcher icon.
     QDBusConnection::sessionBus().connect(QString(), QString(), QStringLiteral("com.canonical.Unity.LauncherEntry"),
@@ -103,6 +119,80 @@ void AppDock::setAnimation(const QString &animation)
     static const QStringList kinds = {QStringLiteral("none"), QStringLiteral("smooth"), QStringLiteral("bouncy")};
     if (kinds.contains(animation))
         storeAppearance(QStringLiteral("animation"), animation);
+}
+
+void AppDock::setShowTrash(bool show)
+{
+    storeAppearance(QStringLiteral("showTrash"), show);
+}
+
+void AppDock::checkTrash()
+{
+#ifdef Q_OS_WIN
+    SHQUERYRBINFO info = {};
+    info.cbSize = sizeof(info);
+    const bool full = SUCCEEDED(SHQueryRecycleBinW(nullptr, &info)) && info.i64NumItems > 0;
+#else
+    const bool full = !QDir(homeTrash() + QStringLiteral("/files")).isEmpty(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System);
+#endif
+    if (full == m_trashFull)
+        return;
+    m_trashFull = full;
+    emit trashChanged();
+}
+
+int AppDock::moveToTrash(const QStringList &urls)
+{
+    int moved = 0;
+    for (const QString &u : urls) {
+        const QUrl url(u);
+        const QString path = url.isLocalFile() ? url.toLocalFile() : u;
+        if (QDir::isAbsolutePath(path) && QFileInfo::exists(path) && QFile::moveToTrash(path))
+            ++moved;
+    }
+    checkTrash();
+    return moved;
+}
+
+void AppDock::openTrash() const
+{
+#ifdef Q_OS_WIN
+    QProcess::startDetached(QStringLiteral("explorer.exe"), {QStringLiteral("shell:RecycleBinFolder")});
+#else
+    QDesktopServices::openUrl(QUrl(QStringLiteral("trash:/"))); // Dolphin and other KIO apps open it
+#endif
+}
+
+void AppDock::emptyTrash()
+{
+#ifdef Q_OS_WIN
+    SHEmptyRecycleBinW(nullptr, nullptr, SHERB_NOCONFIRMATION | SHERB_NOPROGRESSUI | SHERB_NOSOUND);
+    checkTrash();
+#else
+    // KDE's ktrash also empties the trash folders on other drives; without it, clear the home trash.
+    for (const char *tool : {"ktrash6", "ktrash5"}) {
+        const QString ktrash = QStandardPaths::findExecutable(QString::fromLatin1(tool));
+        if (!ktrash.isEmpty()) {
+            auto *process = new QProcess(this);
+            connect(process, &QProcess::finished, this, [this, process] {
+                process->deleteLater();
+                checkTrash();
+            });
+            process->start(ktrash, {QStringLiteral("--empty")});
+            return;
+        }
+    }
+    for (const QString &sub : {QStringLiteral("/files"), QStringLiteral("/info")}) {
+        const QDir dir(homeTrash() + sub);
+        for (const QFileInfo &f : dir.entryInfoList(QDir::AllEntries | QDir::NoDotAndDotDot | QDir::Hidden | QDir::System)) {
+            if (f.isDir() && !f.isSymLink())
+                QDir(f.absoluteFilePath()).removeRecursively();
+            else
+                QFile::remove(f.absoluteFilePath());
+        }
+    }
+    checkTrash();
+#endif
 }
 
 void AppDock::setShowRunning(bool show)
@@ -283,6 +373,11 @@ void AppDock::openWith(const QString &id, const QStringList &urls)
 
 QIcon AppDock::iconFor(const QString &id) const
 {
+    if (id == QLatin1String("special:trash") || id == QLatin1String("special:trash-full")) {
+        const QIcon themed = QIcon::fromTheme(id == QLatin1String("special:trash") ? QStringLiteral("user-trash")
+                                                                                 : QStringLiteral("user-trash-full"));
+        return themed.isNull() ? QFileIconProvider().icon(QFileIconProvider::Trashcan) : themed;
+    }
     if (isFolder(id)) {
         const QString path = folderPath(id);
 #ifdef Q_OS_WIN
@@ -318,6 +413,9 @@ QIcon AppDock::iconFor(const QString &id) const
 void AppDock::refresh()
 {
     loadCatalog();
+#ifdef Q_OS_WIN
+    checkTrash();
+#endif
     QString active;
     const QList<DockApp> running = runningApps(&active);
     QVariantList items = dockmodel::merge(m_pinned, m_catalog, running, active, showRunning());
