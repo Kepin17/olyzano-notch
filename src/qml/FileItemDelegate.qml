@@ -65,7 +65,7 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        radius: theme.washi ? 8 : 18
+        radius: theme.radiusLg
         color: tile.selected ? theme.accentFaint : hover.hovered ? theme.surface : "transparent"
         border.width: tile.selected || (theme.washi && hover.hovered) ? 1 : 0
         border.color: tile.selected && theme.washi ? theme.accent : theme.washi ? theme.outline : theme.accentSoft
@@ -90,7 +90,7 @@ Item {
         y: 10
         width: 64
         height: 64
-        radius: theme.washi ? 6 : 16
+        radius: theme.radiusLg - 2
         color: theme.surface
         border.width: tile.selected ? 2 : theme.washi ? 1 : 0
         border.color: tile.selected ? theme.accent : theme.outline
@@ -162,60 +162,28 @@ Item {
             }
         }
 
+        // One mark per tile, the most important first: missing, selected, expiring, kept. Bottom-left, away
+        // from the open and remove buttons that appear on hover.
         Rectangle {
-            visible: tile.pinned && !hover.hovered
-            anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.margins: -4
-            width: 18
-            height: 18
-            radius: 9
-            color: theme.warn
-            border.color: theme.island
-            border.width: 1.5
-            Text { anchors.centerIn: parent; text: "★"; color: "black"; font.pixelSize: 10 }
-        }
-
-        Rectangle {
-            visible: tile.selected
+            id: badge
+            readonly property string kind: tile.failed ? "failed" : tile.selected ? "selected" : tile.expiringSoon ? "expiring" : tile.pinned ? "kept" : ""
+            visible: kind !== ""
             anchors.left: parent.left
             anchors.bottom: parent.bottom
             anchors.margins: -4
             width: 18
             height: 18
             radius: 9
-            color: theme.accent
+            color: kind === "failed" ? theme.danger : kind === "selected" ? theme.accent : theme.warn
             border.color: theme.island
             border.width: 1.5
-            Text { anchors.centerIn: parent; text: "✓"; color: "white"; font.pixelSize: 10; font.bold: true }
-        }
-
-        Rectangle {
-            visible: tile.failed
-            anchors.right: parent.right
-            anchors.bottom: parent.bottom
-            anchors.margins: -4
-            width: 18
-            height: 18
-            radius: 9
-            color: theme.danger
-            border.color: theme.island
-            border.width: 1.5
-            Text { anchors.centerIn: parent; text: "!"; color: "white"; font.pixelSize: 11; font.bold: true }
-        }
-
-        Rectangle {
-            visible: tile.expiringSoon && !hover.hovered
-            anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.margins: -4
-            width: 18
-            height: 18
-            radius: 9
-            color: theme.warn
-            border.color: theme.island
-            border.width: 1.5
-            Text { anchors.centerIn: parent; text: "⏳"; font.pixelSize: 9 }
+            Text {
+                anchors.centerIn: parent
+                text: badge.kind === "failed" ? "!" : badge.kind === "selected" ? "✓" : badge.kind === "expiring" ? "⏳" : "★"
+                color: badge.kind === "kept" || badge.kind === "expiring" ? "black" : "white"
+                font.pixelSize: badge.kind === "expiring" ? 9 : 10
+                font.bold: badge.kind === "failed" || badge.kind === "selected"
+            }
         }
 
         CircleButton {

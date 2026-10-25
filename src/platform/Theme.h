@@ -22,6 +22,10 @@ class Theme : public QObject
     Q_PROPERTY(QColor info READ info NOTIFY changed)
     Q_PROPERTY(QColor media READ media NOTIFY changed)
     Q_PROPERTY(int chipRadius READ chipRadius NOTIFY changed)
+    // One shape language: corner radii and gaps come from these (Washi is the sharper one).
+    Q_PROPERTY(int radiusSm READ radiusSm NOTIFY changed) // small controls, thumbnails
+    Q_PROPERTY(int radiusMd READ radiusMd NOTIFY changed) // cards, tiles, menus
+    Q_PROPERTY(int radiusLg READ radiusLg NOTIFY changed) // popups, panels
     Q_PROPERTY(QString displayFont READ displayFont NOTIFY changed) // headings; "" = system font
     Q_PROPERTY(bool dark READ dark NOTIFY changed)
     Q_PROPERTY(QColor accent READ accent NOTIFY changed)
@@ -59,6 +63,9 @@ public:
     QColor info() const { return role(&Palette::info); }
     QColor media() const { return role(&Palette::media); }
     int chipRadius() const { return washi() ? 6 : 13; }
+    int radiusSm() const { return washi() ? 4 : 8; }
+    int radiusMd() const { return washi() ? 6 : 12; }
+    int radiusLg() const { return washi() ? 8 : 18; }
     QString displayFont() const { return washi() ? QStringLiteral("Noto Serif CJK JP") : QString(); }
     QColor accentSoft() const { return withAlpha(accent(), dark() ? 0.30 : 0.18); }
     QColor accentFaint() const { return withAlpha(accent(), 0.10); }

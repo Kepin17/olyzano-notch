@@ -276,7 +276,7 @@ ScrollView {
                 Layout.fillWidth: true
                 Layout.topMargin: -6
                 implicitHeight: warnRow.implicitHeight + 16
-                radius: 12
+                radius: theme.radiusMd
                 color: theme.warnBg
                 RowLayout {
                     id: warnRow
@@ -666,7 +666,7 @@ ScrollView {
                         required property var modelData
                         Layout.fillWidth: true
                         implicitHeight: srvBody.implicitHeight + 16
-                        radius: theme.washi ? 8 : 12
+                        radius: theme.radiusMd
                         color: theme.card
                         border.width: 1
                         border.color: modelData.isDefault ? theme.accent : theme.outline
@@ -803,7 +803,7 @@ ScrollView {
                             Accessible.name: modelData.name + " theme"
                             onClicked: notch.uiStyle = modelData.id
                             background: Rectangle {
-                                radius: 12
+                                radius: theme.radiusMd
                                 color: styleCard.modelData.island
                                 border.width: styleCard.current ? 2 : 1
                                 border.color: styleCard.current ? theme.accent : styleCard.hovered ? theme.textFaint : theme.outline
@@ -903,7 +903,7 @@ ScrollView {
         default property alias content: cardBody.data
         Layout.fillWidth: true
         implicitHeight: cardBody.implicitHeight + 24
-        radius: theme.washi ? 8 : 14
+        radius: theme.radiusMd
         color: theme.card
         border.width: 1
         border.color: theme.outline
@@ -987,7 +987,7 @@ ScrollView {
                 y: slider.topPadding + (slider.availableHeight - height) / 2
                 width: 16
                 height: 16
-                radius: 8
+                radius: theme.radiusSm
                 color: slider.pressed ? theme.accent : theme.text
                 border.color: theme.outline
             }

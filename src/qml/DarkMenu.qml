@@ -6,7 +6,7 @@ Menu {
     padding: 6
     background: Rectangle {
         implicitWidth: 220
-        radius: 12
+        radius: theme.radiusMd
         color: theme.surface
         border.color: theme.surfaceHover
     }
@@ -22,7 +22,7 @@ Menu {
             leftPadding: 4
         }
         background: Rectangle {
-            radius: 8
+            radius: theme.radiusSm
             color: mi.highlighted && mi.enabled ? theme.surfaceHover : "transparent"
         }
     }

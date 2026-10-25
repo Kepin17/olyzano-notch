@@ -14,6 +14,9 @@ Popup {
     property string mode: "local" // local | relay | nearby
     property string nearbyId: ""
     property string receiveError: ""
+    property bool optionsOpen: false
+    // A chosen protection, or a rejected secret, keeps the options in view.
+    readonly property bool optionsShown: optionsOpen || protection !== "none" || (tried && secretError !== "")
     property int ttl: 3600
     property string protection: "none" // none | pin | password
     property bool single: true
@@ -59,6 +62,7 @@ Popup {
         protection = "none"
         tried = false
         nearbyId = ""
+        optionsOpen = false
         addresses = share.lanAddresses()
         address = addresses.length > 0 ? addresses[0] : ""
         secret.clear()
@@ -111,7 +115,7 @@ Popup {
         onTriggered: pop.now = Math.floor(Date.now() / 1000)
     }
 
-    background: Rectangle { radius: theme.washi ? 8 : 16; color: theme.surface; border.color: theme.outline }
+    background: Rectangle { radius: theme.radiusLg; color: theme.surface; border.color: theme.outline }
 
     contentItem: ColumnLayout {
         spacing: 10
@@ -209,7 +213,7 @@ Popup {
                         required property var modelData
                         Layout.fillWidth: true
                         implicitHeight: 40
-                        radius: theme.washi ? 8 : 12
+                        radius: theme.radiusMd
                         color: theme.card
                         border.width: 1
                         border.color: pop.nearbyId === modelData.id ? theme.accent : theme.outline
@@ -274,73 +278,89 @@ Popup {
                 color: theme.danger
                 text: "These include locked files. Over WiFi they are sent unencrypted."
             }
-            Row {
-                visible: pop.mode !== "nearby"
-                spacing: 6
-                Repeater {
-                    model: [[600, "10 min"], [3600, "1 hour"], [86400, "24 hours"]]
-                    PillButton {
-                        required property var modelData
-                        text: modelData[1]
-                        enabled: pop.ttlAllowed(modelData[0])
-                        checked: pop.ttl === modelData[0]
-                        onClicked: { pop.ttl = modelData[0]; share.defaultTtl = modelData[0] }
-                    }
-                }
-            }
-
-            SectionLabel { text: "Protect with"; visible: pop.mode !== "nearby" }
-            Row {
-                visible: pop.mode !== "nearby"
-                spacing: 6
-                PillButton { text: "Nothing"; checked: pop.protection === "none"; onClicked: pop.protection = "none" }
-                PillButton { iconName: "lock"; text: "PIN"; checked: pop.protection === "pin"; onClicked: pop.protection = "pin" }
-                PillButton { iconName: "lock"; text: "Password"; checked: pop.protection === "password"; onClicked: pop.protection = "password" }
-            }
-            TextField {
-                id: secret
-                visible: pop.protection !== "none"
-                Layout.fillWidth: true
-                implicitHeight: 30
-                leftPadding: 12
-                placeholderText: pop.protection === "pin" ? "PIN (4–12 digits)" : "Password (8+ characters)"
-                placeholderTextColor: theme.placeholder
-                color: theme.text
-                selectionColor: theme.accent
-                font.pixelSize: 13
-                echoMode: showSecret.checked ? TextInput.Normal : TextInput.Password
-                inputMethodHints: pop.protection === "pin" ? Qt.ImhDigitsOnly : Qt.ImhNone
-                background: Rectangle {
-                    radius: theme.chipRadius + 2
-                    color: theme.well
-                    border.width: 1
-                    border.color: pop.tried && pop.secretError !== "" ? theme.danger : theme.accent
-                }
-                onAccepted: pop.begin()
-                Keys.onEscapePressed: pop.close()
-            }
+            // Expiry and protection: closed by default, the summary says what they are set to.
             RowLayout {
-                visible: pop.protection !== "none"
+                visible: pop.mode !== "nearby"
                 Layout.fillWidth: true
                 Caption {
                     Layout.fillWidth: true
-                    color: pop.tried && pop.secretError !== "" ? theme.danger : theme.textDim
-                    text: pop.tried && pop.secretError !== "" ? pop.secretError
-                          : pop.protection === "pin"
-                            ? (pop.mode === "relay" ? "Checked by your server: 5 wrong tries lock it for 10 minutes."
-                                                    : "Checked by Olyzano Notch: 5 wrong tries lock that phone out for 10 minutes.")
-                            : (pop.mode === "relay" ? "It also locks the key inside the link, so the link alone opens nothing. Tell it by another route."
-                                                    : "Checked by Olyzano Notch: 5 wrong tries lock that phone out for 10 minutes.")
+                    text: "Expires in " + (({ 600: "10 min", 3600: "1 hour", 86400: "24 hours" })[pop.ttl] || Math.round(pop.ttl / 60) + " min")
+                          + " · " + (pop.protection === "none" ? "no PIN or password" : pop.protection === "pin" ? "PIN" : "password")
                 }
-                PillButton { id: showSecret; text: "Show"; checkable: true }
+                PillButton { text: pop.optionsShown ? "Fewer options" : "Options"; checked: pop.optionsShown; onClicked: pop.optionsOpen = !pop.optionsOpen }
             }
-            SettingToggle {
-                visible: pop.mode === "relay" && pop.ids.length === 1
+            ColumnLayout {
+                visible: pop.mode !== "nearby" && pop.optionsShown
                 Layout.fillWidth: true
-                title: "Single download"
-                caption: "The link stops working after the first download."
-                checked: pop.single
-                onToggled: pop.single = !pop.single
+                spacing: 10
+                Row {
+                    visible: pop.mode !== "nearby"
+                    spacing: 6
+                    Repeater {
+                        model: [[600, "10 min"], [3600, "1 hour"], [86400, "24 hours"]]
+                        PillButton {
+                            required property var modelData
+                            text: modelData[1]
+                            enabled: pop.ttlAllowed(modelData[0])
+                            checked: pop.ttl === modelData[0]
+                            onClicked: { pop.ttl = modelData[0]; share.defaultTtl = modelData[0] }
+                        }
+                    }
+                }
+
+                SectionLabel { text: "Protect with"; visible: pop.mode !== "nearby" }
+                Row {
+                    visible: pop.mode !== "nearby"
+                    spacing: 6
+                    PillButton { text: "Nothing"; checked: pop.protection === "none"; onClicked: pop.protection = "none" }
+                    PillButton { iconName: "lock"; text: "PIN"; checked: pop.protection === "pin"; onClicked: pop.protection = "pin" }
+                    PillButton { iconName: "lock"; text: "Password"; checked: pop.protection === "password"; onClicked: pop.protection = "password" }
+                }
+                TextField {
+                    id: secret
+                    visible: pop.protection !== "none"
+                    Layout.fillWidth: true
+                    implicitHeight: 30
+                    leftPadding: 12
+                    placeholderText: pop.protection === "pin" ? "PIN (4–12 digits)" : "Password (8+ characters)"
+                    placeholderTextColor: theme.placeholder
+                    color: theme.text
+                    selectionColor: theme.accent
+                    font.pixelSize: 13
+                    echoMode: showSecret.checked ? TextInput.Normal : TextInput.Password
+                    inputMethodHints: pop.protection === "pin" ? Qt.ImhDigitsOnly : Qt.ImhNone
+                    background: Rectangle {
+                        radius: theme.chipRadius + 2
+                        color: theme.well
+                        border.width: 1
+                        border.color: pop.tried && pop.secretError !== "" ? theme.danger : theme.accent
+                    }
+                    onAccepted: pop.begin()
+                    Keys.onEscapePressed: pop.close()
+                }
+                RowLayout {
+                    visible: pop.protection !== "none"
+                    Layout.fillWidth: true
+                    Caption {
+                        Layout.fillWidth: true
+                        color: pop.tried && pop.secretError !== "" ? theme.danger : theme.textDim
+                        text: pop.tried && pop.secretError !== "" ? pop.secretError
+                              : pop.protection === "pin"
+                                ? (pop.mode === "relay" ? "Checked by your server: 5 wrong tries lock it for 10 minutes."
+                                                        : "Checked by Olyzano Notch: 5 wrong tries lock that phone out for 10 minutes.")
+                                : (pop.mode === "relay" ? "It also locks the key inside the link, so the link alone opens nothing. Tell it by another route."
+                                                        : "Checked by Olyzano Notch: 5 wrong tries lock that phone out for 10 minutes.")
+                    }
+                    PillButton { id: showSecret; text: "Show"; checkable: true }
+                }
+                SettingToggle {
+                    visible: pop.mode === "relay" && pop.ids.length === 1
+                    Layout.fillWidth: true
+                    title: "Single download"
+                    caption: "The link stops working after the first download."
+                    checked: pop.single
+                    onToggled: pop.single = !pop.single
+                }
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -403,7 +423,7 @@ Popup {
                             readonly property var snapshot: ({ status: status, progress: progress, expiresAt: expiresAt, downloads: downloads, message: message })
                             Layout.fillWidth: true
                             implicitHeight: body.implicitHeight + 20
-                            radius: theme.washi ? 8 : 12
+                            radius: theme.radiusMd
                             color: theme.card
                             border.width: 1
                             border.color: open ? theme.accent : theme.outline
@@ -556,7 +576,7 @@ Popup {
                         readonly property bool moving: state === "sending" || state === "receiving"
                         Layout.fillWidth: true
                         implicitHeight: nbBody.implicitHeight + 20
-                        radius: theme.washi ? 8 : 12
+                        radius: theme.radiusMd
                         color: theme.card
                         border.width: 1
                         border.color: state === "asking" ? theme.accent : theme.outline

@@ -7,7 +7,7 @@ import QtQuick.Shapes
 // Now-playing card (MPRIS), modelled on the iOS Dynamic Island player.
 Rectangle {
     id: card
-    radius: 18
+    radius: theme.radiusLg
     color: theme.card
     implicitHeight: content.implicitHeight + 28
 
@@ -99,7 +99,7 @@ Rectangle {
                 id: cover
                 Layout.preferredWidth: 56
                 Layout.preferredHeight: 56
-                radius: 12
+                radius: theme.radiusMd
                 color: theme.surface
                 Image {
                     id: art

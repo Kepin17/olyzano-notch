@@ -47,7 +47,7 @@ Window {
     Timer { id: flashTimer; interval: 6000; onTriggered: root.playerFlash = false }
     readonly property bool selecting: page === "shelf" && selection.length > 0
     readonly property bool inRemoved: notch.categoryFilter === "__removed__" // Recently removed view
-    readonly property bool anyMenu: menu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible
+    readonly property bool anyMenu: menu.visible || moreMenu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible
                                     || toolsMenu.visible || extractPopup.visible || settingsPage.overlayOpen
                                     || quickLookCard.visible || vaultPopup.visible || confirmDelete.visible
                                     || sharePopup.visible || incomingPopup.visible
@@ -676,7 +676,7 @@ Window {
                 visible: toastRow.t.kind === "color"
                 Layout.preferredWidth: 24
                 Layout.preferredHeight: 24
-                radius: 12
+                radius: theme.radiusMd
                 color: toastRow.t.kind === "color" ? toastRow.t.detail : "transparent"
                 border.width: 1.5
                 border.color: theme.outline
@@ -1070,7 +1070,7 @@ Window {
                         onClicked: root.saveNote()
                     }
                     IconButton {
-                        visible: root.page === "shelf" && !root.selecting
+                        visible: root.page === "shelf" && !root.selecting && activities.timerKind !== "" // else under "⋯"
                         iconName: "timer"
                         checked: activities.timerKind !== ""
                         Accessible.name: "Timer and Pomodoro"
@@ -1146,15 +1146,11 @@ Window {
                         }
                     }
                     IconButton {
-                        visible: root.page === "shelf" && !root.selecting && colorPicker.supported
-                        iconName: "palette"
-                        Accessible.name: "Pick a color from the screen"
-                        onClicked: {
-                            // Get out of the way so anything on screen (even under Notch) can be picked.
-                            root.pinned = false
-                            root.open = false
-                            colorPicker.pick()
-                        }
+                        visible: root.page === "shelf" && !root.selecting
+                        text: "⋯"
+                        checked: moreMenu.visible
+                        Accessible.name: "More"
+                        onClicked: moreMenu.popup()
                     }
                     IconButton {
                         visible: root.page === "shelf" && !root.selecting
@@ -1194,7 +1190,7 @@ Window {
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
                     implicitHeight: errorText.implicitHeight + 16
-                    radius: 12
+                    radius: theme.radiusMd
                     color: theme.dangerBg
                     Text {
                         id: errorText
@@ -1441,7 +1437,7 @@ Window {
                                 y: 1
                                 width: emptyState.width - 2
                                 height: emptyState.height - 2
-                                radius: 18
+                                radius: theme.radiusLg
                             }
                         }
                     }
@@ -1559,7 +1555,7 @@ Window {
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
                     Layout.preferredHeight: hasImage || hasText ? 320 : 150
-                    radius: 16
+                    radius: theme.radiusLg
                     color: theme.well
                     clip: true
 
@@ -1638,7 +1634,7 @@ Window {
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
                     implicitHeight: 36
-                    radius: 12
+                    radius: theme.radiusMd
                     color: theme.surface
                     RowLayout {
                         anchors.fill: parent
@@ -1686,7 +1682,7 @@ Window {
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
                     implicitHeight: 34
-                    radius: 12
+                    radius: theme.radiusMd
                     color: theme.infoBg
                     Text {
                         anchors.fill: parent
@@ -1707,7 +1703,7 @@ Window {
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
                     implicitHeight: 36
-                    radius: 12
+                    radius: theme.radiusMd
                     color: theme.surface
                     RowLayout {
                         anchors.fill: parent
@@ -1961,6 +1957,22 @@ Window {
                 font.pixelSize: 12
                 elide: Text.ElideMiddle
                 horizontalAlignment: Text.AlignHCenter
+            }
+        }
+    }
+
+    // The header's less-used buttons.
+    DarkMenu {
+        id: moreMenu
+        Action { text: "Timer and Pomodoro"; onTriggered: root.page = "timer" }
+        Action {
+            text: "Pick a color from the screen"
+            enabled: colorPicker.supported
+            onTriggered: {
+                // Get out of the way so anything on screen (even under Notch) can be picked.
+                root.pinned = false
+                root.open = false
+                colorPicker.pick()
             }
         }
     }

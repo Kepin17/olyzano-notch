@@ -58,7 +58,7 @@ ColumnLayout {
             selectionColor: shell.accent
             font.pixelSize: 12
             background: Rectangle {
-                radius: 14
+                radius: theme.radiusMd
                 color: theme.surface
                 border.width: 1
                 border.color: noteNameField.activeFocus ? shell.accent : "transparent"
@@ -105,7 +105,7 @@ ColumnLayout {
     Rectangle {
         Layout.fillWidth: true
         Layout.preferredHeight: 260
-        radius: 14
+        radius: theme.radiusMd
         color: theme.well
         border.width: 1
         border.color: noteEditor.activeFocus ? theme.accentSoft : theme.surface
