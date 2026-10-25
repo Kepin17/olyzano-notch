@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
+import QtQuick.Dialogs
 
 // The app dock: its own window on one edge of each monitor (bottom, left or right), like the macOS Dock.
 // Pinned apps, a divider, then the other running apps. Icons grow a little as the pointer nears them and
@@ -33,9 +34,15 @@ Window {
     readonly property bool animated: dock.animation !== "none"
     readonly property real barRadius: Math.min(thickness / 2.6, theme.washi ? theme.chipRadius + 8 : 22)
 
-    readonly property bool overlayOpen: appMenu.visible || picker.visible
+    readonly property bool overlayOpen: appMenu.visible || picker.visible || folderDialog.visible
+                                        || windowList.visible || stack.visible
+    property bool dropHover: false     // files dragged over the dock from another app
+    property int dropTargetIndex: -1   // the icon they would be opened with
+    property int listIndex: -1         // the app whose windows are listed (after hovering it a moment)
+    property int stackIndex: -1        // the folder whose newest files are fanned out
     property bool edgeDwelled: false
     readonly property bool engaged: !dock.autoHide || edgeDwelled || zoneHover.hovered || overlayOpen || dragIndex >= 0
+                                    || dropHover || dropTargetIndex >= 0
     property bool shown: !dock.autoHide
 
     onEngagedChanged: {
@@ -88,6 +95,41 @@ Window {
             if (Math.abs(pointer - baseCenters[i]) <= slotSize / 2)
                 return i
         return -1
+    }
+
+    // Rest on an app with several windows for a moment and its window titles are listed.
+    onHoveredIndexChanged: {
+        if (hoveredIndex >= 0 && hoveredIndex !== listIndex)
+            listTimer.restart()
+        else if (hoveredIndex < 0)
+            listTimer.stop()
+        listCloser.restart()
+    }
+    Timer {
+        id: listTimer
+        interval: 550
+        onTriggered: {
+            const item = dock.items[root.hoveredIndex]
+            root.listIndex = item && item.windows.length > 1 && root.stackIndex < 0 ? root.hoveredIndex : -1
+        }
+    }
+    Timer {
+        id: listCloser
+        interval: 350
+        onTriggered: if (!listHover.hovered && root.hoveredIndex !== root.listIndex) root.listIndex = -1
+    }
+    // Along-the-dock position of a slot and the cross position just inside the bar, for popups beside it.
+    function popupX(index, w) {
+        if (side === "left")
+            return bar.restX + bar.width + headroom - 8
+        if (side === "right")
+            return bar.restX - headroom - w + 8
+        return Math.max(8, Math.min(width - w - 8, baseCenters[index] - w / 2))
+    }
+    function popupY(index, h) {
+        if (vertical)
+            return Math.max(8, Math.min(height - h - 8, baseCenters[index] - h / 2))
+        return bar.restY - headroom - h + 8
     }
 
     // The bar at rest plus the space its icons grow into, out to the screen edge.
@@ -240,6 +282,16 @@ Window {
             color: theme.accent
         }
 
+        DropArea {
+            anchors.fill: parent
+            anchors.margins: -root.headroom
+            onEntered: (drag) => {
+                root.dropHover = drag.hasUrls
+                drag.accepted = false // the icons decide; this only keeps the dock up
+            }
+            onExited: root.dropHover = false
+        }
+
         Grid {
             id: grid
             anchors.centerIn: parent
@@ -332,6 +384,80 @@ Window {
                             NumberAnimation { target: icon; property: "lift"; to: 0; duration: 240; easing.type: Easing.OutBounce }
                         }
 
+                        // Asking for attention: a hop now and then.
+                        SequentialAnimation {
+                            running: slot.modelData.urgent === true && root.animated
+                            loops: Animation.Infinite
+                            NumberAnimation { target: icon; property: "lift"; to: root.iconSize * 0.18; duration: 200; easing.type: Easing.OutQuad }
+                            NumberAnimation { target: icon; property: "lift"; to: 0; duration: 280; easing.type: Easing.OutBounce }
+                            PauseAnimation { duration: 1400 }
+                        }
+                        // Files dragged onto this icon: they'll open with it.
+                        Rectangle {
+                            visible: root.dropTargetIndex === slot.index
+                            x: icon.x - 4; y: icon.y - 4
+                            width: icon.size + 8; height: icon.size + 8
+                            radius: 12
+                            color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.18)
+                            border.width: 2
+                            border.color: theme.accent
+                        }
+                        // Unread count the app reports (Telegram, Thunderbird, …).
+                        Rectangle {
+                            visible: slot.modelData.badge > 0
+                            x: icon.x + icon.size - width * 0.7
+                            y: icon.y - height * 0.3
+                            width: Math.max(18, badgeText.implicitWidth + 10)
+                            height: 18
+                            radius: 9
+                            color: theme.danger
+                            border.width: 1.5
+                            border.color: Qt.rgba(0, 0, 0, 0.25)
+                            Text {
+                                id: badgeText
+                                anchors.centerIn: parent
+                                text: slot.modelData.badge > 99 ? "99+" : slot.modelData.badge
+                                color: "white"
+                                font.pixelSize: 10
+                                font.weight: Font.Bold
+                            }
+                        }
+                        // Progress the app reports (a download, a render).
+                        Rectangle {
+                            visible: slot.modelData.progress >= 0
+                            x: icon.x + 4
+                            y: icon.y + icon.size - 8
+                            width: icon.size - 8
+                            height: 5
+                            radius: 2.5
+                            color: Qt.rgba(0, 0, 0, 0.5)
+                            Rectangle {
+                                width: parent.width * Math.max(0, Math.min(1, slot.modelData.progress))
+                                height: parent.height
+                                radius: 2.5
+                                color: theme.accent
+                            }
+                        }
+                        DropArea {
+                            anchors.fill: parent
+                            onEntered: (drag) => {
+                                drag.accepted = drag.hasUrls && slot.modelData.kind === "app" && slot.modelData.canLaunch === true
+                                if (drag.accepted)
+                                    root.dropTargetIndex = slot.index
+                            }
+                            onExited: if (root.dropTargetIndex === slot.index) root.dropTargetIndex = -1
+                            onDropped: (drop) => {
+                                root.dropTargetIndex = -1
+                                root.dropHover = false
+                                if (!drop.hasUrls)
+                                    return
+                                dock.openWith(slot.modelData.id, drop.urls.map(u => u.toString()))
+                                drop.accept(Qt.CopyAction)
+                                if (root.animated)
+                                    bounce.restart()
+                            }
+                        }
+
                         // Running: a small dot. Active (in front): a longer accent pill with a glow. Not running: nothing.
                         Item {
                             visible: slot.modelData.running === true
@@ -360,7 +486,8 @@ Window {
                         // Name label beside the hovered icon, away from the edge ("Remove" while being dragged off).
                         Rectangle {
                             readonly property bool removing: slot.dragged && root.dragOut
-                            visible: removing || (slot.index === root.hoveredIndex && root.dragIndex < 0 && !root.overlayOpen)
+                            visible: removing || (slot.index === root.hoveredIndex && root.dragIndex < 0 && !root.overlayOpen
+                                                  && root.dropTargetIndex < 0)
                             x: root.side === "left" ? icon.x + icon.size + 12
                              : root.side === "right" ? icon.x - width - 12
                              : (cell.width - width) / 2
@@ -415,9 +542,16 @@ Window {
                                 if (moved)
                                     return
                                 const app = slot.modelData
+                                root.listIndex = -1
+                                listTimer.stop()
                                 if (mouse.button === Qt.RightButton) {
                                     appMenu.app = app
                                     appMenu.popup()
+                                } else if (app.kind === "folder") {
+                                    if (mouse.button === Qt.MiddleButton)
+                                        dock.activate(app.id)
+                                    else
+                                        root.stackIndex = root.stackIndex === slot.index ? -1 : slot.index
                                 } else if (mouse.button === Qt.MiddleButton) {
                                     if (app.canLaunch) {
                                         if (root.animated)
@@ -469,6 +603,184 @@ Window {
                 }
             }
         }
+        // Dragging files to the edge brings the dock up, so they can be dropped on an app.
+        DropArea {
+            anchors.fill: parent
+            anchors.margins: -2
+            onEntered: (drag) => {
+                root.dropHover = drag.hasUrls
+                drag.accepted = false
+            }
+        }
+    }
+
+    // ---- Windows of the app under the pointer ----
+    Rectangle {
+        id: windowList
+        readonly property var app: root.listIndex >= 0 && root.listIndex < dock.items.length ? dock.items[root.listIndex] : null
+        visible: app !== null && app.windows.length > 1 && root.shown
+        width: 280
+        height: listColumn.implicitHeight + 16
+        x: root.popupX(Math.max(0, root.listIndex), width)
+        y: root.popupY(Math.max(0, root.listIndex), height)
+        radius: 14
+        color: theme.surface
+        border.color: theme.outline
+        HoverHandler {
+            id: listHover
+            onHoveredChanged: if (!hovered) listCloser.restart()
+        }
+        Column {
+            id: listColumn
+            x: 8; y: 8
+            width: parent.width - 16
+            spacing: 2
+            Text {
+                leftPadding: 6
+                bottomPadding: 4
+                text: windowList.app ? windowList.app.name : ""
+                color: theme.textDim
+                font.pixelSize: 11
+                font.weight: Font.DemiBold
+            }
+            Repeater {
+                model: windowList.app ? windowList.app.windows : []
+                Rectangle {
+                    required property var modelData
+                    width: listColumn.width
+                    height: 30
+                    radius: 8
+                    color: rowArea.containsMouse ? theme.surfaceHover : "transparent"
+                    Text {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        anchors.rightMargin: 8
+                        verticalAlignment: Text.AlignVCenter
+                        text: parent.modelData.title || "Untitled window"
+                        color: theme.text
+                        font.pixelSize: 12
+                        elide: Text.ElideRight
+                    }
+                    MouseArea {
+                        id: rowArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            dock.activateWindow(parent.modelData.id)
+                            root.listIndex = -1
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- A kept folder's newest files, like a Stack ----
+    MouseArea { // a click anywhere else closes it
+        anchors.fill: parent
+        visible: stack.visible
+        onClicked: root.stackIndex = -1
+    }
+    Rectangle {
+        id: stack
+        readonly property var folder: root.stackIndex >= 0 && root.stackIndex < dock.items.length ? dock.items[root.stackIndex] : null
+        property var entries: []
+        onFolderChanged: entries = folder ? dock.folderEntries(folder.id, 16) : []
+        visible: folder !== null && folder.kind === "folder" && root.shown
+        width: 4 * 84 + 24
+        height: stackColumn.implicitHeight + 24
+        x: root.popupX(Math.max(0, root.stackIndex), width)
+        y: root.popupY(Math.max(0, root.stackIndex), height)
+        radius: 18
+        color: theme.surface
+        border.color: theme.outline
+        focus: visible
+        Keys.onEscapePressed: root.stackIndex = -1
+        ColumnLayout {
+            id: stackColumn
+            x: 12; y: 12
+            width: parent.width - 24
+            spacing: 8
+            RowLayout {
+                Layout.fillWidth: true
+                Text {
+                    Layout.fillWidth: true
+                    text: stack.folder ? stack.folder.name : ""
+                    color: theme.text
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                    elide: Text.ElideRight
+                }
+                PillButton {
+                    text: "Open folder"
+                    onClicked: {
+                        dock.activate(stack.folder.id)
+                        root.stackIndex = -1
+                    }
+                }
+            }
+            Text {
+                visible: stack.entries.length === 0
+                text: "This folder is empty."
+                color: theme.textDim
+                font.pixelSize: 12
+            }
+            Grid {
+                columns: 4
+                spacing: 0
+                Repeater {
+                    model: stack.entries
+                    Item {
+                        id: entry
+                        required property var modelData
+                        width: 84
+                        height: 84
+                        Rectangle {
+                            anchors.fill: parent
+                            anchors.margins: 2
+                            radius: 10
+                            color: entryArea.containsMouse ? theme.surfaceHover : "transparent"
+                        }
+                        Image {
+                            id: entryIcon
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            y: 8
+                            width: 40
+                            height: 40
+                            source: "image://mime/" + entry.modelData.iconName
+                            sourceSize: Qt.size(80, 80)
+                            // Dragging it out hands the file to another app.
+                            Drag.active: entryArea.drag.active
+                            Drag.dragType: Drag.Automatic
+                            Drag.supportedActions: Qt.CopyAction
+                            Drag.mimeData: ({ "text/uri-list": entry.modelData.url })
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            y: 52
+                            width: parent.width - 8
+                            horizontalAlignment: Text.AlignHCenter
+                            text: entry.modelData.name
+                            color: theme.text
+                            font.pixelSize: 10
+                            elide: Text.ElideMiddle
+                            maximumLineCount: 2
+                            wrapMode: Text.WrapAnywhere
+                        }
+                        MouseArea {
+                            id: entryArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            drag.target: entryIcon
+                            onClicked: {
+                                Qt.openUrlExternally(entry.modelData.url)
+                                root.stackIndex = -1
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     DarkMenu {
@@ -481,7 +793,7 @@ Window {
         }
         Action {
             text: "New window"
-            enabled: appMenu.app.canLaunch === true
+            enabled: appMenu.app.canLaunch === true && appMenu.app.kind === "app"
             onTriggered: dock.launchNew(appMenu.app.id)
         }
         DarkSeparator {}
@@ -520,6 +832,23 @@ Window {
         contentItem: ColumnLayout {
             spacing: 8
             SectionLabel { text: "Keep in Dock" }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                PillButton {
+                    text: "Downloads"
+                    iconName: "download"
+                    onClicked: {
+                        dock.pinFolder(dock.downloadsFolder())
+                        picker.close()
+                    }
+                }
+                PillButton {
+                    text: "Add folder…"
+                    iconName: "plus"
+                    onClicked: folderDialog.open()
+                }
+            }
             TextField {
                 id: search
                 Layout.fillWidth: true
@@ -579,6 +908,15 @@ Window {
                     }
                 }
             }
+        }
+    }
+
+    FolderDialog {
+        id: folderDialog
+        title: "Choose a folder to keep in the dock"
+        onAccepted: {
+            dock.pinFolder(selectedFolder.toString())
+            picker.close()
         }
     }
 }

@@ -6,6 +6,7 @@
 #include <QProcess>
 #include <QString>
 #include <QStringList>
+#include <QUrl>
 #include <QVariantList>
 #include <QVariantMap>
 #include <algorithm>
@@ -19,6 +20,7 @@ struct DockApp {
     QStringList command; // program + arguments that open it
     QString key;     // what a running process is matched on: lower-cased binary name (Linux) / exe path
     QString wmClass; // StartupWMClass: the window class its windows carry, when the .desktop file names one
+    QStringList exec; // Exec= split into arguments with its field codes (%f, %U, …) kept, for opening files with it
     bool valid() const { return !id.isEmpty() && !name.isEmpty() && !command.isEmpty(); }
 };
 
@@ -79,6 +81,7 @@ inline DockApp parseDesktopEntry(const QString &id, const QByteArray &contents)
     app.command = args;
     app.key = binaryName(args);
     app.wmClass = keys.value(QStringLiteral("StartupWMClass"));
+    app.exec = QProcess::splitCommand(keys.value(QStringLiteral("Exec")));
     if (args.isEmpty() || app.key.isEmpty())
         return {};
     return app;
@@ -165,6 +168,40 @@ inline QString matchWindow(const QHash<QString, DockApp> &catalog, QString deskt
             return id;
     }
     return {};
+}
+
+// The command line that opens `paths` (local files) with an app, from its Exec= arguments: %f / %u take
+// the first file, %F / %U all of them (as paths or file:// URLs), other field codes are dropped and %% is
+// a literal %. An Exec with no file code gets the paths appended, which is what most programs accept.
+inline QStringList openArguments(const QStringList &exec, const QStringList &paths)
+{
+    QStringList urls;
+    for (const QString &p : paths)
+        urls << QUrl::fromLocalFile(p).toString();
+    QStringList out;
+    bool used = false;
+    for (QString arg : exec) {
+        if (arg == QLatin1String("%F") || arg == QLatin1String("%U")) {
+            out << (arg == QLatin1String("%F") ? paths : urls);
+            used = true;
+            continue;
+        }
+        if (arg.contains(QLatin1String("%f")) || arg.contains(QLatin1String("%u"))) {
+            used = true;
+            const QString first = arg.contains(QLatin1String("%f")) ? paths.value(0) : urls.value(0);
+            if (first.isEmpty())
+                continue;
+            arg.replace(QLatin1String("%f"), first).replace(QLatin1String("%u"), first);
+        }
+        arg.replace(QStringLiteral("%%"), QStringLiteral("\x01"));
+        if (arg.size() == 2 && arg[0] == u'%')
+            continue;
+        arg.replace(QStringLiteral("\x01"), QStringLiteral("%"));
+        out << arg;
+    }
+    if (!used)
+        out << paths;
+    return out;
 }
 
 // Reorder helper behind drag-to-rearrange; out-of-range moves are ignored.

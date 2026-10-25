@@ -3,6 +3,8 @@
 #include "models/FileItem.h"
 
 #include <QCoreApplication>
+#include <QDateTime>
+#include <QDesktopServices>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
@@ -11,6 +13,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMimeDatabase>
 #include <QPixmap>
 #include <QSet>
 #include <QStandardPaths>
@@ -38,6 +41,11 @@ AppDock::AppDock(QObject *parent)
     m_timer.setInterval(2000);
     connect(&m_timer, &QTimer::timeout, this, &AppDock::refresh);
     startKWin();
+#ifdef NOTCH_HAVE_DBUS
+    // Any sender, any path: apps (Telegram, Thunderbird, Discord, …) broadcast this for their launcher icon.
+    QDBusConnection::sessionBus().connect(QString(), QString(), QStringLiteral("com.canonical.Unity.LauncherEntry"),
+                                          QStringLiteral("Update"), this, SLOT(launcherEntry(QString, QVariantMap)));
+#endif
 }
 
 void AppDock::setEnabled(bool enabled)
@@ -200,8 +208,97 @@ QVariantList AppDock::installedApps(const QString &filter)
     return out;
 }
 
+bool AppDock::openIfFolder(const QString &id) const
+{
+    if (!isFolder(id))
+        return false;
+    QDesktopServices::openUrl(QUrl::fromLocalFile(folderPath(id)));
+    return true;
+}
+
+void AppDock::pinFolder(const QString &pathOrUrl)
+{
+    const QUrl url(pathOrUrl);
+    const QString path = QDir::cleanPath(url.isLocalFile() ? url.toLocalFile() : pathOrUrl);
+    if (QFileInfo(path).isDir())
+        pin(QStringLiteral("folder:") + path);
+}
+
+QString AppDock::downloadsFolder() const
+{
+    return QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+}
+
+QVariantList AppDock::folderEntries(const QString &id, int limit) const
+{
+    QVariantList out;
+    if (!isFolder(id))
+        return out;
+    const QFileInfoList entries = QDir(folderPath(id)).entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot, QDir::Time);
+    static const QMimeDatabase mimes;
+    for (const QFileInfo &f : entries) {
+        // Downloads still in progress aren't something to open yet.
+        if (f.suffix() == QLatin1String("part") || f.suffix() == QLatin1String("crdownload"))
+            continue;
+        out << QVariantMap{{QStringLiteral("name"), f.fileName()},
+                           {QStringLiteral("url"), QUrl::fromLocalFile(f.absoluteFilePath()).toString()},
+                           {QStringLiteral("iconName"), f.isDir() ? QStringLiteral("folder") : mimes.mimeTypeForFile(f).iconName()},
+                           {QStringLiteral("isDir"), f.isDir()}};
+        if (out.size() >= limit)
+            break;
+    }
+    return out;
+}
+
+void AppDock::launcherEntry(const QString &appUri, const QVariantMap &properties)
+{
+    QString id = appUri;
+    if (id.startsWith(QLatin1String("application://")))
+        id = id.mid(14);
+    if (!id.endsWith(QLatin1String(".desktop")))
+        id += QLatin1String(".desktop");
+    QVariantMap &badge = m_badges[id];
+    for (auto it = properties.cbegin(); it != properties.cend(); ++it)
+        badge.insert(it.key(), it.value());
+    refresh();
+}
+
+void AppDock::openWith(const QString &id, const QStringList &urls)
+{
+    QStringList paths;
+    for (const QString &u : urls) {
+        const QUrl url(u);
+        if (url.isLocalFile())
+            paths << url.toLocalFile();
+        else if (QDir::isAbsolutePath(u))
+            paths << u;
+    }
+    const DockApp app = m_catalog.contains(id) ? m_catalog.value(id) : m_seenRunning.value(id);
+    if (paths.isEmpty() || isFolder(id) || app.command.isEmpty())
+        return;
+    const QStringList args = app.exec.isEmpty() ? app.command + paths : dockmodel::openArguments(app.exec, paths);
+    if (!args.isEmpty())
+        QProcess::startDetached(args.first(), args.mid(1), QDir::homePath());
+}
+
 QIcon AppDock::iconFor(const QString &id) const
 {
+    if (isFolder(id)) {
+        const QString path = folderPath(id);
+#ifdef Q_OS_WIN
+        return QFileIconProvider().icon(QFileInfo(path));
+#else
+        static const QList<QPair<QStandardPaths::StandardLocation, const char *>> named = {
+            {QStandardPaths::DownloadLocation, "folder-downloads"}, {QStandardPaths::DocumentsLocation, "folder-documents"},
+            {QStandardPaths::PicturesLocation, "folder-pictures"}, {QStandardPaths::MusicLocation, "folder-music"},
+            {QStandardPaths::MoviesLocation, "folder-videos"}, {QStandardPaths::DesktopLocation, "user-desktop"},
+            {QStandardPaths::HomeLocation, "user-home"}};
+        for (const auto &[location, icon] : named)
+            if (QStandardPaths::writableLocation(location) == path)
+                return QIcon::fromTheme(QString::fromLatin1(icon), QIcon::fromTheme(QStringLiteral("folder")));
+        return QIcon::fromTheme(QStringLiteral("folder"));
+#endif
+    }
     const DockApp app = m_catalog.contains(id) ? m_catalog.value(id) : m_seenRunning.value(id);
 #ifdef Q_OS_WIN
     const QFileInfo exe(!app.command.isEmpty() ? app.command.first() : id);
@@ -226,7 +323,25 @@ void AppDock::refresh()
     QVariantList items = dockmodel::merge(m_pinned, m_catalog, running, active, showRunning());
     for (QVariant &v : items) {
         QVariantMap m = v.toMap();
-        m[QStringLiteral("iconSource")] = iconSource(m.value(QStringLiteral("id")).toString());
+        const QString id = m.value(QStringLiteral("id")).toString();
+        m[QStringLiteral("iconSource")] = iconSource(id);
+        m[QStringLiteral("kind")] = isFolder(id) ? QStringLiteral("folder") : QStringLiteral("app");
+        if (isFolder(id)) {
+            const QFileInfo dir(folderPath(id));
+            m[QStringLiteral("name")] = dir.fileName().isEmpty() ? dir.absoluteFilePath() : dir.fileName();
+            m[QStringLiteral("canLaunch")] = dir.isDir();
+        }
+        // Launcher entries name the desktop file; on Windows (no D-Bus) there are none.
+        const QVariantMap badge = m_badges.value(id);
+        const bool countShown = badge.value(QStringLiteral("count-visible")).toBool();
+        m[QStringLiteral("badge")] = countShown ? badge.value(QStringLiteral("count")).toLongLong() : 0;
+        m[QStringLiteral("progress")] = badge.value(QStringLiteral("progress-visible")).toBool()
+                                            ? badge.value(QStringLiteral("progress")).toDouble() : -1.0;
+        m[QStringLiteral("urgent")] = badge.value(QStringLiteral("urgent")).toBool();
+        QVariantList windows;
+        for (const QString &w : m_appWindows.value(id))
+            windows << QVariantMap{{QStringLiteral("id"), w}, {QStringLiteral("title"), m_windowTitles.value(w)}};
+        m[QStringLiteral("windows")] = windows;
         v = m;
     }
     if (items == m_items)
@@ -257,6 +372,7 @@ void AppDock::kwinWindows(const QString &json)
         w.id = o.value(QLatin1String("id")).toString();
         w.desktopFile = o.value(QLatin1String("app")).toString();
         w.windowClass = o.value(QLatin1String("cls")).toString();
+        w.caption = o.value(QLatin1String("title")).toString();
         w.pid = o.value(QLatin1String("pid")).toInteger();
         w.active = o.value(QLatin1String("active")).toBool();
         if (!w.id.isEmpty() && w.pid != self)
@@ -289,11 +405,19 @@ function push(gone) {
         if (id === goneId || !w.normalWindow || w.skipTaskbar)
             continue;
         out.push({ id: id, app: String(w.desktopFileName || ""), cls: String(w.resourceClass || ""),
-                   pid: w.pid || 0, active: id === activeId });
+                   title: String(w.caption || ""), pid: w.pid || 0, active: id === activeId });
     }
     callDBus("@SERVICE@", "/Dock", "org.olyzano.Notch.Dock", "kwinWindows", JSON.stringify(out));
 }
-(workspace.windowAdded || workspace.clientAdded).connect(function () { push(null); });
+// Titles change (tabs, documents): the dock's window list shows them.
+function watchTitle(w) {
+    if (w && w.captionChanged)
+        w.captionChanged.connect(function () { push(null); });
+}
+var existing = windows();
+for (var e = 0; e < existing.length; ++e)
+    watchTitle(existing[e]);
+(workspace.windowAdded || workspace.clientAdded).connect(function (w) { watchTitle(w); push(null); });
 (workspace.windowRemoved || workspace.clientRemoved).connect(function (w) { push(w); });
 (workspace.windowActivated || workspace.clientActivated).connect(function () { push(null); });
 push(null);
@@ -324,7 +448,9 @@ function raise(w) {
         workspace.activeClient = w;
 }
 if (mine.length > 0) {
-    if (mode === "close") {
+    if (mode === "raise") {
+        raise(mine[0]);
+    } else if (mode === "close") {
         for (var j = 0; j < mine.length; ++j)
             mine[j].closeWindow();
     } else if (front < 0) {
@@ -450,6 +576,7 @@ namespace {
 struct Window {
     HWND handle;
     QString exe;
+    QString title;
 };
 
 HWND toHandle(const QString &id) { return reinterpret_cast<HWND>(id.toULongLong()); }
@@ -478,7 +605,7 @@ BOOL CALLBACK collectWindow(HWND hwnd, LPARAM lparam)
         const QString exe = QDir::fromNativeSeparators(QString::fromWCharArray(path, int(length)));
         const QString base = QFileInfo(exe).fileName().toLower();
         if (base != QLatin1String("applicationframehost.exe") && base != QLatin1String("textinputhost.exe"))
-            reinterpret_cast<QList<Window> *>(lparam)->append({hwnd, exe});
+            reinterpret_cast<QList<Window> *>(lparam)->append({hwnd, exe, QString::fromWCharArray(title, titleLength)});
     }
     CloseHandle(process);
     return TRUE;
@@ -498,6 +625,7 @@ QList<DockApp> AppDock::runningApps(QString *activeId)
     EnumWindows(collectWindow, reinterpret_cast<LPARAM>(&windows));
 
     m_appWindows.clear();
+    m_windowTitles.clear();
     QList<DockApp> running;
     const HWND foreground = GetForegroundWindow();
     for (const Window &w : windows) {
@@ -505,7 +633,9 @@ QList<DockApp> AppDock::runningApps(QString *activeId)
         if (w.handle == foreground)
             *activeId = id;
         const bool seen = m_appWindows.contains(id);
-        m_appWindows[id] << QString::number(reinterpret_cast<quintptr>(w.handle));
+        const QString handle = QString::number(reinterpret_cast<quintptr>(w.handle));
+        m_appWindows[id] << handle;
+        m_windowTitles.insert(handle, w.title);
         if (seen)
             continue;
         DockApp app = m_catalog.value(id);
@@ -521,8 +651,15 @@ QList<DockApp> AppDock::runningApps(QString *activeId)
     return running;
 }
 
+void AppDock::activateWindow(const QString &windowId)
+{
+    raise(toHandle(windowId));
+}
+
 void AppDock::activate(const QString &id)
 {
+    if (openIfFolder(id))
+        return;
     refresh(); // the window list may be up to a poll old
     const QStringList windows = m_appWindows.value(id);
     if (windows.isEmpty()) {
@@ -577,6 +714,7 @@ void AppDock::loadCatalog()
 QList<DockApp> AppDock::runningApps(QString *activeId)
 {
     m_appWindows.clear();
+    m_windowTitles.clear();
     QList<DockApp> running;
 
     if (m_kwin) {
@@ -594,6 +732,7 @@ QList<DockApp> AppDock::runningApps(QString *activeId)
                 m_seenRunning.insert(app.id, app);
             }
             m_appWindows[app.id] << w.id;
+            m_windowTitles.insert(w.id, w.caption);
             if (w.active)
                 *activeId = app.id;
             if (!seen.contains(app.id)) {
@@ -651,8 +790,16 @@ QList<DockApp> AppDock::runningApps(QString *activeId)
     return running;
 }
 
+void AppDock::activateWindow(const QString &windowId)
+{
+    if (m_kwin)
+        runKWinAction(QStringLiteral("raise"), {windowId});
+}
+
 void AppDock::activate(const QString &id)
 {
+    if (openIfFolder(id))
+        return;
     const QStringList windows = m_appWindows.value(id);
     if (m_kwin && !windows.isEmpty())
         runKWinAction(QStringLiteral("focus"), windows);
@@ -671,7 +818,12 @@ void AppDock::close(const QString &id)
 
 void AppDock::loadCatalog() { m_catalogLoaded = true; }
 QList<DockApp> AppDock::runningApps(QString *) { return {}; }
-void AppDock::activate(const QString &id) { launchNew(id); }
+void AppDock::activate(const QString &id)
+{
+    if (!openIfFolder(id))
+        launchNew(id);
+}
+void AppDock::activateWindow(const QString &) {}
 void AppDock::close(const QString &) {}
 
 #endif
