@@ -1811,7 +1811,12 @@ Window {
             property point last
             onHoveredChanged: {
                 if (hovered && root.mode === "idle") {
-                    dwellTimer.restart()
+                    if (root.capsuleMode === "capsule") { // the capsule is there to be pointed at: open at once
+                        dwellTimer.stop()
+                        root.dwelled = true
+                    } else {
+                        dwellTimer.restart()
+                    }
                 } else if (!hovered) {
                     dwellTimer.stop()
                     root.dwelled = false
