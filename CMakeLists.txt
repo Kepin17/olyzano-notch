@@ -62,6 +62,7 @@ qt_add_resources(notch_core migrations PREFIX "/" BASE database FILES
     database/migrations/003_keep.sql
     database/migrations/004_recently_removed.sql
     database/migrations/005_vault.sql
+    database/migrations/006_category_empty.sql
 )
 target_include_directories(notch_core PUBLIC src third_party)
 target_link_libraries(notch_core PUBLIC Qt6::Core Qt6::Gui Qt6::Sql Qt6::Network Qt6::Concurrent ${NOTCH_CRYPTO}) # Gui: QImage/QPdfWriter in DocTools

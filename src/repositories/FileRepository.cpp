@@ -15,6 +15,7 @@ const QStringList Migrations = {
     QStringLiteral(":/migrations/003_keep.sql"),
     QStringLiteral(":/migrations/004_recently_removed.sql"),
     QStringLiteral(":/migrations/005_vault.sql"),
+    QStringLiteral(":/migrations/006_category_empty.sql"),
 };
 const QString Columns = QStringLiteral(
     "id, original_name, stored_name, mime_type, size_bytes, source_path, added_at, status, category_id, pinned, "
@@ -256,6 +257,23 @@ bool FileRepository::insertCategory(const Category &c)
 bool FileRepository::renameCategory(const QString &id, const QString &name)
 {
     return exec(QStringLiteral("UPDATE categories SET name = ? WHERE id = ?"), {name, id});
+}
+
+// Stamps the categories that just became empty, clears the ones filled again (files in Recently removed
+// count: they can come back), and returns those empty since `cutoff` or earlier.
+QStringList FileRepository::staleCategories(const QDateTime &now, const QDateTime &cutoff)
+{
+    const QString used = QStringLiteral("(SELECT category_id FROM file_items WHERE category_id IS NOT NULL)");
+    exec(QStringLiteral("UPDATE categories SET empty_since = NULL WHERE empty_since IS NOT NULL AND id IN ") + used, {});
+    exec(QStringLiteral("UPDATE categories SET empty_since = ? WHERE empty_since IS NULL AND id NOT IN ") + used, {toIso(now)});
+    QStringList out;
+    QSqlQuery q(QSqlDatabase::database(m_conn));
+    q.prepare(QStringLiteral("SELECT id FROM categories WHERE empty_since IS NOT NULL AND empty_since <= ?"));
+    q.addBindValue(toIso(cutoff));
+    if (q.exec())
+        while (q.next())
+            out << q.value(0).toString();
+    return out;
 }
 
 bool FileRepository::deleteCategory(const QString &id)

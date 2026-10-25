@@ -176,7 +176,7 @@ Files dropped while a category is open, or dropped on its chip, go into that cat
 
 ### Organizing
 
-- **Categories:** chips under the header. **+** adds one; right-click a chip to rename or delete (files stay).
+- **Categories:** chips under the header. **+** adds one; right-click a chip to rename or delete (files stay). A category that has held no file for 24 hours goes away by itself (locked ones, and ones a type rule files into, stay).
   Drag tiles onto a chip to move them, or drag a chip to a chat / file manager to send everything in it.
 - **Sort** (the pill at the end of the chip row): date, name, size or type.
 - **Sort new files by type** (Settings): new PDFs, images, video, audio, documents, archives or code go to the

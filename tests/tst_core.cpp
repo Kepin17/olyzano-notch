@@ -208,7 +208,7 @@ private slots:
         QVERIFY(db.open());
         QSqlQuery q(db);
         QVERIFY(q.exec(QStringLiteral("PRAGMA user_version")) && q.next());
-        QCOMPARE(q.value(0).toInt(), 5);
+        QCOMPARE(q.value(0).toInt(), 6);
         q = QSqlQuery();
         db.close();
         db = QSqlDatabase();
@@ -350,6 +350,22 @@ private slots:
         QVERIFY(CleanupService::purge(*m_repo, m_files, now, 3).isEmpty());
         QCOMPARE(CleanupService::purge(*m_repo, m_files, now, 1), QStringList{item.id});
         QVERIFY(!QFile::exists(path(item)));
+    }
+
+    void emptyCategoriesExpireAfterADay()
+    {
+        const QDateTime t0 = QDateTime::currentDateTimeUtc();
+        const auto at = [&](int hours) { return t0.addSecs(hours * 3600); };
+        QVERIFY(m_repo->insertCategory({QStringLiteral("e1"), QStringLiteral("Empty")}));
+        QVERIFY(m_repo->insertCategory({QStringLiteral("e2"), QStringLiteral("Full")}));
+        const FileItem item = addItem(writeSource(QStringLiteral("f.txt"), "f"), t0);
+        QVERIFY(m_repo->setCategory(item.id, QStringLiteral("e2")));
+        QVERIFY(m_repo->staleCategories(at(0), at(-24)).isEmpty());   // e1 is stamped now
+        QVERIFY(m_repo->staleCategories(at(23), at(-1)).isEmpty());   // not a day yet
+        QCOMPARE(m_repo->staleCategories(at(25), at(1)), QStringList{QStringLiteral("e1")});
+        QVERIFY(m_repo->setCategory(item.id, QStringLiteral("e1")));  // e1 filled, e2 emptied: clocks swap
+        QVERIFY(m_repo->staleCategories(at(26), at(2)).isEmpty());
+        QCOMPARE(m_repo->staleCategories(at(51), at(27)), QStringList{QStringLiteral("e2")});
     }
 
     void categoriesAssignAndDelete()

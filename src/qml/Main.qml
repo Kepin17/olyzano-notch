@@ -1161,14 +1161,14 @@ Window {
                         }
                     }
                     IconButton {
-                        visible: root.page === "shelf" && !root.selecting
+                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer") && !root.selecting
                         text: "⋯"
                         checked: moreMenu.visible
                         Accessible.name: "More"
                         onClicked: moreMenu.popup()
                     }
                     IconButton {
-                        visible: root.page === "shelf" && !root.selecting
+                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer") && !root.selecting
                         iconName: "gear"
                         Accessible.name: "Settings"
                         onClicked: root.page = "settings"

@@ -20,5 +20,5 @@ RowLayout {
     PillButton { text: "Timer"; iconName: "timer"; checked: bar.page === "timer"; onClicked: bar.pick("timer") }
     PillButton { visible: bar.shareAvailable; text: bar.shareBusy ? "Sharing" : "Share"; iconName: "share"; checked: bar.shareBusy; onClicked: bar.openShares() }
     Item { Layout.fillWidth: true }
-    PillButton { text: "Add"; iconName: "plus"; onClicked: bar.addFiles() }
+    PillButton { visible: bar.page === "shelf"; text: "Add"; iconName: "plus"; onClicked: bar.addFiles() } // adding files belongs to Files
 }

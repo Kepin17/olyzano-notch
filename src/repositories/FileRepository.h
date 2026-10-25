@@ -40,6 +40,7 @@ public:
     bool insertCategory(const Category &c);
     bool renameCategory(const QString &id, const QString &name);
     bool deleteCategory(const QString &id); // its items become uncategorized
+    QStringList staleCategories(const QDateTime &now, const QDateTime &cutoff); // empty since cutoff or earlier
 
     static QString toIso(const QDateTime &dt);
 

@@ -201,6 +201,7 @@ bool NotchController::start()
     connect(qApp, &QCoreApplication::aboutToQuit, this, &NotchController::lockVault);
     m_model.setItems(m_repo.visible());
     updateWatchers();
+    expireEmptyCategories();
     m_clock.start();
     m_cleanup.start();
     return true;
@@ -968,6 +969,22 @@ void NotchController::runCleanup()
 {
     for (const QString &id : CleanupService::purge(m_repo, m_filesDir, QDateTime::currentDateTimeUtc(), m_retentionDays, m_dragging))
         m_model.removeId(id);
+    expireEmptyCategories();
+}
+
+// A category with no file in it for a day goes away (its files are the point of it). Kept: locked ones
+// and those a "sort new files by type" rule files into. The ones Notch makes itself (Screenshots,
+// Downloads, Nearby, ...) come back when they are next needed.
+void NotchController::expireEmptyCategories()
+{
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    const QVariantMap rules = typeRules();
+    QStringList keep;
+    for (auto it = rules.cbegin(); it != rules.cend(); ++it)
+        keep << it.value().toString();
+    for (const QString &id : m_repo.staleCategories(now, now.addSecs(-24 * 3600)))
+        if (!keep.contains(id) && !isLockedCategory(id))
+            deleteCategory(id);
 }
 
 void NotchController::setFilter(const QString &text)

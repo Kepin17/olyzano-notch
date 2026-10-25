@@ -303,6 +303,7 @@ private:
     QString ruledCategory(const QString &categoryId, const QString &mimeType);
     void indexContents(); // text of the shelf's text files, so search also matches inside them
     void runCleanup();
+    void expireEmptyCategories();
     void setError(const QString &message);
 
     QSettings m_settings;
