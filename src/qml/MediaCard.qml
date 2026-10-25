@@ -87,7 +87,7 @@ Rectangle {
         id: content
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.top: parent.top
+        anchors.verticalCenter: parent.verticalCenter // centred when the card is taller than its content
         anchors.margins: 14
         spacing: 10
 

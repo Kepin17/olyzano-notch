@@ -17,8 +17,8 @@ Rectangle {
         id: view
         visible: panel.synced
         anchors.fill: parent
-        anchors.leftMargin: 18
-        anchors.rightMargin: 18
+        anchors.leftMargin: 20
+        anchors.rightMargin: 20
         model: panel.synced ? lyrics.lines : []
         currentIndex: Math.max(0, lyrics.currentIndex)
         interactive: false

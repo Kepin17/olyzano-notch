@@ -1214,7 +1214,7 @@ Window {
                     visible: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer")
                     Layout.fillWidth: true
                     Layout.leftMargin: 12
-                    Layout.rightMargin: 8
+                    Layout.rightMargin: 12
                     page: root.page
                     musicAvailable: media.active
                     shareAvailable: share.count + nearby.count > 0
@@ -1237,20 +1237,22 @@ Window {
                 RowLayout {
                     visible: root.page === "music" && media.active
                     Layout.fillWidth: true
-                    Layout.leftMargin: 8
-                    Layout.rightMargin: 8
-                    spacing: 10
+                    Layout.leftMargin: 12 // the same edges as the action bar above
+                    Layout.rightMargin: 12
+                    spacing: 12
+                    // Both halves are the same size and height, so the two cards line up.
                     MediaCard {
                         Layout.fillWidth: true
+                        Layout.fillHeight: true
                         Layout.preferredWidth: 1
-                        Layout.alignment: Qt.AlignTop
+                        Layout.minimumHeight: 214
                     }
                     LyricsPanel {
                         visible: lyrics.enabled
                         Layout.fillWidth: true
-                        Layout.preferredWidth: 1
                         Layout.fillHeight: true
-                        Layout.minimumHeight: 200
+                        Layout.preferredWidth: 1
+                        Layout.minimumHeight: 214
                     }
                 }
 
