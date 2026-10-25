@@ -91,7 +91,7 @@ else()
     target_sources(notch PRIVATE src/platform/SystemEvents_other.cpp) # the rest are header-only stubs
 endif()
 if(WIN32)
-    target_sources(notch PRIVATE src/platform/WinPrivacy.h src/platform/WinPrivacy.cpp)
+    target_sources(notch PRIVATE src/platform/WinPrivacy.h src/platform/WinPrivacy.cpp src/platform/ColorPicker_win.cpp)
     # user32/shell32: AppDock lists and raises windows, and asks the Recycle Bin. ole32/advapi32: microphone, registry.
     target_link_libraries(notch PRIVATE user32 shell32 ole32 advapi32)
     configure_file(packaging/windows/notch.rc.in ${CMAKE_CURRENT_BINARY_DIR}/notch.rc)
