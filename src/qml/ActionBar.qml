@@ -12,7 +12,9 @@ RowLayout {
     property bool shareBusy: false
     signal pick(string target)
     signal addFiles()
+    property bool lyricsOn: false
     signal openShares()
+    signal toggleLyrics()
     spacing: 6
 
     PillButton { text: "Files"; iconName: "folder"; checked: bar.page === "shelf"; onClicked: bar.pick("shelf") }
@@ -20,5 +22,6 @@ RowLayout {
     PillButton { text: "Timer"; iconName: "timer"; checked: bar.page === "timer"; onClicked: bar.pick("timer") }
     PillButton { visible: bar.shareAvailable; text: bar.shareBusy ? "Sharing" : "Share"; iconName: "share"; checked: bar.shareBusy; onClicked: bar.openShares() }
     Item { Layout.fillWidth: true }
+    PillButton { visible: bar.page === "music"; text: "Lyrics"; checked: bar.lyricsOn; onClicked: bar.toggleLyrics() }
     PillButton { visible: bar.page === "shelf"; text: "Add"; iconName: "plus"; onClicked: bar.addFiles() } // adding files belongs to Files
 }

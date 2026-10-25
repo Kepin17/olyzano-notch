@@ -18,6 +18,9 @@ Window {
     readonly property color textPrimary: theme.text
     readonly property color textSecondary: theme.textDim
     readonly property int openWidth: 560
+    // The Music page with lyrics is split in two (player left, words right): wider, so each half has room.
+    readonly property bool lyricsSplit: page === "music" && lyrics.enabled && media.active
+    readonly property int panelWidth: lyricsSplit ? 780 : openWidth
 
     property bool pinned: false
     readonly property string capsuleMode: activities.capsuleMode
@@ -139,6 +142,26 @@ Window {
             root.capPos = media.positionMs()
         }
         function onTrackChanged() { root.musicStale = false }
+    }
+
+    // ---- Lyrics follow the song ----
+    // The player is read once a second; in between the clock runs on its own, so the lines change on time.
+    property real lyricsRead: 0
+    property double lyricsReadAt: 0
+    Timer {
+        interval: 250
+        repeat: true
+        triggeredOnStart: true
+        running: lyrics.state === "synced" && media.active
+                 && ((root.mode === "idle" && root.musicShown) || (root.mode === "open" && root.page === "music"))
+        onTriggered: {
+            const now = Date.now()
+            if (!media.playing || now - root.lyricsReadAt > 1000) {
+                root.lyricsRead = media.positionMs()
+                root.lyricsReadAt = now
+            }
+            lyrics.setPosition(root.lyricsRead + (media.playing ? now - root.lyricsReadAt : 0))
+        }
     }
 
     // ---- Live activities: what's going on, shown in the closed notch (most important first) ----
@@ -537,7 +560,7 @@ Window {
     Item {
         id: island
         x: (root.width - width) / 2
-        width: root.mode === "open" ? root.openWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 380
+        width: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 380
              : root.mode === "peek" ? (root.live && root.live.kind !== "copy" ? 320 : 230)
              : root.mode === "idle" ? (root.musicShown ? 400 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         height: root.mode === "open" ? panel.implicitHeight + (root.dragOver ? 8 : 0)
@@ -893,7 +916,8 @@ Window {
             }
             Text {
                 Layout.fillWidth: true
-                text: media.title !== "" ? media.title + (media.artist !== "" ? " · " + media.artist : "") : media.identity
+                text: lyrics.currentText !== "" ? lyrics.currentText
+                      : media.title !== "" ? media.title + (media.artist !== "" ? " · " + media.artist : "") : media.identity
                 color: root.textPrimary
                 font.pixelSize: 14
                 font.weight: Font.DemiBold
@@ -969,7 +993,7 @@ Window {
             ColumnLayout {
                 id: panel
                 x: (parent.width - width) / 2
-                width: root.openWidth - 20
+                width: root.panelWidth - 20
                 spacing: 10
 
                 RowLayout {
@@ -1194,14 +1218,37 @@ Window {
                     shareBusy: share.activeCount + nearby.activeCount > 0
                     onPick: (target) => root.page = target
                     onAddFiles: addDialog.open()
+                    lyricsOn: lyrics.enabled
+                    onToggleLyrics: {
+                        if (lyrics.enabled) {
+                            lyrics.enabled = false
+                        } else {
+                            settingsPage.category = "general" // switching it on sends the song to a lyrics service: say so first
+                            root.page = "settings"
+                        }
+                    }
                     onOpenShares: sharePopup.visible && sharePopup.view === "sessions" ? sharePopup.close() : sharePopup.openSessions()
                 }
 
-                MediaCard {
+                // Music: the player, and (when lyrics are on) the words beside it, half and half.
+                RowLayout {
                     visible: root.page === "music" && media.active
                     Layout.fillWidth: true
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
+                    spacing: 10
+                    MediaCard {
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        Layout.alignment: Qt.AlignTop
+                    }
+                    LyricsPanel {
+                        visible: lyrics.enabled
+                        Layout.fillWidth: true
+                        Layout.preferredWidth: 1
+                        Layout.fillHeight: true
+                        Layout.minimumHeight: 200
+                    }
                 }
 
                 Rectangle {
