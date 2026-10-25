@@ -131,6 +131,18 @@ Window {
     property bool musicStale: false
     readonly property bool musicShown: media.active && !musicStale
     property real capPos: 0 // ms, read once a second while the capsule shows the song
+    // What the capsule says (the line being sung, else the song) and how wide it must be to say all of it: it
+    // widens up to nearly the window; a line longer than that wraps onto a second line, never cut off.
+    readonly property string capLine: lyrics.currentText !== "" ? lyrics.currentText
+        : media.title !== "" ? media.title + (media.artist !== "" ? " · " + media.artist : "") : media.identity
+    readonly property string capTime: clock(capPos) + (media.lengthMs > 0 ? " / " + clock(media.lengthMs) : "")
+    TextMetrics { id: capLineSize; font.pixelSize: 14; font.weight: Font.DemiBold; text: root.capLine }
+    TextMetrics { id: capTimeSize; font.pixelSize: 13; font.family: "monospace"; text: root.capTime }
+    // margins + wave + gaps + the time + the microphone icon, and a little spare
+    readonly property real capOverhead: 2 * 24 + 22 + 3 * 10 + capTimeSize.advanceWidth + (activities.micApps.length > 0 ? 25 : 0) + 16
+    readonly property real capMaxWidth: root.width - 40
+    readonly property bool capWraps: capLineSize.advanceWidth + capOverhead > capMaxWidth
+    readonly property real capWidth: capWraps ? capMaxWidth : Math.max(400, capLineSize.advanceWidth + capOverhead)
     Timer { id: pauseTimer; interval: 120000; onTriggered: root.musicStale = true }
     Timer {
         interval: 1000
@@ -575,9 +587,9 @@ Window {
         x: (root.width - width) / 2
         width: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 380
              : root.mode === "peek" ? (root.live && root.live.kind !== "copy" ? 320 : 230)
-             : root.mode === "idle" ? (root.musicShown ? 400 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
+             : root.mode === "idle" ? (root.musicShown ? root.capWidth : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         height: root.mode === "open" ? panel.implicitHeight + (root.dragOver ? 8 : 0)
-              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? 38 : 26) : 0
+              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? (root.capWraps ? 58 : 38) : 26) : 0
         focus: true
 
         readonly property real shoulder: Math.min(10, Math.max(0, height) / 3)
@@ -585,8 +597,8 @@ Window {
         readonly property bool closing: root.mode === "hidden"
 
         // Height is stiffer than width: the drop falls first, then spreads and settles.
-        Behavior on height { SpringAnimation { spring: 4.2; damping: island.closing ? 0.9 : 0.32; epsilon: 0.25 } }
-        Behavior on width { SpringAnimation { spring: island.closing ? 5 : 2.6; damping: island.closing ? 0.9 : 0.3; epsilon: 0.25 } }
+        Behavior on height { SpringAnimation { spring: 4.2; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : 0.32; epsilon: 0.25 } }
+        Behavior on width { SpringAnimation { spring: island.closing ? 5 : 2.6; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : 0.3; epsilon: 0.25 } }
         onWidthChanged: root.updateMask()
         onHeightChanged: root.updateMask()
 
@@ -929,15 +941,16 @@ Window {
             }
             Text {
                 Layout.fillWidth: true
-                text: lyrics.currentText !== "" ? lyrics.currentText
-                      : media.title !== "" ? media.title + (media.artist !== "" ? " · " + media.artist : "") : media.identity
+                text: root.capLine
                 color: root.textPrimary
                 font.pixelSize: 14
                 font.weight: Font.DemiBold
+                wrapMode: root.capWraps ? Text.Wrap : Text.NoWrap
+                maximumLineCount: 2
                 elide: Text.ElideRight
             }
             Text {
-                text: root.clock(root.capPos) + (media.lengthMs > 0 ? " / " + root.clock(media.lengthMs) : "")
+                text: root.capTime
                 color: root.textSecondary
                 font.pixelSize: 13
                 font.family: "monospace"
