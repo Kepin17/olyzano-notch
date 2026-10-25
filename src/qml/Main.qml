@@ -1230,7 +1230,7 @@ Window {
                         Accessible.name: gaming.enabled ? "Gaming mode is on: turn it off" : "Gaming mode: keep away from full-screen games"
                         onClicked: {
                             gaming.enabled = !gaming.enabled
-                            root.infoText = gaming.enabled ? "Gaming mode on: Notch hides while a full-screen app is in front" : "Gaming mode off"
+                            root.infoText = gaming.enabled ? "Gaming mode on: Notch stays out of the way of an app that fills the screen" : "Gaming mode off"
                             infoTimer.restart()
                         }
                     }

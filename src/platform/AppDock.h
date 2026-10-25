@@ -69,6 +69,7 @@ public:
     bool trashFull() const { return m_trashFull; }
     QString coveredScreen() const { return m_coveredScreen; }
     bool fullScreenActive() const { return m_fullScreen; } // the window in front is full screen (KWin)
+    bool coveringActive() const { return m_covering; }     // ... or fills the screen (maximised): gaming mode
     QString trashIcon() const { return iconSource(m_trashFull ? QStringLiteral("special:trash-full") : QStringLiteral("special:trash")); }
     void setShowRunning(bool show);
     QVariantList pinnedApps() const;
@@ -119,6 +120,7 @@ signals:
     void trashChanged();
     void coveredScreenChanged();
     void fullScreenChanged(); // the window in front went full screen, or left it
+    void coveringChanged();   // the window in front started or stopped filling the screen
 
 private:
     struct KWinWindow {
@@ -128,6 +130,7 @@ private:
         bool active = false;
         bool atTop = false;
         bool fullScreen = false;
+        bool covers = false; // fills its screen's usable area, full screen or not
     };
 
     void storeAppearance(const QString &key, const QVariant &value);
@@ -153,6 +156,7 @@ private:
     bool m_trashFull = false;
     QString m_coveredScreen;
     bool m_fullScreen = false;
+    bool m_covering = false;
     QTimer m_coverPoll; // Windows: there is no push for the window in front, so look every second or so
     void setCoveredScreen(const QString &screen);
     void checkForeground();

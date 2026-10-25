@@ -155,7 +155,9 @@ int main(int argc, char *argv[])
     Lyrics lyrics;
     Karaoke karaoke;
     GamingMode gaming;
-    QObject::connect(&dock, &AppDock::fullScreenChanged, &gaming, [&] { gaming.setFullScreen(dock.fullScreenActive()); });
+    // "Full screen" for gaming mode is any app that fills the screen: a maximised one looks the same.
+    const auto fillsScreen = [&] { gaming.setFullScreen(dock.coveringActive()); };
+    QObject::connect(&dock, &AppDock::coveringChanged, &gaming, fillsScreen);
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &karaoke, &Karaoke::stop);
     QObject::connect(&media, &MediaPlayers::changed, &lyrics, [&] {
         lyrics.track(media.active() ? media.artist() : QString(), media.active() ? media.title() : QString(), media.album(), media.lengthMs());

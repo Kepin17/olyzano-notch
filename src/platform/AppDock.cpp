@@ -521,21 +521,26 @@ void AppDock::kwinWindows(const QString &json)
         w.active = o.value(QLatin1String("active")).toBool();
         w.atTop = o.value(QLatin1String("top")).toBool();
         w.fullScreen = o.value(QLatin1String("fs")).toBool();
+        w.covers = w.fullScreen || o.value(QLatin1String("cov")).toBool();
         w.screen = o.value(QLatin1String("scr")).toString();
         if (!w.id.isEmpty() && w.pid != self)
             m_kwinWindows << w;
     }
     // Plasma 5 numbers screens ("#0") instead of naming them: then hide the clock on every screen.
     QString covered;
-    const bool wasFullScreen = m_fullScreen;
+    const bool wasFullScreen = m_fullScreen, wasCovering = m_covering;
     m_fullScreen = false;
+    m_covering = false;
     for (const KWinWindow &w : std::as_const(m_kwinWindows)) {
         if (w.active && w.atTop)
             covered = w.screen.startsWith(u'#') || w.screen.isEmpty() ? QStringLiteral("*") : w.screen;
         m_fullScreen = m_fullScreen || (w.active && w.fullScreen);
+        m_covering = m_covering || (w.active && w.covers);
     }
     if (m_fullScreen != wasFullScreen)
         emit fullScreenChanged();
+    if (m_covering != wasCovering)
+        emit coveringChanged();
     setCoveredScreen(covered);
     refresh();
 }
@@ -560,6 +565,14 @@ function atTop(w) {
     var g = w.frameGeometry, a = null;
     try { a = workspace.clientArea(maximizeArea, w); } catch (e) {}
     return !!(g && a && g.y <= a.y + 8);
+}
+// Fills its screen: full screen, or maximised (an app that draws its own title bar looks full screen too).
+function covers(w) {
+    if (w.fullScreen)
+        return true;
+    var g = w.frameGeometry, a = null;
+    try { a = workspace.clientArea(maximizeArea, w); } catch (e) {}
+    return !!(g && a && g.x <= a.x + 8 && g.y <= a.y + 8 && g.width >= a.width - 16 && g.height >= a.height - 16);
 }
 function screenOf(w) { return w.output ? String(w.output.name) : w.screen !== undefined ? "#" + w.screen : ""; }
 // Windows are compared by id: the same window can come back as a different script object.
@@ -587,13 +600,13 @@ function push(gone) {
             continue;
         out.push({ id: id, app: String(w.desktopFileName || ""), cls: String(w.resourceClass || ""),
                    title: String(w.caption || ""), pid: w.pid || 0, active: id === activeId,
-                   top: atTop(w), fs: !!w.fullScreen, scr: screenOf(w) });
+                   top: atTop(w), fs: !!w.fullScreen, cov: covers(w), scr: screenOf(w) });
     }
     callDBus("@SERVICE@", "/Dock", "org.olyzano.Notch.Dock", "kwinWindows", JSON.stringify(out));
 }
 // Titles change (tabs, documents): the dock's window list shows them. Moving or resizing only reports
 // when the window starts or stops touching the top or being full screen, not on every step of a drag.
-function placement(w) { return (atTop(w) ? "t" : "") + (w.fullScreen ? "f" : ""); }
+function placement(w) { return (atTop(w) ? "t" : "") + (w.fullScreen ? "f" : "") + (covers(w) ? "c" : ""); }
 var tops = {};
 function watchTitle(w) {
     if (!w)

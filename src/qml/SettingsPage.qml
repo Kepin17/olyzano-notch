@@ -122,7 +122,7 @@ ScrollView {
                 title: "Gaming mode"
                 SettingToggle {
                     title: "Keep away from full-screen apps and games"
-                    caption: "While a full-screen app or game is in front, Olyzano Notch and the dock cannot be reached at all (no pointer, no clicks, nothing opens), and sounds and reminders stay quiet. Minimise it or run it in a window and they work again."
+                    caption: "While an app or game that fills the screen (full screen or maximised) is in front, Olyzano Notch and the dock cannot be reached at all (no pointer, no clicks, nothing opens), and sounds and reminders stay quiet. Minimise it or make its window smaller and they work again."
                     checked: gaming.enabled
                     onToggled: gaming.enabled = !gaming.enabled
                 }

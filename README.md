@@ -369,9 +369,9 @@ Limits: it only talks to Olyzano Notch (not Google's Quick Share), it needs both
   The artist and title are cleaned first ("Name - Topic", "(Official Video)"), then it searches by artist and title, then by
   the words, keeping only the right artist.
 - **Gaming mode:** with it on (the gamepad button in the header, *Settings → General → Gaming mode* or the tray menu),
-  Olyzano Notch and the dock cannot be reached while a full-screen app or game is in front (no pointer, no clicks, nothing opens,
+  Olyzano Notch and the dock cannot be reached while an app or game that fills the screen (full screen or maximised) is in front (no pointer, no clicks, nothing opens,
   so nothing at the screen edges can be hit by accident), and sounds, alerts and reminders stay quiet. Minimise the game or
-  run it in a window and they work again at once. The switch is remembered. (Linux: KDE Plasma; Windows: the system's
+  make its window smaller and they work again at once. The switch is remembered. (Linux: KDE Plasma; Windows: the system's
   full-screen / presentation state.)
 - **Alerts:** plugging the charger in or out, a Bluetooth device connecting or disconnecting, and low battery
   (20 %, 10 %, 5 %, the laptop's and a headset's) make Olyzano Notch peek out. Linux reads UPower and BlueZ; Windows its own
