@@ -94,6 +94,8 @@ bool Sounds::fullScreenNow() const
 
 void Sounds::play(const QString &name)
 {
+    if (m_silent && m_silent())
+        return;
     const SoundsModel::Group group = SoundsModel::groupOf(name);
     if (group == SoundsModel::Unknown)
         return;

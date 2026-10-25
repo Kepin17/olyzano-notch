@@ -527,12 +527,15 @@ void AppDock::kwinWindows(const QString &json)
     }
     // Plasma 5 numbers screens ("#0") instead of naming them: then hide the clock on every screen.
     QString covered;
+    const bool wasFullScreen = m_fullScreen;
     m_fullScreen = false;
     for (const KWinWindow &w : std::as_const(m_kwinWindows)) {
         if (w.active && w.atTop)
             covered = w.screen.startsWith(u'#') || w.screen.isEmpty() ? QStringLiteral("*") : w.screen;
         m_fullScreen = m_fullScreen || (w.active && w.fullScreen);
     }
+    if (m_fullScreen != wasFullScreen)
+        emit fullScreenChanged();
     setCoveredScreen(covered);
     refresh();
 }

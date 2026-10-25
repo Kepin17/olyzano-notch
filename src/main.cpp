@@ -12,6 +12,7 @@
 #include "platform/Sounds.h"
 #include "platform/KdeConnect.h"
 #include "platform/Theme.h"
+#include "platform/GamingMode.h"
 #include "platform/Karaoke.h"
 #include "platform/Lyrics.h"
 #include "platform/MediaPlayers.h"
@@ -153,6 +154,8 @@ int main(int argc, char *argv[])
     Sounds sounds;
     Lyrics lyrics;
     Karaoke karaoke;
+    GamingMode gaming;
+    QObject::connect(&dock, &AppDock::fullScreenChanged, &gaming, [&] { gaming.setFullScreen(dock.fullScreenActive()); });
     QObject::connect(&app, &QCoreApplication::aboutToQuit, &karaoke, &Karaoke::stop);
     QObject::connect(&media, &MediaPlayers::changed, &lyrics, [&] {
         lyrics.track(media.active() ? media.artist() : QString(), media.active() ? media.title() : QString(), media.album(), media.lengthMs());
@@ -161,6 +164,7 @@ int main(int argc, char *argv[])
     QObject::connect(&colorPicker, &ColorPicker::picked, &controller, &NotchController::addColor);
 
     // Sound effects: wired here, once, rather than in each screen's notch.
+    sounds.setSilencer([&] { return gaming.active(); });
     sounds.setBusyChecks([&] { return !activities.micApps().isEmpty(); }, [&] { return dock.fullScreenActive(); });
     auto play = [&](const char *name) { return [&sounds, name] { sounds.play(QString::fromLatin1(name)); }; };
     QObject::connect(&controller, &NotchController::sound, &sounds, &Sounds::play);
@@ -230,6 +234,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("sounds"), &sounds);
     engine.rootContext()->setContextProperty(QStringLiteral("lyrics"), &lyrics);
     engine.rootContext()->setContextProperty(QStringLiteral("karaoke"), &karaoke);
+    engine.rootContext()->setContextProperty(QStringLiteral("gaming"), &gaming);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
 
     // One Notch per monitor, following hotplug.
@@ -246,7 +251,7 @@ int main(int argc, char *argv[])
         }
         window->setScreen(screen);
         desktop.attach(window);
-        window->show();
+        window->setVisible(!gaming.active()); // gaming mode: Notch stays out of the game's way
         windows.insert(screen, window);
 
         auto *dockView = qobject_cast<QQuickWindow *>(dockWindow.create());
@@ -256,13 +261,13 @@ int main(int argc, char *argv[])
         }
         dockView->setScreen(screen);
         desktop.attachDock(dockView, dock.position());
-        dockView->setVisible(dock.enabled());
-        QObject::connect(&dock, &AppDock::enabledChanged, dockView, [dockView, &dock] { dockView->setVisible(dock.enabled()); });
+        dockView->setVisible(dock.enabled() && !gaming.active());
+        QObject::connect(&dock, &AppDock::enabledChanged, dockView, [dockView, &dock, &gaming] { dockView->setVisible(dock.enabled() && !gaming.active()); });
         // Another edge: hide, re-anchor, show again (queued so the window has taken its new size from QML).
-        QObject::connect(&dock, &AppDock::positionChanged, dockView, [dockView, &dock, &desktop] {
+        QObject::connect(&dock, &AppDock::positionChanged, dockView, [dockView, &dock, &desktop, &gaming] {
             dockView->hide();
             desktop.moveDock(dockView, dock.position());
-            dockView->setVisible(dock.enabled());
+            dockView->setVisible(dock.enabled() && !gaming.active());
         }, Qt::QueuedConnection);
         docks.insert(screen, dockView);
     };
@@ -270,12 +275,21 @@ int main(int argc, char *argv[])
         addScreen(screen);
     if (windows.isEmpty())
         return 1;
+    // Gaming mode hides every Notch and dock window (hidden windows get no pointer events at all) and brings them back.
+    QObject::connect(&gaming, &GamingMode::changed, &app, [&] {
+        const bool quiet = gaming.active();
+        for (QQuickWindow *w : std::as_const(windows))
+            w->setVisible(!quiet);
+        for (QQuickWindow *d : std::as_const(docks))
+            d->setVisible(dock.enabled() && !quiet);
+    });
     QObject::connect(&app, &QGuiApplication::screenAdded, addScreen);
     QObject::connect(&app, &QGuiApplication::screenRemoved, [&](QScreen *screen) {
         delete windows.take(screen);
         delete docks.take(screen);
     });
 
+    app.setQuitOnLastWindowClosed(false); // gaming mode hides every window: only the tray menu quits
     engine.loadFromModule("Notch", "Tray");
     const int rc = app.exec();
     qDeleteAll(windows); // before the engine and controller they bind to

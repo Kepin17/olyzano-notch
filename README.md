@@ -368,6 +368,11 @@ Limits: it only talks to Olyzano Notch (not Google's Quick Share), it needs both
   Not every song is there: lrclib.net is community-made, and newer or less known artists are often missing ("No lyrics found").
   The artist and title are cleaned first ("Name - Topic", "(Official Video)"), then it searches by artist and title, then by
   the words, keeping only the right artist.
+- **Gaming mode:** while it is on, Olyzano Notch and the dock hide and ignore the pointer (nothing at the screen edges can be
+  hit by accident), and sounds and reminders stay quiet. Switch it on with the gamepad button in the header,
+  *Settings → General → Gaming mode* or the tray menu; the tray icon (a click, or *Leave gaming mode*) brings Notch back.
+  It starts off every time. *Start it by itself* (off by default) also turns it on while a full-screen app or game is in
+  front, for as long as that window lasts (Linux: KDE Plasma; Windows: the system's full-screen / presentation state).
 - **Alerts:** plugging the charger in or out, a Bluetooth device connecting or disconnecting, and low battery
   (20 %, 10 %, 5 %, the laptop's and a headset's) make Olyzano Notch peek out. Linux reads UPower and BlueZ; Windows its own
   power status and Bluetooth device list.

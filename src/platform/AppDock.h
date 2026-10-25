@@ -118,6 +118,7 @@ signals:
     void itemsChanged();
     void trashChanged();
     void coveredScreenChanged();
+    void fullScreenChanged(); // the window in front went full screen, or left it
 
 private:
     struct KWinWindow {

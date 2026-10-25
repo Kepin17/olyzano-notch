@@ -87,6 +87,7 @@ qt_add_executable(notch
     src/platform/Wellbeing.h src/platform/Wellbeing.cpp src/platform/WellbeingModel.h
     src/platform/Sounds.h src/platform/Sounds.cpp src/platform/SoundsModel.h
     src/platform/Karaoke.h src/platform/Karaoke.cpp src/platform/KaraokeModel.h
+    src/platform/GamingMode.h src/platform/GamingMode.cpp src/platform/GamingModel.h
     src/platform/DesktopNotifications.h src/platform/DesktopNotifications.cpp src/platform/NotificationFilter.h
 )
 if(NOTCH_DBUS)
@@ -131,7 +132,7 @@ qt_add_qml_module(notch
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg
         src/qml/icons/unlock.svg src/qml/icons/trash.svg src/qml/icons/palette.svg src/qml/icons/pen.svg
         src/qml/icons/gear.svg src/qml/icons/sort.svg src/qml/icons/camera.svg src/qml/icons/download.svg
-        src/qml/icons/phone.svg src/qml/icons/search.svg src/qml/icons/share.svg src/qml/icons/wifi.svg src/qml/icons/server.svg src/qml/icons/notch.png src/qml/icons/laptop.svg src/qml/icons/folder.svg src/qml/icons/music.svg src/qml/icons/bluetooth.svg src/qml/icons/headphones.svg
+        src/qml/icons/phone.svg src/qml/icons/search.svg src/qml/icons/share.svg src/qml/icons/wifi.svg src/qml/icons/server.svg src/qml/icons/notch.png src/qml/icons/laptop.svg src/qml/icons/folder.svg src/qml/icons/music.svg src/qml/icons/gamepad.svg src/qml/icons/bluetooth.svg src/qml/icons/headphones.svg
         src/qml/icons/timer.svg src/qml/icons/mic.svg src/qml/icons/mic-off.svg src/qml/icons/notifications.svg
         # made by tools/make_sounds.py
         src/qml/sounds/break-over.wav src/qml/sounds/device.wav src/qml/sounds/drop.wav src/qml/sounds/notify.wav src/qml/sounds/pick.wav

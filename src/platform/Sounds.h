@@ -50,6 +50,7 @@ public:
 
     // What "busy" means is learnt from elsewhere: a microphone in use, a full-screen window.
     void setBusyChecks(std::function<bool()> micInUse, std::function<bool()> fullScreen);
+    void setSilencer(std::function<bool()> silent) { m_silent = std::move(silent); } // gaming mode: nothing plays
 
     Q_INVOKABLE void play(const QString &name);    // obeys the settings
     Q_INVOKABLE void preview(const QString &name); // for Settings: plays even when switched off
@@ -66,7 +67,7 @@ private:
     bool fullScreenNow() const;
 
     QSettings m_settings;
-    std::function<bool()> m_micInUse, m_fullScreen;
+    std::function<bool()> m_micInUse, m_fullScreen, m_silent;
     QHash<QString, QElapsedTimer> m_last; // name -> since it last played
     QTimer m_ring;
     int m_rings = 0;

@@ -94,6 +94,7 @@ Window {
         value: (wellbeing.pauseForMedia && media.playing)
                || (wellbeing.pauseForCalls && (root.call !== null || activities.micApps.length > 0 || activities.cameraApps.length > 0))
                || (wellbeing.pauseForPomodoro && activities.timerKind === "pomodoro")
+               || gaming.active // never over a game
     }
     property double breakNow: Date.now()
     Timer {
@@ -1209,6 +1210,12 @@ Window {
                             onEntered: (drag) => { drag.accepted = drag.source && drag.source.draggedIds !== undefined }
                             onDropped: (d) => root.removeWithConfirm(d.source.draggedIds)
                         }
+                    }
+                    IconButton {
+                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "color") && !root.selecting
+                        iconName: "gamepad"
+                        Accessible.name: "Gaming mode: hide Olyzano Notch until the tray icon is clicked"
+                        onClicked: gaming.manual = true
                     }
                     IconButton {
                         visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "color") && !root.selecting

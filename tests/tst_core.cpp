@@ -16,6 +16,7 @@
 #include "platform/PlayerSelection.h"
 #include "platform/WinPrivacy.h"
 #include "platform/MediaNames.h"
+#include "platform/GamingModel.h"
 #include "platform/KaraokeModel.h"
 #include "platform/LrcParser.h"
 #include "platform/Lyrics.h"
@@ -687,6 +688,32 @@ private slots:
         web.routes.insert(QStringLiteral("/api/get"), {500, "oops"});
         l.track(QStringLiteral("P"), QStringLiteral("Q"), QString(), 90000);
         QTRY_COMPARE(l.state(), QStringLiteral("error"));
+    }
+
+    void gamingModeFollowsTheSwitchAndTheFullScreenWindow()
+    {
+        GamingModel g;
+        QVERIFY(!g.active());
+        g.setFullScreen(true);
+        QVERIFY(!g.active()); // a full-screen window alone does nothing while "by itself" is off
+        g.autoDetect = true;
+        QVERIFY(g.active());
+        g.wake(); // the tray icon: Notch is back while this window lasts...
+        QVERIFY(!g.active());
+        g.setFullScreen(false);
+        g.setFullScreen(true);
+        QVERIFY(g.active()); // ...and quiet again for the next one
+        g.setFullScreen(false);
+        QVERIFY(!g.active());
+        g.manual = true;
+        QVERIFY(g.active()); // by hand, with nothing full screen
+        g.wake();
+        QVERIFY(!g.manual && !g.active());
+        g.manual = true;
+        g.autoDetect = false;
+        g.setFullScreen(true);
+        g.wake();
+        QVERIFY(!g.active() && !g.suspended); // nothing to suspend when "by itself" is off
     }
 
     void karaokeLoopModules()
