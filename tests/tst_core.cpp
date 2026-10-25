@@ -16,6 +16,7 @@
 #include "platform/PlayerSelection.h"
 #include "platform/WinPrivacy.h"
 #include "platform/MediaNames.h"
+#include "platform/DbusMenuModel.h"
 #include "platform/GamingModel.h"
 #include "platform/KaraokeModel.h"
 #include "platform/PanelModel.h"
@@ -735,6 +736,43 @@ private slots:
         QCOMPARE(PanelModel::timeLeft(0), QString());
         QCOMPARE(PanelModel::timeLeft(35 * 60), QStringLiteral("35 min"));
         QCOMPARE(PanelModel::timeLeft(7500), QStringLiteral("2 h 05 min"));
+    }
+
+    void appMenuIsReadFromDbusmenu()
+    {
+        const auto node = [](int id, const QVariantMap &props, const QVariantList &kids = {}) {
+            return QVariantMap{{QStringLiteral("id"), id}, {QStringLiteral("props"), props}, {QStringLiteral("children"), kids}};
+        };
+        const QVariantMap sep{{QStringLiteral("type"), QStringLiteral("separator")}};
+        const QVariantMap root = node(0, {}, {
+            node(13, {{QStringLiteral("label"), QStringLiteral("_File")}, {QStringLiteral("children-display"), QStringLiteral("submenu")}}, {
+                node(1, {{QStringLiteral("type"), QStringLiteral("separator")}}),   // leading separator: dropped
+                node(2, {{QStringLiteral("label"), QStringLiteral("New _tab")},
+                         {QStringLiteral("shortcut"), QVariantList{QStringList{QStringLiteral("Control"), QStringLiteral("t")}}}}),
+                node(3, sep), node(4, sep),                                          // doubled: one stays
+                node(5, {{QStringLiteral("label"), QStringLiteral("_Stop")}, {QStringLiteral("enabled"), false}}),
+                node(6, {{QStringLiteral("label"), QStringLiteral("Secret")}, {QStringLiteral("visible"), false}}),
+                node(7, {{QStringLiteral("label"), QStringLiteral("Show _bar")}, {QStringLiteral("toggle-type"), QStringLiteral("checkmark")},
+                         {QStringLiteral("toggle-state"), 1}, {QStringLiteral("shortcut"), QVariantList{QStringList{QStringLiteral("Control"), QStringLiteral("Shift"), QStringLiteral("b")}}}}),
+                node(8, sep)}),                                                      // trailing separator: dropped
+            node(21, {{QStringLiteral("label"), QStringLiteral("_Tools")}, {QStringLiteral("children-display"), QStringLiteral("submenu")}}, {
+                node(22, {{QStringLiteral("label"), QStringLiteral("More")}, {QStringLiteral("children-display"), QStringLiteral("submenu")}},
+                     {node(23, {{QStringLiteral("label"), QStringLiteral("A__B")}})})})});
+        const QVariantList bar = DbusMenuModel::menuBar(root);
+        QCOMPARE(bar.size(), 2);
+        QCOMPARE(bar[0].toMap().value(QStringLiteral("label")).toString(), QStringLiteral("File")); // the mnemonic marker is gone
+        const QVariantList file = bar[0].toMap().value(QStringLiteral("children")).toList();
+        QCOMPARE(file.size(), 4); // tab, separator, Stop, Show bar: no hidden item, no stray separators
+        QCOMPARE(file[0].toMap().value(QStringLiteral("label")).toString(), QStringLiteral("New tab"));
+        QCOMPARE(file[0].toMap().value(QStringLiteral("shortcut")).toString(), QStringLiteral("Ctrl+T"));
+        QVERIFY(file[1].toMap().value(QStringLiteral("separator")).toBool());
+        QVERIFY(!file[2].toMap().value(QStringLiteral("enabled")).toBool());
+        QVERIFY(file[3].toMap().value(QStringLiteral("check")).toBool());
+        QCOMPARE(file[3].toMap().value(QStringLiteral("shortcut")).toString(), QStringLiteral("Ctrl+Shift+B"));
+        const QVariantMap more = bar[1].toMap().value(QStringLiteral("children")).toList()[0].toMap();
+        QVERIFY(more.value(QStringLiteral("submenu")).toBool());
+        QCOMPARE(more.value(QStringLiteral("children")).toList()[0].toMap().value(QStringLiteral("label")).toString(), QStringLiteral("A_B"));
+        QCOMPARE(DbusMenuModel::shortcutText(QVariant()), QString());
     }
 
     void karaokeLoopModules()
