@@ -563,12 +563,23 @@ function atTop(w) {
 }
 function screenOf(w) { return w.output ? String(w.output.name) : w.screen !== undefined ? "#" + w.screen : ""; }
 // Windows are compared by id: the same window can come back as a different script object.
+var lastActiveId = "";
 function push(gone) {
     var active = current();
     var activeId = active ? String(active.internalId) : "";
     var goneId = gone ? String(gone.internalId) : "";
     var list = windows();
     var out = [];
+    // Clicking Notch's own panel makes it the active window; it is no ordinary window, so the app that was in
+    // front before it (and is still there, maybe full screen) stays the one in front.
+    var normalActive = false;
+    for (var j = 0; j < list.length; ++j)
+        if (String(list[j].internalId) === activeId && list[j].normalWindow && !list[j].skipTaskbar)
+            normalActive = true;
+    if (normalActive)
+        lastActiveId = activeId;
+    else if (lastActiveId !== "")
+        activeId = lastActiveId;
     for (var i = 0; i < list.length; ++i) {
         var w = list[i];
         var id = String(w.internalId);
