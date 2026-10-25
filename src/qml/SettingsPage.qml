@@ -86,7 +86,7 @@ ScrollView {
             SettingToggle {
                 visible: notch.linuxDesktop
                 title: "Microphone & camera indicators"
-                caption: "A green dot beside the notch while a camera is on, an orange one while an app records the microphone."
+                caption: "A green dot beside the notch while a camera is on; the open panel names the apps using the camera or the microphone."
                 checked: activities.privacyIndicators
                 onToggled: activities.privacyIndicators = !activities.privacyIndicators
             }
