@@ -32,14 +32,14 @@ Tested on Kubuntu 26.04 (Qt 6.10, KDE Plasma on Wayland).
 **[latest release](https://github.com/Kepin17/olyzano-notch/releases/latest)**, or from a terminal:
 
 ```bash
-wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.9.0/notch_0.9.0_amd64.deb
+wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.9.1/notch_0.9.1_amd64.deb
 ```
 
 **2. Install** it. `apt` pulls in everything it needs (Qt 6 runtime, `layer-shell-qt`, Poppler, Ghostscript,
 `gocryptfs`, `fuse3`, `pulseaudio-utils`, …):
 
 ```bash
-sudo apt install ./notch_0.9.0_amd64.deb
+sudo apt install ./notch_0.9.1_amd64.deb
 ```
 
 **3. Start** **Olyzano Notch** from the application menu, or turn on **Settings → General → Start at login**.
@@ -366,8 +366,9 @@ Limits: it only talks to Olyzano Notch (not Google's Quick Share), it needs both
 - **Sound effects:** short, soft sounds for a file dropped or pasted, the Trash emptied, a colour picked, a timer or
   Pomodoro done, the stretch reminder and the end of a break, an incoming call, notifications, files sent or received,
   the charger, a Bluetooth device and a low battery. *Settings → General → Sounds* has a volume, a switch per group with
-  a ▶ to hear it, and *Quiet during calls and full-screen apps* (on by default: nothing plays while an app uses the
-  microphone, and only a call rings over a full-screen video). Linux plays them through `paplay` (PulseAudio or
+  a ▶ to hear it, and *Quiet during calls and full-screen apps* (on by default: nothing plays over a full-screen
+  video, game or slideshow, and only a call rings; *Also quiet while the microphone is in use* is a separate switch, off,
+  because Discord or a browser keep the microphone open all day). Linux plays them through `paplay` (PulseAudio or
   PipeWire, in the `.deb` already); Windows through its own sound API. The sounds are made by `tools/make_sounds.py`.
 - **Notifications from this computer:** what other apps show (Slack, mail, the browser, …) also appears in the notch as
   "Notification from Slack · John", never the message itself, with a sound. *Do not disturb* (Plasma) or *Focus*
