@@ -94,6 +94,7 @@ public:
     Q_INVOKABLE void pinAt(const QString &id, int index);
     // Installed apps for the picker, filtered by name; {id, name, iconSource, pinned}.
     Q_INVOKABLE QVariantList installedApps(const QString &filter);
+    QVariantList launcherApps(); // [{id, name, iconSource, keywords, category}], for the launcher
     // Bring one particular window forward (from the hover list of an app's windows).
     Q_INVOKABLE void activateWindow(const QString &windowId);
     // Files dropped on an app's icon: open them with it (file:// URLs or paths).

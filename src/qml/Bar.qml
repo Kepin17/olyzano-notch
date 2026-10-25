@@ -25,11 +25,17 @@ Window {
     property var trayItems: []
     property real trayX: 0
     readonly property int trayShown: 6
-    onQuickOpenChanged: if (quickOpen) { menuOpen = -1; calOpen = false; trayMenu = false; trayMore = false }
-    onMenuOpenChanged: if (menuOpen >= 0) { quickOpen = false; calOpen = false; trayMenu = false; trayMore = false }
-    onCalOpenChanged: if (calOpen) { quickOpen = false; menuOpen = -1; trayMenu = false; trayMore = false }
-    onTrayMenuChanged: if (trayMenu) { quickOpen = false; calOpen = false; menuOpen = -1; trayMore = false }
-    onTrayMoreChanged: if (trayMore) { quickOpen = false; calOpen = false; menuOpen = -1; trayMenu = false }
+    onQuickOpenChanged: if (quickOpen) { menuOpen = -1; calOpen = false; trayMenu = false; trayMore = false; launcherOpen = false }
+    onMenuOpenChanged: if (menuOpen >= 0) { quickOpen = false; calOpen = false; trayMenu = false; trayMore = false; launcherOpen = false }
+    onCalOpenChanged: if (calOpen) { quickOpen = false; menuOpen = -1; trayMenu = false; trayMore = false; launcherOpen = false }
+    onTrayMenuChanged: if (trayMenu) { quickOpen = false; calOpen = false; menuOpen = -1; trayMore = false; launcherOpen = false }
+    onTrayMoreChanged: if (trayMore) { quickOpen = false; calOpen = false; menuOpen = -1; trayMenu = false; launcherOpen = false }
+    property bool launcherOpen: false // the app launcher, from the grid button
+    onLauncherOpenChanged: {
+        if (launcherOpen) { quickOpen = false; calOpen = false; menuOpen = -1; trayMenu = false; trayMore = false }
+        desktop.setKeyboardInteractive(root, launcherOpen) // typing in the search field
+    }
+    onActiveChanged: if (!active && launcherOpen) launcherOpen = false // the keyboard went elsewhere: it is done
     Timer { id: trayCloser; interval: 900; onTriggered: if (!trayHover.hovered && !moreHover.hovered) { root.trayMenu = false; root.trayMore = false } }
     function openTray(key, item) { // right click on a tray icon: its menu under it
         const m = trayHost.menu(key)
@@ -48,7 +54,7 @@ Window {
     Timer { id: quickOpener; interval: 160; onTriggered: if (clusterHover.hovered) root.quickOpen = true }
     property bool shown: topbar.behavior === "always"
     property bool edgeDwelled: false
-    readonly property bool engaged: topbar.behavior === "always" || edgeDwelled || stripHover.hovered || quickOpen || menuShown || calOpen || trayMenu || trayMore
+    readonly property bool engaged: topbar.behavior === "always" || edgeDwelled || stripHover.hovered || quickOpen || menuShown || calOpen || trayMenu || trayMore || launcherOpen
     onEngagedChanged: {
         if (engaged) {
             hideTimer.stop()
@@ -67,6 +73,7 @@ Window {
     // ---- the pointer: only what is visible (and nothing at all over a full-screen game) ----
     readonly property var maskRects: gaming.active ? [Qt.rect(0, 0, 1, 1)]
                                    : menuShown ? [Qt.rect(0, 0, width, stripH), Qt.rect(menuPop.x, menuPop.y, menuPop.reachW, menuPop.reachH)]
+                                   : launcherOpen ? [Qt.rect(0, 0, width, stripH), Qt.rect(launch.x, launch.y, launch.width, launch.height)]
                                    : trayMenu ? [Qt.rect(0, 0, width, stripH), Qt.rect(trayPop.x, trayPop.y, trayPop.reachW, trayPop.reachH)]
                                    : trayMore ? [Qt.rect(0, 0, width, stripH), Qt.rect(moreCard.x, moreCard.y, moreCard.width, moreCard.height)]
                                    : calOpen ? [Qt.rect(0, 0, width, stripH), Qt.rect(cal.x, cal.y, cal.width, cal.height)]
@@ -104,9 +111,22 @@ Window {
         }
         HoverHandler { id: stripHover }
 
+        // far left: the app launcher
+        AbstractButton {
+            id: launchButton
+            visible: topbar.launcher
+            x: 8
+            anchors.verticalCenter: parent.verticalCenter
+            width: 30; height: 26
+            Accessible.name: "Applications"
+            onClicked: root.launcherOpen = !root.launcherOpen
+            background: Rectangle { radius: 8; color: root.launcherOpen ? theme.accentSoft : parent.hovered ? theme.surfaceHover : "transparent" }
+            contentItem: Item { LineIcon { anchors.centerIn: parent; glyph: "grid"; sourceSize: Qt.size(16, 16); color: root.launcherOpen ? theme.accent : theme.text } }
+        }
+
         // left: the app in front
         RowLayout {
-            anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter }
+            anchors { left: parent.left; leftMargin: topbar.launcher ? 46 : 14; verticalCenter: parent.verticalCenter }
             width: Math.max(0, parent.width / 2 - 260)
             spacing: 10
             visible: topbar.showApp && dock.activeAppName !== ""
@@ -278,6 +298,17 @@ Window {
         }
     }
 
+    // ---- the app launcher ----
+    Launcher {
+        id: launch
+        x: 8
+        y: root.stripH + 6
+        open: root.launcherOpen && root.shown
+        onCloseRequested: root.launcherOpen = false
+        HoverHandler { id: launchHover; onHoveredChanged: if (!hovered && root.launcherOpen && launch.query === "") launcherCloser.restart() }
+    }
+    Timer { id: launcherCloser; interval: 2500; onTriggered: if (!launchHover.hovered && launch.query === "") root.launcherOpen = false }
+
     // ---- tray: one icon, its menu, and the overflow ----
     component TrayIcon: Item {
         id: ti
@@ -376,7 +407,7 @@ Window {
     }
     Connections {
         target: gaming
-        function onChanged() { if (gaming.active) { root.quickOpen = false; root.menuOpen = -1; root.calOpen = false; root.trayMenu = false; root.trayMore = false } }
+        function onChanged() { if (gaming.active) { root.quickOpen = false; root.menuOpen = -1; root.calOpen = false; root.trayMenu = false; root.trayMore = false; root.launcherOpen = false } }
     }
 
     // ---- the top edge, while the bar is away ----

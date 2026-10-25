@@ -20,6 +20,11 @@ class PanelBar : public QObject
     Q_PROPERTY(QString weekStart READ weekStart WRITE setWeekStart NOTIFY changed) // "system" | "monday" | "sunday"
     Q_PROPERTY(bool weekNumbers READ weekNumbers WRITE setWeekNumbers NOTIFY changed)
     Q_PROPERTY(int firstDay READ firstDay NOTIFY changed) // Qt::DayOfWeek the calendar starts on
+    Q_PROPERTY(bool launcher READ launcher WRITE setLauncher NOTIFY changed)       // the app launcher's button, left end of the bar
+    Q_PROPERTY(QString launcherView READ launcherView WRITE setLauncherView NOTIFY changed) // "grid" | "list"
+    Q_PROPERTY(int launcherIcon READ launcherIcon WRITE setLauncherIcon NOTIFY changed)     // px, 32-64
+    Q_PROPERTY(bool launcherRecent READ launcherRecent WRITE setLauncherRecent NOTIFY changed)
+    Q_PROPERTY(bool launcherCategories READ launcherCategories WRITE setLauncherCategories NOTIFY changed)
     Q_PROPERTY(bool showTray READ showTray WRITE setShowTray NOTIFY changed)   // the apps in the background, left of the status icons
     Q_PROPERTY(bool showDate READ showDate WRITE setShowDate NOTIFY changed)
     Q_PROPERTY(bool showSeconds READ showSeconds WRITE setShowSeconds NOTIFY changed)
@@ -51,6 +56,16 @@ public:
     void setWeekNumbers(bool on) { store("weekNumbers", on); }
     int firstDay() const;
     Q_INVOKABLE QVariantList monthGrid(int year, int month) const; // 42 days, see CalendarModel.h
+    bool launcher() const { return flag("launcher", true); }
+    void setLauncher(bool on) { store("launcher", on); }
+    QString launcherView() const { return m_settings.value(QStringLiteral("launcherView"), QStringLiteral("grid")).toString() == QLatin1String("list") ? QStringLiteral("list") : QStringLiteral("grid"); }
+    void setLauncherView(const QString &v) { store("launcherView", v == QLatin1String("list") ? QStringLiteral("list") : QStringLiteral("grid")); }
+    int launcherIcon() const { return qBound(32, m_settings.value(QStringLiteral("launcherIcon"), 44).toInt(), 64); }
+    void setLauncherIcon(int px) { store("launcherIcon", qBound(32, px, 64)); }
+    bool launcherRecent() const { return flag("launcherRecent", true); }
+    void setLauncherRecent(bool on) { store("launcherRecent", on); }
+    bool launcherCategories() const { return flag("launcherCategories", true); }
+    void setLauncherCategories(bool on) { store("launcherCategories", on); }
     bool showTray() const { return flag("showTray", true); }
     void setShowTray(bool on) { store("showTray", on); }
     bool showDate() const { return flag("showDate", true); }

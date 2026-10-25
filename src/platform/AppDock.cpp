@@ -1,5 +1,7 @@
 #include "platform/AppDock.h"
 
+#include "platform/LauncherModel.h"
+
 #include "models/FileItem.h"
 
 #include <QCoreApplication>
@@ -341,6 +343,16 @@ QVariantList AppDock::installedApps(const QString &filter)
                            {QStringLiteral("iconSource"), iconSource(app.id)},
                            {QStringLiteral("pinned"), m_pinned.contains(app.id)}};
     }
+    return out;
+}
+
+QVariantList AppDock::launcherApps()
+{
+    loadCatalog();
+    QVariantList out;
+    for (const DockApp &app : std::as_const(m_catalog))
+        out << QVariantMap{{QStringLiteral("id"), app.id}, {QStringLiteral("name"), app.name}, {QStringLiteral("iconSource"), iconSource(app.id)},
+                           {QStringLiteral("keywords"), app.keywords}, {QStringLiteral("category"), LauncherModel::groupOf(app.categories)}};
     return out;
 }
 

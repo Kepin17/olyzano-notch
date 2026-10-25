@@ -21,6 +21,8 @@ struct DockApp {
     QString key;     // what a running process is matched on: lower-cased binary name (Linux) / exe path
     QString wmClass; // StartupWMClass: the window class its windows carry, when the .desktop file names one
     QStringList exec; // Exec= split into arguments with its field codes (%f, %U, …) kept, for opening files with it
+    QStringList categories; // Categories=, for the launcher
+    QString keywords;       // Keywords= + GenericName= + Comment=, what a search also looks at
     bool valid() const { return !id.isEmpty() && !name.isEmpty() && !command.isEmpty(); }
 };
 
@@ -82,6 +84,8 @@ inline DockApp parseDesktopEntry(const QString &id, const QByteArray &contents)
     app.key = binaryName(args);
     app.wmClass = keys.value(QStringLiteral("StartupWMClass"));
     app.exec = QProcess::splitCommand(keys.value(QStringLiteral("Exec")));
+    app.categories = keys.value(QStringLiteral("Categories")).split(u';', Qt::SkipEmptyParts);
+    app.keywords = keys.value(QStringLiteral("Keywords")) + u' ' + keys.value(QStringLiteral("GenericName")) + u' ' + keys.value(QStringLiteral("Comment"));
     if (args.isEmpty() || app.key.isEmpty())
         return {};
     return app;

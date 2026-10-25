@@ -784,6 +784,32 @@ RowLayout {
 
             SettingCard {
                 visible: topbar.enabled
+                title: "App launcher"
+                SettingToggle { title: "Show the launcher button"; caption: "A grid button at the left end of the bar: search and open any app."; checked: topbar.launcher; onToggled: topbar.launcher = !topbar.launcher }
+                SectionLabel { text: "Show apps as" }
+                Row {
+                    spacing: 6
+                    PillButton { text: "Grid"; checked: topbar.launcherView === "grid"; onClicked: topbar.launcherView = "grid" }
+                    PillButton { text: "List"; checked: topbar.launcherView === "list"; onClicked: topbar.launcherView = "list" }
+                }
+                DockSlider {
+                    visible: topbar.launcherView === "grid"
+                    title: "Icon size"
+                    valueText: topbar.launcherIcon + " px"
+                    from: 32; to: 64; stepSize: 4
+                    value: topbar.launcherIcon
+                    onMoved: topbar.launcherIcon = value
+                }
+                SettingToggle { title: "Recent apps"; caption: "The apps you opened last, above the list."; checked: topbar.launcherRecent; onToggled: topbar.launcherRecent = !topbar.launcherRecent }
+                SettingToggle { title: "Groups"; caption: "Filters such as Internet, Media and Development."; checked: topbar.launcherCategories; onToggled: topbar.launcherCategories = !topbar.launcherCategories }
+                Caption {
+                    Layout.fillWidth: true
+                    text: "Pin an app with the pin that shows when you point at it; pinned apps come first."
+                }
+            }
+
+            SettingCard {
+                visible: topbar.enabled
                 title: "Calendar"
                 SectionLabel { text: "The week starts on" }
                 Row {

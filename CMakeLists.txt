@@ -90,7 +90,7 @@ qt_add_executable(notch
     src/platform/GamingMode.h src/platform/GamingMode.cpp src/platform/GamingModel.h
     src/platform/PanelBar.h src/platform/PanelBar.cpp
     src/platform/QuickSettings.h src/platform/QuickSettings.cpp src/platform/PanelModel.h
-    src/platform/AppMenu.h src/platform/AppMenu.cpp src/platform/DbusMenuModel.h src/platform/CalendarModel.h src/platform/ColorFormat.h src/platform/TrayHost.h src/platform/TrayHost.cpp
+    src/platform/AppMenu.h src/platform/AppMenu.cpp src/platform/DbusMenuModel.h src/platform/CalendarModel.h src/platform/Launcher.h src/platform/Launcher.cpp src/platform/LauncherModel.h src/platform/ColorFormat.h src/platform/TrayHost.h src/platform/TrayHost.cpp
     src/platform/DesktopNotifications.h src/platform/DesktopNotifications.cpp src/platform/NotificationFilter.h
 )
 if(NOTCH_DBUS)
@@ -129,7 +129,7 @@ qt_add_qml_module(notch
         src/qml/PillButton.qml src/qml/IconButton.qml src/qml/Toggle.qml src/qml/PulseDot.qml
         src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkSeparator.qml
         src/qml/SettingToggle.qml src/qml/Chip.qml src/qml/WheelScroller.qml
-        src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml src/qml/ActionBar.qml src/qml/Bar.qml src/qml/Segmented.qml src/qml/SignalIcon.qml src/qml/CircleAction.qml src/qml/ColorPage.qml src/qml/AppMenuPopup.qml src/qml/CalendarCard.qml src/qml/QuickSettings.qml src/qml/LyricsPanel.qml
+        src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml src/qml/ActionBar.qml src/qml/Bar.qml src/qml/Segmented.qml src/qml/Launcher.qml src/qml/SignalIcon.qml src/qml/CircleAction.qml src/qml/ColorPage.qml src/qml/AppMenuPopup.qml src/qml/CalendarCard.qml src/qml/QuickSettings.qml src/qml/LyricsPanel.qml
         src/qml/Dock.qml src/qml/TimerPage.qml
     RESOURCES
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg

@@ -14,6 +14,7 @@
 #include "platform/Theme.h"
 #include "platform/GamingMode.h"
 #include "platform/AppMenu.h"
+#include "platform/Launcher.h"
 #include "platform/TrayHost.h"
 #include "platform/Karaoke.h"
 #include "platform/PanelBar.h"
@@ -179,6 +180,7 @@ int main(int argc, char *argv[])
     QuickSettings quick;
     AppMenu appMenu;
     TrayHost trayHost;
+    Launcher launcher(&dock);
     if (const int i = app.arguments().indexOf(QStringLiteral("--dump-menu")); i >= 0 && i + 1 < app.arguments().size()) { // the menu of a process, for checking
         fputs(appMenu.dump(app.arguments().at(i + 1).toLongLong()).constData(), stdout);
         return 0;
@@ -279,6 +281,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("quick"), &quick);
     engine.rootContext()->setContextProperty(QStringLiteral("appMenu"), &appMenu);
     engine.rootContext()->setContextProperty(QStringLiteral("trayHost"), &trayHost);
+    engine.rootContext()->setContextProperty(QStringLiteral("launcher"), &launcher);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
 
     // One Notch per monitor, following hotplug.
@@ -350,7 +353,7 @@ int main(int argc, char *argv[])
             QQuickWindow *bar = bars.isEmpty() ? nullptr : bars.constBegin().value();
             if (!bar)
                 return app.quit();
-            bar->setProperty("quickOpen", true);
+            bar->setProperty(app.arguments().contains(QStringLiteral("--launcher")) ? "launcherOpen" : "quickOpen", true);
             QTimer::singleShot(900, &app, [bar, &app, path] { bar->grabWindow().save(path); app.quit(); });
         });
     }

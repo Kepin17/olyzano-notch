@@ -20,6 +20,7 @@
 #include "platform/GamingModel.h"
 #include "platform/KaraokeModel.h"
 #include "platform/CalendarModel.h"
+#include "platform/LauncherModel.h"
 #include "platform/ColorFormat.h"
 #include "platform/PanelModel.h"
 #include "platform/LrcParser.h"
@@ -763,6 +764,22 @@ private slots:
         QCOMPARE(ColorFormat::format(QStringLiteral("nonsense"), QStringLiteral("rgb")), QStringLiteral("nonsense"));
         QCOMPARE(ColorFormat::readableOn(QStringLiteral("#ffffff")), QStringLiteral("#000000"));
         QCOMPARE(ColorFormat::readableOn(QStringLiteral("#101820")), QStringLiteral("#ffffff"));
+        QCOMPARE(LauncherModel::groupOf({QStringLiteral("Network"), QStringLiteral("WebBrowser")}), QStringLiteral("Internet"));
+        QCOMPARE(LauncherModel::groupOf({QStringLiteral("Utility"), QStringLiteral("Game")}), QStringLiteral("Games"));
+        QCOMPARE(LauncherModel::groupOf({QStringLiteral("Qt")}), QStringLiteral("Other"));
+        QVERIFY(LauncherModel::score(QStringLiteral("fire"), QStringLiteral("Firefox"), {}) > LauncherModel::score(QStringLiteral("fox"), QStringLiteral("Firefox"), {}));
+        QVERIFY(LauncherModel::score(QStringLiteral("web"), QStringLiteral("Firefox"), QStringLiteral("browser web")) > 0);
+        QVERIFY(LauncherModel::score(QStringLiteral("ffx"), QStringLiteral("Firefox"), {}) > 0);
+        QCOMPARE(LauncherModel::score(QStringLiteral("zzz"), QStringLiteral("Firefox"), {}), 0);
+        {
+            const QVariantList apps{QVariantMap{{"id", "a"}, {"name", "Konsole"}, {"category", "System"}}, QVariantMap{{"id", "b"}, {"name", "Kate"}, {"category", "Development"}},
+                                    QVariantMap{{"id", "c"}, {"name", "Okular Kate Viewer"}, {"category", "Office"}}};
+            QCOMPARE(LauncherModel::search(apps, {}, {}, {}).first().toMap().value("name").toString(), QStringLiteral("Kate")); // A-Z
+            QCOMPARE(LauncherModel::search(apps, QStringLiteral("kate"), {}, {}).first().toMap().value("id").toString(), QStringLiteral("b")); // name first
+            QCOMPARE(LauncherModel::search(apps, QStringLiteral("kate"), {}, {}).size(), 2);
+            QCOMPARE(LauncherModel::search(apps, {}, QStringLiteral("System"), {}).size(), 1);
+            QCOMPARE(LauncherModel::search(apps, QStringLiteral("ko"), {}, {{"c", 9}}).first().toMap().value("id").toString(), QStringLiteral("a"));
+        }
         QCOMPARE(PanelModel::channelOf(2437), 6);
         QCOMPARE(PanelModel::channelOf(5745), 149);
         QCOMPARE(PanelModel::channelOf(5955), 1);
