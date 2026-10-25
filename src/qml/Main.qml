@@ -539,9 +539,9 @@ Window {
         x: (root.width - width) / 2
         width: root.mode === "open" ? root.openWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 380
              : root.mode === "peek" ? (root.live && root.live.kind !== "copy" ? 320 : 230)
-             : root.mode === "idle" ? (root.musicShown ? 320 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
+             : root.mode === "idle" ? (root.musicShown ? 400 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         height: root.mode === "open" ? panel.implicitHeight + (root.dragOver ? 8 : 0)
-              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : root.mode === "idle" ? 26 : 0
+              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? 38 : 26) : 0
         focus: true
 
         readonly property real shoulder: Math.min(10, Math.max(0, height) / 3)
@@ -882,33 +882,33 @@ Window {
             anchors.fill: parent
             anchors.leftMargin: island.shoulder + 14
             anchors.rightMargin: island.shoulder + 14
-            spacing: 8
+            spacing: 10
             opacity: root.mode === "idle" && root.musicShown && island.height > 20 ? 1 : 0
             visible: opacity > 0
             Behavior on opacity { NumberAnimation { duration: 160 } }
             Equalizer {
-                barWidth: 2
-                maxHeight: 12
+                barWidth: 2.5
+                maxHeight: 18
                 Layout.alignment: Qt.AlignVCenter
             }
             Text {
                 Layout.fillWidth: true
                 text: media.title !== "" ? media.title + (media.artist !== "" ? " · " + media.artist : "") : media.identity
                 color: root.textPrimary
-                font.pixelSize: 12
+                font.pixelSize: 14
                 font.weight: Font.DemiBold
                 elide: Text.ElideRight
             }
             Text {
                 text: root.clock(root.capPos) + (media.lengthMs > 0 ? " / " + root.clock(media.lengthMs) : "")
                 color: root.textSecondary
-                font.pixelSize: 11
+                font.pixelSize: 13
                 font.family: "monospace"
             }
             LineIcon {
                 visible: activities.micApps.length > 0
                 glyph: "mic"
-                sourceSize: Qt.size(12, 12)
+                sourceSize: Qt.size(15, 15)
                 color: theme.warn
             }
         }
