@@ -622,6 +622,7 @@ private slots:
             Lyrics off(conf, cache);
             off.setBaseUrl(web.url());
             QCOMPARE(off.state(), QStringLiteral("off"));
+            QVERIFY(!off.consented()); // never switched on yet
             off.track(QStringLiteral("Artist"), QStringLiteral("Song"), QStringLiteral("Album"), 200000);
             QTest::qWait(150);
             QCOMPARE(web.hits, 0); // nothing is sent until it is switched on
@@ -642,6 +643,7 @@ private slots:
             off.setEnabled(false);
             QCOMPARE(off.state(), QStringLiteral("off"));
             QVERIFY(off.lines().isEmpty());
+            QVERIFY(off.consented()); // switching it off from the Music page must not ask again
         }
         { // a new run finds it in the cache: no second request
             Lyrics again(conf, cache);

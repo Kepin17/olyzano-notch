@@ -17,6 +17,8 @@ class Lyrics : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY settingsChanged)
+    // It has been switched on once (in Settings, where it says what is sent): the Music page may then toggle it.
+    Q_PROPERTY(bool consented READ consented NOTIFY settingsChanged)
     // off | none (nothing playing, or no lyrics) | loading | synced | plain | error
     Q_PROPERTY(QString state READ state NOTIFY changed)
     Q_PROPERTY(QVariantList lines READ lines NOTIFY changed) // synced: [{ms, text}]
@@ -31,6 +33,7 @@ public:
 
     bool enabled() const { return m_settings.value(QStringLiteral("enabled"), false).toBool(); }
     void setEnabled(bool on);
+    bool consented() const { return m_settings.value(QStringLiteral("consented"), enabled()).toBool(); }
     QString state() const { return m_state; }
     QVariantList lines() const { return m_lineList; }
     QString plain() const { return m_plain; }

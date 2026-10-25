@@ -50,6 +50,8 @@ void Lyrics::setEnabled(bool on)
     if (on == enabled())
         return;
     m_settings.setValue(QStringLiteral("enabled"), on);
+    if (on)
+        m_settings.setValue(QStringLiteral("consented"), true);
     if (!on) {
         if (m_reply) {
             m_reply->abort(); // finished() runs with the reply gone

@@ -1246,10 +1246,10 @@ Window {
                     onAddFiles: addDialog.open()
                     lyricsOn: lyrics.enabled
                     onToggleLyrics: {
-                        if (lyrics.enabled) {
-                            lyrics.enabled = false
+                        if (lyrics.enabled || lyrics.consented) {
+                            lyrics.enabled = !lyrics.enabled // switched on once in Settings: from here it is a plain toggle
                         } else {
-                            settingsPage.category = "general" // switching it on sends the song to a lyrics service: say so first
+                            settingsPage.category = "general" // the first time: Settings says what is sent
                             root.page = "settings"
                         }
                     }
