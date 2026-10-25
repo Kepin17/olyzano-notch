@@ -336,7 +336,7 @@ Window {
                         Item {
                             visible: slot.modelData.running === true
                             readonly property bool active: slot.modelData.active === true
-                            readonly property real length: active ? 14 : 5
+                            property real length: active ? 14 : 5
                             x: root.side === "left" ? 4 : root.side === "right" ? cell.width - 9 : (cell.width - width) / 2
                             y: root.vertical ? (cell.height - height) / 2 : cell.height - 9
                             width: root.vertical ? 5 : length

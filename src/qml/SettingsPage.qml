@@ -703,7 +703,7 @@ ScrollView {
                 width: slider.availableWidth
                 height: 4
                 radius: 2
-                color: theme.well
+                color: theme.outline // the unfilled part, visible on a card
                 Rectangle {
                     width: slider.visualPosition * parent.width
                     height: parent.height
