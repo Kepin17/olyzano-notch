@@ -1452,6 +1452,19 @@ private slots:
         QVERIFY(items[1].toMap().value("canLaunch").toBool());
     }
 
+    void dockOpensFilesWithApps()
+    {
+        const QStringList files{"/tmp/a b.txt", "/tmp/c.png"};
+        // %F: every path; %u: the first as a URL; no code: paths appended; other codes dropped.
+        QCOMPARE(dockmodel::openArguments({"kate", "-b", "%F"}, files), (QStringList{"kate", "-b", "/tmp/a b.txt", "/tmp/c.png"}));
+        QCOMPARE(dockmodel::openArguments({"firefox", "%u"}, files), (QStringList{"firefox", "file:///tmp/a b.txt"}));
+        QCOMPARE(dockmodel::openArguments({"gimp", "--icon", "%i"}, files), (QStringList{"gimp", "--icon", "/tmp/a b.txt", "/tmp/c.png"}));
+        QCOMPARE(dockmodel::openArguments({"app", "--file=%f", "%%x"}, files), (QStringList{"app", "--file=/tmp/a b.txt", "%x"}));
+        const DockApp parsed = dockmodel::parseDesktopEntry("k.desktop", "[Desktop Entry]\nType=Application\nName=K\nExec=kate -b %U\n");
+        QCOMPARE(parsed.exec, (QStringList{"kate", "-b", "%U"}));
+        QCOMPARE(parsed.command, (QStringList{"kate", "-b"}));
+    }
+
     void dockMovesPinned()
     {
         QCOMPARE(dockmodel::move({"a", "b", "c"}, 0, 2), (QStringList{"b", "c", "a"}));
