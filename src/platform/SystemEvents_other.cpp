@@ -24,8 +24,13 @@ void SystemEvents::poll()
 {
 #ifdef Q_OS_WIN
     SYSTEM_POWER_STATUS s;
-    if (!GetSystemPowerStatus(&s) || (s.BatteryFlag & 128) || s.BatteryLifePercent > 100)
+    if (!GetSystemPowerStatus(&s) || (s.BatteryFlag & 128) || s.BatteryLifePercent > 100) {
+        if (m_percent != -1) {
+            m_percent = -1;
+            emit batteryChanged();
+        }
         return;
+    }
     const bool mains = s.ACLineStatus == 1;
     const int percent = s.BatteryLifePercent;
     if (m_charging >= 0 && mains != bool(m_charging)) {
@@ -36,8 +41,11 @@ void SystemEvents::poll()
             emit alert(QStringLiteral("lowbattery"), tr("Battery low"), tr("%1% left").arg(level),
                        QStringLiteral("battery-low"), percent);
     }
+    const bool changed = m_charging != int(mains) || m_percent != percent;
     m_charging = mains;
     m_percent = percent;
+    if (changed)
+        emit batteryChanged();
 #endif
 }
 

@@ -16,6 +16,7 @@
 #include "platform/PlayerSelection.h"
 #include "platform/AudioBands.h"
 #include "platform/DockModel.h"
+#include "platform/WellbeingModel.h"
 
 #include <QDir>
 #include <QDirIterator>
@@ -1463,6 +1464,67 @@ private slots:
         const DockApp parsed = dockmodel::parseDesktopEntry("k.desktop", "[Desktop Entry]\nType=Application\nName=K\nExec=kate -b %U\n");
         QCOMPARE(parsed.exec, (QStringList{"kate", "-b", "%U"}));
         QCOMPARE(parsed.command, (QStringList{"kate", "-b"}));
+    }
+
+    void stretchReminderCountsRealWork()
+    {
+        using E = StretchTimer::Event;
+        using S = StretchTimer::State;
+        StretchTimer t;
+        t.workLimitMs = 60000; // 1 min of work
+        t.idleResetMs = 30000;
+        t.breakMs = 20000;
+        qint64 now = 0;
+        auto run = [&](qint64 ms, qint64 idle, bool busy = false) {
+            E last = E::None;
+            for (qint64 done = 0; done < ms; done += 5000) {
+                now += 5000;
+                const E e = t.tick(now, 5000, idle, busy);
+                if (e != E::None)
+                    last = e;
+            }
+            return last;
+        };
+
+        // Working (input within the threshold) adds up to a reminder.
+        QCOMPARE(run(55000, 1000), E::None);
+        QCOMPARE(run(5000, 1000), E::Remind);
+        QCOMPARE(t.state, S::Reminding);
+        // "Later": nothing until the snooze is over, then asked again.
+        t.snooze(now, 20000);
+        QCOMPARE(run(15000, 1000), E::None);
+        QCOMPARE(run(5000, 1000), E::Remind);
+        // Break: over after its length, and work starts from zero.
+        t.startBreak(now);
+        QCOMPARE(run(15000, 1000), E::None);
+        QCOMPARE(run(5000, 1000), E::BreakOver);
+        QCOMPARE(t.state, S::Working);
+        QCOMPARE(t.workedMs, 0);
+
+        // Walking away for longer than the idle threshold counts as the break.
+        run(40000, 1000);
+        run(5000, 31000);
+        QCOMPARE(t.workedMs, 0);
+        // A film or a call holds the reminder back until it's over.
+        QCOMPARE(run(60000, 1000, true), E::None);
+        QCOMPARE(run(5000, 1000), E::Remind);
+        // "Skip" starts a full period again.
+        t.skip();
+        QCOMPARE(t.workedMs, 0);
+        QCOMPARE(t.state, S::Working);
+
+        // A suspend (a huge gap between ticks) isn't counted as work.
+        t.tick(now + 3600000, 3600000, 1000, false);
+        QVERIFY(t.workedMs <= 15000);
+
+        // 20-20-20: an eye reminder every interval of work.
+        StretchTimer eyes;
+        eyes.eyeIntervalMs = 20000;
+        qint64 n = 0;
+        int seen = 0;
+        for (int i = 0; i < 8; ++i)
+            seen += eyes.tick(n += 5000, 5000, 1000, false) == E::EyeBreak;
+        QCOMPARE(seen, 2);
     }
 
     void dockMovesPinned()

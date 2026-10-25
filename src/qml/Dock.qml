@@ -28,13 +28,14 @@ Window {
     readonly property int thickness: iconSize + 22      // across it
     readonly property int dividerSize: 15
     readonly property int plusSize: 44
+    readonly property int trashSize: dock.showTrash ? dividerSize + slotSize : 0
     readonly property int padding: 10
     readonly property int edgeGap: 8
     readonly property real headroom: iconSize * (magnify - 1) + 16 // icons grow this far inwards
     readonly property bool animated: dock.animation !== "none"
     readonly property real barRadius: Math.min(thickness / 2.6, theme.washi ? theme.chipRadius + 8 : 22)
 
-    readonly property bool overlayOpen: appMenu.visible || picker.visible || folderDialog.visible
+    readonly property bool overlayOpen: appMenu.visible || picker.visible || folderDialog.visible || trashMenu.visible || emptyConfirm.visible
                                         || windowList.visible || stack.visible
     property bool dropHover: false     // files dragged over the dock from another app
     property int dropTargetIndex: -1   // the icon they would be opened with
@@ -81,7 +82,7 @@ Window {
             offsets.push(pos + divider + slotSize / 2)
             pos += divider + slotSize
         }
-        const start = mainCenter - (pos + plusSize) / 2
+        const start = mainCenter - (pos + plusSize + trashSize) / 2
         return offsets.map(o => start + o)
     }
     // Pointer position along the dock, in window coordinates; NaN when it's elsewhere or dragging.
@@ -579,6 +580,81 @@ Window {
                     onClicked: picker.open()
                 }
             }
+
+            // Trash, after a divider: drop files to move them to the trash, click to open it.
+            Item {
+                id: trashSlot
+                visible: dock.showTrash
+                property bool dropping: false
+                width: root.vertical ? root.thickness : root.trashSize
+                height: root.vertical ? root.trashSize : root.thickness
+                Rectangle {
+                    x: root.vertical ? (parent.width - width) / 2 : (root.dividerSize - width) / 2
+                    y: root.vertical ? (root.dividerSize - height) / 2 : (parent.height - height) / 2
+                    width: root.vertical ? root.iconSize * 0.8 : 1
+                    height: root.vertical ? 1 : root.iconSize * 0.8
+                    color: theme.dark ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(0, 0, 0, 0.18)
+                }
+                Image {
+                    id: trashIcon
+                    property real size: root.iconSize * (trashSlot.dropping ? 1.15 : 1)
+                    x: (root.vertical ? 0 : root.dividerSize) + (root.side === "left" ? 14 : root.side === "right" ? root.thickness - 14 - size : (root.slotSize - size) / 2)
+                    y: (root.vertical ? root.dividerSize : 0) + (root.vertical ? (root.slotSize - size) / 2 : root.thickness - 14 - size)
+                    width: size
+                    height: size
+                    source: dock.trashIcon
+                    sourceSize: Qt.size(128, 128)
+                    smooth: true
+                    mipmap: true
+                    Behavior on size { NumberAnimation { duration: 120 } }
+                }
+                Rectangle { // name label, like the apps'
+                    visible: trashArea.containsMouse && !root.overlayOpen
+                    x: root.side === "left" ? trashIcon.x + trashIcon.size + 12 : root.side === "right" ? trashIcon.x - width - 12 : trashIcon.x + (trashIcon.size - width) / 2
+                    y: root.vertical ? trashIcon.y + (trashIcon.size - height) / 2 : trashIcon.y - height - 10
+                    width: trashLabel.implicitWidth + 22
+                    height: 26
+                    radius: 13
+                    color: theme.surface
+                    border.width: 1
+                    border.color: theme.dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.1)
+                    Text {
+                        id: trashLabel
+                        anchors.centerIn: parent
+                        text: trashSlot.dropping ? "Move to Trash" : "Trash"
+                        color: theme.text
+                        font.pixelSize: 12
+                        font.weight: Font.Medium
+                    }
+                }
+                MouseArea {
+                    id: trashArea
+                    anchors.fill: parent
+                    hoverEnabled: true // only the trash's own label; the dock's hover zone is separate
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
+                    onClicked: (mouse) => mouse.button === Qt.RightButton ? trashMenu.popup() : dock.openTrash()
+                }
+                DropArea {
+                    anchors.fill: parent
+                    onEntered: (drag) => {
+                        drag.accepted = drag.hasUrls
+                        trashSlot.dropping = drag.accepted
+                        root.dropTargetIndex = drag.accepted ? 9999 : root.dropTargetIndex // keeps the dock up
+                    }
+                    onExited: {
+                        trashSlot.dropping = false
+                        if (root.dropTargetIndex === 9999)
+                            root.dropTargetIndex = -1
+                    }
+                    onDropped: (drop) => {
+                        trashSlot.dropping = false
+                        root.dropTargetIndex = -1
+                        root.dropHover = false
+                        if (drop.hasUrls && dock.moveToTrash(drop.urls.map(u => u.toString())) > 0)
+                            drop.accept(Qt.MoveAction)
+                    }
+                }
+            }
         }
     }
 
@@ -777,6 +853,38 @@ Window {
                                 root.stackIndex = -1
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    DarkMenu {
+        id: trashMenu
+        Action { text: "Open Trash"; onTriggered: dock.openTrash() }
+        Action { text: "Empty Trash…"; enabled: dock.trashFull; onTriggered: emptyConfirm.open() }
+    }
+    Popup {
+        id: emptyConfirm
+        x: root.side === "left" ? bar.restX + bar.width + 14 : root.side === "right" ? bar.restX - width - 14 : (root.width - width) / 2
+        y: root.vertical ? (root.height - height) / 2 : bar.restY - height - 14
+        width: 300
+        padding: 16
+        background: Rectangle { radius: 16; color: theme.surface; border.color: theme.outline }
+        contentItem: ColumnLayout {
+            spacing: 10
+            SectionLabel { text: "Empty the Trash?" }
+            Caption { Layout.fillWidth: true; text: "Everything in it is deleted for good. This can't be undone." }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                PillButton { text: "Cancel"; onClicked: emptyConfirm.close() }
+                PillButton {
+                    text: "Empty Trash"
+                    checked: true
+                    onClicked: {
+                        dock.emptyTrash()
+                        emptyConfirm.close()
                     }
                 }
             }
