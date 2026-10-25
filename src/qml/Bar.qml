@@ -25,14 +25,17 @@ Window {
     property var trayItems: []
     property real trayX: 0
     readonly property int trayShown: 6
-    onQuickOpenChanged: if (quickOpen) { menuOpen = -1; calOpen = false; trayMenu = false; trayMore = false; launcherOpen = false }
-    onMenuOpenChanged: if (menuOpen >= 0) { quickOpen = false; calOpen = false; trayMenu = false; trayMore = false; launcherOpen = false }
-    onCalOpenChanged: if (calOpen) { quickOpen = false; menuOpen = -1; trayMenu = false; trayMore = false; launcherOpen = false }
-    onTrayMenuChanged: if (trayMenu) { quickOpen = false; calOpen = false; menuOpen = -1; trayMore = false; launcherOpen = false }
-    onTrayMoreChanged: if (trayMore) { quickOpen = false; calOpen = false; menuOpen = -1; trayMenu = false; launcherOpen = false }
+    onQuickOpenChanged: if (quickOpen) { menuOpen = -1; calOpen = false; trayMenu = false; trayMore = false; launcherOpen = false; kdeOpen = false }
+    onMenuOpenChanged: if (menuOpen >= 0) { quickOpen = false; calOpen = false; trayMenu = false; trayMore = false; launcherOpen = false; kdeOpen = false }
+    onCalOpenChanged: if (calOpen) { quickOpen = false; menuOpen = -1; trayMenu = false; trayMore = false; launcherOpen = false; kdeOpen = false }
+    onTrayMenuChanged: if (trayMenu) { quickOpen = false; calOpen = false; menuOpen = -1; trayMore = false; launcherOpen = false; kdeOpen = false }
+    onTrayMoreChanged: if (trayMore) { quickOpen = false; calOpen = false; menuOpen = -1; trayMenu = false; launcherOpen = false; kdeOpen = false }
     property bool launcherOpen: false // the app launcher, from the grid button
+    property bool kdeOpen: false // the KDE Connect card, from the phone icon in the tray
+    onKdeOpenChanged: if (kdeOpen) { quickOpen = false; calOpen = false; menuOpen = -1; trayMenu = false; trayMore = false; launcherOpen = false }
+    Timer { id: kdeCloser; interval: 900; onTriggered: if (!kdeHover.hovered && !kdeIconHover.hovered) root.kdeOpen = false }
     onLauncherOpenChanged: {
-        if (launcherOpen) { quickOpen = false; calOpen = false; menuOpen = -1; trayMenu = false; trayMore = false }
+        if (launcherOpen) { quickOpen = false; calOpen = false; menuOpen = -1; trayMenu = false; trayMore = false; kdeOpen = false }
         desktop.setKeyboardInteractive(root, launcherOpen) // typing in the search field
     }
     onActiveChanged: if (!active && launcherOpen) launcherOpen = false // the keyboard went elsewhere: it is done
@@ -54,7 +57,7 @@ Window {
     Timer { id: quickOpener; interval: 160; onTriggered: if (clusterHover.hovered) root.quickOpen = true }
     property bool shown: topbar.behavior === "always"
     property bool edgeDwelled: false
-    readonly property bool engaged: topbar.behavior === "always" || edgeDwelled || stripHover.hovered || quickOpen || menuShown || calOpen || trayMenu || trayMore || launcherOpen
+    readonly property bool engaged: topbar.behavior === "always" || edgeDwelled || stripHover.hovered || quickOpen || menuShown || calOpen || trayMenu || trayMore || launcherOpen || kdeOpen
     onEngagedChanged: {
         if (engaged) {
             hideTimer.stop()
@@ -73,6 +76,7 @@ Window {
     // ---- the pointer: only what is visible (and nothing at all over a full-screen game) ----
     readonly property var maskRects: gaming.active ? [Qt.rect(0, 0, 1, 1)]
                                    : menuShown ? [Qt.rect(0, 0, width, stripH), Qt.rect(menuPop.x, menuPop.y, menuPop.reachW, menuPop.reachH)]
+                                   : kdeOpen ? [Qt.rect(0, 0, width, stripH), Qt.rect(kdeCard.x, kdeCard.y, kdeCard.width, kdeCard.height)]
                                    : launcherOpen ? [Qt.rect(0, 0, width, stripH), Qt.rect(launch.x, launch.y, launch.width, launch.height)]
                                    : trayMenu ? [Qt.rect(0, 0, width, stripH), Qt.rect(trayPop.x, trayPop.y, trayPop.reachW, trayPop.reachH)]
                                    : trayMore ? [Qt.rect(0, 0, width, stripH), Qt.rect(moreCard.x, moreCard.y, moreCard.width, moreCard.height)]
@@ -196,8 +200,33 @@ Window {
             spacing: 12
             Row { // the apps in the background
                 id: trayRow
-                visible: topbar.showTray && trayHost.items.length > 0
+                visible: topbar.showTray && (trayHost.items.length > 0 || kdeconnect.deviceList.length > 0)
                 spacing: 4
+                Item { // KDE Connect: the phone, with its battery
+                    id: kdeIcon
+                    visible: kdeconnect.deviceList.length > 0
+                    width: kdeRow.implicitWidth + 12; height: 24
+                    HoverHandler {
+                        id: kdeIconHover
+                        onHoveredChanged: if (!hovered && root.kdeOpen) kdeCloser.restart()
+                    }
+                    Rectangle { anchors.fill: parent; radius: 6; color: theme.accentSoft; visible: kdeIconHover.hovered || root.kdeOpen }
+                    Row {
+                        id: kdeRow
+                        anchors.centerIn: parent
+                        spacing: 4
+                        LineIcon { anchors.verticalCenter: parent.verticalCenter; glyph: "phone"; sourceSize: Qt.size(14, 14); color: theme.text }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: text !== ""
+                            readonly property var first: kdeconnect.deviceList.length > 0 ? kdeconnect.deviceList[0] : null
+                            text: first && first.charge >= 0 ? first.charge + "%" : ""
+                            color: first && first.charge >= 0 && first.charge <= 20 && !first.charging ? theme.danger : theme.textDim
+                            font.pixelSize: 11
+                        }
+                    }
+                    TapHandler { onTapped: root.kdeOpen = !root.kdeOpen }
+                }
                 Repeater {
                     model: trayHost.items.slice(0, root.trayShown)
                     TrayIcon { }
@@ -295,6 +324,75 @@ Window {
         HoverHandler {
             id: menuHover
             onHoveredChanged: if (!hovered && root.menuShown) menuCloser.restart()
+        }
+    }
+
+    // ---- KDE Connect ----
+    Rectangle {
+        id: kdeCard
+        width: 320
+        height: kdeBody.implicitHeight + 28
+        x: Math.max(8, root.width - width - 150)
+        y: root.stripH + 6
+        radius: theme.radiusLg
+        visible: opacity > 0
+        opacity: root.kdeOpen && root.shown ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 130 } }
+        color: theme.dark ? Qt.rgba(0.09, 0.09, 0.10, Math.min(1, topbar.opacity + 0.25)) : Qt.rgba(1, 1, 1, Math.min(1, topbar.opacity + 0.25))
+        border.width: 1
+        border.color: theme.dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.12)
+        HoverHandler {
+            id: kdeHover
+            onHoveredChanged: if (!hovered && root.kdeOpen) kdeCloser.restart()
+        }
+        ColumnLayout {
+            id: kdeBody
+            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14 }
+            spacing: 10
+            RowLayout {
+                Layout.fillWidth: true
+                Text { Layout.fillWidth: true; text: "KDE Connect"; color: theme.text; font.pixelSize: 14; font.weight: Font.DemiBold }
+                PillButton {
+                    visible: kdeconnect.hasApp
+                    text: "Open"
+                    iconName: "external"
+                    onClicked: { kdeconnect.openApp(); root.kdeOpen = false }
+                }
+            }
+            Repeater {
+                model: kdeconnect.deviceList
+                Rectangle {
+                    id: dev
+                    required property var modelData
+                    Layout.fillWidth: true
+                    implicitHeight: devRow.implicitHeight + 20
+                    radius: 14
+                    color: theme.dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(0, 0, 0, 0.06)
+                    RowLayout {
+                        id: devRow
+                        anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 10 }
+                        spacing: 10
+                        LineIcon { glyph: dev.modelData.type === "desktop" || dev.modelData.type === "laptop" ? "laptop" : "phone"; sourceSize: Qt.size(20, 20); color: theme.accent }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text { Layout.fillWidth: true; text: dev.modelData.name; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium; elide: Text.ElideRight }
+                            RowLayout {
+                                spacing: 6
+                                Rectangle { // battery bar
+                                    visible: dev.modelData.charge >= 0
+                                    Layout.preferredWidth: 60; Layout.preferredHeight: 6; radius: 3
+                                    color: theme.dark ? Qt.rgba(1, 1, 1, 0.14) : Qt.rgba(0, 0, 0, 0.12)
+                                    Rectangle { width: parent.width * Math.max(0, dev.modelData.charge) / 100; height: parent.height; radius: 3; color: dev.modelData.charge <= 20 && !dev.modelData.charging ? theme.danger : dev.modelData.charging ? theme.success : theme.accent }
+                                }
+                                Text { text: dev.modelData.charge >= 0 ? (dev.modelData.charging ? "⚡ " : "") + dev.modelData.charge + "%" : "Connected"; color: theme.textDim; font.pixelSize: 11 }
+                            }
+                        }
+                        PillButton { text: "Ping"; onClicked: kdeconnect.ping(dev.modelData.id) }
+                        PillButton { visible: dev.modelData.type === "phone"; text: "Find"; onClicked: kdeconnect.findPhone(dev.modelData.id) }
+                    }
+                }
+            }
         }
     }
 
@@ -407,7 +505,7 @@ Window {
     }
     Connections {
         target: gaming
-        function onChanged() { if (gaming.active) { root.quickOpen = false; root.menuOpen = -1; root.calOpen = false; root.trayMenu = false; root.trayMore = false; root.launcherOpen = false } }
+        function onChanged() { if (gaming.active) { root.quickOpen = false; root.menuOpen = -1; root.calOpen = false; root.trayMenu = false; root.trayMore = false; root.launcherOpen = false; root.kdeOpen = false } }
     }
 
     // ---- the top edge, while the bar is away ----

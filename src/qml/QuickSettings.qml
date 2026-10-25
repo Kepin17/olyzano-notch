@@ -536,6 +536,7 @@ Rectangle {
 
         RowLayout {
             Layout.fillWidth: true
+            PillButton { visible: kdeconnect.hasApp; text: "KDE Connect"; iconName: "phone"; onClicked: kdeconnect.openApp() }
             Item { Layout.fillWidth: true }
             PillButton { text: "System settings"; iconName: "gear"; onClicked: quick.openSystemSettings() }
         }

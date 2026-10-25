@@ -8,6 +8,8 @@
 #include <QDBusPendingReply>
 #include <QDBusReply>
 #include <QDBusVariant>
+#include <QProcess>
+#include <QStandardPaths>
 
 #ifdef Q_OS_WIN
 #include <QDir>
@@ -113,6 +115,53 @@ KdeConnect::KdeConnect(QObject *parent)
     bus.connect(Service, QString(), NotificationsIface, QStringLiteral("notificationPosted"), this,
                 SLOT(onNotificationPosted(QDBusMessage)));
     bus.connect(Service, QString(), BatteryIface, QStringLiteral("refreshed"), this, SLOT(onBattery(QDBusMessage)));
+    bus.connect(Service, QStringLiteral("/modules/kdeconnect"), QStringLiteral("org.kde.kdeconnect.daemon"), QStringLiteral("deviceListChanged"), this, SLOT(refreshList()));
+    m_poll.setInterval(30000);
+    connect(&m_poll, &QTimer::timeout, this, &KdeConnect::refreshList);
+    m_poll.start();
+    refreshList();
+}
+
+bool KdeConnect::hasApp() const
+{
+    return !QStandardPaths::findExecutable(QStringLiteral("kdeconnect-app")).isEmpty() || !QStandardPaths::findExecutable(QStringLiteral("kdeconnect-settings")).isEmpty();
+}
+
+void KdeConnect::refreshList()
+{
+    QVariantList list;
+    for (const QVariant &d : devices()) {
+        QVariantMap m = d.toMap();
+        const QString path = DevicePath + m.value(QStringLiteral("id")).toString() + QStringLiteral("/battery");
+        QDBusInterface props(Service, path, QStringLiteral("org.freedesktop.DBus.Properties"), QDBusConnection::sessionBus());
+        const QDBusReply<QDBusVariant> charge = props.call(QStringLiteral("Get"), BatteryIface, QStringLiteral("charge"));
+        const QDBusReply<QDBusVariant> charging = props.call(QStringLiteral("Get"), BatteryIface, QStringLiteral("isCharging"));
+        m[QStringLiteral("charge")] = charge.isValid() ? charge.value().variant().toInt() : -1;
+        m[QStringLiteral("charging")] = charging.isValid() && charging.value().variant().toBool();
+        list << m;
+    }
+    if (list != m_list) {
+        m_list = list;
+        emit devicesChanged();
+    }
+}
+
+void KdeConnect::ping(const QString &deviceId)
+{
+    QDBusMessage m = QDBusMessage::createMethodCall(Service, DevicePath + deviceId + QStringLiteral("/ping"), QStringLiteral("org.kde.kdeconnect.device.ping"), QStringLiteral("sendPing"));
+    QDBusConnection::sessionBus().asyncCall(m);
+}
+
+void KdeConnect::findPhone(const QString &deviceId)
+{
+    QDBusMessage m = QDBusMessage::createMethodCall(Service, DevicePath + deviceId + QStringLiteral("/findmyphone"), QStringLiteral("org.kde.kdeconnect.device.findmyphone"), QStringLiteral("ring"));
+    QDBusConnection::sessionBus().asyncCall(m);
+}
+
+void KdeConnect::openApp()
+{
+    if (!QProcess::startDetached(QStringLiteral("kdeconnect-app"), {}))
+        QProcess::startDetached(QStringLiteral("kdeconnect-settings"), {});
 }
 
 void KdeConnect::onCall(const QDBusMessage &message)
@@ -155,6 +204,7 @@ void KdeConnect::onBattery(const QDBusMessage &message)
     if (args.size() < 2)
         return;
     emit phoneBattery(args.at(1).toInt(), args.at(0).toBool(), deviceProperty(devicePathOf(message.path()), QStringLiteral("name")));
+    refreshList();
 }
 
 QVariantList KdeConnect::devices() const
