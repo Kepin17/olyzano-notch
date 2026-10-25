@@ -102,7 +102,7 @@ qt_add_qml_module(notch
         src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkSeparator.qml
         src/qml/SettingToggle.qml src/qml/Chip.qml src/qml/WheelScroller.qml
         src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml
-        src/qml/DockBar.qml
+        src/qml/Dock.qml
     RESOURCES
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg
         src/qml/icons/unlock.svg src/qml/icons/trash.svg src/qml/icons/palette.svg src/qml/icons/pen.svg

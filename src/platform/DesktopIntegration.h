@@ -19,10 +19,17 @@ class DesktopIntegration : public QObject
 public:
     // Must be called before the window is first shown; window->screen() picks the monitor.
     void attach(QWindow *window);
+    // The app dock's window on one edge of window->screen() (side: bottom | left | right). It never takes
+    // focus from the app in front, so a click on the dock can tell which app that was.
+    void attachDock(QWindow *window, const QString &side);
+    // Move a dock to another edge. Call while it is hidden: a layer-shell surface takes anchors when mapped.
+    void moveDock(QWindow *window, const QString &side);
     bool layerShell() const { return m_layerShell; }
 
     // Only this rect of `window` receives input; clicks elsewhere fall through to windows below.
     Q_INVOKABLE void setInputRegion(QWindow *window, const QRectF &rect);
+    // Let a dock window take the keyboard (while its search field is open) or not.
+    Q_INVOKABLE void setKeyboardInteractive(QWindow *window, bool interactive);
     // Tray actions land on the primary monitor's Notch (page: "" toggles pin, "settings").
     Q_INVOKABLE void toggleFromTray(const QString &page);
 

@@ -138,6 +138,9 @@ int main(int argc, char *argv[])
     // One Notch per monitor, following hotplug.
     QQmlComponent notchWindow(&engine, "Notch", "Main");
     QHash<QScreen *, QQuickWindow *> windows;
+    // And one app dock per monitor on the edge chosen in Settings, shown while the dock is switched on.
+    QQmlComponent dockWindow(&engine, "Notch", "Dock");
+    QHash<QScreen *, QQuickWindow *> docks;
     auto addScreen = [&](QScreen *screen) {
         auto *window = qobject_cast<QQuickWindow *>(notchWindow.create());
         if (!window) {
@@ -148,16 +151,37 @@ int main(int argc, char *argv[])
         desktop.attach(window);
         window->show();
         windows.insert(screen, window);
+
+        auto *dockView = qobject_cast<QQuickWindow *>(dockWindow.create());
+        if (!dockView) {
+            qCritical().noquote() << dockWindow.errorString();
+            return;
+        }
+        dockView->setScreen(screen);
+        desktop.attachDock(dockView, dock.position());
+        dockView->setVisible(dock.enabled());
+        QObject::connect(&dock, &AppDock::enabledChanged, dockView, [dockView, &dock] { dockView->setVisible(dock.enabled()); });
+        // Another edge: hide, re-anchor, show again (queued so the window has taken its new size from QML).
+        QObject::connect(&dock, &AppDock::positionChanged, dockView, [dockView, &dock, &desktop] {
+            dockView->hide();
+            desktop.moveDock(dockView, dock.position());
+            dockView->setVisible(dock.enabled());
+        }, Qt::QueuedConnection);
+        docks.insert(screen, dockView);
     };
     for (QScreen *screen : app.screens())
         addScreen(screen);
     if (windows.isEmpty())
         return 1;
     QObject::connect(&app, &QGuiApplication::screenAdded, addScreen);
-    QObject::connect(&app, &QGuiApplication::screenRemoved, [&](QScreen *screen) { delete windows.take(screen); });
+    QObject::connect(&app, &QGuiApplication::screenRemoved, [&](QScreen *screen) {
+        delete windows.take(screen);
+        delete docks.take(screen);
+    });
 
     engine.loadFromModule("Notch", "Tray");
     const int rc = app.exec();
     qDeleteAll(windows); // before the engine and controller they bind to
+    qDeleteAll(docks);
     return rc;
 }

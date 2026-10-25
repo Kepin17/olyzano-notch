@@ -313,9 +313,64 @@ ScrollView {
 
         SettingToggle {
             title: "App dock"
-            caption: "Pinned and running apps along the bottom of the panel."
+            caption: "Pinned and running apps along the bottom of the screen."
             checked: dock.enabled
             onToggled: dock.enabled = !dock.enabled
+        }
+
+        SettingToggle {
+            visible: dock.enabled
+            title: "Hide the dock"
+            caption: "Stays below the screen edge until you rest the pointer there."
+            checked: dock.autoHide
+            onToggled: dock.autoHide = !dock.autoHide
+        }
+
+        ColumnLayout {
+            visible: dock.enabled
+            Layout.fillWidth: true
+            spacing: 6
+            SectionLabel { text: "Dock position" }
+            Row {
+                spacing: 6
+                Repeater {
+                    model: [["bottom", "Bottom"], ["left", "Left"], ["right", "Right"]]
+                    PillButton {
+                        required property var modelData
+                        text: modelData[1]
+                        checked: dock.position === modelData[0]
+                        onClicked: dock.position = modelData[0]
+                    }
+                }
+            }
+            SectionLabel { text: "Magnification"; Layout.topMargin: 6 }
+            Row {
+                spacing: 6
+                Repeater {
+                    model: [[1.0, "Off"], [1.15, "Small"], [1.3, "Medium"], [1.5, "Large"]]
+                    PillButton {
+                        required property var modelData
+                        text: modelData[1]
+                        checked: Math.abs(dock.magnification - modelData[0]) < 0.01
+                        onClicked: dock.magnification = modelData[0]
+                    }
+                }
+            }
+            DockSlider {
+                title: "Icon size"
+                valueText: dock.iconSize + " px"
+                from: 32; to: 80; stepSize: 2
+                value: dock.iconSize
+                onMoved: dock.iconSize = value
+            }
+            DockSlider {
+                title: "Background opacity"
+                valueText: Math.round(dock.backgroundOpacity * 100) + "%"
+                from: 0.2; to: 1; stepSize: 0.05
+                value: dock.backgroundOpacity
+                onMoved: dock.backgroundOpacity = value
+            }
+            Caption { Layout.fillWidth: true; text: "The dock's length follows how many apps it holds; icon size sets its thickness." }
         }
 
         SettingToggle {
@@ -399,5 +454,54 @@ ScrollView {
         title: "Choose where Notch stores files"
         currentFolder: "file://" + notch.storageDir
         onAccepted: notch.setStorageDir(selectedFolder)
+    }
+
+    // A labelled slider for the dock settings.
+    component DockSlider: ColumnLayout {
+        id: dockSlider
+        property alias title: sliderTitle.text
+        property string valueText
+        property alias from: slider.from
+        property alias to: slider.to
+        property alias stepSize: slider.stepSize
+        property alias value: slider.value
+        signal moved()
+        Layout.fillWidth: true
+        Layout.topMargin: 6
+        spacing: 2
+        RowLayout {
+            Layout.fillWidth: true
+            SectionLabel { id: sliderTitle; Layout.fillWidth: true }
+            Caption { text: dockSlider.valueText }
+        }
+        Slider {
+            id: slider
+            Layout.fillWidth: true
+            snapMode: Slider.SnapAlways
+            onMoved: dockSlider.moved()
+            background: Rectangle {
+                x: slider.leftPadding
+                y: slider.topPadding + (slider.availableHeight - height) / 2
+                width: slider.availableWidth
+                height: 4
+                radius: 2
+                color: theme.well
+                Rectangle {
+                    width: slider.visualPosition * parent.width
+                    height: parent.height
+                    radius: 2
+                    color: theme.accent
+                }
+            }
+            handle: Rectangle {
+                x: slider.leftPadding + slider.visualPosition * (slider.availableWidth - width)
+                y: slider.topPadding + (slider.availableHeight - height) / 2
+                width: 16
+                height: 16
+                radius: 8
+                color: slider.pressed ? theme.accent : theme.text
+                border.color: theme.outline
+            }
+        }
     }
 }

@@ -18,6 +18,7 @@ struct DockApp {
     QString icon;    // theme icon name or absolute file path (Linux); unused on Windows
     QStringList command; // program + arguments that open it
     QString key;     // what a running process is matched on: lower-cased binary name (Linux) / exe path
+    QString wmClass; // StartupWMClass: the window class its windows carry, when the .desktop file names one
     bool valid() const { return !id.isEmpty() && !name.isEmpty() && !command.isEmpty(); }
 };
 
@@ -77,6 +78,7 @@ inline DockApp parseDesktopEntry(const QString &id, const QByteArray &contents)
     app.icon = keys.value(QStringLiteral("Icon"));
     app.command = args;
     app.key = binaryName(args);
+    app.wmClass = keys.value(QStringLiteral("StartupWMClass"));
     if (args.isEmpty() || app.key.isEmpty())
         return {};
     return app;
@@ -99,16 +101,16 @@ inline QVariantList merge(const QStringList &pinned, const QHash<QString, DockAp
         m[QStringLiteral("pinned")] = isPinned;
         m[QStringLiteral("running")] = runningById.contains(app.id);
         m[QStringLiteral("active")] = !activeId.isEmpty() && app.id == activeId;
+        m[QStringLiteral("canLaunch")] = !app.command.isEmpty();
         return m;
     };
 
     QVariantList items;
     for (const QString &id : pinned) {
         DockApp app = catalog.value(id, runningById.value(id));
-        if (!app.valid()) {
-            app.id = id;
+        app.id = id;
+        if (app.name.isEmpty())
             app.name = QFileInfo(id).completeBaseName();
-        }
         items << entry(app, true);
     }
     QList<DockApp> rest;
@@ -121,6 +123,48 @@ inline QVariantList merge(const QStringList &pinned, const QHash<QString, DockAp
     for (const DockApp &app : rest)
         items << entry(app, false);
     return items;
+}
+
+// Which installed app a window belongs to, from what the window manager knows about it: its desktop file
+// name (Wayland apps set it; "org.kde.dolphin" -> org.kde.dolphin.desktop) or else its window class, tried
+// against StartupWMClass, the desktop file name, and the binary. Empty when nothing matches.
+inline QString matchWindow(const QHash<QString, DockApp> &catalog, QString desktopFile, const QString &windowClass)
+{
+    desktopFile = QFileInfo(desktopFile).fileName();
+    if (desktopFile.endsWith(QLatin1String(".desktop")))
+        desktopFile.chop(8);
+    if (!desktopFile.isEmpty() && catalog.contains(desktopFile + QLatin1String(".desktop")))
+        return desktopFile + QLatin1String(".desktop");
+
+    // Several apps can match one tier (QHash order is random): take the smallest id so the answer is stable.
+    auto pick = [&](auto matches) {
+        QString best;
+        for (auto it = catalog.cbegin(); it != catalog.cend(); ++it)
+            if (matches(it.value()) && (best.isEmpty() || it.key() < best))
+                best = it.key();
+        return best;
+    };
+    auto baseName = [](const DockApp &app) {
+        QString base = app.id.toLower();
+        if (base.endsWith(QLatin1String(".desktop")))
+            base.chop(8);
+        return base;
+    };
+    for (const QString &name : {windowClass.toLower(), desktopFile.toLower()}) {
+        if (name.isEmpty())
+            continue;
+        QString id = pick([&](const DockApp &app) { return app.wmClass.toLower() == name; });
+        if (id.isEmpty())
+            id = pick([&](const DockApp &app) {
+                const QString base = baseName(app);
+                return base == name || base.section(u'.', -1) == name;
+            });
+        if (id.isEmpty())
+            id = pick([&](const DockApp &app) { return app.key == name; });
+        if (!id.isEmpty())
+            return id;
+    }
+    return {};
 }
 
 // Reorder helper behind drag-to-rearrange; out-of-range moves are ignored.

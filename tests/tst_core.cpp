@@ -1412,6 +1412,41 @@ private slots:
         QVERIFY(!items[3].toMap().value("active").toBool());
     }
 
+    void dockMatchesWindows()
+    {
+        auto app = [](const char *id, const char *key, const char *wmClass = "") {
+            DockApp a;
+            a.id = QString::fromLatin1(id);
+            a.name = a.id;
+            a.key = QString::fromLatin1(key);
+            a.wmClass = QString::fromLatin1(wmClass);
+            a.command = {a.key};
+            return a;
+        };
+        QHash<QString, DockApp> catalog;
+        for (const DockApp &a : {app("org.kde.dolphin.desktop", "dolphin"), app("code.desktop", "code", "Code"),
+                                 app("google-chrome.desktop", "google-chrome-stable", "Google-chrome"),
+                                 app("firefox.desktop", "firefox")})
+            catalog.insert(a.id, a);
+
+        // Wayland apps name their desktop file; X11 ones only carry a window class.
+        QCOMPARE(dockmodel::matchWindow(catalog, "org.kde.dolphin", "dolphin"), QStringLiteral("org.kde.dolphin.desktop"));
+        QCOMPARE(dockmodel::matchWindow(catalog, "/usr/share/applications/code.desktop", ""), QStringLiteral("code.desktop"));
+        QCOMPARE(dockmodel::matchWindow(catalog, "", "Google-chrome"), QStringLiteral("google-chrome.desktop"));
+        QCOMPARE(dockmodel::matchWindow(catalog, "", "dolphin"), QStringLiteral("org.kde.dolphin.desktop"));
+        QCOMPARE(dockmodel::matchWindow(catalog, "", "firefox"), QStringLiteral("firefox.desktop"));
+        QCOMPARE(dockmodel::matchWindow(catalog, "", "xterm"), QString());
+
+        // A pinned app the catalog doesn't know (uninstalled) can't be launched; running ones keep their name.
+        DockApp adHoc;
+        adHoc.id = QStringLiteral("window:xterm");
+        adHoc.name = QStringLiteral("Xterm");
+        const QVariantList items = dockmodel::merge({"window:xterm", "code.desktop"}, catalog, {adHoc}, {});
+        QCOMPARE(items[0].toMap().value("name").toString(), QStringLiteral("Xterm"));
+        QVERIFY(!items[0].toMap().value("canLaunch").toBool());
+        QVERIFY(items[1].toMap().value("canLaunch").toBool());
+    }
+
     void dockMovesPinned()
     {
         QCOMPARE(dockmodel::move({"a", "b", "c"}, 0, 2), (QStringList{"b", "c", "a"}));
