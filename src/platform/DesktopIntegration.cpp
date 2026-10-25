@@ -30,7 +30,9 @@ void DesktopIntegration::attach(QWindow *window)
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
         if (auto *ls = LayerShellQt::Window::get(window)) {
             ls->setScope(QStringLiteral("notch"));
+#ifdef NOTCH_LAYERSHELL_SET_SCREEN
             ls->setScreen(window->screen());
+#endif
             ls->setLayer(LayerShellQt::Window::LayerTop);
             ls->setAnchors(LayerShellQt::Window::AnchorTop);
             ls->setExclusiveZone(-1); // sit on the real screen edge, over any top panel
@@ -88,7 +90,9 @@ void DesktopIntegration::attachDock(QWindow *window, const QString &side)
 #ifdef NOTCH_HAVE_LAYERSHELL
     if (auto *ls = dockLayer(window)) {
         ls->setScope(QStringLiteral("notch-dock"));
+#ifdef NOTCH_LAYERSHELL_SET_SCREEN
         ls->setScreen(window->screen());
+#endif
         ls->setLayer(LayerShellQt::Window::LayerTop);
         ls->setAnchors(dockAnchors(side));
         ls->setExclusiveZone(-1); // over any panel on that edge; the dock hides itself
