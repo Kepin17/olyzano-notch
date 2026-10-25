@@ -141,7 +141,7 @@ Window {
     TextMetrics { id: capLineSize; font.pixelSize: 14; font.weight: Font.DemiBold; text: root.capLine }
     TextMetrics { id: capTimeSize; font.pixelSize: 13; font.family: "monospace"; text: root.capTime }
     // margins + wave + gaps + the time + the microphone icon, and a little spare
-    readonly property real capOverhead: 2 * 24 + 22 + 3 * 10 + capTimeSize.advanceWidth + (activities.micApps.length > 0 ? 25 : 0) + 16
+    readonly property real capOverhead: 2 * 24 + 22 + 3 * 10 + capTimeSize.advanceWidth + (activities.micApps.length > 0 ? 25 : 0) + (sharingNow ? 24 : 0) + 16
     readonly property real capMaxWidth: root.width - 40
     readonly property bool capWraps: capLyric && capLineSize.advanceWidth + capOverhead > capMaxWidth
     readonly property real capWidth: !capLyric ? 400 : capWraps ? capMaxWidth : Math.max(400, capLineSize.advanceWidth + capOverhead)
@@ -208,6 +208,8 @@ Window {
         return b >= 1073741824 ? (b / 1073741824).toFixed(1) + " GB" : b >= 1048576 ? (b / 1048576).toFixed(1) + " MB"
              : Math.max(1, Math.round(b / 1024)) + " KB"
     }
+    readonly property int shareSessions: share.activeCount + nearby.activeCount
+    readonly property bool sharingNow: shareSessions > 0
     // {kind, title, detail, progress (0-1, -1 none), color}
     readonly property var live: {
         if (call)
@@ -235,10 +237,21 @@ Window {
                      detail: formatBytes(d.bytes) + (d.speed > 1024 ? " · " + formatBytes(d.speed) + "/s" : "")
                              + (downloads.length > 1 ? " · +" + (downloads.length - 1) : "") }
         }
+        // Something is being shared by QR or to a computer: the way back to it once the panel is closed. (Under a song the
+        // capsule keeps its place and shows a small mark instead.)
+        if (sharingNow && !musicShown)
+            return { kind: "share", title: "Sharing " + shareSessions + (shareSessions === 1 ? " session" : " sessions"), detail: "tap to open", progress: -1, color: theme.accent }
         if (notch.copying > 0)
             return { kind: "copy", title: "Copying " + notch.copying + (notch.copying === 1 ? " file" : " files"),
                      detail: String(notch.count), progress: -1, color: theme.accent }
         return null
+    }
+
+    function debugShare() { sharePopup.openFor([]) } // `notch --shot-page file.png share`: the share window, for a picture
+    function showShares() {
+        pinned = true // opens the panel and keeps it while the shares are looked at
+        page = "shelf"
+        Qt.callLater(() => sharePopup.openSessions())
     }
 
     function showToast(kind, title, detail, icon, ms) {
@@ -838,8 +851,14 @@ Window {
                 visible: liveRow.l.kind === "copy" || liveRow.l.kind === "call"
                 color: liveRow.l.color
             }
+            LineIcon {
+                visible: liveRow.l.kind === "share"
+                glyph: "share"
+                sourceSize: Qt.size(14, 14)
+                color: liveRow.l.color
+            }
             Text {
-                visible: !(liveRow.l.kind === "copy" || liveRow.l.kind === "call")
+                visible: !(liveRow.l.kind === "copy" || liveRow.l.kind === "call" || liveRow.l.kind === "share")
                 text: liveRow.l.kind === "timer" ? "⏱" : liveRow.l.kind === "break" ? "🧘" : liveRow.l.kind === "download" ? "↓" : "⇄"
                 color: liveRow.l.color
                 font.pixelSize: 13
@@ -968,6 +987,12 @@ Window {
                 color: root.textSecondary
                 font.pixelSize: 13
                 font.family: "monospace"
+            }
+            LineIcon { // something is being shared
+                visible: root.sharingNow
+                glyph: "share"
+                sourceSize: Qt.size(14, 14)
+                color: theme.accent
             }
             LineIcon {
                 visible: activities.micApps.length > 0
@@ -1797,6 +1822,12 @@ Window {
 
                 Item { Layout.preferredHeight: 4 }
             }
+        }
+
+        // A click on the "Sharing" pill opens the panel on the running shares, however long ago it was closed.
+        TapHandler {
+            enabled: root.mode === "peek" && root.live && root.live.kind === "share"
+            onTapped: root.showShares()
         }
 
         // A click on the capsule while music plays goes straight to the player (without waiting for the dwell).

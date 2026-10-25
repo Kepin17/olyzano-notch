@@ -379,6 +379,10 @@ int main(int argc, char *argv[])
             if (page == QLatin1String("timer-run")) // a 25 minute timer running, to see the ring
                 activities.startTimer(25 * 60, QStringLiteral("Tea"));
             w->setProperty("pinned", true);
+            if (page == QLatin1String("share")) {
+                QMetaObject::invokeMethod(w, "debugShare");
+                return QTimer::singleShot(1200, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+            }
             w->setProperty("page", page.startsWith(QLatin1String("timer")) ? QStringLiteral("timer") : page);
             QTimer::singleShot(1500, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
         });

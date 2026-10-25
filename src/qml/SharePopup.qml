@@ -45,18 +45,29 @@ Popup {
     property int now: Math.floor(Date.now() / 1000)
     readonly property string secretError: protection === "none" ? "" : share.checkSecret(protection, secret.text)
 
+    // Responsive: as wide as the panel allows (never off the window), and as tall as the window leaves room for;
+    // what does not fit scrolls inside instead of running off the screen.
     x: (shell.width - width) / 2
     y: 64
-    width: 340
+    width: Math.min(view === "sessions" ? 400 : 380, shell.width - 32)
+    height: Math.min(implicitHeight, Math.max(240, shell.height - y - 24))
     padding: 16
     focus: true
+    enter: Transition {
+        NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 130 }
+        NumberAnimation { property: "scale"; from: 0.96; to: 1; duration: 160; easing.type: Easing.OutCubic }
+    }
+    exit: Transition {
+        NumberAnimation { property: "opacity"; to: 0; duration: 90 }
+    }
 
     function openFor(newIds) {
         ids = newIds
         hasVault = newIds.some(id => notch.itemInfo(id).vault)
         totalBytes = newIds.reduce((sum, id) => sum + notch.itemInfo(id).size, 0)
         serverId = share.lastServerId
-        share.testAllServers() // limits and usage up to date
+        if (share.relayConfigured)
+            share.testAllServers() // limits and usage up to date (not worth a network round trip without a server)
         mode = share.lastMode === "relay" && share.relayConfigured ? "relay" : "local"
         ttl = share.defaultTtl
         protection = "none"
@@ -117,8 +128,18 @@ Popup {
 
     background: Rectangle { radius: theme.radiusLg; color: theme.surface; border.color: theme.outline }
 
-    contentItem: ColumnLayout {
-        spacing: 10
+    contentItem: Flickable {
+        id: scroller
+        implicitHeight: column.implicitHeight
+        contentWidth: width
+        contentHeight: column.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        ColumnLayout {
+        id: column
+        width: scroller.width
+        spacing: 12
 
         RowLayout {
             Layout.fillWidth: true
@@ -166,16 +187,11 @@ Popup {
                 font.pixelSize: 13
                 elide: Text.ElideMiddle
             }
-            Row {
-                spacing: 6
-                PillButton { text: "This WiFi"; iconName: "wifi"; checked: pop.mode === "local"; onClicked: pop.mode = "local" }
-                PillButton { text: "My server"; iconName: "server"; checked: pop.mode === "relay"; onClicked: pop.mode = "relay" }
-                PillButton {
-                    text: "Nearby"
-                    iconName: "laptop"
-                    checked: pop.mode === "nearby"
-                    onClicked: { pop.mode = "nearby"; pop.protection = "none"; nearby.scan() }
-                }
+            Segmented {
+                Layout.fillWidth: true
+                model: [["local", "This WiFi"], ["relay", "My server"], ["nearby", "Nearby"]]
+                value: pop.mode
+                onPicked: v => { pop.mode = v; if (v === "nearby") { pop.protection = "none"; nearby.scan() } }
             }
             Caption {
                 Layout.fillWidth: true
@@ -293,28 +309,21 @@ Popup {
                 visible: pop.mode !== "nearby" && pop.optionsShown
                 Layout.fillWidth: true
                 spacing: 10
-                Row {
+                Segmented {
                     visible: pop.mode !== "nearby"
-                    spacing: 6
-                    Repeater {
-                        model: [[600, "10 min"], [3600, "1 hour"], [86400, "24 hours"]]
-                        PillButton {
-                            required property var modelData
-                            text: modelData[1]
-                            enabled: pop.ttlAllowed(modelData[0])
-                            checked: pop.ttl === modelData[0]
-                            onClicked: { pop.ttl = modelData[0]; share.defaultTtl = modelData[0] }
-                        }
-                    }
+                    Layout.fillWidth: true
+                    model: [[600, "10 min"], [3600, "1 hour"], [86400, "24 hours"]].filter(m => pop.ttlAllowed(m[0]))
+                    value: pop.ttl
+                    onPicked: v => { pop.ttl = v; share.defaultTtl = v }
                 }
 
                 SectionLabel { text: "Protect with"; visible: pop.mode !== "nearby" }
-                Row {
+                Segmented {
                     visible: pop.mode !== "nearby"
-                    spacing: 6
-                    PillButton { text: "Nothing"; checked: pop.protection === "none"; onClicked: pop.protection = "none" }
-                    PillButton { iconName: "lock"; text: "PIN"; checked: pop.protection === "pin"; onClicked: pop.protection = "pin" }
-                    PillButton { iconName: "lock"; text: "Password"; checked: pop.protection === "password"; onClicked: pop.protection = "password" }
+                    Layout.fillWidth: true
+                    model: [["none", "Nothing"], ["pin", "PIN"], ["password", "Password"]]
+                    value: pop.protection
+                    onPicked: v => pop.protection = v
                 }
                 TextField {
                     id: secret
@@ -391,11 +400,8 @@ Popup {
             Flickable {
                 Layout.fillWidth: true
                 visible: share.count > 0
-                implicitHeight: Math.min(list.implicitHeight, 380)
-                contentHeight: list.implicitHeight
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
-                ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                implicitHeight: list.implicitHeight // the whole popup scrolls
+                interactive: false
 
                 ColumnLayout {
                     id: list
@@ -501,15 +507,15 @@ Popup {
                                     spacing: 6
                                     Rectangle {
                                         Layout.alignment: Qt.AlignHCenter
-                                        implicitWidth: 208
-                                        implicitHeight: 208
-                                        radius: 6
+                                        implicitWidth: 236
+                                        implicitHeight: 236
+                                        radius: 10
                                         color: "white"
                                         Image {
                                             anchors.centerIn: parent
-                                            width: 200
-                                            height: 200
-                                            sourceSize: Qt.size(200, 200)
+                                            width: 220
+                                            height: 220
+                                            sourceSize: Qt.size(220, 220)
                                             fillMode: Image.PreserveAspectFit
                                             smooth: false
                                             cache: false
@@ -654,6 +660,7 @@ Popup {
                 Item { Layout.fillWidth: true }
                 PillButton { text: "Close"; checked: true; onClicked: pop.close() }
             }
+        }
         }
     }
 }
