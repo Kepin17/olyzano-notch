@@ -208,6 +208,7 @@ struct MediaPlayers::Worker {
                 const auto props = s.TryGetMediaPropertiesAsync().get();
                 r.title = qstr(props.Title());
                 r.artist = qstr(props.Artist());
+                r.album = qstr(props.AlbumTitle());
                 if (r.artist.isEmpty())
                     r.artist = qstr(props.AlbumArtist());
                 const QString track = r.title + u'\x1f' + r.artist;

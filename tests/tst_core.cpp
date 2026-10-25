@@ -16,6 +16,7 @@
 #include "platform/PlayerSelection.h"
 #include "platform/WinPrivacy.h"
 #include "platform/MediaNames.h"
+#include "platform/LrcParser.h"
 #include "platform/NotificationFilter.h"
 #include "platform/SoundsModel.h"
 #include "platform/AudioBands.h"
@@ -550,6 +551,33 @@ private slots:
         QVERIFY(!f.accept(QStringLiteral("kdeconnect.app"), QStringLiteral("Mom"), 5000));
         QVERIFY(!f.accept(QString(), QString(), 5000));
         QVERIFY(f.accept(QStringLiteral("Discord"), QStringLiteral("hi"), 5000)); // every other app comes through
+    }
+
+    void lrcParsing()
+    {
+        const auto lines = Lrc::parse(QStringLiteral(
+            "[ar:Someone]\n[ti:Song]\n[00:12.50] second\r\n[00:01.00]first\n[01:02.345][02:00.00] again\nplain text\n[00:30.00]\n[03:00.00]\n[03:10.00]\n"));
+        QCOMPARE(lines.size(), 5); // the trailing gap markers are dropped, the one between lines stays
+        QCOMPARE(lines[0].ms, qint64(1000));
+        QCOMPARE(lines[0].text, QStringLiteral("first"));
+        QCOMPARE(lines[1].ms, qint64(12500)); // hundredths
+        QCOMPARE(lines[2].ms, qint64(30000));
+        QVERIFY(lines[2].text.isEmpty());
+        QCOMPARE(lines[3].ms, qint64(62345)); // milliseconds, and the same words twice
+        QCOMPARE(lines[4].ms, qint64(120000));
+        QCOMPARE(lines[4].text, QStringLiteral("again"));
+
+        const auto shifted = Lrc::parse(QStringLiteral("[offset:500]\n[00:10.00] x\n[00:00.20] y"));
+        QCOMPARE(shifted[0].ms, qint64(0));    // never before the start
+        QCOMPARE(shifted[1].ms, qint64(9500)); // a positive offset brings the words sooner
+        QVERIFY(Lrc::parse(QStringLiteral("no stamps here\n[bad:tag]")).isEmpty());
+
+        QCOMPARE(Lrc::indexAt(lines, 0), -1);
+        QCOMPARE(Lrc::indexAt(lines, 1000), 0);
+        QCOMPARE(Lrc::indexAt(lines, 12499), 0);
+        QCOMPARE(Lrc::indexAt(lines, 12500), 1);
+        QCOMPARE(Lrc::indexAt(lines, 999999), 4);
+        QCOMPARE(Lrc::indexAt({}, 5), -1);
     }
 
     void lowBatteryThresholds()

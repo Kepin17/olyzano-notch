@@ -20,6 +20,7 @@ class MediaPlayers : public QObject
     Q_PROPERTY(bool playing READ playing NOTIFY changed)
     Q_PROPERTY(QString title READ title NOTIFY changed)
     Q_PROPERTY(QString artist READ artist NOTIFY changed)
+    Q_PROPERTY(QString album READ album NOTIFY changed)
     Q_PROPERTY(QString artUrl READ artUrl NOTIFY changed)
     Q_PROPERTY(qint64 lengthMs READ lengthMs NOTIFY changed)
     Q_PROPERTY(bool canSeek READ canSeek NOTIFY changed)
@@ -37,7 +38,7 @@ public:
         QString key;      // AUMID#n: an app can have several (one per browser tab)
         QString aumid;
         QString status;   // "Playing" | "Paused" | "Stopped"
-        QString title, artist, artUrl;
+        QString title, artist, album, artUrl;
         qint64 lengthMs = 0;
         qint64 positionMs = 0; // at positionAt (ms since the epoch)
         qint64 positionAt = 0;
@@ -48,6 +49,7 @@ public:
     bool playing() const;
     QString title() const { return current() ? current()->title : QString(); }
     QString artist() const { return current() ? current()->artist : QString(); }
+    QString album() const { return current() ? current()->album : QString(); }
     QString artUrl() const { return current() ? current()->artUrl : QString(); }
     qint64 lengthMs() const { return current() ? current()->lengthMs : 0; }
     bool canSeek() const { return current() && current()->canSeek; }
@@ -97,6 +99,7 @@ class MediaPlayers : public QObject
     Q_PROPERTY(bool playing READ playing NOTIFY changed)
     Q_PROPERTY(QString title READ title NOTIFY changed)
     Q_PROPERTY(QString artist READ artist NOTIFY changed)
+    Q_PROPERTY(QString album READ album NOTIFY changed)
     Q_PROPERTY(QString artUrl READ artUrl NOTIFY changed)
     Q_PROPERTY(qint64 lengthMs READ lengthMs NOTIFY changed)
     Q_PROPERTY(bool canSeek READ canSeek NOTIFY changed)
@@ -111,6 +114,7 @@ public:
     bool playing() const { return false; }
     QString title() const { return {}; }
     QString artist() const { return {}; }
+    QString album() const { return {}; }
     QString artUrl() const { return {}; }
     qint64 lengthMs() const { return 0; }
     bool canSeek() const { return false; }
@@ -141,6 +145,7 @@ class MediaPlayers : public QObject
     Q_PROPERTY(bool playing READ playing NOTIFY changed)
     Q_PROPERTY(QString title READ title NOTIFY changed)
     Q_PROPERTY(QString artist READ artist NOTIFY changed)
+    Q_PROPERTY(QString album READ album NOTIFY changed)
     Q_PROPERTY(QString artUrl READ artUrl NOTIFY changed)
     Q_PROPERTY(qint64 lengthMs READ lengthMs NOTIFY changed)
     Q_PROPERTY(bool canSeek READ canSeek NOTIFY changed)
@@ -156,6 +161,7 @@ public:
     bool playing() const;
     QString title() const;
     QString artist() const;
+    QString album() const;
     QString artUrl() const;
     qint64 lengthMs() const;
     bool canSeek() const;

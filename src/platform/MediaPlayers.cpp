@@ -142,6 +142,12 @@ QString MediaPlayers::artist() const
     return p ? p->metadata.value(QStringLiteral("xesam:artist")).toStringList().join(QStringLiteral(", ")) : QString();
 }
 
+QString MediaPlayers::album() const
+{
+    const Player *p = current();
+    return p ? p->metadata.value(QStringLiteral("xesam:album")).toString() : QString();
+}
+
 QString MediaPlayers::artUrl() const
 {
     const Player *p = current();
