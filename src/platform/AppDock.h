@@ -27,6 +27,10 @@ class AppDock : public QObject
     Q_PROPERTY(int iconSize READ iconSize WRITE setIconSize NOTIFY appearanceChanged)              // px, 32-80
     Q_PROPERTY(double magnification READ magnification WRITE setMagnification NOTIFY appearanceChanged) // hovered icon's scale, 1 = off
     Q_PROPERTY(double backgroundOpacity READ backgroundOpacity WRITE setBackgroundOpacity NOTIFY appearanceChanged) // 0.2-1
+    Q_PROPERTY(bool blur READ blur WRITE setBlur NOTIFY appearanceChanged) // blur what's behind the bar (KDE)
+    Q_PROPERTY(QString animation READ animation WRITE setAnimation NOTIFY appearanceChanged) // none | smooth | bouncy
+    Q_PROPERTY(bool showRunning READ showRunning WRITE setShowRunning NOTIFY appearanceChanged) // running apps that aren't pinned
+    Q_PROPERTY(QVariantList pinnedApps READ pinnedApps NOTIFY itemsChanged) // {id, name, iconSource}, for Settings
     // {id, name, iconSource, pinned, running, active, canLaunch}
     Q_PROPERTY(QVariantList items READ items NOTIFY itemsChanged)
 
@@ -43,10 +47,17 @@ public:
     void setPosition(const QString &position);
     int iconSize() const { return m_settings.value(QStringLiteral("iconSize"), 46).toInt(); }
     void setIconSize(int size);
-    double magnification() const { return m_settings.value(QStringLiteral("magnification"), 1.3).toDouble(); }
+    double magnification() const { return m_settings.value(QStringLiteral("magnification"), 1.12).toDouble(); }
     void setMagnification(double scale);
     double backgroundOpacity() const { return m_settings.value(QStringLiteral("opacity"), 0.85).toDouble(); }
     void setBackgroundOpacity(double opacity);
+    bool blur() const { return m_settings.value(QStringLiteral("blur"), true).toBool(); }
+    void setBlur(bool blur);
+    QString animation() const { return m_settings.value(QStringLiteral("animation"), QStringLiteral("smooth")).toString(); }
+    void setAnimation(const QString &animation);
+    bool showRunning() const { return m_settings.value(QStringLiteral("showRunning"), true).toBool(); }
+    void setShowRunning(bool show);
+    QVariantList pinnedApps() const;
 
     // Polling (where the window list isn't pushed to us) only runs while a dock is showing.
     Q_INVOKABLE void setWatching(bool watching);
@@ -58,6 +69,8 @@ public:
     Q_INVOKABLE void pin(const QString &id);
     Q_INVOKABLE void unpin(const QString &id);
     Q_INVOKABLE void movePinned(int from, int to);
+    // Drag-and-drop: pin (if needed) and put the app at `index` among the pinned ones.
+    Q_INVOKABLE void pinAt(const QString &id, int index);
     // Installed apps for the picker, filtered by name; {id, name, iconSource, pinned}.
     Q_INVOKABLE QVariantList installedApps(const QString &filter);
 

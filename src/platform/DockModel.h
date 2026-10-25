@@ -85,10 +85,10 @@ inline DockApp parseDesktopEntry(const QString &id, const QByteArray &contents)
 }
 
 // Pinned apps first, in their saved order (an app that is no longer installed keeps a placeholder so
-// pinning survives uninstalling/reinstalling), then running apps that aren't pinned.
+// pinning survives uninstalling/reinstalling), then running apps that aren't pinned (unless !showRunning).
 // `running` holds one entry per running app, `activeId` the focused one (may be empty).
 inline QVariantList merge(const QStringList &pinned, const QHash<QString, DockApp> &catalog,
-                          const QList<DockApp> &running, const QString &activeId)
+                          const QList<DockApp> &running, const QString &activeId, bool showRunning = true)
 {
     QHash<QString, DockApp> runningById;
     for (const DockApp &app : running)
@@ -115,7 +115,7 @@ inline QVariantList merge(const QStringList &pinned, const QHash<QString, DockAp
     }
     QList<DockApp> rest;
     for (const DockApp &app : running)
-        if (!pinned.contains(app.id))
+        if (showRunning && !pinned.contains(app.id))
             rest << app;
     std::sort(rest.begin(), rest.end(), [](const DockApp &a, const DockApp &b) {
         return a.name.compare(b.name, Qt::CaseInsensitive) < 0;

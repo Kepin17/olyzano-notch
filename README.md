@@ -272,6 +272,8 @@ ctest --test-dir build --output-on-failure
 ./build/notch
 ```
 
+Optional: `libkf6windowsystem-dev` lets the dock blur what's behind it on KDE Plasma.
+
 Try it without touching your real shelf:
 `XDG_DATA_HOME=/tmp/notch-test XDG_CONFIG_HOME=/tmp/notch-test-config ./build/notch`.
 Add `-DNOTCH_NO_DBUS=ON` to build the variant Windows gets (no D-Bus integrations) and try those code paths on Linux.

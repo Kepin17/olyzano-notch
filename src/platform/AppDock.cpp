@@ -82,7 +82,34 @@ void AppDock::setIconSize(int size)
 
 void AppDock::setMagnification(double scale)
 {
-    storeAppearance(QStringLiteral("magnification"), qBound(1.0, scale, 1.8));
+    storeAppearance(QStringLiteral("magnification"), qBound(1.0, scale, 1.25));
+}
+
+void AppDock::setBlur(bool blur)
+{
+    storeAppearance(QStringLiteral("blur"), blur);
+}
+
+void AppDock::setAnimation(const QString &animation)
+{
+    static const QStringList kinds = {QStringLiteral("none"), QStringLiteral("smooth"), QStringLiteral("bouncy")};
+    if (kinds.contains(animation))
+        storeAppearance(QStringLiteral("animation"), animation);
+}
+
+void AppDock::setShowRunning(bool show)
+{
+    storeAppearance(QStringLiteral("showRunning"), show);
+    refresh();
+}
+
+QVariantList AppDock::pinnedApps() const
+{
+    QVariantList out;
+    for (const QVariant &v : m_items)
+        if (v.toMap().value(QStringLiteral("pinned")).toBool())
+            out << v;
+    return out;
 }
 
 void AppDock::setBackgroundOpacity(double opacity)
@@ -121,6 +148,20 @@ void AppDock::unpin(const QString &id)
 {
     if (!m_pinned.removeOne(id))
         return;
+    m_settings.setValue(QStringLiteral("pinned"), m_pinned);
+    refresh();
+}
+
+void AppDock::pinAt(const QString &id, int index)
+{
+    if (id.isEmpty())
+        return;
+    QStringList pinned = m_pinned;
+    pinned.removeAll(id);
+    pinned.insert(qBound(0, index, int(pinned.size())), id);
+    if (pinned == m_pinned)
+        return;
+    m_pinned = pinned;
     m_settings.setValue(QStringLiteral("pinned"), m_pinned);
     refresh();
 }
@@ -182,7 +223,7 @@ void AppDock::refresh()
     loadCatalog();
     QString active;
     const QList<DockApp> running = runningApps(&active);
-    QVariantList items = dockmodel::merge(m_pinned, m_catalog, running, active);
+    QVariantList items = dockmodel::merge(m_pinned, m_catalog, running, active, showRunning());
     for (QVariant &v : items) {
         QVariantMap m = v.toMap();
         m[QStringLiteral("iconSource")] = iconSource(m.value(QStringLiteral("id")).toString());

@@ -1410,6 +1410,11 @@ private slots:
         QVERIFY(!items[3].toMap().value("pinned").toBool());
         QVERIFY(items[3].toMap().value("running").toBool());
         QVERIFY(!items[3].toMap().value("active").toBool());
+
+        // With running apps hidden, only the pinned ones stay (still marked running).
+        const QVariantList pinnedOnly = dockmodel::merge({"files"}, catalog, {zed, files}, {}, false);
+        QCOMPARE(pinnedOnly.size(), 1);
+        QVERIFY(pinnedOnly[0].toMap().value("running").toBool());
     }
 
     void dockMatchesWindows()

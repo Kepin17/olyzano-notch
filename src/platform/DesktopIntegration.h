@@ -15,6 +15,7 @@ class DesktopIntegration : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(bool layerShell READ layerShell CONSTANT)
+    Q_PROPERTY(bool canBlur READ canBlur CONSTANT)
 
 public:
     // Must be called before the window is first shown; window->screen() picks the monitor.
@@ -30,6 +31,9 @@ public:
     Q_INVOKABLE void setInputRegion(QWindow *window, const QRectF &rect);
     // Let a dock window take the keyboard (while its search field is open) or not.
     Q_INVOKABLE void setKeyboardInteractive(QWindow *window, bool interactive);
+    // Blur what's behind this rounded rect of `window` (KDE Plasma, with KF6WindowSystem); an empty rect stops it.
+    Q_INVOKABLE void setBlurRegion(QWindow *window, const QRectF &rect, qreal radius);
+    bool canBlur() const;
     // Tray actions land on the primary monitor's Notch (page: "" toggles pin, "settings").
     Q_INVOKABLE void toggleFromTray(const QString &page);
 
