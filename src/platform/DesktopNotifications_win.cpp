@@ -12,6 +12,7 @@
 #include <QCoreApplication>
 #include <QPointer>
 #include <QSet>
+#include <QStandardPaths>
 
 #include <atomic>
 #include <chrono>
@@ -94,6 +95,20 @@ struct DesktopNotifications::Listener {
         winrt::uninit_apartment();
     }
 };
+
+DesktopNotifications::DesktopNotifications(QObject *parent)
+    : QObject(parent)
+    , m_settings(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/notifications.conf"),
+                 QSettings::IniFormat)
+{
+    if (enabled())
+        start();
+}
+
+DesktopNotifications::~DesktopNotifications()
+{
+    stop();
+}
 
 void DesktopNotifications::start()
 {
