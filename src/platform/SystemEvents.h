@@ -8,8 +8,9 @@
 #endif
 
 #ifndef NOTCH_HAVE_DBUS
-// Without D-Bus: on Windows the laptop battery is polled (charger plugged / unplugged, running low); no
-// Bluetooth alerts. Elsewhere this is a stub that never fires. Same `alert` signal as the Linux class.
+// Without D-Bus: on Windows the laptop battery is polled (charger plugged / unplugged, running low) and
+// Bluetooth devices are watched (WinBluetooth). Elsewhere this is a stub that never fires. Same `alert`
+// signal as the Linux class.
 class SystemEvents : public QObject
 {
     Q_OBJECT
