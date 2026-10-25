@@ -8,7 +8,9 @@ The notch can stay on screen, shows what you are listening to, and the open pane
 - **Lyrics** (off by default, *Settings → General → Lyrics*). The Music page splits in two like Spotify's lyrics view: the player on the left, only the words on the right, the line being sung big and the list following the song. The capsule shows the line too. They come from lrclib.net, an open lyrics service: the artist, title, album and length of what plays are sent to it, nothing else, and only when this is on. Not every song is there.
 - **Karaoke** (Linux). A mic button on the player plays your voice through the speakers or headphones next to the music. Use headphones.
 - **Categories clean up after themselves.** A category with no file in it for 24 hours goes away (locked ones and ones a type rule files into stay; Notch's own, like Screenshots, come back when needed).
-- A black edge marker instead of the grey one, a "now playing" capsule that no longer closes by itself, and a window wide enough for the split Music page.
+- The capsule opens the moment you point at it (no delay, no click first) and stays open once it has started to; the line it shows is never cut off (it widens, then wraps onto a second line).
+- Text on a highlighted button is white or dark, whichever reads better on your accent colour (white on KDE blue was hard to read).
+- A black edge marker instead of the grey one, and a window wide enough for the split Music page.
 
 ### Downloads
 - **Linux:** `notch_0.10.0_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.10.0_amd64.deb`, then restart Olyzano Notch.
