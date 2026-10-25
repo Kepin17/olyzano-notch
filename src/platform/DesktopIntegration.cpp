@@ -45,6 +45,91 @@ void DesktopIntegration::attach(QWindow *window)
     connect(window->screen(), &QScreen::availableGeometryChanged, window, [window] { centerOnScreen(window); });
 }
 
+static const char DockSide[] = "notchDockSide";
+
+// On the real edge of the screen (like the notch on the top one), centered along it.
+static void placeDock(QWindow *window)
+{
+    if (!window->screen())
+        return;
+    const QRect g = window->screen()->geometry();
+    const QString side = window->property(DockSide).toString();
+    if (side == QLatin1String("left"))
+        window->setPosition(g.x(), g.y() + (g.height() - window->height()) / 2);
+    else if (side == QLatin1String("right"))
+        window->setPosition(g.x() + g.width() - window->width(), g.y() + (g.height() - window->height()) / 2);
+    else
+        window->setPosition(g.x() + (g.width() - window->width()) / 2, g.y() + g.height() - window->height());
+}
+
+#ifdef NOTCH_HAVE_LAYERSHELL
+static LayerShellQt::Window *dockLayer(QWindow *window)
+{
+    return QGuiApplication::platformName().startsWith(QLatin1String("wayland")) ? LayerShellQt::Window::get(window) : nullptr;
+}
+
+static LayerShellQt::Window::Anchors dockAnchors(const QString &side)
+{
+    if (side == QLatin1String("left"))
+        return LayerShellQt::Window::AnchorLeft;
+    if (side == QLatin1String("right"))
+        return LayerShellQt::Window::AnchorRight;
+    return LayerShellQt::Window::AnchorBottom;
+}
+#endif
+
+void DesktopIntegration::attachDock(QWindow *window, const QString &side)
+{
+    window->setProperty(DockSide, side);
+#ifdef NOTCH_HAVE_LAYERSHELL
+    if (auto *ls = dockLayer(window)) {
+        ls->setScope(QStringLiteral("notch-dock"));
+        ls->setScreen(window->screen());
+        ls->setLayer(LayerShellQt::Window::LayerTop);
+        ls->setAnchors(dockAnchors(side));
+        ls->setExclusiveZone(-1); // over any panel on that edge; the dock hides itself
+        ls->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityNone);
+        ls->setMargins(QMargins());
+        return;
+    }
+#endif
+    window->setFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool | Qt::WindowDoesNotAcceptFocus);
+    placeDock(window);
+    connect(window->screen(), &QScreen::geometryChanged, window, [window] { placeDock(window); });
+    connect(window, &QWindow::widthChanged, window, [window] { placeDock(window); });
+    connect(window, &QWindow::heightChanged, window, [window] { placeDock(window); });
+}
+
+void DesktopIntegration::moveDock(QWindow *window, const QString &side)
+{
+    window->setProperty(DockSide, side);
+#ifdef NOTCH_HAVE_LAYERSHELL
+    if (auto *ls = dockLayer(window)) {
+        ls->setAnchors(dockAnchors(side));
+        return;
+    }
+#endif
+    placeDock(window);
+}
+
+void DesktopIntegration::setKeyboardInteractive(QWindow *window, bool interactive)
+{
+    if (!window)
+        return;
+#ifdef NOTCH_HAVE_LAYERSHELL
+    if (auto *ls = dockLayer(window)) {
+        ls->setKeyboardInteractivity(interactive ? LayerShellQt::Window::KeyboardInteractivityOnDemand
+                                                 : LayerShellQt::Window::KeyboardInteractivityNone);
+        if (interactive)
+            window->requestActivate();
+        return;
+    }
+#endif
+    window->setFlag(Qt::WindowDoesNotAcceptFocus, !interactive);
+    if (interactive)
+        window->requestActivate();
+}
+
 void DesktopIntegration::setInputRegion(QWindow *window, const QRectF &rect)
 {
     if (window)

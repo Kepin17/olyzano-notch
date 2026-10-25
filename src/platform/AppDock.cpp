@@ -1,14 +1,25 @@
 #include "platform/AppDock.h"
 
+#include "models/FileItem.h"
+
+#include <QCoreApplication>
 #include <QDir>
 #include <QDirIterator>
 #include <QFile>
 #include <QFileIconProvider>
 #include <QIcon>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QPixmap>
 #include <QSet>
 #include <QStandardPaths>
 
+#ifdef NOTCH_HAVE_DBUS
+#include <QDBusConnection>
+#include <QDBusConnectionInterface>
+#include <QDBusMessage>
+#endif
 #ifdef Q_OS_WIN
 #include <windows.h>
 #endif
@@ -22,9 +33,11 @@ AppDock::AppDock(QObject *parent)
     : QObject(parent), m_settings(configPath(), QSettings::IniFormat)
 {
     m_enabled = m_settings.value(QStringLiteral("enabled"), true).toBool();
+    m_autoHide = m_settings.value(QStringLiteral("autoHide"), true).toBool();
     m_pinned = m_settings.value(QStringLiteral("pinned")).toStringList();
     m_timer.setInterval(2000);
     connect(&m_timer, &QTimer::timeout, this, &AppDock::refresh);
+    startKWin();
 }
 
 void AppDock::setEnabled(bool enabled)
@@ -34,8 +47,47 @@ void AppDock::setEnabled(bool enabled)
     m_enabled = enabled;
     m_settings.setValue(QStringLiteral("enabled"), enabled);
     emit enabledChanged();
-    if (enabled)
-        refresh();
+}
+
+void AppDock::setAutoHide(bool autoHide)
+{
+    if (m_autoHide == autoHide)
+        return;
+    m_autoHide = autoHide;
+    m_settings.setValue(QStringLiteral("autoHide"), autoHide);
+    emit autoHideChanged();
+}
+
+void AppDock::storeAppearance(const QString &key, const QVariant &value)
+{
+    if (m_settings.value(key) == value)
+        return;
+    m_settings.setValue(key, value);
+    emit appearanceChanged();
+}
+
+void AppDock::setPosition(const QString &position)
+{
+    static const QStringList sides = {QStringLiteral("bottom"), QStringLiteral("left"), QStringLiteral("right")};
+    if (!sides.contains(position) || position == this->position())
+        return;
+    storeAppearance(QStringLiteral("position"), position);
+    emit positionChanged();
+}
+
+void AppDock::setIconSize(int size)
+{
+    storeAppearance(QStringLiteral("iconSize"), qBound(32, size, 80));
+}
+
+void AppDock::setMagnification(double scale)
+{
+    storeAppearance(QStringLiteral("magnification"), qBound(1.0, scale, 1.8));
+}
+
+void AppDock::setBackgroundOpacity(double opacity)
+{
+    storeAppearance(QStringLiteral("opacity"), qBound(0.2, opacity, 1.0));
 }
 
 void AppDock::setWatching(bool watching)
@@ -45,7 +97,15 @@ void AppDock::setWatching(bool watching)
         return;
     }
     refresh();
-    m_timer.start();
+    if (!m_kwin) // KWin pushes every change itself
+        m_timer.start();
+}
+
+void AppDock::launchNew(const QString &id)
+{
+    const DockApp app = m_catalog.contains(id) ? m_catalog.value(id) : m_seenRunning.value(id);
+    if (!app.command.isEmpty())
+        QProcess::startDetached(app.command.first(), app.command.mid(1), QDir::homePath());
 }
 
 void AppDock::pin(const QString &id)
@@ -103,7 +163,7 @@ QIcon AppDock::iconFor(const QString &id) const
 {
     const DockApp app = m_catalog.contains(id) ? m_catalog.value(id) : m_seenRunning.value(id);
 #ifdef Q_OS_WIN
-    const QFileInfo exe(app.valid() ? app.command.first() : id);
+    const QFileInfo exe(!app.command.isEmpty() ? app.command.first() : id);
     if (exe.exists())
         return QFileIconProvider().icon(exe);
     return QFileIconProvider().icon(QFileIconProvider::File);
@@ -112,7 +172,7 @@ QIcon AppDock::iconFor(const QString &id) const
     if (QDir::isAbsolutePath(app.icon))
         icon = QIcon(app.icon);
     else if (!app.icon.isEmpty())
-        icon = QIcon::fromTheme(app.icon);
+        icon = QIcon::fromTheme(app.icon, QIcon::fromTheme(app.icon.toLower()));
     return icon.isNull() ? QIcon::fromTheme(QStringLiteral("application-x-executable")) : icon;
 #endif
 }
@@ -121,16 +181,13 @@ void AppDock::refresh()
 {
     loadCatalog();
     QString active;
-    m_running = runningApps(&active);
-    const QVariantList items = [&] {
-        QVariantList merged = dockmodel::merge(m_pinned, m_catalog, m_running, active);
-        for (QVariant &v : merged) {
-            QVariantMap m = v.toMap();
-            m[QStringLiteral("iconSource")] = iconSource(m.value(QStringLiteral("id")).toString());
-            v = m;
-        }
-        return merged;
-    }();
+    const QList<DockApp> running = runningApps(&active);
+    QVariantList items = dockmodel::merge(m_pinned, m_catalog, running, active);
+    for (QVariant &v : items) {
+        QVariantMap m = v.toMap();
+        m[QStringLiteral("iconSource")] = iconSource(m.value(QStringLiteral("id")).toString());
+        v = m;
+    }
     if (items == m_items)
         return;
     m_items = items;
@@ -145,6 +202,163 @@ QPixmap DockIconProvider::requestPixmap(const QString &id, QSize *size, const QS
     const QString appId = QString::fromUtf8(QByteArray::fromBase64(id.toLatin1(), QByteArray::Base64UrlEncoding));
     return m_dock->iconFor(appId).pixmap(s);
 }
+
+// ---- KWin (KDE Plasma 5 and 6) ----
+
+void AppDock::kwinWindows(const QString &json)
+{
+    m_kwinWindows.clear();
+    const qint64 self = QCoreApplication::applicationPid();
+    const QJsonArray windows = QJsonDocument::fromJson(json.toUtf8()).array();
+    for (const QJsonValue &value : windows) {
+        const QJsonObject o = value.toObject();
+        KWinWindow w;
+        w.id = o.value(QLatin1String("id")).toString();
+        w.desktopFile = o.value(QLatin1String("app")).toString();
+        w.windowClass = o.value(QLatin1String("cls")).toString();
+        w.pid = o.value(QLatin1String("pid")).toInteger();
+        w.active = o.value(QLatin1String("active")).toBool();
+        if (!w.id.isEmpty() && w.pid != self)
+            m_kwinWindows << w;
+    }
+    refresh();
+}
+
+#ifdef NOTCH_HAVE_DBUS
+static const QString KWinService = QStringLiteral("org.kde.KWin");
+static const QString DockService = QStringLiteral("org.olyzano.Notch");
+static const QString WatchPlugin = QStringLiteral("notch-dock-watch");
+static const QString ActionPlugin = QStringLiteral("notch-dock-action");
+
+// Runs inside KWin for as long as Notch does: sends the window list back on every change.
+// Plasma 6 names things window*, Plasma 5 client*; both are handled.
+static const char WatchScript[] = R"JS(
+function windows() { return workspace.windowList ? workspace.windowList() : workspace.clientList(); }
+function current() { return workspace.activeWindow !== undefined ? workspace.activeWindow : workspace.activeClient; }
+function push(gone) {
+    var active = current();
+    var list = windows();
+    var out = [];
+    for (var i = 0; i < list.length; ++i) {
+        var w = list[i];
+        if (w === gone || !w.normalWindow || w.skipTaskbar)
+            continue;
+        out.push({ id: String(w.internalId), app: String(w.desktopFileName || ""), cls: String(w.resourceClass || ""),
+                   pid: w.pid || 0, active: w === active });
+    }
+    callDBus("@SERVICE@", "/Dock", "org.olyzano.Notch.Dock", "kwinWindows", JSON.stringify(out));
+}
+(workspace.windowAdded || workspace.clientAdded).connect(function () { push(null); });
+(workspace.windowRemoved || workspace.clientRemoved).connect(function (w) { push(w); });
+(workspace.windowActivated || workspace.clientActivated).connect(function () { push(null); });
+push(null);
+)JS";
+
+// One click's worth of window management. Windows are taken bottom-to-top in stacking order:
+// not in front -> raise the topmost; in front alone -> minimize; in front with siblings -> raise the lowest (cycle).
+static const char ActionScript[] = R"JS(
+var ids = @IDS@;
+var mode = "@MODE@";
+var list = workspace.stackingOrder || (workspace.windowList ? workspace.windowList() : workspace.clientList());
+var mine = [];
+for (var i = 0; i < list.length; ++i)
+    if (ids.indexOf(String(list[i].internalId)) >= 0)
+        mine.push(list[i]);
+var active = workspace.activeWindow !== undefined ? workspace.activeWindow : workspace.activeClient;
+function raise(w) {
+    if (w.minimized)
+        w.minimized = false;
+    if (workspace.activeWindow !== undefined)
+        workspace.activeWindow = w;
+    else
+        workspace.activeClient = w;
+}
+if (mine.length > 0) {
+    if (mode === "close") {
+        for (var j = 0; j < mine.length; ++j)
+            mine[j].closeWindow();
+    } else if (mine.indexOf(active) < 0) {
+        raise(mine[mine.length - 1]);
+    } else if (mine.length === 1) {
+        active.minimized = true;
+    } else {
+        raise(mine[0]);
+    }
+}
+)JS";
+
+static QDBusMessage scriptingCall(const QString &method, const QVariantList &args = {})
+{
+    QDBusMessage msg = QDBusMessage::createMethodCall(KWinService, QStringLiteral("/Scripting"),
+                                                      QStringLiteral("org.kde.kwin.Scripting"), method);
+    msg.setArguments(args);
+    return msg;
+}
+
+static QString writeScript(const QString &name, const QString &text)
+{
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation) + QStringLiteral("/notch");
+    QDir().mkpath(dir);
+    QFile file(dir + u'/' + name);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return {};
+    file.write(text.toUtf8());
+    return file.fileName();
+}
+
+void AppDock::startKWin()
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected() || !bus.interface() || !bus.interface()->isServiceRegistered(KWinService))
+        return;
+    if (!bus.registerService(DockService)
+        || !bus.registerObject(QStringLiteral("/Dock"), this, QDBusConnection::ExportScriptableSlots)) {
+        qCWarning(lcNotch) << "Dock: couldn't register on the session bus; running apps come from /proc";
+        return;
+    }
+    const QString path = writeScript(QStringLiteral("dock-watch.js"),
+                                     QString::fromUtf8(WatchScript).replace(QStringLiteral("@SERVICE@"), DockService));
+    if (path.isEmpty())
+        return;
+    bus.call(scriptingCall(QStringLiteral("unloadScript"), {WatchPlugin})); // left over from a crash
+    const QDBusMessage reply = bus.call(scriptingCall(QStringLiteral("loadScript"), {path, WatchPlugin}));
+    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().value(0).toInt() < 0) {
+        qCWarning(lcNotch) << "Dock: KWin refused the window script; running apps come from /proc";
+        return;
+    }
+    bus.call(scriptingCall(QStringLiteral("start")));
+    m_kwin = true;
+    qCInfo(lcNotch) << "Dock: window list from KWin";
+}
+
+void AppDock::runKWinAction(const QString &mode, const QStringList &windows)
+{
+    const QString ids = QString::fromUtf8(QJsonDocument(QJsonArray::fromStringList(windows)).toJson(QJsonDocument::Compact));
+    const QString path = writeScript(QStringLiteral("dock-action.js"), QString::fromUtf8(ActionScript)
+                                                                           .replace(QStringLiteral("@IDS@"), ids)
+                                                                           .replace(QStringLiteral("@MODE@"), mode));
+    if (path.isEmpty())
+        return;
+    // Queued in order on one connection, so KWin unloads the previous click's script before loading this one.
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    bus.asyncCall(scriptingCall(QStringLiteral("unloadScript"), {ActionPlugin}));
+    bus.asyncCall(scriptingCall(QStringLiteral("loadScript"), {path, ActionPlugin}));
+    bus.asyncCall(scriptingCall(QStringLiteral("start")));
+}
+
+AppDock::~AppDock()
+{
+    if (!m_kwin)
+        return;
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    bus.call(scriptingCall(QStringLiteral("unloadScript"), {WatchPlugin}));
+    bus.call(scriptingCall(QStringLiteral("unloadScript"), {ActionPlugin}));
+}
+#else
+void AppDock::startKWin() {}
+void AppDock::runKWinAction(const QString &, const QStringList &) {}
+AppDock::~AppDock() = default;
+#endif
 
 #ifdef Q_OS_WIN
 
@@ -179,6 +393,8 @@ struct Window {
     QString exe;
 };
 
+HWND toHandle(const QString &id) { return reinterpret_cast<HWND>(id.toULongLong()); }
+
 BOOL CALLBACK collectWindow(HWND hwnd, LPARAM lparam)
 {
     if (!IsWindowVisible(hwnd) || GetWindow(hwnd, GW_OWNER))
@@ -208,6 +424,13 @@ BOOL CALLBACK collectWindow(HWND hwnd, LPARAM lparam)
     CloseHandle(process);
     return TRUE;
 }
+
+void raise(HWND hwnd)
+{
+    if (IsIconic(hwnd))
+        ShowWindow(hwnd, SW_RESTORE);
+    SetForegroundWindow(hwnd);
+}
 } // namespace
 
 QList<DockApp> AppDock::runningApps(QString *activeId)
@@ -215,13 +438,17 @@ QList<DockApp> AppDock::runningApps(QString *activeId)
     QList<Window> windows; // front to back
     EnumWindows(collectWindow, reinterpret_cast<LPARAM>(&windows));
 
-    m_windows.clear();
+    m_appWindows.clear();
     QList<DockApp> running;
+    const HWND foreground = GetForegroundWindow();
     for (const Window &w : windows) {
         const QString id = w.exe.toLower();
-        if (m_windows.contains(id))
+        if (w.handle == foreground)
+            *activeId = id;
+        const bool seen = m_appWindows.contains(id);
+        m_appWindows[id] << QString::number(reinterpret_cast<quintptr>(w.handle));
+        if (seen)
             continue;
-        m_windows.insert(id, reinterpret_cast<quintptr>(w.handle));
         DockApp app = m_catalog.value(id);
         if (!app.valid()) {
             app.id = id;
@@ -232,27 +459,33 @@ QList<DockApp> AppDock::runningApps(QString *activeId)
         }
         running << app;
     }
-    const HWND foreground = GetForegroundWindow();
-    for (const Window &w : windows)
-        if (w.handle == foreground)
-            *activeId = w.exe.toLower();
     return running;
 }
 
-void AppDock::launch(const QString &id)
+void AppDock::activate(const QString &id)
 {
-    if (const quintptr handle = m_windows.value(id)) {
-        const HWND hwnd = reinterpret_cast<HWND>(handle);
-        if (IsIconic(hwnd))
-            ShowWindow(hwnd, SW_RESTORE);
-        SetForegroundWindow(hwnd);
+    refresh(); // the window list may be up to a poll old
+    const QStringList windows = m_appWindows.value(id);
+    if (windows.isEmpty()) {
+        launchNew(id);
         return;
     }
-    const DockApp app = m_catalog.contains(id) ? m_catalog.value(id) : m_seenRunning.value(id);
-    if (app.valid())
-        QProcess::startDetached(app.command.first(), app.command.mid(1));
-    else if (QFileInfo::exists(id))
-        QProcess::startDetached(id, {});
+    const HWND foreground = GetForegroundWindow();
+    bool inFront = false;
+    for (const QString &w : windows)
+        inFront = inFront || toHandle(w) == foreground;
+    if (!inFront)
+        raise(toHandle(windows.first()));
+    else if (windows.size() == 1)
+        ShowWindow(foreground, SW_MINIMIZE);
+    else
+        raise(toHandle(windows.last()));
+}
+
+void AppDock::close(const QString &id)
+{
+    for (const QString &w : m_appWindows.value(id))
+        PostMessageW(toHandle(w), WM_CLOSE, 0, 0);
 }
 
 #elif defined(Q_OS_LINUX)
@@ -282,9 +515,37 @@ void AppDock::loadCatalog()
     }
 }
 
-// A GUI process of an app shows up in /proc with that app's binary and a display in its environment.
-QList<DockApp> AppDock::runningApps(QString *)
+QList<DockApp> AppDock::runningApps(QString *activeId)
 {
+    m_appWindows.clear();
+    QList<DockApp> running;
+
+    if (m_kwin) {
+        QSet<QString> seen;
+        for (const KWinWindow &w : std::as_const(m_kwinWindows)) {
+            DockApp app = m_catalog.value(dockmodel::matchWindow(m_catalog, w.desktopFile, w.windowClass));
+            if (app.id.isEmpty()) {
+                // Not an installed app (e.g. started from a terminal): still shown, under its window class.
+                const QString cls = !w.windowClass.isEmpty() ? w.windowClass : w.desktopFile;
+                if (cls.isEmpty())
+                    continue;
+                app.id = QStringLiteral("window:") + cls.toLower();
+                app.name = cls.left(1).toUpper() + cls.mid(1);
+                app.icon = !w.desktopFile.isEmpty() ? w.desktopFile : cls.toLower();
+                m_seenRunning.insert(app.id, app);
+            }
+            m_appWindows[app.id] << w.id;
+            if (w.active)
+                *activeId = app.id;
+            if (!seen.contains(app.id)) {
+                seen.insert(app.id);
+                running << app;
+            }
+        }
+        return running;
+    }
+
+    // No KWin: a GUI process of an app shows up in /proc with that app's binary and a display in its environment.
     // Launchers and interpreters that front many apps would mark them all as running.
     static const QSet<QString> ignored = {QStringLiteral("flatpak"), QStringLiteral("snap"), QStringLiteral("env"),
                                           QStringLiteral("sh"), QStringLiteral("bash"), QStringLiteral("gtk-launch"),
@@ -297,8 +558,6 @@ QList<DockApp> AppDock::runningApps(QString *)
         if (found == byKey.constEnd() || app.id < found->id)
             byKey.insert(app.key, app);
     }
-
-    QList<DockApp> running;
     QSet<QString> seen;
     const QStringList pids = QDir(QStringLiteral("/proc")).entryList(QDir::Dirs | QDir::NoDotAndDotDot);
     for (const QString &pid : pids) {
@@ -333,17 +592,27 @@ QList<DockApp> AppDock::runningApps(QString *)
     return running;
 }
 
-void AppDock::launch(const QString &id)
+void AppDock::activate(const QString &id)
 {
-    const DockApp app = m_catalog.value(id);
-    if (app.valid())
-        QProcess::startDetached(app.command.first(), app.command.mid(1));
+    const QStringList windows = m_appWindows.value(id);
+    if (m_kwin && !windows.isEmpty())
+        runKWinAction(QStringLiteral("focus"), windows);
+    else
+        launchNew(id); // without KWin there is no window to bring back; single-instance apps raise themselves
+}
+
+void AppDock::close(const QString &id)
+{
+    const QStringList windows = m_appWindows.value(id);
+    if (m_kwin && !windows.isEmpty())
+        runKWinAction(QStringLiteral("close"), windows);
 }
 
 #else
 
 void AppDock::loadCatalog() { m_catalogLoaded = true; }
 QList<DockApp> AppDock::runningApps(QString *) { return {}; }
-void AppDock::launch(const QString &) {}
+void AppDock::activate(const QString &id) { launchNew(id); }
+void AppDock::close(const QString &) {}
 
 #endif
