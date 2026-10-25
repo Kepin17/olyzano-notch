@@ -138,6 +138,20 @@ void QuickSettings::readAudio()
     }
     if (sinks.isEmpty())
         m_audio = false;
+
+    // the microphone
+    const QString defIn = QString::fromUtf8(pactlOut({QStringLiteral("get-default-source")})).trimmed();
+    const QList<PanelModel::Sink> sources = PanelModel::parseSources(pactlOut({QStringLiteral("-f"), QStringLiteral("json"), QStringLiteral("list"), QStringLiteral("sources")}), defIn);
+    m_sourceList.clear();
+    m_sourceName.clear();
+    for (const PanelModel::Sink &s : sources) {
+        m_sourceList << QVariantMap{{QStringLiteral("name"), s.name}, {QStringLiteral("description"), s.description}, {QStringLiteral("current"), s.isDefault}};
+        if (s.isDefault) {
+            m_sourceName = s.description;
+            m_inVolume = s.volume;
+            m_inMuted = s.mute;
+        }
+    }
 }
 
 void QuickSettings::listenAudio()
@@ -146,7 +160,7 @@ void QuickSettings::listenAudio()
         return;
     connect(&m_subscribe, &QProcess::readyReadStandardOutput, this, [this] {
         const QByteArray out = m_subscribe.readAllStandardOutput();
-        if (out.contains("sink") || out.contains("server"))
+        if (out.contains("sink") || out.contains("source") || out.contains("server"))
             soon();
     });
     connect(&m_subscribe, &QProcess::finished, this, [this] { QTimer::singleShot(3000, this, [this] { m_subscribe.start(QStringLiteral("pactl"), {QStringLiteral("subscribe")}); }); });
@@ -166,6 +180,27 @@ void QuickSettings::toggleMute()
     m_muted = !m_muted;
     QProcess::startDetached(QStringLiteral("pactl"), {QStringLiteral("set-sink-mute"), QStringLiteral("@DEFAULT_SINK@"), QStringLiteral("toggle")});
     emit changed();
+}
+
+void QuickSettings::setInputVolume(int percent)
+{
+    percent = qBound(0, percent, 100);
+    m_inVolume = percent;
+    QProcess::startDetached(QStringLiteral("pactl"), {QStringLiteral("set-source-volume"), QStringLiteral("@DEFAULT_SOURCE@"), QStringLiteral("%1%").arg(percent)});
+    emit changed();
+}
+
+void QuickSettings::toggleInputMute()
+{
+    m_inMuted = !m_inMuted;
+    QProcess::startDetached(QStringLiteral("pactl"), {QStringLiteral("set-source-mute"), QStringLiteral("@DEFAULT_SOURCE@"), QStringLiteral("toggle")});
+    emit changed();
+}
+
+void QuickSettings::setSource(const QString &name)
+{
+    QProcess::startDetached(QStringLiteral("pactl"), {QStringLiteral("set-default-source"), name});
+    soon();
 }
 
 void QuickSettings::setSink(const QString &name)
@@ -379,7 +414,9 @@ QByteArray QuickSettings::dump() const
 {
     QJsonObject o;
     o[QStringLiteral("audio")] = QJsonObject{{QStringLiteral("available"), m_audio}, {QStringLiteral("volume"), m_volume}, {QStringLiteral("muted"), m_muted},
-                                            {QStringLiteral("output"), m_sinkName}, {QStringLiteral("outputs"), QJsonArray::fromVariantList(m_sinkList)}};
+                                            {QStringLiteral("output"), m_sinkName}, {QStringLiteral("outputs"), QJsonArray::fromVariantList(m_sinkList)},
+                                            {QStringLiteral("input"), m_sourceName}, {QStringLiteral("inputVolume"), m_inVolume}, {QStringLiteral("inputMuted"), m_inMuted},
+                                            {QStringLiteral("inputs"), QJsonArray::fromVariantList(m_sourceList)}};
     o[QStringLiteral("brightness")] = QJsonObject{{QStringLiteral("available"), m_brightMax > 0}, {QStringLiteral("percent"), brightness()}};
     o[QStringLiteral("power")] = QJsonObject{{QStringLiteral("profile"), m_profile}, {QStringLiteral("profiles"), QJsonArray::fromStringList(m_profiles)}, {QStringLiteral("left"), m_batteryLeft}};
     o[QStringLiteral("bluetooth")] = QJsonObject{{QStringLiteral("available"), m_btAvailable}, {QStringLiteral("on"), m_btOn}, {QStringLiteral("connected"), m_btConnected},

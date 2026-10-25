@@ -40,6 +40,16 @@ inline QList<Sink> parseSinks(const QByteArray &json, const QString &defaultSink
     return out;
 }
 
+// `pactl -f json list sources`: the same shape as the sinks; what plays through the speakers (".monitor") is not a microphone.
+inline QList<Sink> parseSources(const QByteArray &json, const QString &defaultSource)
+{
+    QList<Sink> all = parseSinks(json, defaultSource), out;
+    for (const Sink &s : all)
+        if (!s.name.endsWith(QLatin1String(".monitor")))
+            out << s;
+    return out;
+}
+
 // Wi-Fi signal strength (0-100) as 0-4 bars.
 inline int wifiBars(int strength)
 {

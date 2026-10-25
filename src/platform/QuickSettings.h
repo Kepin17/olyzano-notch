@@ -21,6 +21,11 @@ class QuickSettings : public QObject
     Q_PROPERTY(int volumeLevel READ volumeLevel NOTIFY changed)   // 0-3: which speaker icon
     Q_PROPERTY(QVariantList sinks READ sinks NOTIFY changed)      // [{name, description, current}]
     Q_PROPERTY(QString sinkName READ sinkName NOTIFY changed)
+    Q_PROPERTY(bool inputAvailable READ inputAvailable NOTIFY changed)
+    Q_PROPERTY(int inputVolume READ inputVolume NOTIFY changed)   // the microphone, percent
+    Q_PROPERTY(bool inputMuted READ inputMuted NOTIFY changed)
+    Q_PROPERTY(QVariantList sources READ sources NOTIFY changed)  // [{name, description, current}]
+    Q_PROPERTY(QString sourceName READ sourceName NOTIFY changed)
     // screen
     Q_PROPERTY(bool brightnessAvailable READ brightnessAvailable NOTIFY changed)
     Q_PROPERTY(int brightness READ brightness NOTIFY changed)     // percent
@@ -51,6 +56,11 @@ public:
     int volumeLevel() const { return PanelModel::volumeLevel(m_volume, m_muted); }
     QVariantList sinks() const { return m_sinkList; }
     QString sinkName() const { return m_sinkName; }
+    bool inputAvailable() const { return !m_sourceList.isEmpty(); }
+    int inputVolume() const { return m_inVolume; }
+    bool inputMuted() const { return m_inMuted; }
+    QVariantList sources() const { return m_sourceList; }
+    QString sourceName() const { return m_sourceName; }
     bool brightnessAvailable() const { return m_brightMax > 0; }
     int brightness() const { return m_brightMax > 0 ? qRound(100.0 * m_bright / m_brightMax) : 0; }
     bool profilesAvailable() const { return !m_profiles.isEmpty(); }
@@ -71,6 +81,9 @@ public:
     Q_INVOKABLE void setVolume(int percent);
     Q_INVOKABLE void toggleMute();
     Q_INVOKABLE void setSink(const QString &name);
+    Q_INVOKABLE void setInputVolume(int percent);
+    Q_INVOKABLE void toggleInputMute();
+    Q_INVOKABLE void setSource(const QString &name);
     Q_INVOKABLE void setBrightness(int percent);
     Q_INVOKABLE void setProfile(const QString &profile);
     Q_INVOKABLE void setBtEnabled(bool on);
@@ -97,7 +110,10 @@ private:
     bool m_audio = false;
     int m_volume = 0;
     bool m_muted = false;
-    QVariantList m_sinkList;
+    QVariantList m_sinkList, m_sourceList;
+    int m_inVolume = 0;
+    bool m_inMuted = false;
+    QString m_sourceName;
     QString m_sinkName;
     int m_bright = 0, m_brightMax = 0;
     QString m_profile, m_batteryLeft;

@@ -11,6 +11,7 @@ Rectangle {
     property bool wifiOpen: false
     property bool btOpen: false
     property bool soundOpen: false
+    property bool inputOpen: false
     width: 372
     implicitHeight: body.implicitHeight + 28
     height: implicitHeight
@@ -203,6 +204,45 @@ Rectangle {
                 Repeater {
                     model: quick.sinks
                     Row2 { required property var modelData; label: modelData.description; mark: modelData.current; onClicked: quick.setSink(modelData.name) }
+                }
+            }
+        }
+
+        // the microphone: its level, mute, and which one
+        ColumnLayout {
+            visible: quick.inputAvailable
+            Layout.fillWidth: true
+            spacing: 6
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                AbstractButton {
+                    implicitWidth: 28; implicitHeight: 28
+                    onClicked: quick.toggleInputMute()
+                    contentItem: Item { LineIcon { anchors.centerIn: parent; glyph: quick.inputMuted ? "mic-off" : "mic"; sourceSize: Qt.size(19, 19); color: quick.inputMuted ? theme.danger : theme.text } }
+                }
+                Track { from: 0; to: 100; stepSize: 1; value: quick.inputVolume; onMoved: quick.setInputVolume(Math.round(value)) }
+                Text { Layout.preferredWidth: 34; text: quick.inputVolume + "%"; color: theme.textDim; font.pixelSize: 11; horizontalAlignment: Text.AlignRight }
+            }
+            AbstractButton {
+                Layout.fillWidth: true
+                implicitHeight: 28
+                visible: quick.sources.length > 1
+                onClicked: card.inputOpen = !card.inputOpen
+                contentItem: RowLayout {
+                    spacing: 6
+                    Text { Layout.fillWidth: true; text: "Input: " + quick.sourceName; color: theme.textDim; font.pixelSize: 11; elide: Text.ElideRight; leftPadding: 38 }
+                    Chev { rotation: card.inputOpen ? 180 : 0 }
+                }
+            }
+            ColumnLayout {
+                visible: card.inputOpen
+                Layout.fillWidth: true
+                Layout.leftMargin: 32
+                spacing: 0
+                Repeater {
+                    model: quick.sources
+                    Row2 { required property var modelData; label: modelData.description; mark: modelData.current; onClicked: quick.setSource(modelData.name) }
                 }
             }
         }

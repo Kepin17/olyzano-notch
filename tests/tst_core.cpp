@@ -717,6 +717,11 @@ private slots:
         QCOMPARE(sinks[0].volume, 62); // the loudest channel
         QVERIFY(!sinks[0].isDefault && sinks[1].isDefault && sinks[1].mute);
         QVERIFY(PanelModel::parseSinks("not json", {}).isEmpty());
+        const QByteArray in = R"([{"name":"alsa_input.usb","description":"USB mic","mute":false,"volume":{"mono":{"value_percent":"80%"}}},
+            {"name":"alsa_output.a.monitor","description":"Monitor of Speakers","mute":false,"volume":{"mono":{"value_percent":"100%"}}}])";
+        const auto mics = PanelModel::parseSources(in, QStringLiteral("alsa_input.usb"));
+        QCOMPARE(mics.size(), 1); // what plays is not a microphone
+        QVERIFY(mics[0].isDefault && mics[0].volume == 80);
 
         QCOMPARE(PanelModel::wifiBars(0), 0);
         QCOMPARE(PanelModel::wifiBars(20), 1);
