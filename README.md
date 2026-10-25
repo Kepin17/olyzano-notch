@@ -242,6 +242,12 @@ A dock of its own on the **bottom, left or right** edge of every monitor (*Setti
 On KDE Plasma the dock learns the open windows from KWin; on other Linux desktops it can only start apps and guesses
 which are running. Window thumbnails aren't possible: Wayland doesn't let an app capture other apps' windows.
 
+Quick look at the panels: the **Timer** has preset cards, a stepper and a ring with round controls; **Color** shows the last pick
+big with HEX / RGB / HSL (a click copies it in the chosen format); **Files** use soft cards and tinted category chips; **Share**
+scrolls inside the window on small screens, and while anything is being shared the closed notch shows a *Sharing* pill (a small
+mark next to a song) that opens the running shares. `notch --shot-page <file.png> <timer|timer-run|color|shelf|share>` saves a
+picture of a page.
+
 ## Status bar and Quick Settings
 
 *Settings → Panel → Show the status bar* adds a glass strip along the top edge of every screen: the app in front on the left

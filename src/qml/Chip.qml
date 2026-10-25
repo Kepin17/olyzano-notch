@@ -13,15 +13,14 @@ AbstractButton {
     readonly property bool dropHover: chipDrop.containsDrag
     signal menuRequested()
     signal dropDone()
-    implicitHeight: 26
-    implicitWidth: chipRow.implicitWidth + 22
-    // Washi: the active chip is a vermilion outline (hanko-like) rather than a filled pill.
-    readonly property bool filled: chip.active && !theme.washi
-    readonly property color ink: chip.filled ? theme.onColor(theme.accent) : chip.active ? theme.accent : theme.text
+    implicitHeight: 30
+    implicitWidth: chipRow.implicitWidth + 24
+    // The active chip is tinted (soft accent fill, accent text and outline), the way Washi's vermilion outline is.
+    readonly property bool filled: false
+    readonly property color ink: chip.active ? theme.accent : theme.text
     background: Rectangle {
         radius: theme.chipRadius
-        color: chip.filled ? theme.accent : chip.dropHover ? theme.surfaceHover : chip.hovered ? theme.surfaceHover
-             : chip.active ? theme.accentFaint : theme.surface
+        color: chip.dropHover ? theme.accentFaint : chip.active ? theme.accentSoft : chip.hovered ? theme.surfaceHover : theme.surface
         border.width: chip.dropHover || chip.active ? 1 : theme.washi ? 1 : 0
         border.color: chip.dropHover || chip.active ? theme.accent : theme.outline
         Behavior on color { ColorAnimation { duration: 120 } }
@@ -47,11 +46,20 @@ AbstractButton {
                 font.pixelSize: 12
                 font.weight: Font.Medium
             }
-            Text {
+            Rectangle { // the count, as a small badge
                 anchors.verticalCenter: parent.verticalCenter
-                text: chip.itemCount
-                color: chip.filled ? "#d0e4ff" : chip.active ? theme.accent : theme.textDim
-                font.pixelSize: 11
+                width: Math.max(18, countText.implicitWidth + 10)
+                height: 16
+                radius: 8
+                color: chip.active ? Qt.alpha(theme.accent, 0.22) : theme.surfacePressed
+                Text {
+                    id: countText
+                    anchors.centerIn: parent
+                    text: chip.itemCount
+                    color: chip.active ? theme.accent : theme.textDim
+                    font.pixelSize: 10
+                    font.weight: Font.DemiBold
+                }
             }
         }
     }

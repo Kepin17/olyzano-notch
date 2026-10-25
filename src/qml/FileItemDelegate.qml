@@ -47,29 +47,31 @@ Item {
         id: cb
         implicitWidth: 22
         implicitHeight: 22
+        property string glyph
+        opacity: hover.hovered ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 120 } }
         background: Rectangle {
             radius: 11
             color: cb.down ? theme.textFaint : cb.hovered ? theme.textFaint : theme.surfacePressed
             border.color: theme.island
             border.width: 1.5
         }
-        contentItem: Text {
-            text: cb.text
-            color: theme.text
-            font.pixelSize: 11
-            font.weight: Font.DemiBold
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
+        contentItem: Item {
+            LineIcon { anchors.centerIn: parent; glyph: cb.glyph; sourceSize: Qt.size(12, 12); color: theme.text }
         }
     }
 
-    Rectangle {
+    Rectangle { // the card: a quiet fill at rest, lifted on hover, ringed when selected
         anchors.fill: parent
-        radius: theme.radiusLg
-        color: tile.selected ? theme.accentFaint : hover.hovered ? theme.surface : "transparent"
-        border.width: tile.selected || (theme.washi && hover.hovered) ? 1 : 0
-        border.color: tile.selected && theme.washi ? theme.accent : theme.washi ? theme.outline : theme.accentSoft
+        anchors.topMargin: hover.hovered && !tile.selected ? -1 : 0
+        anchors.bottomMargin: hover.hovered && !tile.selected ? 1 : 0
+        radius: theme.radiusMd + 2
+        color: tile.selected ? theme.accentFaint : hover.hovered ? theme.surfaceHover : theme.surface
+        border.width: tile.selected ? 1.5 : theme.washi ? 1 : hover.hovered ? 1 : 0
+        border.color: tile.selected ? theme.accent : theme.washi ? theme.outline : theme.accentSoft
         Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on anchors.topMargin { NumberAnimation { duration: 120 } }
+        Behavior on anchors.bottomMargin { NumberAnimation { duration: 120 } }
     }
     HoverHandler {
         id: hover
@@ -177,12 +179,20 @@ Item {
             color: kind === "failed" ? theme.danger : kind === "selected" ? theme.accent : theme.warn
             border.color: theme.island
             border.width: 1.5
+            LineIcon {
+                anchors.centerIn: parent
+                visible: badge.kind === "selected" || badge.kind === "kept"
+                glyph: badge.kind === "selected" ? "check" : "pin"
+                sourceSize: Qt.size(11, 11)
+                color: badge.kind === "selected" ? theme.onColor(theme.accent) : "black"
+            }
             Text {
                 anchors.centerIn: parent
-                text: badge.kind === "failed" ? "!" : badge.kind === "selected" ? "✓" : badge.kind === "expiring" ? "⏳" : "★"
-                color: badge.kind === "kept" || badge.kind === "expiring" ? "black" : "white"
+                visible: badge.kind === "failed" || badge.kind === "expiring"
+                text: badge.kind === "failed" ? "!" : "⏳"
+                color: badge.kind === "expiring" ? "black" : "white"
                 font.pixelSize: badge.kind === "expiring" ? 9 : 10
-                font.bold: badge.kind === "failed" || badge.kind === "selected"
+                font.bold: badge.kind === "failed"
             }
         }
 
@@ -190,7 +200,7 @@ Item {
             anchors.left: parent.left
             anchors.top: parent.top
             anchors.margins: -6
-            text: tile.removed ? "↺" : "↗"
+            glyph: tile.removed ? "undo" : "external"
             visible: hover.hovered && (tile.available || tile.removed)
             Accessible.name: tile.removed ? "Restore" : "Open"
             onClicked: tile.removed ? notch.restoreItems([tile.itemId]) : notch.open(tile.itemId)
@@ -199,7 +209,7 @@ Item {
             anchors.right: parent.right
             anchors.top: parent.top
             anchors.margins: -6
-            text: "✕"
+            glyph: "close"
             visible: hover.hovered && !tile.copying
             Accessible.name: tile.removed ? "Delete now" : "Remove from Olyzano Notch"
             onClicked: tile.removed ? notch.deleteForever([tile.itemId]) : tile.view.requestRemove([tile.itemId])

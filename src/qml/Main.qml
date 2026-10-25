@@ -1373,7 +1373,7 @@ Window {
 
                     Item {
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 26
+                        Layout.preferredHeight: 30
                         clip: true
 
                         ListView {
@@ -1522,7 +1522,7 @@ Window {
                     Layout.fillWidth: true
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
-                    Layout.preferredHeight: 76
+                    Layout.preferredHeight: 104
                     Shape {
                         anchors.fill: parent
                         layer.enabled: true
@@ -1544,7 +1544,15 @@ Window {
                     }
                     Column {
                         anchors.centerIn: parent
-                        spacing: 4
+                        spacing: 5
+                        LineIcon {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            glyph: "download"
+                            sourceSize: Qt.size(24, 24)
+                            color: root.dragOver ? root.accent : root.textSecondary
+                            scale: root.dragOver ? 1.15 : 1
+                            Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutBack } }
+                        }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: root.dragOver ? "Release to add" : "Drop files here"
