@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QColor>
+#include <cmath>
 #include <QString>
 
 // How a picked color is written for copying, and which text reads on top of it. Pure, for the tests.

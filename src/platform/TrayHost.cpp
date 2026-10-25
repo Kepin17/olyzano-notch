@@ -2,6 +2,7 @@
 
 #include "platform/AppMenu.h"
 
+#include <QFileInfo>
 #include <QIcon>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -18,8 +19,6 @@
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
 #include <QDBusVariant>
-#include <QDir>
-#include <QFileInfo>
 #include <unistd.h>
 
 namespace {

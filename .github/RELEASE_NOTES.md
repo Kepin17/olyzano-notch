@@ -1,19 +1,17 @@
-## Olyzano Notch 0.10.0
+## Olyzano Notch 0.11.0
 
-The notch can stay on screen, shows what you are listening to, and the open panel is split into sections.
+A status bar with Quick Settings, the app's own menu, a tray and a calendar, and a fresher look for Files, Timer, Color and Share.
 
-- **How it sits on the screen** (*Settings → General*): **Hidden** (a small black line at the top edge, as before), **Capsule** (a small black capsule always shown, like a Dynamic Island; point at it to open) or **Always open**. The capsule stays up whatever window is in front, a maximised browser included.
-- **Music in the capsule.** While music plays the capsule shows the sound wave, the song and where it is (`1:23 / 5:37`); a click, or pointing at it, opens just the Music section. After a pause the song stays for two minutes, then the clock returns.
-- **Sections.** A bar under the title, **Files · Music · Timer · Share**, shows one section at a time. **Music** is only the player (no drop area); **Add** opens a file picker and is part of Files. The ⋯ menu and Settings are there in every section.
-- **Lyrics** (off by default, *Settings → General → Lyrics*; after that, the Lyrics button on the Music page switches them on and off). The Music page splits in two like Spotify's lyrics view: the player on the left, only the words on the right, the line being sung big and the list following the song. The capsule shows the line too. They come from lrclib.net, an open lyrics service: the artist, title, album and length of what plays are sent to it, nothing else, and only when this is on. Not every song is there.
-- **Karaoke** (Linux). A mic button on the player plays your voice through the speakers or headphones next to the music. Use headphones.
-- **A section for colours.** **Color** in the bar opens the colour picker section: a button to pick from the screen (opening the section no longer picks straight away) and the colours picked before, big enough to read, click to copy. **Note** and **Add** sit in the Files bar; the ⋯ menu is gone.
-- **Categories clean up after themselves.** A category with no file in it for 24 hours goes away (locked ones and ones a type rule files into stay; Notch's own, like Screenshots, come back when needed).
-- The capsule opens the moment you point at it (no delay, no click first) and stays open once it has started to; the line it shows is never cut off (it widens, then wraps onto a second line).
-- Text on a highlighted button is white or dark, whichever reads better on your accent colour (white on KDE blue was hard to read).
-- A black edge marker instead of the grey one, and a window wide enough for the split Music page.
+- **Status bar** (*Settings → Panel*): a glass strip along the top edge of every screen with the app in front on the left and the status icons and the clock on the right. It stays (*Always show*, optionally keeping windows out from under it) or hides until the pointer touches the top edge (*Auto-hide*), with blur and a transparency you set. Gaming mode keeps it out of the way.
+- **Quick Settings.** Click the status icons (or point at them, if you prefer) for **Wi-Fi** and **Bluetooth** (the networks and devices *in range*, the one in use on top; join a new network with its password, pair a device found nearby), **volume** and **output**, the **microphone** and **input**, **brightness**, the battery and **power mode**, and who is using the microphone or a camera. Its lists fold when the card closes.
+- **The app's menu** beside its name: File, Edit, View, Tools… for apps that share their menu (Chrome and other Chromium browsers, Qt / KDE apps), with shortcuts, marks and submenus.
+- **Tray**: the apps running in the background (Steam, Discord, Claude…) as small icons on the bar: click to open, right-click for the menu.
+- **Calendar**: click the clock on the bar for a month grid (week numbers and the first day of the week in *Settings → Panel*).
+- **Redesigned panels.** **Timer**: preset cards, a stepper, a ring with round controls. **Color**: the last pick big with HEX / RGB / HSL, click to copy in the chosen format. **Files**: card tiles and tinted category chips. **Share**: a window that fits and scrolls on any screen, and while something is being shared the closed notch shows a **Sharing** pill (a small mark next to a song) that opens the running shares again.
+- With lyrics off, the music capsule keeps the song on one line at its normal width.
+- *Add* and *Note* shrink to icons when the bar would not fit them.
 
 ### Downloads
-- **Linux:** `notch_0.10.0_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.10.0_amd64.deb`, then restart Olyzano Notch.
-- **Windows:** `Notch-0.10.0-windows-x64-setup.exe`, or the portable `.zip`.
+- **Linux:** `notch_0.11.0_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.11.0_amd64.deb`, then restart Olyzano Notch. The status bar needs KDE Plasma (Wayland) for blur, the app menu and the tray.
+- **Windows:** `Notch-0.11.0-windows-x64-setup.exe`, or the portable `.zip`. The status bar, app menu and tray are Linux only for now.
 - Optional components (OCR, KDE Connect, PDF tools on Windows): see the [install page](https://kepin17.github.io/olyzano-notch/#optional).
