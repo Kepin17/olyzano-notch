@@ -3,6 +3,7 @@
 #include "app/ShareController.h"
 #include "services/QrImage.h"
 #include "platform/DesktopIntegration.h"
+#include "platform/Activities.h"
 #include "platform/AppDock.h"
 #include "platform/AudioLevels.h"
 #include "platform/ColorPicker.h"
@@ -113,6 +114,7 @@ int main(int argc, char *argv[])
     Theme theme;
     ColorPicker colorPicker;
     AppDock dock;
+    Activities activities;
     QObject::connect(&colorPicker, &ColorPicker::picked, &controller, &NotchController::addColor);
     theme.setMode(controller.themeMode());
     theme.setStyle(controller.uiStyle());
@@ -134,6 +136,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("theme"), &theme);
     engine.rootContext()->setContextProperty(QStringLiteral("colorPicker"), &colorPicker);
     engine.rootContext()->setContextProperty(QStringLiteral("dock"), &dock);
+    engine.rootContext()->setContextProperty(QStringLiteral("activities"), &activities);
 
     // One Notch per monitor, following hotplug.
     QQmlComponent notchWindow(&engine, "Notch", "Main");

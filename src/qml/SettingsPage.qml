@@ -61,6 +61,29 @@ ScrollView {
                 onToggled: notch.alerts = !notch.alerts
             }
 
+            SettingToggle {
+                title: "Downloads in the notch"
+                caption: "Files your browser is still downloading show in the closed notch, with their size and speed."
+                checked: activities.showDownloads
+                onToggled: activities.showDownloads = !activities.showDownloads
+            }
+
+            SettingToggle {
+                visible: notch.linuxDesktop
+                title: "Phone calls & notifications"
+                caption: "Through KDE Connect: incoming calls, your phone's notifications and a low phone battery show in the notch."
+                checked: activities.phoneAlerts
+                onToggled: activities.phoneAlerts = !activities.phoneAlerts
+            }
+
+            SettingToggle {
+                visible: notch.linuxDesktop
+                title: "Microphone & camera indicators"
+                caption: "A green dot beside the notch while a camera is on, an orange one while an app records the microphone."
+                checked: activities.privacyIndicators
+                onToggled: activities.privacyIndicators = !activities.privacyIndicators
+            }
+
             RowLayout {
                 Layout.fillWidth: true
                 Caption { Layout.fillWidth: true; text: "Notch " + Qt.application.version }

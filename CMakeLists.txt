@@ -80,6 +80,7 @@ qt_add_executable(notch
     src/platform/Theme.h src/platform/Theme.cpp
     src/platform/ColorPicker.h
     src/platform/AppDock.h src/platform/AppDock.cpp src/platform/DockModel.h
+    src/platform/Activities.h src/platform/Activities.cpp
 )
 if(NOTCH_DBUS)
     target_sources(notch PRIVATE src/platform/SystemEvents.cpp src/platform/MediaPlayers.cpp
@@ -103,12 +104,13 @@ qt_add_qml_module(notch
         src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkSeparator.qml
         src/qml/SettingToggle.qml src/qml/Chip.qml src/qml/WheelScroller.qml
         src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml
-        src/qml/Dock.qml
+        src/qml/Dock.qml src/qml/TimerPage.qml
     RESOURCES
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg
         src/qml/icons/unlock.svg src/qml/icons/trash.svg src/qml/icons/palette.svg src/qml/icons/pen.svg
         src/qml/icons/gear.svg src/qml/icons/sort.svg src/qml/icons/camera.svg src/qml/icons/download.svg
         src/qml/icons/phone.svg src/qml/icons/search.svg src/qml/icons/share.svg src/qml/icons/wifi.svg src/qml/icons/server.svg src/qml/icons/notch.png src/qml/icons/laptop.svg
+        src/qml/icons/timer.svg
 )
 # Widgets: QApplication backs the tray icon (Qt.labs.platform falls back to QSystemTrayIcon).
 target_link_libraries(notch PRIVATE notch_core Qt6::Gui Qt6::Widgets Qt6::Quick Qt6::Concurrent Qt6::Network)
