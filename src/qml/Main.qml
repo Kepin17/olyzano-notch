@@ -114,6 +114,33 @@ Window {
         onTriggered: root.idleNow = new Date()
     }
 
+    // ---- Now playing in the capsule ----
+    // The song takes the capsule over while it plays, and for 2 minutes after a pause; then the clock returns.
+    property bool musicStale: false
+    readonly property bool musicShown: media.active && !musicStale
+    property real capPos: 0 // ms, read once a second while the capsule shows the song
+    Timer { id: pauseTimer; interval: 120000; onTriggered: root.musicStale = true }
+    Timer {
+        interval: 1000
+        repeat: true
+        running: root.musicShown && root.mode === "idle"
+        triggeredOnStart: true
+        onTriggered: root.capPos = media.positionMs()
+    }
+    Connections {
+        target: media
+        function onChanged() {
+            if (media.playing || !media.active) {
+                root.musicStale = false
+                pauseTimer.stop()
+            } else if (!pauseTimer.running && !root.musicStale) {
+                pauseTimer.restart()
+            }
+            root.capPos = media.positionMs()
+        }
+        function onTrackChanged() { root.musicStale = false }
+    }
+
     // ---- Live activities: what's going on, shown in the closed notch (most important first) ----
     property var call: null // {who, device} while the phone rings
     Timer { id: callTimer; interval: 45000; onTriggered: root.call = null }
@@ -272,8 +299,8 @@ Window {
     onEngagedChanged: {
         if (engaged) {
             closeTimer.stop()
-            if (mode === "toast" && toast && toast.kind === "media")
-                page = "music" // pointing at the now-playing alert opens just the player
+            if ((mode === "toast" && toast && toast.kind === "media") || (mode === "idle" && musicShown))
+                page = "music" // pointing at the now-playing alert or the capsule opens just the player
             open = true
         } else {
             closeTimer.restart()
@@ -512,7 +539,7 @@ Window {
         x: (root.width - width) / 2
         width: root.mode === "open" ? root.openWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 380
              : root.mode === "peek" ? (root.live && root.live.kind !== "copy" ? 320 : 230)
-             : root.mode === "idle" ? (systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
+             : root.mode === "idle" ? (root.musicShown ? 320 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         height: root.mode === "open" ? panel.implicitHeight + (root.dragOver ? 8 : 0)
               : root.mode === "prompt" ? 92 : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : root.mode === "idle" ? 26 : 0
         focus: true
@@ -802,7 +829,7 @@ Window {
             anchors.leftMargin: island.shoulder + 14
             anchors.rightMargin: island.shoulder + 14
             spacing: 8
-            opacity: root.mode === "idle" && island.height > 20 ? 1 : 0
+            opacity: root.mode === "idle" && !root.musicShown && island.height > 20 ? 1 : 0
             visible: opacity > 0
             Behavior on opacity { NumberAnimation { duration: 160 } }
             Text {
@@ -847,6 +874,42 @@ Window {
                 text: (systemEvents.batteryCharging ? "⚡" : "") + systemEvents.batteryLevel + "%"
                 color: root.textSecondary
                 font.pixelSize: 11
+            }
+        }
+
+        // Idle with music: the wave, the song and where it is, instead of the clock.
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: island.shoulder + 14
+            anchors.rightMargin: island.shoulder + 14
+            spacing: 8
+            opacity: root.mode === "idle" && root.musicShown && island.height > 20 ? 1 : 0
+            visible: opacity > 0
+            Behavior on opacity { NumberAnimation { duration: 160 } }
+            Equalizer {
+                barWidth: 2
+                maxHeight: 12
+                Layout.alignment: Qt.AlignVCenter
+            }
+            Text {
+                Layout.fillWidth: true
+                text: media.title !== "" ? media.title + (media.artist !== "" ? " · " + media.artist : "") : media.identity
+                color: root.textPrimary
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+            Text {
+                text: root.clock(root.capPos) + (media.lengthMs > 0 ? " / " + root.clock(media.lengthMs) : "")
+                color: root.textSecondary
+                font.pixelSize: 11
+                font.family: "monospace"
+            }
+            LineIcon {
+                visible: activities.micApps.length > 0
+                glyph: "mic"
+                sourceSize: Qt.size(12, 12)
+                color: theme.warn
             }
         }
 
@@ -1677,6 +1740,15 @@ Window {
                 }
 
                 Item { Layout.preferredHeight: 4 }
+            }
+        }
+
+        // A click on the capsule while music plays goes straight to the player (without waiting for the dwell).
+        TapHandler {
+            enabled: root.mode === "idle" && root.musicShown
+            onTapped: {
+                root.page = "music"
+                root.dwelled = true
             }
         }
 

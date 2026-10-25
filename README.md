@@ -149,6 +149,8 @@ Controls that a platform cannot offer are hidden or greyed out.
   when the mouse leaves; **Pin** keeps it open; **Esc** closes it.
 - **How it sits on the screen** (*Settings → General*): **Hidden** (only the line), **Capsule** (a small black capsule
   always shown, like a Dynamic Island; point at it to open) or **Always open** (the panel stays open).
+  While music plays the capsule shows the song with its sound wave and time (`1:23 / 5:37`), and a click or pointing at
+  it opens just the Music section; after a pause the song stays for 2 minutes, then the clock returns.
 - **One section at a time:** a bar of actions under the title, **Files · Music · Timer · Share**, shows just that
   section; **Music** is only the player. **Add** opens a file picker (you can still drop files on the notch, or paste).
 - **Every monitor has its own shelf** at its top edge; it opens wherever you move the mouse.
