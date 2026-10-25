@@ -14,6 +14,7 @@
 #include "platform/Theme.h"
 #include "platform/GamingMode.h"
 #include "platform/AppMenu.h"
+#include "platform/Doomscroll.h"
 #include "platform/Launcher.h"
 #include "platform/TrayHost.h"
 #include "platform/Karaoke.h"
@@ -181,11 +182,17 @@ int main(int argc, char *argv[])
     AppMenu appMenu;
     TrayHost trayHost;
     Launcher launcher(&dock);
+    Doomscroll doomscroll(&dock, &media, &wellbeing);
     if (const int i = app.arguments().indexOf(QStringLiteral("--dump-menu")); i >= 0 && i + 1 < app.arguments().size()) { // the menu of a process, for checking
         fputs(appMenu.dump(app.arguments().at(i + 1).toLongLong()).constData(), stdout);
         return 0;
     }
     QObject::connect(&dock, &AppDock::activeAppChanged, &appMenu, [&] { appMenu.setPid(dock.activePid()); });
+    if (const int i = app.arguments().indexOf(QStringLiteral("--doom-debug")); i >= 0 && i + 1 < app.arguments().size()) { // `--doom-debug instagram 1200`: pretend to scroll it for 20 minutes, print what it says
+        doomscroll.debugFeed(app.arguments().at(i + 1), i + 2 < app.arguments().size() ? app.arguments().at(i + 2).toInt() : 1200);
+        printf("site=%s minutes=%d swipes=%d reminding=%d\n%s\n", qPrintable(doomscroll.site()), doomscroll.minutes(), doomscroll.swipes(), doomscroll.reminding(), qPrintable(doomscroll.message()));
+        return 0;
+    }
     if (app.arguments().contains(QStringLiteral("--dump-tray"))) { // the tray items it sees
         QTimer::singleShot(1500, &app, [&] { fputs(trayHost.dump().constData(), stdout); app.quit(); });
         return app.exec();
@@ -282,6 +289,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("appMenu"), &appMenu);
     engine.rootContext()->setContextProperty(QStringLiteral("trayHost"), &trayHost);
     engine.rootContext()->setContextProperty(QStringLiteral("launcher"), &launcher);
+    engine.rootContext()->setContextProperty(QStringLiteral("doomscroll"), &doomscroll);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
 
     // One Notch per monitor, following hotplug.

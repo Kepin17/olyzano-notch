@@ -45,6 +45,7 @@ public:
     bool userActive() const { return m_idleMs >= 0 && m_idleMs < 5000; }
     bool idleAvailable() const;
     bool busy() const { return m_busy; }
+    qint64 idleMs() const { return m_idleMs; } // -1 when the system does not say
     void setBusy(bool busy);
     QStringList tips() const;
     qint64 todayWorkedMs() const { return m_todayWorked; }
