@@ -249,6 +249,11 @@ which are running. Window thumbnails aren't possible: Wayland doesn't let an app
 **stays** (*Always show*, optionally keeping maximised windows out from under it) or **hides** until the pointer touches the top
 edge (*Auto-hide*), with a blur behind it (KDE's blur effect) and a transparency you set. Gaming mode puts it out of reach too.
 
+Beside the app's name sits **its own menu** (File, Edit, View, Tools...), for the apps that share one on D-Bus (`com.canonical.dbusmenu`:
+Chrome and other Chromium browsers, Qt / KDE apps that publish theirs). Click a title for the dropdown with shortcuts, marks and
+submenus; with one open, pointing at another title switches to it. Apps that share no menu (Electron, many GTK apps) just show
+the name. Turn it off in *Settings → Panel*. `notch --dump-menu <pid>` prints what an app shares.
+
 Click the icons on the right (or, if you choose so in Settings, point at them) and **Quick Settings** opens:
 **Wi-Fi** and **Bluetooth** tiles (tap to switch; the chevron lists saved networks or paired devices to connect), **volume** with
 mute and the **output** to play through, **brightness**, the battery with the time left and the **power mode** (power saver,

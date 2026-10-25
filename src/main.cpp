@@ -330,6 +330,21 @@ int main(int argc, char *argv[])
             QTimer::singleShot(900, &app, [bar, &app, path] { bar->grabWindow().save(path); app.quit(); });
         });
     }
+    // `notch --shot-menu file.png <pid> [menu index]`: the status bar with that process's menu pulled down.
+    if (const int i = app.arguments().indexOf(QStringLiteral("--shot-menu")); i >= 0 && i + 2 < app.arguments().size()) {
+        const QString path = app.arguments().at(i + 1);
+        const qint64 pid = app.arguments().at(i + 2).toLongLong();
+        const int index = i + 3 < app.arguments().size() ? app.arguments().at(i + 3).toInt() : 0;
+        appMenu.setPid(pid);
+        QTimer::singleShot(2500, &app, [&bars, &app, path, index] {
+            QQuickWindow *bar = bars.isEmpty() ? nullptr : bars.constBegin().value();
+            if (!bar)
+                return app.quit();
+            bar->setProperty("menuX", 60);
+            bar->setProperty("menuOpen", index);
+            QTimer::singleShot(900, &app, [bar, &app, path] { bar->grabWindow().save(path); app.quit(); });
+        });
+    }
     // `notch --shot-settings file.png [section]`: the open Settings page, the same way.
     if (const int i = app.arguments().indexOf(QStringLiteral("--shot-settings")); i >= 0 && i + 1 < app.arguments().size()) {
         const QString path = app.arguments().at(i + 1);

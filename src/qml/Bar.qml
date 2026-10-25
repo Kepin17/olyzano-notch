@@ -10,18 +10,25 @@ Window {
     id: root
     readonly property int stripH: topbar.height
     width: Screen.width > 0 ? Screen.width : 1920
-    height: stripH + 480 // the strip, and room below it for the Quick Settings card
+    height: stripH + 760 // the strip, and room below it for the Quick Settings card and the app's menus
     visible: false
     color: "transparent"
     title: "Olyzano Notch Bar"
 
     property bool quickOpen: false
+    property int menuOpen: -1 // which of the app's menus is down (an index into appMenu.menus)
+    property real menuX: 0
+    readonly property bool menuShown: menuOpen >= 0 && menuOpen < appMenu.menus.length
+    onQuickOpenChanged: if (quickOpen) menuOpen = -1
+    onMenuOpenChanged: if (menuOpen >= 0) quickOpen = false
+    Connections { target: appMenu; function onChanged() { if (root.menuOpen >= appMenu.menus.length) root.menuOpen = -1 } }
+    Timer { id: menuCloser; interval: 600; onTriggered: if (!menuHover.hovered && !titlesHover.hovered) root.menuOpen = -1 }
     // Quick Settings opens from the status cluster (a click, or hovering it), and closes a moment after the pointer has left both.
     Timer { id: quickCloser; interval: 700; onTriggered: if (!clusterHover.hovered && !quickHover.hovered) root.quickOpen = false }
     Timer { id: quickOpener; interval: 160; onTriggered: if (clusterHover.hovered) root.quickOpen = true }
     property bool shown: topbar.behavior === "always"
     property bool edgeDwelled: false
-    readonly property bool engaged: topbar.behavior === "always" || edgeDwelled || stripHover.hovered || quickOpen
+    readonly property bool engaged: topbar.behavior === "always" || edgeDwelled || stripHover.hovered || quickOpen || menuShown
     onEngagedChanged: {
         if (engaged) {
             hideTimer.stop()
@@ -39,6 +46,7 @@ Window {
 
     // ---- the pointer: only what is visible (and nothing at all over a full-screen game) ----
     readonly property var maskRects: gaming.active ? [Qt.rect(0, 0, 1, 1)]
+                                   : menuShown ? [Qt.rect(0, 0, width, stripH), Qt.rect(menuPop.x, menuPop.y, menuPop.reachW, menuPop.reachH)]
                                    : quickOpen ? [Qt.rect(0, 0, width, stripH), Qt.rect(quick2.x, quick2.y, quick2.width, quick2.height)]
                                    : shown ? [Qt.rect(0, 0, width, stripH)]
                                    : [Qt.rect(0, 0, width, 2)]
@@ -87,7 +95,49 @@ Window {
                 elide: Text.ElideRight
                 Layout.maximumWidth: 220
             }
+            Row { // the app's own menu
+                id: titles
+                visible: topbar.showMenu && appMenu.available
+                spacing: 0
+                HoverHandler {
+                    id: titlesHover
+                    onHoveredChanged: if (!hovered && root.menuShown) menuCloser.restart()
+                }
+                Repeater {
+                    model: appMenu.menus
+                    delegate: Rectangle {
+                        id: title
+                        required property var modelData
+                        required property int index
+                        width: label.implicitWidth + 18
+                        height: root.stripH - 10
+                        radius: 6
+                        color: root.menuOpen === index || titleHover.hovered ? theme.accentSoft : "transparent"
+                        Text {
+                            id: label
+                            anchors.centerIn: parent
+                            text: title.modelData.label
+                            color: title.modelData.enabled ? theme.text : theme.textFaint
+                            font.pixelSize: 13
+                        }
+                        function open() {
+                            appMenu.aboutToShow(modelData.id)
+                            root.menuX = Math.max(4, Math.min(root.width - 304, title.mapToItem(null, 0, 0).x))
+                            root.menuOpen = index
+                        }
+                        HoverHandler {
+                            id: titleHover
+                            onHoveredChanged: if (hovered && root.menuShown && root.menuOpen !== title.index && title.modelData.enabled) title.open()
+                        }
+                        TapHandler {
+                            enabled: title.modelData.enabled
+                            onTapped: root.menuOpen === title.index ? root.menuOpen = -1 : title.open()
+                        }
+                    }
+                }
+            }
             Text {
+                visible: !(topbar.showMenu && appMenu.available)
                 Layout.fillWidth: true
                 text: dock.activeTitle
                 color: theme.textDim
@@ -165,6 +215,21 @@ Window {
         }
     }
 
+    // ---- the app's menu ----
+    AppMenuPopup {
+        id: menuPop
+        x: root.menuX
+        y: root.stripH + 2
+        visible: root.menuShown && root.shown
+        items: root.menuShown ? appMenu.menus[root.menuOpen].children : []
+        onItemsChanged: openSub = -1
+        onCloseAll: root.menuOpen = -1
+        HoverHandler {
+            id: menuHover
+            onHoveredChanged: if (!hovered && root.menuShown) menuCloser.restart()
+        }
+    }
+
     // ---- Quick Settings ----
     QuickSettings {
         id: quick2
@@ -178,7 +243,7 @@ Window {
     }
     Connections {
         target: gaming
-        function onChanged() { if (gaming.active) root.quickOpen = false }
+        function onChanged() { if (gaming.active) { root.quickOpen = false; root.menuOpen = -1 } }
     }
 
     // ---- the top edge, while the bar is away ----

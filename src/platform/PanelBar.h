@@ -15,6 +15,7 @@ class PanelBar : public QObject
     Q_PROPERTY(double opacity READ opacity WRITE setOpacity NOTIFY changed)     // 0.2 - 1
     Q_PROPERTY(QString openOn READ openOn WRITE setOpenOn NOTIFY changed)       // Quick Settings: "click" | "hover"
     Q_PROPERTY(bool showApp READ showApp WRITE setShowApp NOTIFY changed)
+    Q_PROPERTY(bool showMenu READ showMenu WRITE setShowMenu NOTIFY changed)   // the app's own menu (File, Edit, ...) beside its name
     Q_PROPERTY(bool showDate READ showDate WRITE setShowDate NOTIFY changed)
     Q_PROPERTY(bool showSeconds READ showSeconds WRITE setShowSeconds NOTIFY changed)
     Q_PROPERTY(bool showBattery READ showBattery WRITE setShowBattery NOTIFY changed)
@@ -37,6 +38,8 @@ public:
     void setOpenOn(const QString &m);
     bool showApp() const { return flag("showApp", true); }
     void setShowApp(bool on) { store("showApp", on); }
+    bool showMenu() const { return flag("showMenu", true); }
+    void setShowMenu(bool on) { store("showMenu", on); }
     bool showDate() const { return flag("showDate", true); }
     void setShowDate(bool on) { store("showDate", on); }
     bool showSeconds() const { return flag("showSeconds", false); }
