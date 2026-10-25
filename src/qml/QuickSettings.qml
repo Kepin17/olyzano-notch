@@ -13,11 +13,15 @@ Rectangle {
     property bool soundOpen: false
     property bool inputOpen: false
     property string askFor: "" // the network whose password is being typed
+    property string detailFor: "" // the network whose details are shown
+    property bool ethOpen: false
+    function qrSource(text) { return "image://qr/" + Qt.btoa(text).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "") }
+    function closeDetail() { detailFor = ""; quick.forgetWifiPassword() }
     function syncWatch() {
         quick.watchWifi(open && wifiOpen)
         quick.watchBluetooth(open && btOpen)
     }
-    onWifiOpenChanged: { askFor = ""; syncWatch() }
+    onWifiOpenChanged: { askFor = ""; if (!wifiOpen) closeDetail(); syncWatch() }
     onBtOpenChanged: syncWatch()
     width: 372
     implicitHeight: body.implicitHeight + 28
@@ -31,7 +35,7 @@ Rectangle {
     Behavior on opacity { NumberAnimation { duration: 140 } }
     onOpenChanged: {
         if (open) quick.refresh()
-        else { askFor = ""; wifiOpen = false; btOpen = false; soundOpen = false; inputOpen = false } // closing the card folds its lists
+        else { askFor = ""; closeDetail(); wifiOpen = false; btOpen = false; ethOpen = false; soundOpen = false; inputOpen = false } // closing the card folds its lists
         syncWatch()
     }
 
@@ -47,6 +51,8 @@ Rectangle {
         property string subtitle
         property bool on: false
         property bool expanded: false
+        property int signalBars: -1 // 0-4: draw Wi-Fi bars instead of the icon
+        property bool signalOff: false
         signal toggled()
         signal expand()
         Layout.fillWidth: true
@@ -66,7 +72,8 @@ Rectangle {
                 color: tile.on ? theme.accent : Qt.rgba(1, 1, 1, theme.dark ? 0.10 : 0)
                 border.width: tile.on || theme.dark ? 0 : 1
                 border.color: theme.outline
-                LineIcon { anchors.centerIn: parent; glyph: tile.icon; sourceSize: Qt.size(17, 17); color: tile.on ? theme.onColor(theme.accent) : theme.text }
+                LineIcon { visible: tile.signalBars < 0; anchors.centerIn: parent; glyph: tile.icon; sourceSize: Qt.size(17, 17); color: tile.on ? theme.onColor(theme.accent) : theme.text }
+                SignalIcon { visible: tile.signalBars >= 0; anchors.centerIn: parent; size: 17; bars: tile.signalBars; off: tile.signalOff; color: tile.on ? theme.onColor(theme.accent) : theme.text }
             }
             ColumnLayout {
                 Layout.fillWidth: true
@@ -89,15 +96,44 @@ Rectangle {
         property bool mark: false
         property string glyph
         property real glyphOpacity: 1
+        property int bars: -1 // Wi-Fi bars in front of the label
+        property bool hasInfo: false
+        signal infoClicked()
         Layout.fillWidth: true
         implicitHeight: 30
         background: Rectangle { radius: 8; color: row.hovered ? card.tileOff : "transparent" }
         contentItem: RowLayout {
             spacing: 8
-            LineIcon { visible: row.glyph !== ""; Layout.leftMargin: 6; glyph: row.glyph; opacity: row.glyphOpacity; sourceSize: Qt.size(15, 15); color: theme.text }
-            Text { Layout.fillWidth: true; text: row.label; color: theme.text; font.pixelSize: 12; elide: Text.ElideRight; leftPadding: row.glyph !== "" ? 0 : 6 }
+            LineIcon { visible: row.glyph !== "" && row.bars < 0; Layout.leftMargin: 6; glyph: row.glyph; opacity: row.glyphOpacity; sourceSize: Qt.size(15, 15); color: theme.text }
+            SignalIcon { visible: row.bars >= 0; Layout.leftMargin: 6; size: 15; bars: row.bars; color: theme.text }
+            Text { Layout.fillWidth: true; text: row.label; color: theme.text; font.pixelSize: 12; elide: Text.ElideRight; leftPadding: row.glyph !== "" || row.bars >= 0 ? 0 : 6 }
             Text { text: row.note; color: theme.textDim; font.pixelSize: 11 }
-            Rectangle { visible: row.mark; Layout.preferredWidth: 7; Layout.preferredHeight: 7; radius: 3.5; color: theme.accent; Layout.rightMargin: 6 }
+            Rectangle { visible: row.mark; Layout.preferredWidth: 7; Layout.preferredHeight: 7; radius: 3.5; color: theme.accent; Layout.rightMargin: row.hasInfo ? 0 : 6 }
+            AbstractButton {
+                visible: row.hasInfo
+                implicitWidth: 26; implicitHeight: 26
+                Accessible.name: "Details"
+                onClicked: row.infoClicked()
+                background: Rectangle { radius: 13; color: parent.hovered ? card.tileOff : "transparent" }
+                contentItem: Item { LineIcon { anchors.centerIn: parent; glyph: "info"; sourceSize: Qt.size(15, 15); color: theme.textDim } }
+            }
+        }
+    }
+
+    // A list of facts: the name on the left, its value on the right.
+    component Facts: ColumnLayout {
+        property var rows: [] // [[label, value], ...]; empty values are left out
+        spacing: 3
+        Layout.fillWidth: true
+        Repeater {
+            model: parent.rows.filter(r => r[1] !== "" && r[1] !== undefined && r[1] !== null)
+            RowLayout {
+                required property var modelData
+                Layout.fillWidth: true
+                spacing: 10
+                Text { Layout.preferredWidth: 104; text: modelData[0]; color: theme.textDim; font.pixelSize: 11; horizontalAlignment: Text.AlignRight }
+                Text { Layout.fillWidth: true; text: modelData[1]; color: theme.text; font.pixelSize: 11; elide: Text.ElideRight; font.family: /^[0-9a-f:.\/, ]+$/i.test(String(modelData[1])) ? "monospace" : Qt.application.font.family }
+            }
         }
     }
 
@@ -132,12 +168,14 @@ Rectangle {
             Tile {
                 visible: quick.wifiAvailable
                 icon: "wifi"
+                signalBars: quick.wifiEnabled ? quick.wifiBars : 0
+                signalOff: !quick.wifiEnabled || quick.wifiName === ""
                 title: "Wi-Fi"
                 subtitle: !quick.wifiEnabled ? "Off" : quick.wifiName !== "" ? quick.wifiName : "Not connected"
                 on: quick.wifiEnabled
                 expanded: card.wifiOpen
                 onToggled: quick.setWifiEnabled(!quick.wifiEnabled)
-                onExpand: { card.wifiOpen = !card.wifiOpen; card.btOpen = false }
+                onExpand: { card.wifiOpen = !card.wifiOpen; card.btOpen = false; card.ethOpen = false }
             }
             Tile {
                 visible: quick.btAvailable
@@ -147,11 +185,31 @@ Rectangle {
                 on: quick.btEnabled
                 expanded: card.btOpen
                 onToggled: quick.setBtEnabled(!quick.btEnabled)
-                onExpand: { card.btOpen = !card.btOpen; card.wifiOpen = false }
+                onExpand: { card.btOpen = !card.btOpen; card.wifiOpen = false; card.ethOpen = false }
             }
         }
+        RowLayout { // Ethernet
+            visible: quick.ethAvailable
+            Layout.fillWidth: true
+            spacing: 10
+            Tile {
+                icon: "ethernet"
+                title: "Ethernet"
+                subtitle: quick.ethState === "connected" ? (quick.ethInfo.speed > 0 ? quick.ethInfo.speed + " Mb/s" : "Connected") : quick.ethState === "unplugged" ? "Cable unplugged"
+                         : quick.ethState === "connecting" ? "Connecting…" : "Off"
+                on: quick.ethState === "connected" || quick.ethState === "connecting"
+                expanded: card.ethOpen
+                onToggled: quick.setEthernet(!(quick.ethState === "connected" || quick.ethState === "connecting"))
+                onExpand: { card.ethOpen = !card.ethOpen; card.wifiOpen = false; card.btOpen = false }
+            }
+        }
+        Facts {
+            visible: card.ethOpen && quick.ethAvailable
+            rows: [["Connection", quick.ethInfo.name], ["Interface", quick.ethInfo.device], ["Speed", quick.ethInfo.speed > 0 ? quick.ethInfo.speed + " Mb/s" : ""],
+                   ["IP address", quick.ethInfo.ip], ["Gateway", quick.ethInfo.gateway], ["DNS", quick.ethInfo.dns], ["MAC address", quick.ethInfo.mac]]
+        }
         Flickable {
-            visible: card.wifiOpen && quick.wifiAvailable
+            visible: card.wifiOpen && quick.wifiAvailable && card.detailFor === ""
             Layout.fillWidth: true
             Layout.preferredHeight: Math.min(wifiCol.implicitHeight, 200)
             contentHeight: wifiCol.implicitHeight
@@ -170,8 +228,9 @@ Rectangle {
                         spacing: 0
                         Row2 {
                             label: net.modelData.name
-                            glyph: "wifi"
-                            glyphOpacity: 0.35 + 0.1625 * net.modelData.bars
+                            bars: net.modelData.bars
+                            hasInfo: net.modelData.saved || net.modelData.active
+                            onInfoClicked: card.detailFor = net.modelData.name
                             note: net.modelData.active ? "Connected" : net.modelData.saved ? "Saved" : net.modelData.enterprise ? "System settings" : net.modelData.secure ? "Password" : "Open"
                             mark: net.modelData.active
                             onClicked: {
@@ -208,6 +267,116 @@ Rectangle {
                     }
                 }
                 Text { visible: quick.wifiNetworks.length === 0; text: "Looking for networks..."; color: theme.textDim; font.pixelSize: 11; leftPadding: 6 }
+            }
+        }
+        // Wi-Fi details: everything about the network, and its password as a QR code to scan
+        ColumnLayout {
+            id: wifiDetail
+            visible: card.wifiOpen && quick.wifiAvailable && card.detailFor !== ""
+            Layout.fillWidth: true
+            spacing: 8
+            readonly property var net: quick.wifiNetworks.find(n => n.name === card.detailFor) || null
+            readonly property bool active: net !== null && net.active
+            readonly property var info: active ? quick.wifiInfo : ({})
+            readonly property bool mine: net !== null && net.id !== "" && quick.wifiSecretFor === net.id
+            RowLayout {
+                Layout.fillWidth: true
+                AbstractButton {
+                    implicitHeight: 26; implicitWidth: backRow.implicitWidth + 12
+                    onClicked: card.closeDetail()
+                    background: Rectangle { radius: 13; color: parent.hovered ? card.tileOff : "transparent" }
+                    contentItem: Row {
+                        id: backRow
+                        spacing: 4
+                        LineIcon { glyph: "chevron"; rotation: 90; sourceSize: Qt.size(14, 14); color: theme.textDim; anchors.verticalCenter: parent.verticalCenter }
+                        Text { text: "Networks"; color: theme.textDim; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
+                    }
+                }
+                Item { Layout.fillWidth: true }
+                SignalIcon { size: 15; bars: wifiDetail.net ? wifiDetail.net.bars : 0; color: theme.text }
+                Text { text: card.detailFor; color: theme.text; font.pixelSize: 13; font.weight: Font.DemiBold; elide: Text.ElideRight; Layout.maximumWidth: 200 }
+            }
+            Facts {
+                rows: wifiDetail.net === null ? [] : [
+                    ["Status", wifiDetail.active ? "Connected" : "Saved"],
+                    ["Signal strength", (wifiDetail.active ? wifiDetail.info.signal : wifiDetail.net.strength) + "%"],
+                    ["Security", wifiDetail.active ? wifiDetail.info.security : wifiDetail.net.security],
+                    ["Frequency", wifiDetail.active ? (wifiDetail.info.frequency / 1000).toFixed(3) + " GHz (Channel " + wifiDetail.info.channel + ")"
+                                                     : (wifiDetail.net.frequency / 1000).toFixed(3) + " GHz"],
+                    ["BSSID", wifiDetail.info.bssid],
+                    ["Max bit rate", wifiDetail.info.bitrate > 0 ? wifiDetail.info.bitrate + " Mb/s" : ""],
+                    ["IP address", wifiDetail.info.ip], ["Gateway", wifiDetail.info.gateway], ["DNS", wifiDetail.info.dns],
+                    ["MAC address", wifiDetail.info.mac]]
+            }
+            // the password, only when asked for
+            Rectangle {
+                visible: wifiDetail.net !== null && wifiDetail.net.saved
+                Layout.fillWidth: true
+                implicitHeight: pass.implicitHeight + 20
+                radius: 14
+                color: card.tileOff
+                ColumnLayout {
+                    id: pass
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
+                    spacing: 8
+                    PillButton {
+                        visible: !wifiDetail.mine
+                        Layout.alignment: Qt.AlignHCenter
+                        text: "Show password and QR code"
+                        iconName: "eye"
+                        onClicked: quick.requestWifiPassword(wifiDetail.net.id)
+                    }
+                    Text {
+                        visible: wifiDetail.mine && quick.wifiSecretBusy
+                        Layout.alignment: Qt.AlignHCenter
+                        text: "Waiting for the system's permission…"
+                        color: theme.textDim; font.pixelSize: 11
+                    }
+                    Text {
+                        visible: wifiDetail.mine && quick.wifiSecretError !== ""
+                        Layout.fillWidth: true
+                        text: quick.wifiSecretError
+                        color: theme.danger; font.pixelSize: 11; wrapMode: Text.Wrap
+                    }
+                    ColumnLayout {
+                        visible: wifiDetail.mine && quick.wifiSecret !== ""
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            horizontalAlignment: Text.AlignHCenter
+                            wrapMode: Text.Wrap
+                            text: "Scan this QR code with another device to connect to the \u201c" + card.detailFor + "\u201d network."
+                            color: theme.textDim; font.pixelSize: 11
+                        }
+                        Rectangle {
+                            Layout.alignment: Qt.AlignHCenter
+                            implicitWidth: 196; implicitHeight: 196
+                            radius: 10
+                            color: "white"
+                            Image {
+                                anchors.centerIn: parent
+                                width: 180; height: 180
+                                sourceSize: Qt.size(180, 180)
+                                smooth: false
+                                cache: false
+                                source: wifiDetail.mine && quick.wifiSecret !== "" ? card.qrSource(quick.wifiQr(card.detailFor, quick.wifiSecret, true)) : ""
+                            }
+                        }
+                        RowLayout {
+                            Layout.alignment: Qt.AlignHCenter
+                            spacing: 8
+                            Text { text: "Wi-Fi password:"; color: theme.textDim; font.pixelSize: 12 }
+                            Text { text: quick.wifiSecret; color: theme.text; font.pixelSize: 13; font.family: "monospace"; font.weight: Font.DemiBold }
+                        }
+                        RowLayout {
+                            Layout.alignment: Qt.AlignHCenter
+                            spacing: 8
+                            PillButton { text: "Copy"; iconName: "copy"; onClicked: notch.copyText(quick.wifiSecret) }
+                            PillButton { text: "Hide"; iconName: "eye-off"; onClicked: quick.forgetWifiPassword() }
+                        }
+                    }
+                }
             }
         }
         Flickable {

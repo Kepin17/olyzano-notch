@@ -201,8 +201,10 @@ Window {
             LineIcon { visible: activities.micApps.length > 0; glyph: "mic"; sourceSize: Qt.size(15, 15); color: theme.warn }
             LineIcon { visible: activities.cameraApps.length > 0; glyph: "camera"; sourceSize: Qt.size(15, 15); color: theme.success }
             // Wi-Fi, Bluetooth, sound
-            LineIcon { visible: quick.wifiAvailable; glyph: "wifi"; sourceSize: Qt.size(16, 16); color: quick.wifiEnabled && quick.wifiName !== "" ? theme.text : theme.textFaint
-                       opacity: quick.wifiEnabled ? 0.45 + 0.1375 * quick.wifiBars : 1 }
+            LineIcon { visible: quick.ethState === "connected"; glyph: "ethernet"; sourceSize: Qt.size(16, 16); color: theme.text }
+            SignalIcon { visible: quick.wifiAvailable && (quick.wifiName !== "" || quick.ethState !== "connected"); size: 15
+                         bars: quick.wifiEnabled ? quick.wifiBars : 0; off: !quick.wifiEnabled || quick.wifiName === ""
+                         color: quick.wifiEnabled && quick.wifiName !== "" ? theme.text : theme.textFaint }
             LineIcon { visible: quick.btAvailable && quick.btEnabled; glyph: "bluetooth"; sourceSize: Qt.size(15, 15); color: quick.btConnected !== "" ? theme.accent : theme.textDim }
             LineIcon { visible: quick.audioAvailable; glyph: quick.muted || quick.volume === 0 ? "volume-off" : "volume"; sourceSize: Qt.size(16, 16); color: quick.muted ? theme.danger : theme.text }
             // battery

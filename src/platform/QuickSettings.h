@@ -6,6 +6,7 @@
 #include <QProcess>
 #include <QTimer>
 #include <QVariantList>
+#include <QVariantMap>
 
 // What the Quick Settings card shows and changes, as `quick` in QML. Linux: sound through `pactl` (and its
 // `subscribe`, so changes made elsewhere show up), brightness through PowerDevil, the power mode through
@@ -44,6 +45,14 @@ class QuickSettings : public QObject
     Q_PROPERTY(bool wifiEnabled READ wifiEnabled NOTIFY changed)
     Q_PROPERTY(QString wifiName READ wifiName NOTIFY changed)
     Q_PROPERTY(int wifiBars READ wifiBars NOTIFY changed)         // 0-4
+    Q_PROPERTY(QVariantMap wifiInfo READ wifiInfo NOTIFY changed) // the network in use: {ssid, signal, bars, security, band, channel, frequency, bssid, bitrate, mac, ip, gateway, dns}
+    Q_PROPERTY(bool ethAvailable READ ethAvailable NOTIFY changed)
+    Q_PROPERTY(QString ethState READ ethState NOTIFY changed)     // connected | disconnected | unplugged | connecting
+    Q_PROPERTY(QVariantMap ethInfo READ ethInfo NOTIFY changed)   // {name, speed, mac, ip, gateway, dns, device}
+    Q_PROPERTY(QString wifiSecretFor READ wifiSecretFor NOTIFY secretChanged) // the saved network a password was asked for
+    Q_PROPERTY(QString wifiSecret READ wifiSecret NOTIFY secretChanged)
+    Q_PROPERTY(QString wifiSecretError READ wifiSecretError NOTIFY secretChanged)
+    Q_PROPERTY(bool wifiSecretBusy READ wifiSecretBusy NOTIFY secretChanged)
     Q_PROPERTY(QVariantList wifiNetworks READ wifiNetworks NOTIFY changed) // in range [{name, ap, id, bars, secure, enterprise, saved, active}]
 
 public:
@@ -76,6 +85,14 @@ public:
     QString wifiName() const { return m_wifiName; }
     int wifiBars() const { return PanelModel::wifiBars(m_wifiStrength); }
     QVariantList wifiNetworks() const { return m_wifiNetworks; }
+    QVariantMap wifiInfo() const { return m_wifiInfo; }
+    bool ethAvailable() const { return !m_ethDevice.isEmpty(); }
+    QString ethState() const { return m_ethState; }
+    QVariantMap ethInfo() const { return m_ethInfo; }
+    QString wifiSecretFor() const { return m_secretFor; }
+    QString wifiSecret() const { return m_secret; }
+    QString wifiSecretError() const { return m_secretError; }
+    bool wifiSecretBusy() const { return m_secretBusy; }
 
     Q_INVOKABLE void refresh(); // when the card opens
     Q_INVOKABLE void setVolume(int percent);
@@ -92,6 +109,10 @@ public:
     Q_INVOKABLE void connectWifi(const QString &connectionPath);
     Q_INVOKABLE void joinWifi(const QString &apPath, const QString &ssid, const QString &password); // a network not saved yet (password empty: an open one)
     Q_INVOKABLE void disconnectWifi();
+    Q_INVOKABLE void requestWifiPassword(const QString &connectionPath); // the system may ask for permission: the answer arrives as secretChanged
+    Q_INVOKABLE void forgetWifiPassword();                              // clear it from memory
+    Q_INVOKABLE void setEthernet(bool on);
+    Q_INVOKABLE QString wifiQr(const QString &ssid, const QString &password, bool secure) const { return PanelModel::wifiQrPayload(ssid, password, secure); }
     Q_INVOKABLE void watchWifi(bool on);      // the list is open: scan now and now and then
     Q_INVOKABLE void watchBluetooth(bool on); // the list is open: look for devices nearby
     Q_INVOKABLE void pairBtDevice(const QString &path);
@@ -101,6 +122,7 @@ public:
 
 signals:
     void changed();
+    void secretChanged();
 
 private:
     void readAudio();
@@ -131,6 +153,10 @@ private:
     QString m_wifiName, m_wifiDevice;
     int m_wifiStrength = 0;
     QVariantList m_wifiNetworks;
+    QVariantMap m_wifiInfo, m_ethInfo;
+    QString m_ethDevice, m_ethState, m_ethProfile;
+    QString m_secretFor, m_secret, m_secretError;
+    bool m_secretBusy = false;
 
     bool m_wifiWatch = false, m_btWatch = false;
     QProcess m_subscribe;

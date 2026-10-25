@@ -78,6 +78,7 @@ QuickSettings::QuickSettings(QObject *parent)
     m_poll.setInterval(20000); // Wi-Fi strength drifts without a signal worth waking for
     connect(&m_poll, &QTimer::timeout, this, &QuickSettings::refresh);
 #ifdef NOTCH_HAVE_DBUS
+    qDBusRegisterMetaType<QList<QVariantMap>>();
     qDBusRegisterMetaType<Interfaces>();
     qDBusRegisterMetaType<Objects>();
     QDBusConnection sys = QDBusConnection::systemBus();
@@ -292,15 +293,77 @@ void QuickSettings::readSystem()
     m_wifiStrength = 0;
     m_wifiNetworks.clear();
     m_wifiDevice.clear();
+    m_wifiInfo.clear();
+    m_ethInfo.clear();
+    m_ethDevice.clear();
+    m_ethState.clear();
+    m_ethProfile.clear();
     if (has(sys, NM)) {
         const QVariant devs = first(ask(sys, NM, NMPath, NM, QStringLiteral("GetDevices")));
         if (devs.canConvert<QDBusArgument>()) {
             const QList<QDBusObjectPath> all = qdbus_cast<QList<QDBusObjectPath>>(devs.value<QDBusArgument>());
             for (const QDBusObjectPath &d : all)
-                if (prop(sys, NM, d.path(), NM + QStringLiteral(".Device"), QStringLiteral("DeviceType")).toUInt() == 2) { // 2: Wi-Fi
+            {
+                const uint type = prop(sys, NM, d.path(), NM + QStringLiteral(".Device"), QStringLiteral("DeviceType")).toUInt();
+                if (type == 2 && m_wifiDevice.isEmpty()) // 2: Wi-Fi
                     m_wifiDevice = d.path();
-                    break;
+                else if (type == 1 && m_ethDevice.isEmpty()) // 1: Ethernet
+                    m_ethDevice = d.path();
+            }
+        }
+        // all the properties of an object (one call), and the addresses of an IPv4 configuration
+        const auto getAll = [&](const QString &path, const QString &iface) {
+            const QVariant r = first(ask(sys, NM, path, Props, QStringLiteral("GetAll"), {iface}));
+            return r.canConvert<QDBusArgument>() ? qdbus_cast<QVariantMap>(r.value<QDBusArgument>()) : QVariantMap();
+        };
+        const auto ipOf = [&](const QString &device) {
+            QVariantMap out;
+            const QString cfg = prop(sys, NM, device, NM + QStringLiteral(".Device"), QStringLiteral("Ip4Config")).value<QDBusObjectPath>().path();
+            if (cfg.size() <= 1)
+                return out;
+            const QVariantMap p = getAll(cfg, NM + QStringLiteral(".IP4Config"));
+            const auto list = [](const QVariant &v) { return v.canConvert<QDBusArgument>() ? qdbus_cast<QList<QVariantMap>>(v.value<QDBusArgument>()) : QList<QVariantMap>(); };
+            const auto addrs = list(p.value(QStringLiteral("AddressData")));
+            if (!addrs.isEmpty())
+                out[QStringLiteral("ip")] = addrs.first().value(QStringLiteral("address")).toString() + u'/' + addrs.first().value(QStringLiteral("prefix")).toString();
+            out[QStringLiteral("gateway")] = p.value(QStringLiteral("Gateway")).toString();
+            QStringList dns;
+            for (const QVariantMap &n : list(p.value(QStringLiteral("NameserverData"))))
+                dns << n.value(QStringLiteral("address")).toString();
+            out[QStringLiteral("dns")] = dns.join(QStringLiteral(", "));
+            return out;
+        };
+        // the saved connections: Wi-Fi ones by name, and the Ethernet profile
+        QList<PanelModel::SavedWifi> saved;
+        if (!m_wifiDevice.isEmpty() || !m_ethDevice.isEmpty()) {
+            const QString settings = NMPath + QStringLiteral("/Settings"), conn = NM + QStringLiteral(".Settings.Connection");
+            const QVariant list = first(ask(sys, NM, settings, NM + QStringLiteral(".Settings"), QStringLiteral("ListConnections")));
+            if (list.canConvert<QDBusArgument>())
+                for (const QDBusObjectPath &c : qdbus_cast<QList<QDBusObjectPath>>(list.value<QDBusArgument>())) {
+                    const QVariant s = first(ask(sys, NM, c.path(), conn, QStringLiteral("GetSettings")));
+                    if (!s.canConvert<QDBusArgument>())
+                        continue;
+                    const QVariantMap head = qdbus_cast<Interfaces>(s.value<QDBusArgument>()).value(QStringLiteral("connection"));
+                    const QString type = head.value(QStringLiteral("type")).toString();
+                    if (type == QLatin1String("802-3-ethernet") && m_ethProfile.isEmpty())
+                        m_ethProfile = c.path();
+                    if (type != QLatin1String("802-11-wireless"))
+                        continue;
+                    saved << PanelModel::SavedWifi{c.path(), head.value(QStringLiteral("id")).toString()};
                 }
+        }
+        if (!m_ethDevice.isEmpty()) {
+            const QVariantMap dev = getAll(m_ethDevice, NM + QStringLiteral(".Device"));
+            const QVariantMap wired = getAll(m_ethDevice, NM + QStringLiteral(".Device.Wired"));
+            const uint state = dev.value(QStringLiteral("State")).toUInt();
+            m_ethState = state == 100 ? QStringLiteral("connected") : state >= 40 && state < 100 ? QStringLiteral("connecting")
+                       : !wired.value(QStringLiteral("Carrier"), true).toBool() ? QStringLiteral("unplugged") : QStringLiteral("disconnected");
+            m_ethInfo = state == 100 ? ipOf(m_ethDevice) : QVariantMap();
+            m_ethInfo[QStringLiteral("device")] = dev.value(QStringLiteral("Interface")).toString();
+            m_ethInfo[QStringLiteral("mac")] = wired.value(QStringLiteral("HwAddress")).toString();
+            m_ethInfo[QStringLiteral("speed")] = wired.value(QStringLiteral("Speed")).toUInt(); // Mb/s
+            const QString active = dev.value(QStringLiteral("ActiveConnection")).value<QDBusObjectPath>().path();
+            m_ethInfo[QStringLiteral("name")] = active.size() > 1 ? prop(sys, NM, active, NM + QStringLiteral(".Connection.Active"), QStringLiteral("Id")).toString() : QString();
         }
         m_wifiAvailable = !m_wifiDevice.isEmpty();
         if (m_wifiAvailable) {
@@ -310,21 +373,21 @@ void QuickSettings::readSystem()
                 const QString apIface = NM + QStringLiteral(".AccessPoint");
                 m_wifiName = QString::fromUtf8(prop(sys, NM, ap, apIface, QStringLiteral("Ssid")).toByteArray());
                 m_wifiStrength = prop(sys, NM, ap, apIface, QStringLiteral("Strength")).toInt();
+                const QVariantMap a = getAll(ap, apIface);
+                const int mhz = a.value(QStringLiteral("Frequency")).toInt();
+                const QVariantMap dev = getAll(m_wifiDevice, NM + QStringLiteral(".Device"));
+                m_wifiInfo = ipOf(m_wifiDevice);
+                m_wifiInfo[QStringLiteral("ssid")] = m_wifiName;
+                m_wifiInfo[QStringLiteral("signal")] = m_wifiStrength;
+                m_wifiInfo[QStringLiteral("bars")] = wifiBars();
+                m_wifiInfo[QStringLiteral("security")] = PanelModel::securityText(a.value(QStringLiteral("Flags")).toUInt(), a.value(QStringLiteral("WpaFlags")).toUInt(), a.value(QStringLiteral("RsnFlags")).toUInt());
+                m_wifiInfo[QStringLiteral("frequency")] = mhz;
+                m_wifiInfo[QStringLiteral("band")] = PanelModel::bandText(mhz);
+                m_wifiInfo[QStringLiteral("channel")] = PanelModel::channelOf(mhz);
+                m_wifiInfo[QStringLiteral("bssid")] = a.value(QStringLiteral("HwAddress")).toString();
+                m_wifiInfo[QStringLiteral("bitrate")] = a.value(QStringLiteral("MaxBitrate")).toUInt() / 1000; // Mb/s
+                m_wifiInfo[QStringLiteral("mac")] = dev.value(QStringLiteral("HwAddress")).toString();
             }
-            QList<PanelModel::SavedWifi> saved;
-            const QString settings = NMPath + QStringLiteral("/Settings"), conn = NM + QStringLiteral(".Settings.Connection");
-            const QVariant list = first(ask(sys, NM, settings, NM + QStringLiteral(".Settings"), QStringLiteral("ListConnections")));
-            if (list.canConvert<QDBusArgument>())
-                for (const QDBusObjectPath &c : qdbus_cast<QList<QDBusObjectPath>>(list.value<QDBusArgument>())) {
-                    const QVariant s = first(ask(sys, NM, c.path(), conn, QStringLiteral("GetSettings")));
-                    if (!s.canConvert<QDBusArgument>())
-                        continue;
-                    const QVariantMap head = qdbus_cast<Interfaces>(s.value<QDBusArgument>()).value(QStringLiteral("connection"));
-                    if (head.value(QStringLiteral("type")).toString() != QLatin1String("802-11-wireless"))
-                        continue;
-                    const QString id = head.value(QStringLiteral("id")).toString();
-                    saved << PanelModel::SavedWifi{c.path(), id};
-                }
             QList<PanelModel::AccessPoint> aps;
             const QVariant found = m_wifiOn ? first(ask(sys, NM, m_wifiDevice, NM + QStringLiteral(".Device.Wireless"), QStringLiteral("GetAllAccessPoints"))) : QVariant();
             if (found.canConvert<QDBusArgument>())
@@ -335,7 +398,8 @@ void QuickSettings::readSystem()
                     const QVariantMap a = qdbus_cast<QVariantMap>(all.value<QDBusArgument>());
                     const uint wpa = a.value(QStringLiteral("WpaFlags")).toUInt(), rsn = a.value(QStringLiteral("RsnFlags")).toUInt();
                     aps << PanelModel::AccessPoint{QString::fromUtf8(a.value(QStringLiteral("Ssid")).toByteArray()), p.path(), a.value(QStringLiteral("Strength")).toInt(),
-                                                   (a.value(QStringLiteral("Flags")).toUInt() & 1) || wpa || rsn, ((wpa | rsn) & 0x200) != 0}; // 0x200: 802.1x
+                                                   (a.value(QStringLiteral("Flags")).toUInt() & 1) || wpa || rsn, ((wpa | rsn) & 0x200) != 0, // 0x200: 802.1x
+                                                   PanelModel::securityText(a.value(QStringLiteral("Flags")).toUInt(), wpa, rsn), a.value(QStringLiteral("Frequency")).toInt()};
                 }
             m_wifiNetworks = PanelModel::mergeWifi(aps, saved, m_wifiName);
         }
@@ -453,6 +517,65 @@ void QuickSettings::disconnectWifi()
 #endif
 }
 
+void QuickSettings::requestWifiPassword(const QString &connectionPath)
+{
+#ifdef NOTCH_HAVE_DBUS
+    m_secretFor = connectionPath;
+    m_secret.clear();
+    m_secretError.clear();
+    m_secretBusy = true;
+    emit secretChanged();
+    QDBusMessage m = QDBusMessage::createMethodCall(NM, connectionPath, NM + QStringLiteral(".Settings.Connection"), QStringLiteral("GetSecrets"));
+    m.setArguments({QStringLiteral("802-11-wireless-security")});
+    auto *w = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(m, 60000), this); // a permission dialog may be shown meanwhile
+    connect(w, &QDBusPendingCallWatcher::finished, this, [this, connectionPath, w] {
+        w->deleteLater();
+        if (m_secretFor != connectionPath)
+            return; // asked for another one since
+        m_secretBusy = false;
+        const QDBusMessage r = w->reply();
+        if (r.type() == QDBusMessage::ReplyMessage && !r.arguments().isEmpty() && r.arguments().first().canConvert<QDBusArgument>()) {
+            const QVariantMap sec = qdbus_cast<Interfaces>(r.arguments().first().value<QDBusArgument>()).value(QStringLiteral("802-11-wireless-security"));
+            m_secret = sec.value(QStringLiteral("psk")).toString();
+            if (m_secret.isEmpty())
+                m_secretError = tr("This network has no password saved here.");
+        } else {
+            m_secretError = r.type() == QDBusMessage::ErrorMessage ? r.errorMessage() : tr("No answer.");
+        }
+        emit secretChanged();
+    });
+#else
+    Q_UNUSED(connectionPath)
+#endif
+}
+
+void QuickSettings::forgetWifiPassword()
+{
+    if (m_secretFor.isEmpty() && m_secret.isEmpty() && m_secretError.isEmpty())
+        return;
+    m_secretFor.clear();
+    m_secret.clear();
+    m_secretError.clear();
+    m_secretBusy = false;
+    emit secretChanged();
+}
+
+void QuickSettings::setEthernet(bool on)
+{
+#ifdef NOTCH_HAVE_DBUS
+    if (m_ethDevice.isEmpty())
+        return;
+    if (on && !m_ethProfile.isEmpty())
+        fire(QDBusConnection::systemBus(), NM, NMPath, NM, QStringLiteral("ActivateConnection"),
+             {QVariant::fromValue(QDBusObjectPath(m_ethProfile)), QVariant::fromValue(QDBusObjectPath(m_ethDevice)), QVariant::fromValue(QDBusObjectPath(QStringLiteral("/")))});
+    else if (!on)
+        fire(QDBusConnection::systemBus(), NM, m_ethDevice, NM + QStringLiteral(".Device"), QStringLiteral("Disconnect"));
+    QTimer::singleShot(2000, this, &QuickSettings::refresh);
+#else
+    Q_UNUSED(on)
+#endif
+}
+
 void QuickSettings::scanWifi()
 {
 #ifdef NOTCH_HAVE_DBUS
@@ -523,6 +646,7 @@ QByteArray QuickSettings::dump() const
     o[QStringLiteral("bluetooth")] = QJsonObject{{QStringLiteral("available"), m_btAvailable}, {QStringLiteral("on"), m_btOn}, {QStringLiteral("connected"), m_btConnected},
                                                {QStringLiteral("devices"), QJsonArray::fromVariantList(m_btDevices)}};
     o[QStringLiteral("wifi")] = QJsonObject{{QStringLiteral("available"), m_wifiAvailable}, {QStringLiteral("on"), m_wifiOn}, {QStringLiteral("network"), m_wifiName},
-                                          {QStringLiteral("bars"), wifiBars()}, {QStringLiteral("inRange"), QJsonArray::fromVariantList(m_wifiNetworks)}};
+                                          {QStringLiteral("bars"), wifiBars()}, {QStringLiteral("info"), QJsonObject::fromVariantMap(m_wifiInfo)}, {QStringLiteral("inRange"), QJsonArray::fromVariantList(m_wifiNetworks)}};
+    o[QStringLiteral("ethernet")] = QJsonObject{{QStringLiteral("available"), !m_ethDevice.isEmpty()}, {QStringLiteral("state"), m_ethState}, {QStringLiteral("info"), QJsonObject::fromVariantMap(m_ethInfo)}};
     return QJsonDocument(o).toJson(QJsonDocument::Indented);
 }

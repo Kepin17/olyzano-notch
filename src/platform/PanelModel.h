@@ -64,6 +64,8 @@ struct AccessPoint {
     int strength = 0;
     bool secure = false;
     bool enterprise = false; // 802.1x: needs more than a password, left to the system settings
+    QString security;        // "WPA2-PSK", "Open"...
+    int frequency = 0;       // MHz
 };
 struct SavedWifi {
     QString id, name; // the connection's object path, its name
@@ -97,7 +99,7 @@ inline QVariantList mergeWifi(const QList<AccessPoint> &aps, const QList<SavedWi
     for (const AccessPoint &ap : best)
         out << QVariantMap{{QStringLiteral("name"), ap.ssid}, {QStringLiteral("ap"), ap.path}, {QStringLiteral("id"), savedId(ap.ssid)},
                            {QStringLiteral("strength"), ap.strength}, {QStringLiteral("bars"), wifiBars(ap.strength)}, {QStringLiteral("secure"), ap.secure},
-                           {QStringLiteral("enterprise"), ap.enterprise}, {QStringLiteral("saved"), !savedId(ap.ssid).isEmpty()}, {QStringLiteral("active"), ap.ssid == active}};
+                           {QStringLiteral("enterprise"), ap.enterprise}, {QStringLiteral("security"), ap.security}, {QStringLiteral("frequency"), ap.frequency}, {QStringLiteral("saved"), !savedId(ap.ssid).isEmpty()}, {QStringLiteral("active"), ap.ssid == active}};
     return out;
 }
 
@@ -109,6 +111,58 @@ inline void orderBluetooth(QVariantList &devices)
         const QVariantMap x = a.toMap(), y = b.toMap();
         return rank(x) != rank(y) ? rank(x) > rank(y) : x.value(QStringLiteral("rssi")).toInt() > y.value(QStringLiteral("rssi")).toInt();
     });
+}
+
+// Wi-Fi channel of a frequency in MHz (2.4, 5 and 6 GHz bands); 0 when it is none of them.
+inline int channelOf(int mhz)
+{
+    if (mhz == 2484)
+        return 14;
+    if (mhz >= 2412 && mhz <= 2472)
+        return (mhz - 2407) / 5;
+    if (mhz >= 5160 && mhz <= 5885)
+        return (mhz - 5000) / 5;
+    if (mhz >= 5955 && mhz <= 7115)
+        return (mhz - 5950) / 5;
+    return 0;
+}
+inline QString bandText(int mhz)
+{
+    return mhz >= 5925 ? QStringLiteral("6 GHz") : mhz >= 4900 ? QStringLiteral("5 GHz") : mhz >= 2400 ? QStringLiteral("2.4 GHz") : QString();
+}
+// What NetworkManager's access point flags say about its security (Flags, WpaFlags, RsnFlags).
+inline QString securityText(uint flags, uint wpa, uint rsn)
+{
+    const uint any = wpa | rsn;
+    if (rsn & 0x400)
+        return (rsn & 0x100) ? QStringLiteral("WPA2/WPA3") : QStringLiteral("WPA3-SAE");
+    if (rsn & 0x800)
+        return QStringLiteral("OWE");
+    if (rsn & 0x200)
+        return QStringLiteral("WPA2-Enterprise");
+    if (rsn & 0x100)
+        return QStringLiteral("WPA2-PSK");
+    if (wpa & 0x200)
+        return QStringLiteral("WPA-Enterprise");
+    if (wpa & 0x100)
+        return QStringLiteral("WPA-PSK");
+    if (any)
+        return QStringLiteral("WPA");
+    return (flags & 1) ? QStringLiteral("WEP") : QStringLiteral("Open");
+}
+// The text a phone's camera reads to join a network: WIFI:T:WPA;S:name;P:password;;  (\ ; , : " are escaped).
+inline QString wifiQrPayload(const QString &ssid, const QString &password, bool secure)
+{
+    auto esc = [](QString s) {
+        QString out;
+        for (const QChar c : std::as_const(s)) {
+            if (c == u'\\' || c == u';' || c == u',' || c == u':' || c == u'"')
+                out += u'\\';
+            out += c;
+        }
+        return out;
+    };
+    return secure ? QStringLiteral("WIFI:T:WPA;S:%1;P:%2;;").arg(esc(ssid), esc(password)) : QStringLiteral("WIFI:T:nopass;S:%1;;").arg(esc(ssid));
 }
 
 // 0 muted or silent, 1 low, 2 medium, 3 high: which speaker to draw.
