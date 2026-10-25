@@ -3,44 +3,155 @@ import QtQuick.Controls.Basic
 import QtQuick.Dialogs
 import QtQuick.Layouts
 
-// Settings page (scrolls when taller than the window).
-ScrollView {
+// Settings page: a list of sections on the left (with a search for a setting), the chosen section on the right.
+RowLayout {
     id: settingsScroll
     required property var shell
     // Its menu / folder dialog are open: Notch keeps the whole window clickable meanwhile.
     readonly property bool overlayOpen: ruleMenu.visible || folderDialog.visible
-    property string category: "general" // the tab shown; kept while Notch runs
+    property string category: "general" // the section shown; kept while Notch runs
+    property string query: ""
     visible: shell.page === "settings"
     Layout.fillWidth: true
-    Layout.preferredHeight: Math.min(settingsColumn.implicitHeight, 470)
-    contentWidth: availableWidth
-    clip: true
-    ColumnLayout {
-        id: settingsColumn
-        width: settingsScroll.availableWidth - 24
-        x: 12
-        spacing: 16
+    Layout.leftMargin: 12
+    Layout.rightMargin: 12
+    Layout.preferredHeight: 480
+    spacing: 14
 
-        // Categories: only the chosen one is shown.
-        Flow {
+    // id, name, icon, what it is for
+    readonly property var sections: [
+        ["general", "General", "gear", "Start-up, how the notch sits on the screen, gaming mode and sounds."],
+        ["appearance", "Appearance", "palette", "Themes and light or dark."],
+        ["alerts", "Alerts & activities", "notifications", "What the notch shows you: chargers, downloads, calls, the microphone and more."],
+        ["files", "Files", "folder", "How long files stay, where they go and what is added by itself."],
+        ["dock", "Dock", "dock", "The app dock at the edge of the screen."],
+        ["sharing", "Sharing & Nearby", "share", "Servers for Share via QR, and the name other computers see."],
+        ["wellbeing", "Wellbeing", "heart", "Break and eye reminders."]
+    ]
+    // What a search can find: section, setting, words that also describe it.
+    readonly property var index: [
+        ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
+        ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Sounds", "sound effects volume quiet mute"],
+        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha"], ["appearance", "Light or dark", "brightness dark light system mode"],
+        ["alerts", "Charger & Bluetooth alerts", "battery plug device connect low"], ["alerts", "Clock when idle", "time clock capsule"],
+        ["alerts", "Downloads in the notch", "download browser progress"], ["alerts", "Phone calls & notifications", "kde connect phone"],
+        ["alerts", "Microphone & camera indicators", "privacy dot mic camera"], ["alerts", "Notifications from this computer", "desktop apps slack"],
+        ["alerts", "Lyrics", "song music lrclib karaoke"],
+        ["files", "Keep files for", "retention days expire delete"], ["files", "Sort new files by type", "rules category pdf images"],
+        ["files", "Storage folder", "where files are stored directory"], ["files", "Add new screenshots", "spectacle screenshot"],
+        ["files", "Add new downloads", "browser downloads folder"], ["files", "Add files from KDE Connect", "phone"],
+        ["dock", "Show the app dock", "dock enable"], ["dock", "Always show", "auto hide dock"], ["dock", "Position", "edge bottom left right"],
+        ["dock", "Icon size", "size"], ["dock", "Transparency", "opacity glass"], ["dock", "Blur behind the dock", "glass blur"],
+        ["dock", "Magnification", "zoom"], ["dock", "Animation", "motion smooth spring"], ["dock", "Show running apps", "windows"],
+        ["dock", "Show Trash", "bin"], ["dock", "Apps kept in the dock", "pinned"],
+        ["sharing", "Nearby device name", "computer name receive"], ["sharing", "Sharing servers", "relay vps share qr server"],
+        ["wellbeing", "Stretch reminder", "break work minutes"], ["wellbeing", "Don't interrupt", "video call pomodoro"],
+        ["wellbeing", "20-20-20 eye reminder", "eyes"], ["wellbeing", "Today", "breaks count"]
+    ]
+    readonly property var results: {
+        const q = query.trim().toLowerCase()
+        if (q === "")
+            return []
+        return index.filter(e => (e[1] + " " + e[2]).toLowerCase().indexOf(q) >= 0)
+    }
+    function sectionOf(id) { return sections.find(s => s[0] === id) || sections[0] }
+
+    // ---- the list on the left ----
+    ColumnLayout {
+        Layout.preferredWidth: 176
+        Layout.maximumWidth: 176
+        Layout.fillHeight: true
+        spacing: 8
+        TextField {
+            id: searchField
             Layout.fillWidth: true
-            spacing: 6
-            Repeater {
-                model: [["general", "General"], ["files", "Files"], ["dock", "Dock"], ["wellbeing", "Wellbeing"], ["sharing", "Sharing"], ["appearance", "Appearance"]]
-                PillButton {
-                    required property var modelData
-                    text: modelData[1]
-                    checked: settingsScroll.category === modelData[0]
-                    onClicked: settingsScroll.category = modelData[0]
+            implicitHeight: 30
+            leftPadding: 12
+            placeholderText: "Search settings"
+            placeholderTextColor: theme.placeholder
+            color: theme.text
+            selectionColor: theme.accent
+            font.pixelSize: 13
+            text: settingsScroll.query
+            onTextChanged: settingsScroll.query = text
+            background: Rectangle { radius: 15; color: theme.well; border.width: 1; border.color: searchField.activeFocus ? theme.accent : theme.outline }
+        }
+        // the sections ...
+        Repeater {
+            model: settingsScroll.query === "" ? settingsScroll.sections : []
+            delegate: AbstractButton {
+                id: side
+                required property var modelData
+                readonly property bool on: settingsScroll.category === modelData[0]
+                Layout.fillWidth: true
+                implicitHeight: 34
+                onClicked: settingsScroll.category = modelData[0]
+                background: Rectangle { radius: theme.radiusSm + 2; color: side.on ? theme.accentSoft : side.hovered ? theme.surfaceHover : "transparent" }
+                contentItem: RowLayout {
+                    spacing: 9
+                    Item { Layout.preferredWidth: 6 }
+                    LineIcon { glyph: side.modelData[2]; sourceSize: Qt.size(16, 16); color: side.on ? theme.accent : theme.textDim }
+                    Text {
+                        Layout.fillWidth: true
+                        text: side.modelData[1]
+                        color: theme.text
+                        font.pixelSize: 13
+                        font.weight: side.on ? Font.DemiBold : Font.Medium
+                        elide: Text.ElideRight
+                    }
                 }
             }
         }
-
-        Rectangle {
+        // ... or what the search found
+        Repeater {
+            model: settingsScroll.results
+            delegate: AbstractButton {
+                id: hit
+                required property var modelData
+                Layout.fillWidth: true
+                implicitHeight: 44
+                onClicked: { settingsScroll.category = modelData[0]; settingsScroll.query = "" }
+                background: Rectangle { radius: theme.radiusSm + 2; color: hit.hovered ? theme.surfaceHover : "transparent" }
+                contentItem: ColumnLayout {
+                    spacing: 0
+                    Text { Layout.fillWidth: true; text: hit.modelData[1]; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium; elide: Text.ElideRight; leftPadding: 6 }
+                    Text { Layout.fillWidth: true; text: settingsScroll.sectionOf(hit.modelData[0])[1]; color: theme.textDim; font.pixelSize: 11; leftPadding: 6 }
+                }
+            }
+        }
+        Caption {
+            visible: settingsScroll.query !== "" && settingsScroll.results.length === 0
             Layout.fillWidth: true
-            Layout.topMargin: -6
-            implicitHeight: 1
-            color: theme.outline
+            text: "Nothing matches."
+        }
+        Item { Layout.fillHeight: true }
+    }
+    Rectangle { Layout.fillHeight: true; implicitWidth: 1; color: theme.outline }
+
+    // ---- the chosen section ----
+    ScrollView {
+        id: scroller
+        Layout.fillWidth: true
+        Layout.fillHeight: true
+        contentWidth: availableWidth
+        clip: true
+    ColumnLayout {
+        id: settingsColumn
+        width: scroller.availableWidth - 8
+        spacing: 16
+
+        // What this section is, in one line.
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 2
+            Text {
+                text: settingsScroll.sectionOf(settingsScroll.category)[1]
+                color: theme.text
+                font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
+                font.pixelSize: 18
+                font.weight: Font.DemiBold
+            }
+            Caption { Layout.fillWidth: true; text: settingsScroll.sectionOf(settingsScroll.category)[3] }
         }
 
         ColumnLayout {
@@ -52,13 +163,6 @@ ScrollView {
                 title: "Start at login"
                 checked: notch.autostart
                 onToggled: notch.autostart = !notch.autostart
-            }
-
-            SettingToggle {
-                title: "Charger & Bluetooth alerts"
-                caption: "Olyzano Notch peeks out when you plug in, a device connects, or a battery runs low."
-                checked: notch.alerts
-                onToggled: notch.alerts = !notch.alerts
             }
 
             ColumnLayout {
@@ -90,34 +194,6 @@ ScrollView {
                 }
             }
 
-            SettingToggle {
-                title: "Clock when idle"
-                caption: "While nothing else is going on, the notch shows the time, the microphone and the battery."
-                checked: activities.idleClock
-                onToggled: activities.idleClock = !activities.idleClock
-            }
-
-            SettingToggle {
-                title: "Downloads in the notch"
-                caption: "Files your browser is still downloading show in the closed notch, with their size and speed."
-                checked: activities.showDownloads
-                onToggled: activities.showDownloads = !activities.showDownloads
-            }
-
-            SettingToggle {
-                title: "Phone calls & notifications"
-                caption: "Through KDE Connect: incoming calls, your phone's notifications and a low phone battery show in the notch."
-                checked: activities.phoneAlerts
-                onToggled: activities.phoneAlerts = !activities.phoneAlerts
-            }
-
-            SettingToggle {
-                title: "Microphone & camera indicators"
-                caption: "A green dot beside the notch while a camera is on; the open panel names the apps using the camera or the microphone."
-                checked: activities.privacyIndicators
-                onToggled: activities.privacyIndicators = !activities.privacyIndicators
-            }
-
             SettingCard {
                 title: "Gaming mode"
                 SettingToggle {
@@ -125,30 +201,6 @@ ScrollView {
                     caption: "While an app or game that fills the screen (full screen or maximised) is in front, Olyzano Notch and the dock cannot be reached at all (no pointer, no clicks, nothing opens), and sounds and reminders stay quiet. Minimise it or make its window smaller and they work again."
                     checked: gaming.enabled
                     onToggled: gaming.enabled = !gaming.enabled
-                }
-            }
-
-            SettingCard {
-                title: "Lyrics"
-                SettingToggle {
-                    title: "Show the lyrics of the song that plays"
-                    caption: "Looks the song up on lrclib.net, an open lyrics service: the artist, title, album and length of what plays are sent, nothing else. Off by default."
-                    checked: lyrics.enabled
-                    onToggled: lyrics.enabled = !lyrics.enabled
-                }
-                PillButton { text: "Forget the saved lyrics"; onClicked: lyrics.clearCache() }
-            }
-
-            SettingCard {
-                title: "Notifications from this computer"
-                SettingToggle {
-                    title: "Show them in the notch"
-                    caption: desktopNotifications.enabled && !desktopNotifications.available
-                             ? (Qt.platform.os === "windows" ? "Not available on this Windows install: Windows doesn't let Olyzano Notch read notifications."
-                                                             : "Not available: the session bus doesn't allow watching notifications.")
-                             : "Other apps' notifications show as \"Notification from <app> · <title>\", never the message itself."
-                    checked: desktopNotifications.enabled
-                    onToggled: desktopNotifications.enabled = !desktopNotifications.enabled
                 }
             }
 
@@ -213,6 +265,71 @@ ScrollView {
                 Layout.fillWidth: true
                 Caption { Layout.fillWidth: true; text: "Olyzano Notch " + Qt.application.version }
                 PillButton { text: "Quit Olyzano Notch"; onClicked: Qt.quit() }
+            }
+        }
+
+        ColumnLayout {
+            visible: settingsScroll.category === "alerts"
+            Layout.fillWidth: true
+            spacing: 16
+
+            SettingToggle {
+                title: "Charger & Bluetooth alerts"
+                caption: "Olyzano Notch peeks out when you plug in, a device connects, or a battery runs low."
+                checked: notch.alerts
+                onToggled: notch.alerts = !notch.alerts
+            }
+
+            SettingToggle {
+                title: "Clock when idle"
+                caption: "While nothing else is going on, the notch shows the time, the microphone and the battery."
+                checked: activities.idleClock
+                onToggled: activities.idleClock = !activities.idleClock
+            }
+
+            SettingToggle {
+                title: "Downloads in the notch"
+                caption: "Files your browser is still downloading show in the closed notch, with their size and speed."
+                checked: activities.showDownloads
+                onToggled: activities.showDownloads = !activities.showDownloads
+            }
+
+            SettingToggle {
+                title: "Phone calls & notifications"
+                caption: "Through KDE Connect: incoming calls, your phone's notifications and a low phone battery show in the notch."
+                checked: activities.phoneAlerts
+                onToggled: activities.phoneAlerts = !activities.phoneAlerts
+            }
+
+            SettingToggle {
+                title: "Microphone & camera indicators"
+                caption: "A green dot beside the notch while a camera is on; the open panel names the apps using the camera or the microphone."
+                checked: activities.privacyIndicators
+                onToggled: activities.privacyIndicators = !activities.privacyIndicators
+            }
+
+            SettingCard {
+                title: "Notifications from this computer"
+                SettingToggle {
+                    title: "Show them in the notch"
+                    caption: desktopNotifications.enabled && !desktopNotifications.available
+                             ? (Qt.platform.os === "windows" ? "Not available on this Windows install: Windows doesn't let Olyzano Notch read notifications."
+                                                             : "Not available: the session bus doesn't allow watching notifications.")
+                             : "Other apps' notifications show as \"Notification from <app> · <title>\", never the message itself."
+                    checked: desktopNotifications.enabled
+                    onToggled: desktopNotifications.enabled = !desktopNotifications.enabled
+                }
+            }
+
+            SettingCard {
+                title: "Lyrics"
+                SettingToggle {
+                    title: "Show the lyrics of the song that plays"
+                    caption: "Looks the song up on lrclib.net, an open lyrics service: the artist, title, album and length of what plays are sent, nothing else. Off by default."
+                    checked: lyrics.enabled
+                    onToggled: lyrics.enabled = !lyrics.enabled
+                }
+                PillButton { text: "Forget the saved lyrics"; onClicked: lyrics.clearCache() }
             }
         }
 
@@ -918,6 +1035,7 @@ ScrollView {
             }
         }
 
+    }
     }
 
 

@@ -20,7 +20,7 @@ Window {
     readonly property int openWidth: 560
     // The Music page with lyrics is split in two (player left, words right): wider, so each half has room.
     readonly property bool lyricsSplit: page === "music" && lyrics.enabled && media.active
-    readonly property int panelWidth: lyricsSplit ? 780 : openWidth
+    readonly property int panelWidth: lyricsSplit ? 780 : page === "settings" ? 720 : openWidth
 
     property bool pinned: false
     readonly property string capsuleMode: activities.capsuleMode
