@@ -19,6 +19,8 @@ class NearbyController : public QAbstractListModel
     Q_PROPERTY(bool scanning READ scanning NOTIFY scanningChanged)
     Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
     Q_PROPERTY(int activeCount READ activeCount NOTIFY countChanged)
+    // The newest transfer in progress, for the notch's live activity: {direction, peer, progress (0-1, -1 unknown)}; empty if none.
+    Q_PROPERTY(QVariantMap activity READ activity NOTIFY countChanged)
 
 public:
     enum Role {
@@ -47,6 +49,7 @@ public:
     QVariantList devices() const { return m_devices; }
     bool scanning() const { return m_scan.isActive(); }
     int activeCount() const;
+    QVariantMap activity() const;
 
     Q_INVOKABLE QString startReceiving();   // "" or why not
     Q_INVOKABLE void stopReceiving() { m_service.stopReceiving(); }
