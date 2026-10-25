@@ -14,6 +14,8 @@
 #include "services/Vault.h"
 #include "platform/BatteryThreshold.h"
 #include "platform/PlayerSelection.h"
+#include "platform/WinPrivacy.h"
+#include "platform/MediaNames.h"
 #include "platform/AudioBands.h"
 #include "platform/DockModel.h"
 #include "platform/WellbeingModel.h"
@@ -433,6 +435,28 @@ private slots:
         QVERIFY(m_repo->visible().first().pinned);
         QVERIFY(m_repo->setPinned(kept.id, false));
         QCOMPARE(CleanupService::purge(*m_repo, m_files, now, DefaultRetentionDays), QStringList{kept.id});
+    }
+
+    void consentStoreAppNames()
+    {
+        QCOMPARE(WinPrivacy::appName(QStringLiteral("C:#Program Files#Zoom#bin#Zoom.exe")), QStringLiteral("Zoom"));
+        QCOMPARE(WinPrivacy::appName(QStringLiteral("C:#Users#me#AppData#Local#Discord#app-1.0#Discord.EXE")), QStringLiteral("Discord"));
+        QCOMPARE(WinPrivacy::appName(QStringLiteral("Microsoft.WindowsCamera_8wekyb3d8bbwe")), QStringLiteral("WindowsCamera"));
+        QCOMPARE(WinPrivacy::appName(QStringLiteral("5319275A.WhatsAppDesktop_cv1g1gvanyjgm")), QStringLiteral("WhatsAppDesktop"));
+    }
+
+    void mediaSessionNames()
+    {
+        QCOMPARE(MediaNames::displayName(QStringLiteral("Chrome")), QStringLiteral("Chrome"));
+        QCOMPARE(MediaNames::displayName(QStringLiteral("Spotify.exe")), QStringLiteral("Spotify"));
+        QCOMPARE(MediaNames::displayName(QStringLiteral("308046B0AF4A39CB")), QStringLiteral("Firefox"));
+        QCOMPARE(MediaNames::displayName(QStringLiteral("Microsoft.ZuneMusic_8wekyb3d8bbwe!Microsoft.ZuneMusic")),
+                 QStringLiteral("Media Player"));
+        QCOMPARE(MediaNames::displayName(QStringLiteral("SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify")), QStringLiteral("Spotify"));
+        QCOMPARE(MediaNames::displayName(QStringLiteral("C:\\Program Files\\foobar2000\\foobar2000.exe")), QStringLiteral("Foobar2000"));
+        QCOMPARE(MediaNames::processName(QStringLiteral("MSEdge")), QStringLiteral("msedge"));
+        QCOMPARE(MediaNames::processName(QStringLiteral("308046B0AF4A39CB")), QStringLiteral("firefox"));
+        QCOMPARE(MediaNames::processName(QStringLiteral("Spotify.exe")), QStringLiteral("spotify"));
     }
 
     void lowBatteryThresholds()
@@ -1281,6 +1305,80 @@ private slots:
         QVERIFY(QFile::exists(vault.mountDir() + QStringLiteral("/ktp.txt")));
         QCOMPARE(vault.lock(), QString());
         QDir().rmdir(vault.mountDir());
+    }
+
+    // The engine Windows uses, run here too.
+    void vaultFilesEngine()
+    {
+        const QString cipher = m_tmp.filePath(QStringLiteral("files-cipher"));
+        const QString mount = m_tmp.filePath(QStringLiteral("files-plain"));
+        auto write = [](const QString &path, const QByteArray &data) {
+            QFile f(path);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write(data);
+        };
+        auto read = [](const QString &path) {
+            QFile f(path);
+            return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+        };
+        {
+            Vault vault(cipher, mount, Vault::Files);
+            QVERIFY(!vault.exists());
+            QVERIFY(!vault.create(QStringLiteral("short")).isEmpty());
+            QCOMPARE(vault.create(QStringLiteral("correct horse battery")), QString());
+            QVERIFY(vault.exists());
+            QVERIFY(!vault.isUnlocked());
+            QCOMPARE(vault.unlock(QStringLiteral("wrong password!")), QStringLiteral("wrong password"));
+            QVERIFY(!vault.isUnlocked());
+            QCOMPARE(vault.unlock(QStringLiteral("correct horse battery")), QString());
+            QVERIFY(vault.isUnlocked());
+
+            write(mount + QStringLiteral("/ktp.txt"), "NIK 3201234567890001");
+            write(mount + QStringLiteral("/gone.txt"), "temporary");
+            write(mount + QStringLiteral("/empty"), "");
+            QCOMPARE(vault.lock(), QString());
+            QVERIFY(!vault.isUnlocked());
+            QVERIFY(!QFileInfo::exists(mount));
+            // Nothing readable on disk: neither the content nor the file name.
+            QDirIterator it(cipher, QDir::Files);
+            int count = 0;
+            while (it.hasNext()) {
+                const QString path = it.next();
+                ++count;
+                QVERIFY(!read(path).contains("NIK 3201234567890001"));
+                QVERIFY(!path.contains(QStringLiteral("ktp")));
+            }
+            QCOMPARE(count, 4); // three files and the config
+
+            QCOMPARE(vault.unlock(QStringLiteral("correct horse battery")), QString());
+            QCOMPARE(read(mount + QStringLiteral("/ktp.txt")), QByteArray("NIK 3201234567890001"));
+            QVERIFY(QFileInfo::exists(mount + QStringLiteral("/empty")));
+            QVERIFY(QFile::remove(mount + QStringLiteral("/gone.txt")));
+            write(mount + QStringLiteral("/ktp.txt"), "NIK 3201234567890002");
+            QCOMPARE(vault.lock(), QString());
+        }
+        {
+            // A session that ends without locking (a crash) leaves the plain files: the next unlock keeps them.
+            Vault vault(cipher, mount, Vault::Files);
+            QCOMPARE(vault.unlock(QStringLiteral("correct horse battery")), QString());
+            QVERIFY(!QFileInfo::exists(mount + QStringLiteral("/gone.txt")));
+            QCOMPARE(read(mount + QStringLiteral("/ktp.txt")), QByteArray("NIK 3201234567890002"));
+            write(mount + QStringLiteral("/new.txt"), "added before the crash");
+        }
+        {
+            Vault vault(cipher, mount, Vault::Files);
+            QVERIFY(!vault.isUnlocked());
+            QCOMPARE(vault.lock(), QString()); // nothing to do without the key
+            QVERIFY(QFileInfo::exists(mount + QStringLiteral("/new.txt")));
+            QCOMPARE(vault.unlock(QStringLiteral("correct horse battery")), QString());
+            QCOMPARE(read(mount + QStringLiteral("/new.txt")), QByteArray("added before the crash"));
+            QCOMPARE(vault.lock(), QString());
+            QVERIFY(!QFileInfo::exists(mount));
+            QCOMPARE(vault.unlock(QStringLiteral("correct horse battery")), QString());
+            QCOMPARE(read(mount + QStringLiteral("/new.txt")), QByteArray("added before the crash"));
+            QCOMPARE(QDir(mount).entryList(QDir::Files).size(), 3);
+            QCOMPARE(vault.lock(), QString());
+        }
     }
 
     void vaultItemsNeverExpire()

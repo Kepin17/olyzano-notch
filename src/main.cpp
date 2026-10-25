@@ -15,6 +15,7 @@
 
 #include <QDir>
 #include <QApplication>
+#include <QFile>
 #include <QIcon>
 #include <QLockFile>
 #include <QQmlApplicationEngine>
@@ -42,6 +43,10 @@ public:
         const QSize s = requested.isValid() ? requested : QSize(32, 32);
         if (size)
             *size = s;
+        // Windows has no icon theme: device icons named after a bundled one (bluetooth, headphones) use that.
+        const QString bundled = QStringLiteral(":/qt/qml/Notch/src/qml/icons/%1.svg").arg(id);
+        if (!QIcon::hasThemeIcon(id) && QFile::exists(bundled))
+            return QIcon(bundled).pixmap(s);
         return QIcon::fromTheme(id, QIcon::fromTheme(QStringLiteral("text-x-generic"))).pixmap(s);
     }
 };

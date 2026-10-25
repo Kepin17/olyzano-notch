@@ -2,12 +2,12 @@
 
 #include <QObject>
 #include <QVariantList>
-#ifdef NOTCH_HAVE_DBUS
+#if defined(NOTCH_HAVE_DBUS) || defined(NOTCH_HAVE_KDECONNECT)
 #include <QDBusMessage>
 #endif
 
-#ifndef NOTCH_HAVE_DBUS
-// KDE Connect is a Linux desktop thing: here there are never devices, so "Send to device" does not show.
+#if !defined(NOTCH_HAVE_DBUS) && !defined(NOTCH_HAVE_KDECONNECT)
+// No KDE Connect here: there are never devices, so "Send to device" does not show.
 class KdeConnect : public QObject
 {
     Q_OBJECT
@@ -27,7 +27,8 @@ signals:
 #else
 // KDE Connect over the session bus (org.kde.kdeconnect): send files to paired, reachable devices
 // through their share plugin, and hear about files they send to this computer, calls coming in,
-// notifications posted on the phone and its battery.
+// notifications posted on the phone and its battery. On Windows that bus is the one KDE Connect for
+// Windows runs itself; without KDE Connect installed there are no devices.
 class KdeConnect : public QObject
 {
     Q_OBJECT
