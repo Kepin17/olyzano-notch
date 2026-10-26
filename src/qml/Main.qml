@@ -20,7 +20,11 @@ Window {
     readonly property int openWidth: 560
     // The Music page with lyrics is split in two (player left, words right): wider, so each half has room.
     readonly property bool lyricsSplit: page === "music" && lyrics.enabled && media.active
-    readonly property int panelWidth: lyricsSplit ? 780 : page === "settings" ? 720 : openWidth
+    // The panel is as wide as its page needs, and never narrower than the row of section buttons (Files, Music, Timer, Tasks,
+    // Color, Sharing, Lyrics, Note, Add): with every button there, it grows (up to the window) instead of cutting them off.
+    readonly property int panelWidth: Math.max(lyricsSplit ? 780 : page === "settings" ? 720 : openWidth,
+                                               Math.min(width - 20, Math.max(actionBar.visible ? Math.ceil(actionBar.implicitWidth) + 44 : 0,
+                                                                              Math.ceil(headerRow.implicitWidth) + 36)))
 
     property bool pinned: false
     // The panel's place in the window, for the share dialog: it is centred inside the panel and dims only the panel, and the
@@ -1626,6 +1630,7 @@ Window {
                 spacing: 10
 
                 RowLayout {
+                    id: headerRow
                     Layout.fillWidth: true
                     Layout.topMargin: 10
                     Layout.leftMargin: root.page === "shelf" ? 12 : 6
@@ -1852,6 +1857,7 @@ Window {
 
                 // What to look at: one section at a time. Dropping files is an action too (Add).
                 ActionBar {
+                    id: actionBar
                     visible: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color")
                     Layout.fillWidth: true
                     Layout.leftMargin: 12
