@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex">
 <title>Olyzano Notch share</title>
@@ -138,6 +138,10 @@
   .skel li { min-height: 60px; }
   .skel .b { background: var(--surface); border-radius: 6px; animation: pulse 1.4s ease-in-out infinite; }
   @keyframes pulse { 50% { opacity: .55; } }
+
+  /* while a PIN or password is asked for: room below, so the on-screen keyboard never has to cover the field */
+  body.asking main { padding-bottom: 45vh; }
+  .code, .pin { scroll-margin: 24px; }
 
   footer { order: 4; text-align: center; color: var(--dim); font-size: 12.5px; padding: 6px 0 calc(env(safe-area-inset-bottom) + 18px); }
   @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
@@ -407,7 +411,7 @@ function setHead(title, ...sub) {
   document.title = "Olyzano Notch · " + title;
   $("sub").replaceChildren(...sub.filter(Boolean));
 }
-function show(...nodes) { $("view").replaceChildren(...nodes); $("bar").hidden = true; }
+function show(...nodes) { $("view").replaceChildren(...nodes); $("bar").hidden = true; document.body.classList.remove("asking"); }
 
 function stateCard(icon, title, text, button) {
   clearInterval(S.timer);
@@ -432,6 +436,16 @@ function showError(code) {
 function skeleton() {
   const row = () => h("li", {}, h("span"), h("div", { class: "thumb b" }), h("div", { class: "info" }, h("div", { class: "b", style: "height:14px;width:60%;margin-bottom:8px" }), h("div", { class: "b", style: "height:11px;width:30%" })), h("span"));
   show(h("ul", { class: "skel", "aria-hidden": "true" }, row(), row(), row()));
+}
+
+// A phone's keyboard covers the lower half of the screen: when the field gets focus, and whenever the visible area changes
+// (the keyboard slides up), the field is scrolled to the middle of what is left.
+function keepVisible(target) {
+  document.body.classList.add("asking");
+  const go = () => target.scrollIntoView({ block: "center", behavior: "smooth" });
+  target.addEventListener("focusin", () => setTimeout(go, 300));
+  setTimeout(go, 350); // and once now: the field is focused as the prompt opens, before any keyboard has moved things
+  if (window.visualViewport) visualViewport.addEventListener("resize", () => { if (target.contains(document.activeElement) || target === document.activeElement) go(); });
 }
 
 // The code as one box per digit: type to move on, Backspace to go back, paste to fill them all; `done(code)` runs when the
@@ -501,6 +515,7 @@ function askSecret(kind, submit, length) {
       }
     });
     $("view").querySelector(".card").append(code.el, msg);
+    keepVisible(code.el);
     code.boxes[0].focus();
     return;
   }
@@ -519,6 +534,7 @@ function askSecret(kind, submit, length) {
   };
   go.onclick = go_; input.onkeydown = e => { if (e.key === "Enter") go_(); };
   $("view").querySelector(".card").append(input, msg, go);
+  keepVisible(input);
   input.focus();
 }
 
