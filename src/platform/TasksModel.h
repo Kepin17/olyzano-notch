@@ -30,7 +30,7 @@ constexpr int StaleHours = 1;    // a deadline missed by more than this while No
 
 enum class DueState { None, Later, Soon, Overdue };
 
-// "17:30", "tomorrow", "tomorrow 9:00", "today 18:00", "2026-11-02", "2026-11-02 09:00", "in 30m", "in 2h", "in 3d".
+// "17:30", "tomorrow", "tomorrow 9:00", "today 18:00", "fri", "fri 17:00", "12 nov", "12/11 17:00", "2026-11-02 09:00", "in 30m", "in 2h", "in 3d".
 // A date without a time means 09:00; a bare time that has already passed today means tomorrow. Invalid when unclear.
 inline QDateTime parseDue(const QString &text, const QDateTime &now)
 {
@@ -56,6 +56,25 @@ inline QDateTime parseDue(const QString &text, const QDateTime &now)
     if (auto m = dayTimeRe.match(t); m.hasMatch()) {
         const QDate day = m.captured(1) == QLatin1String("today") ? now.date() : now.date().addDays(1);
         return m.captured(2).isEmpty() ? atTime(day, 9, 0) : atTime(day, m.captured(2).toInt(), m.captured(3).toInt());
+    }
+    static const QRegularExpression weekdayRe(QStringLiteral(R"(^(mon|tue|wed|thu|fri|sat|sun)[a-z]*(?:\s+(\d{1,2})[:.](\d{2}))?$)"));
+    if (auto m = weekdayRe.match(t); m.hasMatch()) { // the next such day (a week away when it is today)
+        const int want = QStringList{"mon", "tue", "wed", "thu", "fri", "sat", "sun"}.indexOf(m.captured(1)) + 1;
+        const QDate day = now.date().addDays((want - now.date().dayOfWeek() + 6) % 7 + 1);
+        return m.captured(2).isEmpty() ? atTime(day, 9, 0) : atTime(day, m.captured(2).toInt(), m.captured(3).toInt());
+    }
+    static const QRegularExpression dmyRe(QStringLiteral(R"(^(\d{1,2})[/ -](\d{1,2}|[a-z]{3})(?:[/ -](\d{4}))?(?:\s+(\d{1,2})[:.](\d{2}))?$)"));
+    if (auto m = dmyRe.match(t); m.hasMatch()) { // 12/11, 12/11/2026, 12 nov, 12 nov 17:00
+        static const QStringList months{"jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"};
+        const int month = m.captured(2).at(0).isDigit() ? m.captured(2).toInt() : months.indexOf(m.captured(2)) + 1;
+        const int dayNo = m.captured(1).toInt();
+        int year = m.captured(3).isEmpty() ? now.date().year() : m.captured(3).toInt();
+        QDate day(year, month, dayNo);
+        if (day.isValid() && m.captured(3).isEmpty() && day < now.date())
+            day = QDate(year + 1, month, dayNo);
+        if (!day.isValid())
+            return {};
+        return m.captured(4).isEmpty() ? atTime(day, 9, 0) : atTime(day, m.captured(4).toInt(), m.captured(5).toInt());
     }
     if (auto m = isoRe.match(t); m.hasMatch()) {
         const QDate day = QDate::fromString(m.captured(1), Qt::ISODate);

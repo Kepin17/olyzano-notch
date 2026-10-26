@@ -535,6 +535,13 @@ private slots:
         QCOMPARE(parseDue("in 30m", now), now.addSecs(1800));
         QCOMPARE(parseDue("in 2 h", now), now.addSecs(7200));
         QCOMPARE(parseDue("2026-12-01 08:15", now), QDateTime(QDate(2026, 12, 1), QTime(8, 15)));
+        QCOMPARE(parseDue("fri 17:00", now), QDateTime(QDate(2026, 11, 6), QTime(17, 0)));
+        QCOMPARE(parseDue("monday", now), QDateTime(QDate(2026, 11, 9), QTime(9, 0))); // today is a Monday: next week
+        QCOMPARE(parseDue("12 nov 17:00", now), QDateTime(QDate(2026, 11, 12), QTime(17, 0)));
+        QCOMPARE(parseDue("12/11", now), QDateTime(QDate(2026, 11, 12), QTime(9, 0)));
+        QCOMPARE(parseDue("1/1", now), QDateTime(QDate(2027, 1, 1), QTime(9, 0)));
+        QCOMPARE(parseDue("5/3/2027 8:30", now), QDateTime(QDate(2027, 3, 5), QTime(8, 30)));
+        QVERIFY(!parseDue("31/2", now).isValid());
         QVERIFY(!parseDue("25:00", now).isValid());
         QVERIFY(!parseDue("soon", now).isValid());
         const Quick q = parseQuick("Buy milk tomorrow 17:00", now);

@@ -85,6 +85,14 @@ QString Tasks::nextState() const
     return s == DueState::Overdue ? QStringLiteral("overdue") : s == DueState::Soon ? QStringLiteral("soon") : QStringLiteral("later");
 }
 
+bool Tasks::add(const QString &title, const QString &dueIso)
+{
+    const QDateTime due = QDateTime::fromString(dueIso, Qt::ISODate).toLocalTime(); // from the picker (UTC "Z" form)
+    if (!due.isValid())
+        return addQuick(title);
+    return addQuick(title + QStringLiteral(" @ ") + due.toString(QStringLiteral("yyyy-MM-dd HH:mm")));
+}
+
 bool Tasks::addQuick(const QString &line)
 {
     const Quick q = parseQuick(line, QDateTime::currentDateTime());

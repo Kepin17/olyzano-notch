@@ -31,6 +31,7 @@ public:
     QString nextState() const;
 
     Q_INVOKABLE bool addQuick(const QString &line); // "Buy milk tomorrow 17:00": false when the line is empty
+    Q_INVOKABLE bool add(const QString &title, const QString &dueIso); // a deadline picked by hand; "" = none, or read from the title
     Q_INVOKABLE void toggle(const QString &id);
     Q_INVOKABLE void remove(const QString &id);
     Q_INVOKABLE void clearDone();
