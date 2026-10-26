@@ -367,6 +367,10 @@ Window {
     property bool musicGrace: false // the player went away a moment ago: the song stays a few seconds more
     Timer { id: graceTimer; interval: 5000; onTriggered: root.musicGrace = false }
     readonly property bool musicShown: (media.active && !musicStale) || musicGrace
+    // The capsule has been showing music for a moment: from here a new song is a roll in the capsule, not a toast.
+    property bool capSongSeen: false
+    Timer { id: seenTimer; interval: 1500; onTriggered: root.capSongSeen = true }
+    onMusicShownChanged: { if (musicShown) seenTimer.restart(); else { seenTimer.stop(); capSongSeen = false } }
     property real capPos: 0 // ms, read once a second while the capsule shows the song
     // What the capsule says: line 1 the sung line (else the title), line 2 the artist and album (else the song). A line
     // longer than the room glides sideways (MarqueeText); the capsule only widens for a sung line, up to nearly the window.
@@ -647,8 +651,9 @@ Window {
         function onTrackChanged(title, artist, art) {
             if (!notch.alerts || root.open)
                 return
-            if (root.mode === "idle" && root.musicShown && root.capsuleMode !== "hidden")
-                return // the capsule is showing the song: it rolls to the new one itself
+            if (root.capSongSeen && root.mode === "idle" && root.capsuleMode !== "hidden")
+                return // the capsule has been showing songs: it rolls to the new one itself, no second notice
+            // (the first song after a silence is announced by the toast, and the capsule takes over from it)
             root.pushToast({ kind: "media", title: title, detail: artist, icon: "", art: art, level: -1 }, 3200)
         }
     }
