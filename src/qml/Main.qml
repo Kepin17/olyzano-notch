@@ -181,18 +181,106 @@ Window {
                                     || saveDialog.visible || addDialog.visible)
     // hidden: only the top-edge strip is live. peek: copy in progress. open: full panel.
     // toast: a short system alert (charger, Bluetooth). Shown even while hidden, like Dynamic Island.
-    property var toast: null // {kind, title, detail, icon, level}
-    readonly property color toastColor: !toast ? theme.outline
-                                      : toast.kind === "charging" ? theme.success
-                                      : toast.kind === "bluetooth" ? accent
-                                      : toast.kind === "lowbattery" ? theme.danger
-                                      : toast.kind === "media" ? theme.media
-                                      : toast.kind === "update" || toast.kind === "task" || toast.kind === "prayer" ? accent
-                                      : toast.kind === "file" ? theme.info
-                                      : toast.kind === "timer" ? theme.accent
-                                      : toast.kind === "call" || toast.kind === "phone" || toast.kind === "wellbeing" ? theme.success
-                                      : toast.kind === "desktop" ? theme.info
-                                      : toast.kind === "color" ? toast.detail : theme.textDim
+    property var toast: null // {kind, title, detail, icon, art, level, ms}
+    // One place for what each kind of toast looks like: its colour and its glyph.
+    function toastColorFor(kind, t) {
+        switch (kind) {
+        case "charging": case "battery": case "call": case "phone": case "wellbeing": return theme.success
+        case "lowbattery": return theme.danger
+        case "bluetooth": case "update": case "task": case "prayer": return accent
+        case "timer": return theme.accent
+        case "media": return theme.media
+        case "file": case "desktop": return theme.info
+        case "color": return t && t.detail ? t.detail : theme.textDim
+        }
+        return theme.textDim
+    }
+    function toastGlyphFor(kind) {
+        switch (kind) {
+        case "bluetooth": return "bluetooth"
+        case "timer": return "timer"
+        case "wellbeing": return "heart"
+        case "call": case "phone": case "lowbattery": return "phone"
+        case "task": return "check"
+        case "update": return "download"
+        case "media": return "music"
+        case "file": return "folder"
+        }
+        return "notifications"
+    }
+
+    // ---- The toast on screen, the ones waiting, and how they change ----
+    property var toastQueue: []          // waiting toasts (at most 5); a low battery or a missed call goes first
+    property var shownToast: null        // what the card shows: it stays until the next one comes, so it does not blank while the island closes
+    property bool toastShowing: false
+    property real toastRoll: 0           // 0 at rest; 0 -> 1 the old toast going down; -1 -> 0 the new one coming from above
+    property real toastLeft: 1           // 1 -> 0 over the toast's time: the line along the bottom of the card
+    function startToast(t) {
+        toast = t
+        toastTimer.interval = t.ms
+        toastTimer.restart()
+        toastClock.stop()
+        toastClock.duration = t.ms
+        toastClock.start()
+    }
+    function pushToast(t, ms) {
+        t.ms = ms || 3600
+        if (gaming.active)
+            return
+        if (toast && toast.kind === t.kind && toast.title === t.title) { // the same news again: it replaces the one on screen
+            startToast(t)
+            return
+        }
+        if (toast) {
+            const urgent = t.kind === "lowbattery" || t.kind === "call"
+            const q = toastQueue.slice()
+            const same = q.findIndex(x => x.kind === t.kind && x.title === t.title)
+            if (same >= 0)
+                q[same] = t
+            else if (urgent)
+                q.unshift(t)
+            else
+                q.push(t)
+            if (q.length > 5)
+                q.splice(urgent ? q.length - 1 : 0, 1) // the oldest waiting one goes (or the last, for an urgent newcomer)
+            toastQueue = q
+            return
+        }
+        startToast(t)
+    }
+    function nextToast() {
+        if (toastQueue.length > 0) {
+            const q = toastQueue.slice()
+            const n = q.shift()
+            toastQueue = q
+            startToast(n)
+        } else {
+            toast = null
+        }
+    }
+    NumberAnimation { id: toastClock; target: root; property: "toastLeft"; from: 1; to: 0; duration: 3200 }
+    onToastChanged: {
+        if (!toast) {
+            toastShowing = false
+            return
+        }
+        if (toastShowing && shownToast && shownToast.kind === toast.kind && shownToast.title === toast.title) {
+            shownToast = toast // the same news again: no roll
+        } else if (toastShowing) {
+            toastChange.restart()
+        } else {
+            shownToast = toast
+            toastShowing = true
+            toastIn.restart()
+        }
+    }
+    NumberAnimation { id: toastIn; target: root; property: "toastRoll"; from: -1; to: 0; duration: 320; easing.type: Easing.OutCubic }
+    SequentialAnimation {
+        id: toastChange
+        NumberAnimation { target: root; property: "toastRoll"; to: 1; duration: 130; easing.type: Easing.InQuad }
+        ScriptAction { script: { root.shownToast = root.toast; root.toastRoll = -1 } }
+        NumberAnimation { target: root; property: "toastRoll"; to: 0; duration: 260; easing.type: Easing.OutCubic }
+    }
     // prompt: the stretch reminder asking. idle: the small clock pill when nothing else is going on.
     readonly property string mode: wellbeing.state === "reminding" || doomscroll.reminding ? "prompt" : open ? "open" : toast && !gaming.active ? "toast"
                                  : live ? "peek" : idleShown ? "idle" : "hidden"
@@ -455,15 +543,36 @@ Window {
         Qt.callLater(() => sharePopup().openSessions())
     }
 
+    // `notch --shot-page file.png toast-<kind>`: one toast of that kind (or "queue": three in a row), for a picture.
+    function debugToast(kind, art) {
+        const demo = {
+            charging: { kind: "charging", title: "Charger connected", detail: "82% · charging", icon: "", level: 82 },
+            lowbattery: { kind: "lowbattery", title: "Battery low", detail: "12% left", icon: "battery-low", level: 12 },
+            bluetooth: { kind: "bluetooth", title: "WH-1000XM5", detail: "Connected", icon: "audio-headphones", level: 74 },
+            media: { kind: "media", title: "Lebih Beruntung Sendiri", detail: "Pasha Dewangga", icon: "", level: -1, art: art },
+            file: { kind: "file", title: "Added to the shelf", detail: "report.pdf", icon: "application-pdf", level: -1, art: "" },
+            color: { kind: "color", title: "Color copied", detail: "#3FA7F5", icon: "color", level: -1 },
+            timer: { kind: "timer", title: "Tea is ready", detail: "Timer finished", icon: "", level: -1 },
+            call: { kind: "call", title: "Missed call", detail: "Ana", icon: "", level: -1 },
+            task: { kind: "task", title: "Send the report", detail: "Due in 15 minutes", icon: "", level: -1 },
+            prayer: { kind: "prayer", title: "Dhuhr · Zuhur", detail: "It is time · 11:39", icon: "", level: -1 },
+            update: { kind: "update", title: "Notch 0.12.4 is available", detail: "Settings → About has the details", icon: "", level: -1 },
+            wellbeing: { kind: "wellbeing", title: "Rest your eyes", detail: "Look at something far away for 20 seconds", icon: "", level: -1 },
+            desktop: { kind: "desktop", title: "Notification from Thunderbird", detail: "Weekly planning", icon: "", level: -1 }
+        }
+        const list = kind === "queue" ? ["task", "charging", "lowbattery", "prayer"] : [kind]
+        for (const k of list)
+            if (demo[k])
+                pushToast(Object.assign({ art: "" }, demo[k]), 30000)
+    }
+
     function showToast(kind, title, detail, icon, ms) {
         if (root.open) {
             root.infoText = title + (detail ? " · " + detail : "")
             infoTimer.restart()
             return
         }
-        root.toast = { kind: kind, title: title, detail: detail, icon: icon, art: "", level: -1 }
-        toastTimer.interval = ms || 3600
-        toastTimer.restart()
+        root.pushToast({ kind: kind, title: title, detail: detail, icon: icon, art: "", level: -1 }, ms || 3600)
     }
     Connections {
         target: activities
@@ -513,7 +622,7 @@ Window {
         }
     }
 
-    Timer { id: toastTimer; interval: 3200; onTriggered: root.toast = null }
+    Timer { id: toastTimer; interval: 3200; onTriggered: root.nextToast() }
     Connections {
         target: kdeconnect
         function onSent(count, deviceName, error) {
@@ -530,9 +639,7 @@ Window {
                 infoTimer.restart()
                 return
             }
-            root.toast = { kind: icon === "color" ? "color" : "file", title: title, detail: detail, icon: icon, art: art, level: -1 }
-            toastTimer.interval = 3200
-            toastTimer.restart()
+            root.pushToast({ kind: icon === "color" ? "color" : "file", title: title, detail: detail, icon: icon, art: art, level: -1 }, 3200)
         }
     }
     Connections {
@@ -542,9 +649,7 @@ Window {
                 return
             if (root.mode === "idle" && root.musicShown && root.capsuleMode !== "hidden")
                 return // the capsule is showing the song: it rolls to the new one itself
-            root.toast = { kind: "media", title: title, detail: artist, icon: "", art: art, level: -1 }
-            toastTimer.interval = 3200
-            toastTimer.restart()
+            root.pushToast({ kind: "media", title: title, detail: artist, icon: "", art: art, level: -1 }, 3200)
         }
     }
     Connections {
@@ -552,9 +657,7 @@ Window {
         function onAlert(kind, title, detail, icon, level) {
             if (!notch.alerts)
                 return
-            root.toast = { kind: kind, title: title, detail: detail, icon: icon, level: level }
-            toastTimer.interval = kind === "lowbattery" ? 5000 : 3200 // warnings stay a little longer
-            toastTimer.restart()
+            root.pushToast({ kind: kind, title: title, detail: detail, icon: icon, art: "", level: level }, kind === "lowbattery" ? 5000 : 3200) // warnings stay a little longer
         }
     }
 
@@ -652,6 +755,9 @@ Window {
             desktop.setClickThrough(root, gaming.active)
             root.updateMask()
             if (gaming.active) { // a full-screen app arrived: let go of the pointer and close
+                root.toastQueue = []
+                root.toast = null
+                toastTimer.stop()
                 root.dwelled = false
                 root.open = false
             }
@@ -859,11 +965,11 @@ Window {
         x: root.geoWidget ? Math.max(0, Math.min(root.width - width, root.widgetCx - root.winRect.x - width / 2)) : (root.width - width) / 2
         y: root.geoWidget ? Math.max(0, Math.min(root.height - height, root.widgetY - root.winRect.y)) : 0
         // Where the island is heading; width and height follow it with the springs below.
-        readonly property real targetWidth: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 380
+        readonly property real targetWidth: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 400
              : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
              : root.mode === "idle" ? (root.musicShown ? root.capWidth : root.infoShown ? 390 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         readonly property real targetHeight: root.mode === "open" ? panel.implicitHeight + (root.dragOver ? 8 : 0)
-              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? 48 : 26) : 0
+              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 56 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? 48 : 26) : 0
         width: targetWidth
         height: targetHeight
         focus: true
@@ -980,7 +1086,7 @@ Window {
             radius: Math.min(20, Math.max(0, height) / 2)
             color: theme.island
             border.width: 1
-            border.color: root.dragOver ? root.accent : root.mode === "toast" ? root.toastColor : theme.outline
+            border.color: root.dragOver ? root.accent : theme.outline
         }
         Shape {
             anchors.fill: parent
@@ -993,8 +1099,8 @@ Window {
                 readonly property real w: island.width
                 readonly property real h: Math.max(0, island.height)
                 fillColor: theme.island
-                strokeColor: root.dragOver ? root.accent : root.mode === "toast" ? root.toastColor : theme.outline
-                strokeWidth: root.mode === "toast" ? 1.5 : 1
+                strokeColor: root.dragOver ? root.accent : theme.outline
+                strokeWidth: 1
                 startX: 0
                 startY: 0
                 PathQuad { x: sp.s; y: sp.s; controlX: sp.s; controlY: 0 }
@@ -1008,122 +1114,181 @@ Window {
             }
         }
 
-        // Toast: system alert. Battery fills up to the level; charging glows green.
-        RowLayout {
+        // Toast: a two-line card. A chip in the colour of the kind (the battery, a device, a cover or a swatch where there is
+        // one), the title and a dimmer line under it, a thin line along the bottom that runs out with the toast's time.
+        Item {
             id: toastRow
             anchors.fill: parent
-            anchors.leftMargin: island.shoulder + 18
-            anchors.rightMargin: island.shoulder + 18
-            spacing: 10
             opacity: root.mode === "toast" && island.height > 30 ? 1 : 0
             visible: opacity > 0
             Behavior on opacity { NumberAnimation { duration: 180 } }
-            readonly property var t: root.toast || ({ kind: "", title: "", detail: "", icon: "", art: "", level: -1 })
-            // Laptop power uses the drawn battery; Bluetooth devices their own icon.
+            readonly property var t: root.shownToast || ({ kind: "", title: "", detail: "", icon: "", art: "", level: -1 })
             readonly property bool isPower: t.kind === "charging" || t.kind === "battery"
                                             || (t.kind === "lowbattery" && t.icon === "battery-low")
+            readonly property bool isCover: t.kind === "media" || t.kind === "file"
+            readonly property color tint: root.toastColorFor(t.kind, t)
+            readonly property bool deviceIcon: t.kind === "bluetooth" && t.icon !== ""
 
-            // Battery glyph
-            Item {
-                visible: toastRow.isPower
-                implicitWidth: 30
-                implicitHeight: 14
-                Rectangle {
-                    id: shell
-                    width: 27
-                    height: 14
-                    radius: 4
-                    color: "transparent"
-                    border.width: 1.5
-                    border.color: theme.textDim
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: island.shoulder + 14
+                anchors.rightMargin: island.shoulder + 16
+                anchors.topMargin: 2
+                anchors.bottomMargin: 8
+                spacing: 12
+                opacity: 1 - Math.abs(root.toastRoll)
+                transform: Translate { y: root.toastRoll * 12 }
+
+                Item { // the chip
+                    Layout.preferredWidth: 36
+                    Layout.preferredHeight: 36
+                    Layout.alignment: Qt.AlignVCenter
                     Rectangle {
-                        x: 2
-                        y: 2
-                        height: parent.height - 4
-                        radius: 2
-                        color: toastRow.t.kind === "charging" ? theme.success : toastRow.t.level <= 20 ? theme.danger : theme.text
-                        // Starts empty each time the toast appears and fills to the level.
-                        width: toastRow.visible ? Math.max(2, (shell.width - 4) * Math.max(0, toastRow.t.level) / 100) : 0
-                        Behavior on width { NumberAnimation { duration: 700; easing.type: Easing.OutCubic } }
+                        anchors.fill: parent
+                        radius: 11
+                        visible: !toastRow.isCover && toastRow.t.kind !== "color"
+                        color: Qt.alpha(toastRow.tint, 0.18)
+                    }
+                    // The drawn battery: it fills to the level, a charging one glows
+                Item {
+                    visible: toastRow.isPower
+                    anchors.centerIn: parent
+                    width: 30
+                    height: 14
+                    Rectangle {
+                        id: shell
+                        width: 27
+                        height: 14
+                        radius: 4
+                        color: "transparent"
+                        border.width: 1.5
+                        border.color: theme.textDim
+                        Rectangle {
+                            x: 2
+                            y: 2
+                            height: parent.height - 4
+                            radius: 2
+                            color: toastRow.t.kind === "charging" ? theme.success : toastRow.t.level <= 20 ? theme.danger : theme.text
+                            // Starts empty each time the toast appears and fills to the level.
+                            width: toastRow.visible ? Math.max(2, (shell.width - 4) * Math.max(0, toastRow.t.level) / 100) : 0
+                            Behavior on width { NumberAnimation { duration: 700; easing.type: Easing.OutCubic } }
+                        }
+                    }
+                    Rectangle { x: 28; y: 4; width: 2; height: 6; radius: 1; color: theme.textDim }
+                    Text {
+                        anchors.centerIn: shell
+                        visible: toastRow.t.kind === "charging"
+                        text: "⚡"
+                        color: "white"
+                        font.pixelSize: 11
+                        style: Text.Outline
+                        styleColor: "black"
+                        SequentialAnimation on scale {
+                            running: toastRow.visible && toastRow.t.kind === "charging"
+                            loops: Animation.Infinite
+                            NumberAnimation { to: 1.25; duration: 450; easing.type: Easing.OutQuad }
+                            NumberAnimation { to: 1; duration: 450; easing.type: Easing.InQuad }
+                        }
                     }
                 }
-                Rectangle { x: 28; y: 4; width: 2; height: 6; radius: 1; color: theme.textDim }
-                Text {
-                    anchors.centerIn: shell
-                    visible: toastRow.t.kind === "charging"
-                    text: "⚡"
-                    color: "white"
-                    font.pixelSize: 11
-                    style: Text.Outline
-                    styleColor: "black"
-                    SequentialAnimation on scale {
-                        running: toastRow.visible && toastRow.t.kind === "charging"
-                        loops: Animation.Infinite
-                        NumberAnimation { to: 1.25; duration: 450; easing.type: Easing.OutQuad }
-                        NumberAnimation { to: 1; duration: 450; easing.type: Easing.InQuad }
+
+                    Image { // a Bluetooth device's own icon, white
+                        visible: toastRow.deviceIcon && !toastRow.isPower
+                        anchors.centerIn: parent
+                        width: 22
+                        height: 22
+                        source: toastRow.t.icon ? "image://mime/" + toastRow.t.icon : ""
+                        sourceSize: Qt.size(44, 44)
+                        // Device icons are monochrome theme icons drawn for light backgrounds: render them white.
+                        layer.enabled: visible
+                        layer.effect: MultiEffect { brightness: theme.dark ? 1.0 : -1.0 } // white on dark, black on light
+                    }
+                    LineIcon {
+                        visible: !toastRow.isPower && !toastRow.isCover && !toastRow.deviceIcon && toastRow.t.kind !== "color"
+                        anchors.centerIn: parent
+                        glyph: root.toastGlyphFor(toastRow.t.kind)
+                        sourceSize: Qt.size(18, 18)
+                        color: toastRow.tint
+                    }
+                    CoverArt { // the cover of a new song, or the thumbnail of a file
+                        visible: toastRow.isCover
+                        anchors.fill: parent
+                        radius: 11
+                        source: toastRow.t.art || (toastRow.t.icon ? "image://mime/" + toastRow.t.icon : toastRow.t.kind === "media" ? "image://mime/audio-x-generic" : "")
+                    }
+                    Rectangle { // a picked colour
+                        visible: toastRow.t.kind === "color"
+                        anchors.fill: parent
+                        radius: 11
+                        color: toastRow.t.kind === "color" ? toastRow.t.detail : "transparent"
+                        border.width: 1.5
+                        border.color: theme.outline
+                    }
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.alignment: Qt.AlignVCenter
+                    spacing: 1
+                    Text {
+                        Layout.fillWidth: true
+                        text: toastRow.t.title
+                        color: root.textPrimary
+                        font.pixelSize: 14
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: text !== ""
+                        text: toastRow.t.kind === "color" ? "" : toastRow.t.kind === "bluetooth" && toastRow.t.level >= 0
+                              ? toastRow.t.detail + " · " + toastRow.t.level + "%" : toastRow.t.detail
+                        color: toastRow.t.kind === "charging" ? theme.success
+                             : toastRow.t.kind === "lowbattery" ? theme.danger
+                             : toastRow.t.kind === "bluetooth" && toastRow.t.detail !== "Disconnected" ? root.accent
+                             : root.textSecondary
+                        font.pixelSize: 12
+                        elide: Text.ElideRight
+                    }
+                }
+                Equalizer {
+                    visible: toastRow.t.kind === "media"
+                    Layout.alignment: Qt.AlignVCenter
+                    color: toastRow.tint
+                    maxHeight: 16
+                }
+                Rectangle { // more are waiting
+                    visible: root.toastQueue.length > 0
+                    Layout.alignment: Qt.AlignVCenter
+                    implicitWidth: moreText.implicitWidth + 12
+                    implicitHeight: 18
+                    radius: 9
+                    color: Qt.rgba(1, 1, 1, 0.12)
+                    Text {
+                        id: moreText
+                        anchors.centerIn: parent
+                        text: "+" + root.toastQueue.length
+                        color: root.textSecondary
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
                     }
                 }
             }
-            Image {
-                // Device icons only (Bluetooth): media/file/color toasts bring their own visual.
-                visible: !toastRow.isPower && ["media", "file", "color"].indexOf(toastRow.t.kind) < 0
-                Layout.preferredWidth: 22
-                Layout.preferredHeight: 22
-                source: toastRow.t.icon ? "image://mime/" + toastRow.t.icon : ""
-                sourceSize: Qt.size(44, 44)
-                // Device icons are monochrome theme icons drawn for light backgrounds: render them white.
-                layer.enabled: true
-                layer.effect: MultiEffect { brightness: theme.dark ? 1.0 : -1.0 } // white on dark, black on light
-            }
-            Rectangle {
-                visible: toastRow.t.kind === "color"
-                Layout.preferredWidth: 24
-                Layout.preferredHeight: 24
-                radius: theme.radiusMd
-                color: toastRow.t.kind === "color" ? toastRow.t.detail : "transparent"
-                border.width: 1.5
-                border.color: theme.outline
-            }
-            Rectangle {
-                visible: toastRow.t.kind === "media" || toastRow.t.kind === "file"
-                Layout.preferredWidth: 28
-                Layout.preferredHeight: 28
-                radius: 7
-                color: theme.surface
-                clip: true
-                Image {
-                    anchors.fill: parent
-                    source: toastRow.t.art || (toastRow.t.icon ? "image://mime/" + toastRow.t.icon : "image://mime/audio-x-generic")
-                    cache: false
-                    sourceSize: Qt.size(56, 56)
-                    fillMode: Image.PreserveAspectCrop
+            Rectangle { // how long it stays
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.leftMargin: island.shoulder + 16
+                anchors.rightMargin: island.shoulder + 16
+                anchors.bottomMargin: 5
+                height: 2
+                radius: 1
+                color: Qt.rgba(1, 1, 1, 0.1)
+                Rectangle {
+                    width: parent.width * root.toastLeft
+                    height: parent.height
+                    radius: 1
+                    color: toastRow.tint
                 }
-            }
-            Text {
-                Layout.fillWidth: true
-                text: toastRow.t.title
-                color: root.textPrimary
-                font.pixelSize: 13
-                font.weight: Font.DemiBold
-                elide: Text.ElideRight
-            }
-            Text {
-                Layout.maximumWidth: toastRow.t.kind === "media" || toastRow.t.kind === "file" ? 130 : 150
-                elide: Text.ElideRight
-                text: toastRow.t.kind === "bluetooth" && toastRow.t.level >= 0
-                      ? toastRow.t.detail + " · " + toastRow.t.level + "%" : toastRow.t.detail
-                color: toastRow.t.kind === "charging" ? theme.success
-                     : toastRow.t.kind === "lowbattery" ? theme.danger
-                     : toastRow.t.kind === "media" || toastRow.t.kind === "file" ? root.textSecondary
-                     : toastRow.t.detail === "Disconnected" ? root.textSecondary
-                     : toastRow.t.kind === "bluetooth" ? root.accent : root.textPrimary
-                font.pixelSize: 13
-                font.weight: Font.Medium
-            }
-            Equalizer {
-                visible: toastRow.t.kind === "media"
-                Layout.alignment: Qt.AlignVCenter
-                maxHeight: 16
             }
         }
 
