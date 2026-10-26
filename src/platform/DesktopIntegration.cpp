@@ -161,15 +161,20 @@ void DesktopIntegration::moveDock(QWindow *window, const QString &side)
 
 void DesktopIntegration::setAboveBar(QWindow *notchWindow, bool above)
 {
+    if (!notchWindow)
+        return;
 #ifdef NOTCH_HAVE_LAYERSHELL
     Q_UNUSED(above)
-    if (notchWindow && QGuiApplication::platformName().startsWith(QLatin1String("wayland")))
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
         if (auto *ls = LayerShellQt::Window::get(notchWindow))
             ls->setLayer(LayerShellQt::Window::LayerOverlay); // always: Plasma's panel covers the Top layer too
-#else
-    Q_UNUSED(notchWindow)
-    Q_UNUSED(above)
+        return;
+    }
 #endif
+    // Windows and X11: two always-on-top windows stack by who was shown or raised last, so the bar can end up over
+    // the notch (its menu then cannot be reached). Put the notch back on top; it takes no focus.
+    if (above)
+        notchWindow->raise();
 }
 
 void DesktopIntegration::setKeyboardInteractive(QWindow *window, bool interactive)

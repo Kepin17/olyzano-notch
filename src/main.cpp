@@ -389,6 +389,17 @@ int main(int argc, char *argv[])
         window->show();
         windows.insert(screen, window);
         QObject::connect(&panelBar, &PanelBar::changed, window, [window, &desktop, &panelBar] { desktop.setAboveBar(window, panelBar.enabled()); });
+        if (!QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
+            // The bar can slip over the notch again (a full-screen app closing, Windows re-sorting topmost windows):
+            // look now and then, and leave it alone while one of the notch's own menus is open.
+            auto *keepAbove = new QTimer(window);
+            keepAbove->setInterval(2000);
+            QObject::connect(keepAbove, &QTimer::timeout, window, [window, &desktop, &panelBar] {
+                if (panelBar.enabled() && window->isVisible() && !window->property("anyMenu").toBool())
+                    desktop.setAboveBar(window, true);
+            });
+            keepAbove->start();
+        }
 
         auto *dockView = qobject_cast<QQuickWindow *>(dockWindow.create());
         if (!dockView) {
