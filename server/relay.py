@@ -21,6 +21,22 @@ from urllib.parse import urlparse
 HERE = os.path.dirname(os.path.abspath(__file__))
 PAGE = open(os.path.join(HERE, "page.html"), "rb").read()
 JOIN_PAGE = open(os.path.join(HERE, "join.html"), "rb").read()
+
+
+def note_page(title, text):
+    """A small, plain page for a person who opened the server's address in a browser (not a share link)."""
+    return ("""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex"><title>%s</title><style>
+:root{color-scheme:light dark}body{margin:0;min-height:100vh;display:grid;place-items:center;font:16px/1.5 system-ui,sans-serif;
+background:#101114;color:#e8e9ec}main{max-width:26rem;padding:2rem;text-align:center}
+h1{font-size:1.25rem;margin:0 0 .5rem}p{margin:.25rem 0;color:#a3a7b0}@media(prefers-color-scheme:light){body{background:#f4f5f7;color:#1c1d21}p{color:#5b606b}}
+</style></head><body><main><h1>%s</h1><p>%s</p></main></body></html>""" % (title, title, text)).encode()
+
+
+LANDING = note_page("Notch share relay", "This server holds files that people share from Olyzano Notch. "
+                    "Open the link you were sent; there is nothing to see at this address.")
+NOT_FOUND_PAGE = note_page("Nothing here", "This address does not lead to a share. The link may be mistyped, or the share has expired.")
+NOTE_CSP = "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,39}$")
 PIN_MAX_FAILS, PIN_LOCK_SECONDS = 5, 600
@@ -312,8 +328,13 @@ class Handler(BaseHTTPRequestHandler):
         return info is not None and (member["id"] == OWNER or info.get("owner", OWNER) == member["id"])
 
     # ---- routes -------------------------------------------------------------------------
+    def wants_page(self):
+        return "text/html" in self.headers.get("Accept", "")
+
     def do_GET(self):
         path = urlparse(self.path).path
+        if path in ("/", "/index.html"):  # someone opened the server's address in a browser
+            return self.reply(200, LANDING, "text/html; charset=utf-8", {"Content-Security-Policy": NOTE_CSP})
         if path == "/join":
             csp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'none'"
             return self.reply(200, JOIN_PAGE, "text/html; charset=utf-8", {"Content-Security-Policy": csp})
@@ -339,6 +360,8 @@ class Handler(BaseHTTPRequestHandler):
                                     "expires_at": info["expires_at"]})
         m = re.match(r"^/s/([^/]+)(/meta|/blob)?$", path)
         if not m or not ID_RE.match(m.group(1)):
+            if self.wants_page() and not path.startswith("/api/"):  # a browser: a page, not JSON
+                return self.reply(404, NOT_FOUND_PAGE, "text/html; charset=utf-8", {"Content-Security-Policy": NOTE_CSP})
             return self.reply(404, {"error": "not found"})
         sid, part = m.group(1), m.group(2)
         info = self.store.meta(sid)
