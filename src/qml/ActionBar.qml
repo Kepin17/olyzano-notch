@@ -15,15 +15,17 @@ RowLayout {
     signal newNote()
     property bool lyricsOn: false
     property bool colorAvailable: false
+    property int tasksBadge: 0 // overdue tasks
     signal openShares()
     signal toggleLyrics()
     spacing: 6
     // With Music, Color and Sharing all there, the words of Note and Add no longer fit the panel: they shrink to icons.
-    readonly property bool tight: 2 + (musicAvailable ? 1 : 0) + (colorAvailable ? 1 : 0) + (shareAvailable ? 1 : 0) + (page === "shelf" ? 2 : 0) >= 7
+    readonly property bool tight: 3 + (musicAvailable ? 1 : 0) + (colorAvailable ? 1 : 0) + (shareAvailable ? 1 : 0) + (page === "shelf" ? 2 : 0) >= 7
 
     PillButton { text: "Files"; iconName: "folder"; checked: bar.page === "shelf"; onClicked: bar.pick("shelf") }
     PillButton { visible: bar.musicAvailable; text: "Music"; iconName: "music"; checked: bar.page === "music"; onClicked: bar.pick("music") }
     PillButton { text: "Timer"; iconName: "timer"; checked: bar.page === "timer"; onClicked: bar.pick("timer") }
+    PillButton { text: bar.tasksBadge > 0 ? "Tasks · " + bar.tasksBadge : "Tasks"; iconName: "check"; checked: bar.page === "tasks"; onClicked: bar.pick("tasks") }
     PillButton { visible: bar.colorAvailable; text: "Color"; iconName: "palette"; checked: bar.page === "color"; onClicked: bar.pick("color") }
     PillButton { visible: bar.shareAvailable; text: bar.shareBusy ? "Sharing" : "Share"; iconName: "share"; checked: bar.shareBusy; onClicked: bar.openShares() }
     Item { Layout.fillWidth: true }

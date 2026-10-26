@@ -62,7 +62,7 @@ Window {
     readonly property bool dragOver: dragLive && (edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver)
     // Once it has started to open it stays open a moment, so a hover that blinks while the panel grows under a
     // still pointer (the input region changes with it) can't shut it again.
-    Timer { id: holdTimer; interval: 900 }
+    Timer { id: holdTimer; interval: 450 }
     // `notch --debug-hover` prints what the pointer does at the top edge.
     readonly property bool debugHover: Qt.application.arguments.indexOf("--debug-hover") >= 0
     function dbg(what) { if (debugHover) console.log("hover", Date.now() % 100000, what, "mode=" + mode, "open=" + open, "dwelled=" + dwelled) }
@@ -87,7 +87,7 @@ Window {
                                       : toast.kind === "bluetooth" ? accent
                                       : toast.kind === "lowbattery" ? theme.danger
                                       : toast.kind === "media" ? theme.media
-                                      : toast.kind === "update" ? accent
+                                      : toast.kind === "update" || toast.kind === "task" ? accent
                                       : toast.kind === "file" ? theme.info
                                       : toast.kind === "timer" ? theme.accent
                                       : toast.kind === "call" || toast.kind === "phone" || toast.kind === "wellbeing" ? theme.success
@@ -99,6 +99,13 @@ Window {
 
     // ---- Doomscrolling: quiet in a game or on a call ----
     Binding { target: doomscroll; property: "quiet"; value: gaming.active || root.call !== null }
+
+    // ---- Tasks: a heads-up 15 minutes before a deadline and a note when it comes ----
+    Connections {
+        target: tasks
+        function onTaskWarning(title) { root.showToast("task", title, "Due in 15 minutes", "check", 6000) }
+        function onTaskDue(title) { root.showToast("task", title, "Deadline now", "check", 8000) }
+    }
 
     // ---- A new version: once, and not in the middle of a game, a call or a timer ----
     Binding { target: updates; property: "quiet"; value: gaming.active || root.call !== null || activities.timerKind !== "" }
@@ -141,6 +148,7 @@ Window {
     // The capsule stays up whatever is in front (a maximised browser playing music used to hide it); only the
     // plain idle clock gives way to a window that reaches the top edge.
     readonly property bool idleShown: capsuleMode === "capsule" || (activities.idleClock && !idleCovered)
+    readonly property bool taskShown: activities.taskInCapsule && tasks.hasNext
     property date idleNow: new Date()
     Timer {
         interval: 5000
@@ -169,7 +177,7 @@ Window {
     // margins + wave + gaps + the app name + the time + the microphone and Discord icons, and a little spare
     readonly property real capOverhead: 2 * 24 + 22 + 3 * 10 + capTimeSize.advanceWidth + (capSource !== "" ? capSourceSize.advanceWidth + 10 : 0)
                                         + (activities.micApps.length > 0 ? 25 : 0) + (activities.cameraApps.length > 0 ? 25 : 0) + (activities.discordState !== "off" ? 24 : 0) + (sharingNow ? 24 : 0) + 16
-    readonly property real capMaxWidth: root.width - 40
+    readonly property real capMaxWidth: (root.width - 40) / activities.capsuleScale
     readonly property bool capWraps: capLyric && capLineSize.advanceWidth + capOverhead > capMaxWidth
     readonly property real capWidth: !capLyric ? 400 : capWraps ? capMaxWidth : Math.max(400, capLineSize.advanceWidth + capOverhead)
     Timer { id: pauseTimer; interval: 120000; onTriggered: root.musicStale = true }
@@ -280,7 +288,12 @@ Window {
     // Settings and the share window are built the first time they are needed, not at start-up (memory).
     function settingsPage() { settingsLoader.active = true; return settingsLoader.item }
     function sharePopup() { shareLoader.active = true; return shareLoader.item }
-    function debugSettings(section) { settingsPage().category = section } // `notch --shot-settings file.png <section>`
+    function debugSettings(section) { // "general" or "general:300" (scrolled down by that much)
+        const parts = section.split(":")
+        settingsPage().category = parts[0]
+        if (parts.length > 1) settingsPage().scrollTo(Number(parts[1]))
+    }
+    function _unusedDebugSettings(section) { settingsPage().category = section } // `notch --shot-settings file.png <section>`
     function debugShare() { sharePopup().openFor([]) } // `notch --shot-page file.png share`: the share window, for a picture
     function showShares() {
         pinned = true // opens the panel and keeps it while the shares are looked at
@@ -397,6 +410,10 @@ Window {
             closeTimer.stop()
             if ((mode === "toast" && toast && toast.kind === "media") || (mode === "idle" && musicShown))
                 page = "music" // pointing at the now-playing alert or the capsule opens just the player
+            else if (mode === "toast" && toast && toast.kind === "task")
+                page = "tasks" // pointing at a task reminder opens the list
+            else if (mode === "peek" && live && live.kind === "timer")
+                page = "timer" // and the running timer's pill opens the timer
             open = true
         } else {
             closeTimer.restart()
@@ -424,7 +441,7 @@ Window {
     }
     onDragOverChanged: if (dragOver) page = "shelf" // a file being dragged in: show where it lands
     onAnyMenuChanged: updateMask()
-    Timer { id: closeTimer; interval: 380; onTriggered: root.open = false }
+    Timer { id: closeTimer; interval: 110; onTriggered: root.open = false }
     // Dwell before revealing, so flinging the mouse up to a tab doesn't pop the panel.
     Timer { id: dwellTimer; interval: 160; onTriggered: root.dwelled = true }
 
@@ -441,8 +458,9 @@ Window {
             // frame is what made opening lag on Windows. A little slack while it moves, so the spring's overshoot
             // is not clipped; maskSettle tightens it once the island has come to rest.
             const slack = maskSettle.running ? 24 : 0
-            const w = Math.max(island.width, island.targetWidth) + 2 * slack
-            const h = Math.max(island.height, island.targetHeight, edge.height) + slack
+            const k = root.mode === "idle" ? activities.capsuleScale : 1
+            const w = Math.max(island.width, island.targetWidth) * k + 2 * slack
+            const h = Math.max(island.height, island.targetHeight, edge.height) * k + slack
             desktop.setInputRegion(root, Qt.rect((width - w) / 2, 0, w, h))
         }
     }
@@ -666,25 +684,42 @@ Window {
         // Where the island is heading; width and height follow it with the springs below.
         readonly property real targetWidth: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 380
              : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
-             : root.mode === "idle" ? (root.musicShown ? root.capWidth : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
+             : root.mode === "idle" ? (root.musicShown ? root.capWidth : root.taskShown ? 390 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         readonly property real targetHeight: root.mode === "open" ? panel.implicitHeight + (root.dragOver ? 8 : 0)
               : root.mode === "prompt" ? 92 : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? (root.capWraps ? 58 : 38) : 26) : 0
         width: targetWidth
         height: targetHeight
         focus: true
+        // The capsule's size is the person's choice (Settings); everything in it scales together, glued to the top edge.
+        scale: root.mode === "idle" ? activities.capsuleScale : 1
+        transformOrigin: Item.Top
+        Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
         readonly property real shoulder: Math.min(10, Math.max(0, height) / 3)
         readonly property real corner: Math.min(24, Math.max(0, height - shoulder))
         readonly property bool closing: root.mode === "hidden"
+        // How far the background is from its target size. The open panel's content appears only once the
+        // background is nearly full (revealed), so it is never seen outside it; moving to another page of the
+        // open panel resizes it again without hiding the content.
+        readonly property real progress: Math.max(0, Math.min(1, Math.min(targetWidth > 0 ? width / targetWidth : 1,
+                                                                          targetHeight > 0 ? height / targetHeight : 1)))
+        property bool revealed: false
+        Component.onCompleted: revealed = root.mode === "open"
+        onProgressChanged: if (root.mode === "open" && progress >= 0.85) revealed = true
+        Connections {
+            target: root
+            function onModeChanged() { island.revealed = root.mode === "open" && island.progress >= 0.85 }
+        }
 
         // Height is stiffer than width: the drop falls first, then spreads and settles.
         // Windows redraws a layered window less smoothly than KWin does, so there the spring rings less.
         readonly property real openDamping: Qt.platform.os === "windows" ? 0.55 : 0.32
         // A stiffer spring settles a few tens of ms sooner; epsilon 0.4 ends the tail of the animation earlier (invisible at that size).
-        Behavior on height { SpringAnimation { spring: 5.5; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : island.openDamping; epsilon: 0.4 } }
+        Behavior on height { SpringAnimation { spring: island.closing ? 7 : 5.5; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : island.openDamping; epsilon: 0.4 } }
         Behavior on width { SpringAnimation { spring: island.closing ? 6 : 3.4; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : island.openDamping; epsilon: 0.4 } }
         onTargetWidthChanged: root.maskMoving()
         onTargetHeightChanged: root.maskMoving()
+        Connections { target: activities; function onSettingsChanged() { root.maskMoving() } }
 
         Keys.onReleased: (e) => {
             if (e.key === Qt.Key_Space && !e.isAutoRepeat && quickLookCard.visible) {
@@ -976,7 +1011,16 @@ Window {
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
             }
-            Item { Layout.fillWidth: true }
+            Text { // the next task and what is left to it
+                visible: root.taskShown
+                Layout.fillWidth: true
+                Layout.leftMargin: 6
+                text: "• " + tasks.nextTitle + " · " + tasks.nextRemaining
+                color: tasks.nextState === "overdue" ? theme.danger : tasks.nextState === "soon" ? theme.accent : root.textSecondary
+                font.pixelSize: 11
+                elide: Text.ElideRight
+            }
+            Item { Layout.fillWidth: true; visible: !root.taskShown }
             DiscordBadge { Layout.alignment: Qt.AlignVCenter }
             // Microphone: orange while recording, red and struck through while muted.
             LineIcon {
@@ -1136,9 +1180,9 @@ Window {
             width: Math.max(0, island.width - 2 * island.shoulder)
             height: Math.max(0, island.height)
             clip: true
-            opacity: root.mode === "open" ? 1 : 0
+            opacity: root.mode === "open" && island.revealed ? 1 : 0
             visible: opacity > 0
-            Behavior on opacity { NumberAnimation { duration: root.mode === "open" ? 280 : 90; easing.type: Easing.OutCubic } }
+            Behavior on opacity { NumberAnimation { duration: root.mode === "open" ? 140 : 90; easing.type: Easing.OutCubic } }
 
             ColumnLayout {
                 id: panel
@@ -1164,7 +1208,7 @@ Window {
                         text: root.selecting ? root.selection.length + " selected"
                             : root.page === "settings" ? "Settings" : root.page === "preview" ? root.preview.name
                             : root.page === "note" ? (root.noteId !== "" ? "Edit note" : "New note")
-                            : root.page === "timer" ? "Timer" : root.page === "music" ? "Now playing" : root.page === "color" ? "Color picker" : "Olyzano Notch"
+                            : root.page === "timer" ? "Timer" : root.page === "tasks" ? "Tasks" : root.page === "music" ? "Now playing" : root.page === "color" ? "Color picker" : "Olyzano Notch"
                         color: root.textPrimary
                         font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
                         font.pixelSize: 15
@@ -1335,7 +1379,7 @@ Window {
                         }
                     }
                     IconButton {
-                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "color") && !root.selecting
+                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color") && !root.selecting
                         iconName: "gamepad"
                         checked: gaming.enabled
                         Accessible.name: gaming.enabled ? "Gaming mode is on: turn it off" : "Gaming mode: keep away from full-screen games"
@@ -1346,7 +1390,7 @@ Window {
                         }
                     }
                     IconButton {
-                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "color") && !root.selecting
+                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color") && !root.selecting
                         iconName: "gear"
                         Accessible.name: "Settings"
                         onClicked: root.page = "settings"
@@ -1362,7 +1406,7 @@ Window {
 
                 // What to look at: one section at a time. Dropping files is an action too (Add).
                 ActionBar {
-                    visible: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "color")
+                    visible: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color")
                     Layout.fillWidth: true
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
@@ -1370,6 +1414,7 @@ Window {
                     musicAvailable: media.active
                     shareAvailable: share.count + nearby.count > 0
                     shareBusy: share.activeCount + nearby.activeCount > 0
+                    tasksBadge: tasks.overdueCount
                     onPick: (target) => root.page = target
                     colorAvailable: colorPicker.supported || notch.recentColors.length > 0
                     onAddFiles: addDialog.open()
@@ -1824,6 +1869,10 @@ Window {
                 }
 
                 TimerPage {
+                    shell: root
+                }
+
+                TasksPage {
                     shell: root
                 }
 

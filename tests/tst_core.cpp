@@ -21,6 +21,7 @@
 #include "platform/KaraokeModel.h"
 #include "platform/CalendarModel.h"
 #include "platform/DoomscrollModel.h"
+#include "platform/TasksModel.h"
 #include "platform/UpdateModel.h"
 #include "platform/LauncherModel.h"
 #include "platform/ColorFormat.h"
@@ -521,6 +522,62 @@ private slots:
         QCOMPARE(MediaNames::processName(QStringLiteral("Spotify.exe")), QStringLiteral("spotify"));
         QCOMPARE(MediaNames::displayName(QStringLiteral("Discord.exe")), QStringLiteral("Discord"));
         QCOMPARE(MediaNames::processName(QStringLiteral("com.squirrel.Discord.Discord")), QStringLiteral("discord"));
+    }
+
+    void tasksParseAndSort()
+    {
+        using namespace TasksModel;
+        const QDateTime now(QDate(2026, 11, 2), QTime(10, 0));
+        QCOMPARE(parseDue("17:30", now), QDateTime(QDate(2026, 11, 2), QTime(17, 30)));
+        QCOMPARE(parseDue("9:00", now), QDateTime(QDate(2026, 11, 3), QTime(9, 0))); // already past today
+        QCOMPARE(parseDue("tomorrow", now), QDateTime(QDate(2026, 11, 3), QTime(9, 0)));
+        QCOMPARE(parseDue("today 18:00", now), QDateTime(QDate(2026, 11, 2), QTime(18, 0)));
+        QCOMPARE(parseDue("in 30m", now), now.addSecs(1800));
+        QCOMPARE(parseDue("in 2 h", now), now.addSecs(7200));
+        QCOMPARE(parseDue("2026-12-01 08:15", now), QDateTime(QDate(2026, 12, 1), QTime(8, 15)));
+        QVERIFY(!parseDue("25:00", now).isValid());
+        QVERIFY(!parseDue("soon", now).isValid());
+        const Quick q = parseQuick("Buy milk tomorrow 17:00", now);
+        QCOMPARE(q.title, QStringLiteral("Buy milk"));
+        QCOMPARE(q.due, QDateTime(QDate(2026, 11, 3), QTime(17, 0)));
+        QCOMPARE(parseQuick("Call Ana @ in 45m", now).title, QStringLiteral("Call Ana"));
+        QVERIFY(!parseQuick("Water the plants", now).due.isValid());
+        QCOMPARE(parseQuick("Read 17:30", now).title, QStringLiteral("Read"));
+        Task a{"a", "late", now.addSecs(7200)}, b{"b", "none", {}}, c{"c", "soon", now.addSecs(600)}, d{"d", "done", now.addSecs(60)};
+        d.done = true;
+        const QList<Task> s = sorted({a, b, c, d});
+        QCOMPARE(s[0].id, QStringLiteral("c"));
+        QCOMPARE(s[1].id, QStringLiteral("a"));
+        QCOMPARE(s[2].id, QStringLiteral("b"));
+        QCOMPARE(s[3].id, QStringLiteral("d"));
+        QCOMPARE(nextOpen({a, b, c, d}), 2);
+        QCOMPARE(int(dueState(c, now)), int(DueState::Soon));
+        QCOMPARE(int(dueState(a, now)), int(DueState::Later));
+        QCOMPARE(int(dueState(d, now)), int(DueState::None));
+        QCOMPARE(remaining(now.addSecs(1500), now), QStringLiteral("in 25 min"));
+        QCOMPARE(remaining(now.addSecs(-7200), now), QStringLiteral("overdue 2 h"));
+        QCOMPARE(remaining(QDateTime(QDate(2026, 11, 3), QTime(9, 0)), now), QStringLiteral("tomorrow 09:00"));
+        QCOMPARE(fromJson(toJson({a, b})).size(), 2);
+        QCOMPARE(fromJson(toJson({a})).first().due, a.due);
+    }
+
+    void tasksRemindOnce()
+    {
+        using namespace TasksModel;
+        const QDateTime now(QDate(2026, 11, 2), QTime(10, 0));
+        QList<Task> list{Task{"a", "report", now.addSecs(20 * 60)}, Task{"old", "ancient", now.addDays(-3)}};
+        QVERIFY(fire(list, now).size() == 0 + 0); // the old one is settled quietly, the other is 20 minutes away
+        QVERIFY(list[1].notified);
+        QCOMPARE(nextWake(list, now), now.addSecs(5 * 60)); // 15 minutes before
+        const QList<Event> soon = fire(list, now.addSecs(6 * 60));
+        QCOMPARE(soon.size(), 1);
+        QVERIFY(!soon[0].now);
+        QCOMPARE(fire(list, now.addSecs(7 * 60)).size(), 0); // once
+        const QList<Event> due = fire(list, now.addSecs(21 * 60));
+        QCOMPARE(due.size(), 1);
+        QVERIFY(due[0].now);
+        QCOMPARE(fire(list, now.addSecs(22 * 60)).size(), 0);
+        QVERIFY(!nextWake(list, now.addSecs(22 * 60)).isValid());
     }
 
     void contributorsSkipBots()

@@ -33,7 +33,7 @@ void DesktopIntegration::attach(QWindow *window)
 #ifdef NOTCH_LAYERSHELL_SET_SCREEN
             ls->setScreen(window->screen());
 #endif
-            ls->setLayer(LayerShellQt::Window::LayerTop);
+            ls->setLayer(LayerShellQt::Window::LayerOverlay); // Plasma's own top panel sits above the Top layer and would hide the capsule
             ls->setAnchors(LayerShellQt::Window::AnchorTop);
             ls->setExclusiveZone(-1); // sit on the real screen edge, over any top panel
             ls->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityOnDemand);
@@ -162,9 +162,10 @@ void DesktopIntegration::moveDock(QWindow *window, const QString &side)
 void DesktopIntegration::setAboveBar(QWindow *notchWindow, bool above)
 {
 #ifdef NOTCH_HAVE_LAYERSHELL
+    Q_UNUSED(above)
     if (notchWindow && QGuiApplication::platformName().startsWith(QLatin1String("wayland")))
         if (auto *ls = LayerShellQt::Window::get(notchWindow))
-            ls->setLayer(above ? LayerShellQt::Window::LayerOverlay : LayerShellQt::Window::LayerTop);
+            ls->setLayer(LayerShellQt::Window::LayerOverlay); // always: Plasma's panel covers the Top layer too
 #else
     Q_UNUSED(notchWindow)
     Q_UNUSED(above)

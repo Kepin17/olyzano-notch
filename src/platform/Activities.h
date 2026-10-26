@@ -52,6 +52,10 @@ class Activities : public QObject
     // How the notch sits on the screen: "hidden" (a line until the pointer rests there), "capsule" (a small
     // capsule always shown, like a Dynamic Island) or "open" (the panel stays open).
     Q_PROPERTY(QString capsuleMode READ capsuleMode WRITE setCapsuleMode NOTIFY settingsChanged)
+    // The spectrum beside the song: "bars" | "thin" | "dots" | "wave" | "pulse" | "off"; the capsule's size, 0.8 to 1.3.
+    Q_PROPERTY(QString eqStyle READ eqStyle WRITE setEqStyle NOTIFY settingsChanged)
+    Q_PROPERTY(qreal capsuleScale READ capsuleScale WRITE setCapsuleScale NOTIFY settingsChanged)
+    Q_PROPERTY(bool taskInCapsule READ taskInCapsule WRITE setTaskInCapsule NOTIFY settingsChanged) // the next task in the idle capsule
     // Settings
     Q_PROPERTY(bool showDownloads READ showDownloads WRITE setShowDownloads NOTIFY settingsChanged)
     Q_PROPERTY(bool privacyIndicators READ privacyIndicators WRITE setPrivacyIndicators NOTIFY settingsChanged)
@@ -105,6 +109,12 @@ public:
     }
     bool idleClock() const { return m_settings.value(QStringLiteral("idleClock"), true).toBool(); }
     void setIdleClock(bool on);
+    QString eqStyle() const;
+    void setEqStyle(const QString &style);
+    qreal capsuleScale() const { return qBound(0.8, m_settings.value(QStringLiteral("capsuleScale"), 1.0).toDouble(), 1.3); }
+    void setCapsuleScale(qreal scale) { store(QStringLiteral("capsuleScale"), qRound(qBound(0.8, scale, 1.3) * 100) / 100.0); }
+    bool taskInCapsule() const { return m_settings.value(QStringLiteral("taskInCapsule"), true).toBool(); }
+    void setTaskInCapsule(bool on) { store(QStringLiteral("taskInCapsule"), on); }
     QString capsuleMode() const;
     void setCapsuleMode(const QString &mode);
 

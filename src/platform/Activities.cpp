@@ -108,6 +108,17 @@ void Activities::setIdleClock(bool on)
     store(QStringLiteral("idleClock"), on);
 }
 
+QString Activities::eqStyle() const
+{
+    const QString style = m_settings.value(QStringLiteral("eqStyle"), QStringLiteral("bars")).toString();
+    return QStringList{"bars", "thin", "dots", "wave", "pulse", "off"}.contains(style) ? style : QStringLiteral("bars");
+}
+
+void Activities::setEqStyle(const QString &style)
+{
+    store(QStringLiteral("eqStyle"), style);
+}
+
 QString Activities::capsuleMode() const
 {
 #ifdef Q_OS_WIN

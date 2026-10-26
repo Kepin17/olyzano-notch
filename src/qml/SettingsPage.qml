@@ -34,7 +34,7 @@ RowLayout {
     readonly property var index: [
         ["about", "Updates", "update upgrade new version release check download latest github notify"], ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
         ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Sounds", "sound effects volume quiet mute"],
-        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"],
+        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"],
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
         ["panel", "Transparency and blur", "glass opacity bar"], ["panel", "What the bar shows", "app name date seconds battery percentage"],
         ["panel", "Quick Settings", "wifi bluetooth volume brightness power click hover"],
@@ -140,6 +140,7 @@ RowLayout {
     Rectangle { Layout.fillHeight: true; implicitWidth: 1; color: theme.outline }
 
     // ---- the chosen section ----
+    function scrollTo(y) { scroller.contentItem.contentY = y } // for screenshots
     ScrollView {
         id: scroller
         Layout.fillWidth: true
@@ -224,6 +225,49 @@ RowLayout {
                         : activities.capsuleMode === "open" ? "The panel stays open at the top of the screen."
                         : "Only a thin line shows at the top edge. Rest the pointer there to open Olyzano Notch."
                 }
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 6
+                Text { text: "Spectrum beside the song"; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Repeater {
+                            model: [["bars", "Bars"], ["thin", "Thin"], ["dots", "Dots"], ["wave", "Wave"], ["pulse", "Pulse"], ["off", "Off"]]
+                            PillButton {
+                                required property var modelData
+                                text: modelData[1]
+                                checked: activities.eqStyle === modelData[0]
+                                onClicked: activities.eqStyle = modelData[0]
+                            }
+                        }
+                    }
+                    Rectangle {
+                        Layout.preferredWidth: 64; Layout.preferredHeight: 34
+                        radius: 17
+                        color: "#000000"
+                        border.width: 1; border.color: theme.outline
+                        Equalizer { anchors.centerIn: parent; preview: true; barWidth: 3; maxHeight: 18 }
+                    }
+                }
+            }
+            DockSlider {
+                title: "Capsule size"
+                valueText: Math.round(activities.capsuleScale * 100) + "%"
+                from: 80; to: 130; stepSize: 5
+                value: Math.round(activities.capsuleScale * 100)
+                onMoved: activities.capsuleScale = value / 100
+            }
+            SettingToggle {
+                title: "Next task in the capsule"
+                caption: "While nothing is playing and no timer runs, the capsule shows your next task and how long is left."
+                checked: activities.taskInCapsule
+                onToggled: activities.taskInCapsule = !activities.taskInCapsule
             }
             }
 

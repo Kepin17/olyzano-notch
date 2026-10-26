@@ -15,6 +15,7 @@
 #include "platform/GamingMode.h"
 #include "platform/AppMenu.h"
 #include "platform/Doomscroll.h"
+#include "platform/Tasks.h"
 #include "platform/Updates.h"
 #include "platform/Launcher.h"
 #include "platform/TrayHost.h"
@@ -219,6 +220,7 @@ int main(int argc, char *argv[])
     TrayHost trayHost;
     Launcher launcher(&dock);
     Doomscroll doomscroll(&dock, &media, &wellbeing);
+    Tasks tasks;
     Updates updates;
     if (const int i = app.arguments().indexOf(QStringLiteral("--dump-menu")); i >= 0 && i + 1 < app.arguments().size()) { // the menu of a process, for checking
         fputs(appMenu.dump(app.arguments().at(i + 1).toLongLong()).constData(), stdout);
@@ -328,6 +330,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("launcher"), &launcher);
     engine.rootContext()->setContextProperty(QStringLiteral("doomscroll"), &doomscroll);
     engine.rootContext()->setContextProperty(QStringLiteral("updates"), &updates);
+    engine.rootContext()->setContextProperty(QStringLiteral("tasks"), &tasks);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
 
     // One Notch per monitor, following hotplug.
@@ -442,7 +445,7 @@ int main(int argc, char *argv[])
             QTimer::singleShot(900, &app, [bar, &app, path] { bar->grabWindow().save(path); app.quit(); });
         });
     }
-    // `notch --shot-page file.png <timer|color|shelf>`: the open panel on that page, the same way.
+    // `notch --shot-page file.png <timer|color|shelf|tasks|capsule>`: the open panel on that page, the same way.
     if (const int i = app.arguments().indexOf(QStringLiteral("--shot-page")); i >= 0 && i + 2 < app.arguments().size()) {
         const QString path = app.arguments().at(i + 1), page = app.arguments().at(i + 2);
         QTimer::singleShot(1200, &app, [&windows, &app, &activities, &doomscroll, path, page] {
@@ -455,6 +458,8 @@ int main(int argc, char *argv[])
             }
             if (page == QLatin1String("timer-run")) // a 25 minute timer running, to see the ring
                 activities.startTimer(25 * 60, QStringLiteral("Tea"));
+            if (page == QLatin1String("capsule")) // the closed notch as it rests (set capsuleMode=capsule in activities.conf)
+                return QTimer::singleShot(1800, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
             w->setProperty("pinned", true);
             if (page == QLatin1String("share")) {
                 QMetaObject::invokeMethod(w, "debugShare");
