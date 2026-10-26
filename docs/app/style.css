@@ -157,7 +157,7 @@ body.dragging .empty,body.dragging .island{border-color:var(--accent);background
 
 /* timer, colour, calendar */
 .ring{position:relative;width:200px;height:200px;margin:6px auto}
-.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg);display:block}
 .ring .time{position:absolute;inset:0;display:grid;place-items:center;font:300 38px var(--mono);letter-spacing:.02em}
 .ring .time small{display:block;font:500 11px var(--sans);color:var(--textDim);text-align:center;margin-top:-6px}
 .presets{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}

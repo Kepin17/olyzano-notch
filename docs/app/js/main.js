@@ -115,6 +115,7 @@ on("stretch", () => import("./timer.js").then(m => m.syncStretch?.()));
 const sweep = async () => { if (await store.cleanup()) emit("files"); };
 sweep(); setInterval(sweep, 60000);
 import("./timer.js").then(m => m.syncStretch?.());
+import("./music.js"); // listens for "play" from the shelf
 
 // install and offline
 let deferred;
@@ -122,6 +123,14 @@ addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferred = e;
 $("#heroInstall").addEventListener("click", async () => { if (deferred) { deferred.prompt(); deferred = null; $("#heroInstall").hidden = true; } });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 navigator.storage?.persist?.();
+
+// a file shared to the installed app from the phone's share sheet (see sw.js)
+if (new URLSearchParams(location.search).get("shared")) {
+  const cache = await caches.open("shared"), keys = await cache.keys(), got = [];
+  for (const k of keys) { const r = await cache.match(k); got.push(new File([await r.blob()], decodeURIComponent(r.headers.get("x-name") || "shared"), { type: r.headers.get("content-type") || "" })); await cache.delete(k); }
+  history.replaceState(null, "", location.pathname);
+  if (got.length) { state.tab = "files"; setOpen(true); await ingest(got); }
+}
 
 // first look: open the notch (pinned) on desktop, closed pill on phones
 const start = new URLSearchParams(location.search).get("tab");
