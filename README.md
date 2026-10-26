@@ -1,21 +1,51 @@
-# Olyzano Notch
+<h1 align="center">Olyzano Notch</h1>
 
-**A temporary file shelf that lives at the top edge of your screen.**
-Move the mouse (or a dragged file) to the top-centre and it slides out. Drop files on it, take them
-back out whenever you need them, send them to a phone with a QR code. Files are **copied** into
-Olyzano Notch's own storage and cleaned up automatically after a few days; your originals are never touched.
+<p align="center">
+  <b>A Dynamic-Island style notch for your files, music and desktop.</b><br>
+  A temporary file shelf at the top edge of your screen, plus live activities, a dock and handy tools.
+</p>
 
-Runs on **Linux (KDE Plasma, Wayland or X11)** and **Windows 10 / 11**.
+<p align="center">
+  <a href="https://kepin17.github.io/olyzano-notch/">Install page</a> ·
+  <a href="https://kepin17.github.io/olyzano-notch/app/">Try it in the browser</a> ·
+  <a href="https://github.com/Kepin17/olyzano-notch/releases/latest">Latest release</a> ·
+  <a href="docs/user-guide.md">User guide</a> ·
+  <a href="https://github.com/Kepin17/olyzano-notch/issues">Report a problem</a>
+</p>
 
-- [Install](#install): Linux · Windows · [optional components](#optional-components)
-- [Features](#features)
-- [Using Olyzano Notch](#using-olyzano-notch) · [the dock](#the-app-dock) · [live activities](#live-activities-and-the-idle-clock) ·
-  [timer & Pomodoro](#timer-and-pomodoro) · [stretch reminder](#stretch-reminder)
-- [Share via QR](#share-via-qr)
-- [Settings and storage](#settings-and-storage)
-- [Build from source](#build-from-source)
-- [Project layout](#project-layout)
-- Guides: [user guide](docs/user-guide.md) · [developer guide](docs/developer-guide.md)
+Move the mouse (or a dragged file) to the top-centre and the notch slides out. Drop files on it, take them back out
+whenever you need them, send them to a phone with a QR code. Files are **copied** into Olyzano Notch's own storage and cleaned
+up automatically after a few days; your originals are never touched.
+
+Runs on **Linux (KDE Plasma, Wayland or X11)** and **Windows 10 / 11**. Free and open source (MIT).
+
+## Quick start
+
+| | |
+|---|---|
+| **Linux** (Debian 13, Ubuntu 25.04+, KDE neon) | Download the `.deb` from the [install page](https://kepin17.github.io/olyzano-notch/), then `sudo apt install ./notch_0.12.0_amd64.deb` |
+| **Windows 10 / 11** | Download `Notch-0.12.0-windows-x64-setup.exe` (or the portable `.zip`) and run it. SmartScreen: *More info → Run anyway* |
+| **No install** | Open the [web version](https://kepin17.github.io/olyzano-notch/app/): files stay in your browser, nothing is uploaded |
+
+Then move the mouse to the top-centre of the screen. Details: [Install](#install).
+
+## What you can do
+
+| | |
+|---|---|
+| 📥 **Keep files for a moment** | Drop files, folders, images, links or text; sort them into categories; search; undo and a 24-hour *Recently removed* bin |
+| 🛠️ **Tools for files** | Merge, split and compress PDFs, images to PDF, convert and resize images, OCR, zip, QR codes |
+| 📱 **Share** | QR code to a phone over WiFi or your own encrypted server; send to another computer (Nearby) or a phone (KDE Connect) |
+| 🏝️ **Live activities** | Timer, Pomodoro, downloads, now-playing with a real equalizer, calls, notifications, microphone and camera indicators, Discord mute / deafen |
+| 🧭 **Dock and launcher** | A dock with pinned and running apps; an app launcher on the Super / Windows key |
+| 🌿 **Wellbeing** | A stretch reminder that counts real work time, and a doomscrolling nudge |
+| 🔒 **Private** | Locked categories encrypted on disk; shares are end-to-end encrypted; the only network call by default is a once-a-day update check |
+| 🎨 **Yours** | 14 themes, light and dark, sound effects, settings for nearly everything |
+
+**Contents:** [In the browser](#in-the-browser) · [Install](#install) · [Features](#features) ·
+[Using Olyzano Notch](#using-olyzano-notch) · [Dock](#the-app-dock) · [Live activities](#live-activities-and-the-idle-clock) ·
+[Timer](#timer-and-pomodoro) · [Share via QR](#share-via-qr) · [Settings](#settings-and-storage) ·
+[Build from source](#build-from-source) · [Project layout](#project-layout) · [Contributing](#contributing)
 
 ---
 
@@ -123,7 +153,7 @@ account* → select **Path** → **Edit** → **New** → paste the folder → O
 | Auto-add new screenshots and downloads | ✅ | ✅ |
 | Charger and low-battery alerts | ✅ | ✅ |
 | Start at login · tray icon | ✅ | ✅ |
-| 8 themes (Classic, Washi 和紙, Frost, Ocean, Forest, Sunset, Lavender, Mocha), light / dark | ✅ | ✅ |
+| 14 themes (Classic, Washi 和紙, Frost, Ocean, Forest, Sunset, Lavender, Mocha and more), light / dark | ✅ | ✅ |
 | App dock: pinned and running apps, folders, Trash, drop files on apps | ✅ | ✅ |
 | Dock: click raises the app's window, window list | ✅ (KDE Plasma) | ✅ |
 | Dock: unread badges and progress from apps · blur | ✅ | – |
@@ -531,3 +561,12 @@ packaging/         .desktop file, app icon, Windows installer script
 third_party/       qrcodegen (QR codes, MIT)
 tests              tst_core: storage, copy, cleanup, tools, zip, sharing, crypto, dock, stretch reminder
 ```
+
+---
+
+## Contributing
+
+Bug reports and pull requests are welcome: open an [issue](https://github.com/Kepin17/olyzano-notch/issues) or read the
+[developer guide](docs/developer-guide.md) first. The people who have sent code are thanked in *Settings → About* and in the
+[contributors list](https://github.com/Kepin17/olyzano-notch/graphs/contributors). Olyzano Notch is free; if it helps you,
+*Settings → About* has a QR code to buy the author a coffee.
