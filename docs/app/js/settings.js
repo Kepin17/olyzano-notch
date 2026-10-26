@@ -45,6 +45,12 @@ export async function render(ctx) {
           h("a", { class: "tbtn", href: "../", target: "_blank", rel: "noopener" }, "Desktop app and demo"),
           h("a", { class: "tbtn", href: "https://github.com/Kepin17/olyzano-notch", target: "_blank", rel: "noopener" }, "Source"),
           h("a", { class: "tbtn", href: "https://github.com/Kepin17/olyzano-notch/issues", target: "_blank", rel: "noopener" }, "Report a problem"))),
+      h("div", { style: { flex: "1 1 100%" } }, h("b", {}, "Contribute"),
+        h("p", { class: "muted", style: { margin: "2px 0 8px" } }, "Open source and open to help: code, translations, ideas, bug reports. Fork it, make your change on a branch, send a pull request."),
+        h("div", { class: "row" },
+          h("a", { class: "tbtn primary", href: "https://github.com/Kepin17/olyzano-notch#contributing", target: "_blank", rel: "noopener" }, "How to contribute"),
+          h("a", { class: "tbtn", href: "https://github.com/Kepin17/olyzano-notch/blob/main/docs/developer-guide.md", target: "_blank", rel: "noopener" }, "Developer guide"),
+          h("a", { class: "tbtn", href: "https://github.com/Kepin17/olyzano-notch/pulls", target: "_blank", rel: "noopener" }, "Send a pull request"))),
       h("div", { class: "qrbox", title: "Buy me a coffee: scan with your banking or e-wallet app" }, h("img", { src: "icons/traktir.jpeg", alt: "QR code to buy the author a coffee" })),
       h("p", { class: "muted", style: { flex: "1 1 100%", margin: 0 } }, "Buy me a coffee: scan the QR code with your banking or e-wallet app. Thank you!")),
     h("p", { class: "muted", style: { marginTop: "10px" } }, "A web page cannot do what the desktop app does with your system: the status bar, tray, Quick Settings, KDE Connect, the dock, gaming mode and watching your screenshots folder are desktop only."));
