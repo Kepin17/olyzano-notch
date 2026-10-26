@@ -3,7 +3,6 @@
 #include "models/FileItem.h"
 #include "platform/WidgetModel.h"
 
-#include <QCursor>
 #include <QGuiApplication>
 #include <QPainterPath>
 #include <QRegion>
@@ -260,21 +259,16 @@ QSizeF DesktopIntegration::screenSize(QWindow *window) const
     return window && window->screen() ? QSizeF(window->screen()->geometry().size()) : QSizeF(1920, 1080);
 }
 
-QPointF DesktopIntegration::cursorPos() const
-{
-    return QPointF(QCursor::pos());
-}
-
 QPointF DesktopIntegration::snapWidget(qreal cx, qreal y, qreal itemW, qreal itemH, QWindow *window) const
 {
     return WidgetModel::snap(cx, y, itemW, itemH, screenSize(window));
 }
 
-QRectF DesktopIntegration::placeWidget(QWindow *window, bool open, qreal cx, qreal y)
+QRectF DesktopIntegration::placeWidget(QWindow *window, int kind, qreal cx, qreal y)
 {
     if (!window || !window->screen())
         return {};
-    const QRectF r = WidgetModel::windowRect(open, cx, y, screenSize(window));
+    const QRectF r = WidgetModel::windowRect(kind, cx, y, screenSize(window));
     const QRect g = window->screen()->geometry();
 #ifdef NOTCH_HAVE_LAYERSHELL
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {

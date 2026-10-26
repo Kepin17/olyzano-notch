@@ -207,7 +207,8 @@ RowLayout {
                     font.pixelSize: 13
                     font.weight: Font.Medium
                 }
-                Row {
+                Flow { // wraps: with "Widget · Beta" and "Reset position" the row is wider than the page
+                    Layout.fillWidth: true
                     spacing: 6
                     Repeater {
                         model: [["hidden", "Hidden"], ["capsule", "Capsule"], ["widget", "Widget · Beta"], ["open", "Always open"]]

@@ -593,15 +593,15 @@ private slots:
         using namespace WidgetModel;
         const QSizeF screen(1920, 1080);
         // floating: the window centres on the card, and stays on the screen at the edges
-        QCOMPARE(windowRect(false, 960, 14, screen), QRectF(600, 14, FloatW, FloatH));
-        QCOMPARE(windowRect(false, 40, 14, screen).x(), 0.0);
-        QCOMPARE(windowRect(false, 1900, 14, screen).right(), 1920.0);
-        QCOMPARE(windowRect(false, 960, 1075, screen).bottom(), 1080.0);
+        QCOMPARE(windowRect(Floating, 960, 14, screen), QRectF(600, 14, FloatW, FloatH));
+        QCOMPARE(windowRect(Floating, 40, 14, screen).x(), 0.0);
+        QCOMPARE(windowRect(Floating, 1900, 14, screen).right(), 1920.0);
+        QCOMPARE(windowRect(Floating, 960, 1075, screen).bottom(), 1080.0);
         // open: the big window; the card is drawn at the same screen spot inside it
-        const QRectF open = windowRect(true, 100, 900, screen);
+        const QRectF open = windowRect(Open, 100, 900, screen);
         QCOMPARE(open, QRectF(0, 460, OpenW, OpenH));
         QCOMPARE(islandX(open, 100, 400), 0.0);              // would stick out on the left: pushed in
-        QCOMPARE(islandX(windowRect(true, 960, 14, screen), 960, 400), 220.0);
+        QCOMPARE(islandX(windowRect(Open, 960, 14, screen), 960, 400), 220.0);
         QCOMPARE(islandY(open, 900, 38), 440.0);             // 900 - 460
         QCOMPARE(islandY(open, 1075, 38), OpenH - 38);       // the panel never leaves the window
         // snap: close to an edge or the middle sticks, far away does not
@@ -611,6 +611,8 @@ private slots:
         QCOMPARE(snap(1000, 1030, 400, 38, screen).y(), 1080 - 38 - EdgeGap);
         QCOMPARE(snap(700, 300, 400, 38, screen), QPointF(700, 300));
         QCOMPARE(snap(-50, 5000, 400, 38, screen), QPointF(200 + EdgeGap, 1080 - 38 - EdgeGap)); // off screen: back on
+        QCOMPARE(windowRect(Dragging, 100, 100, screen), QRectF(0, 0, 1920, 1080)); // a drag: the whole screen
+        QCOMPARE(islandX(windowRect(Dragging, 100, 100, screen), 500, 400), 300.0);
         QCOMPARE(defaultAnchor(screen), QPointF(960, 14));
     }
 

@@ -57,7 +57,7 @@ Window {
     }
     function applyGeometry() {
         if (widgetMode && !docked) {
-            winRect = desktop.placeWidget(root, mode === "open", widgetCx, widgetY)
+            winRect = desktop.placeWidget(root, dragging ? 2 : mode === "open" ? 1 : 0, widgetCx, widgetY)
             geoWidget = true
         } else if (geoWidget) {
             geoWidget = false
@@ -66,8 +66,10 @@ Window {
     }
     onWidgetModeChanged: { if (widgetMode) loadWidgetPos(); applyGeometry(); updateMask() }
     onDockedChanged: { applyGeometry(); updateMask() }
-    onWidgetCxChanged: if (geoWidget) applyGeometry()
-    onWidgetYChanged: if (geoWidget) applyGeometry()
+    // While dragging the window is the whole screen and the card moves inside it: nothing to place per step.
+    onWidgetCxChanged: if (geoWidget && !dragging) applyGeometry()
+    onWidgetYChanged: if (geoWidget && !dragging) applyGeometry()
+    onDraggingChanged: { applyGeometry(); updateMask() }
     onWinRectChanged: updateMask()
     onGeoWidgetChanged: updateMask()
     onScreenChanged: { loadWidgetPos(); applyGeometry() }
@@ -2109,39 +2111,18 @@ Window {
             target: null
             acceptedButtons: Qt.LeftButton
             dragThreshold: 8
-            property real startCx: 0
-            property real startY: 0
-            property point startCursor
-            property double lastStep: 0
             onActiveChanged: {
                 root.dragging = active
-                if (active) {
-                    startCx = root.widgetCx
-                    startY = root.widgetY
-                    startCursor = desktop.cursorPos()
-                    lastStep = 0
-                } else {
+                if (!active)
                     root.finishDrag()
-                }
             }
             onCentroidChanged: {
                 if (!active)
                     return
-                if (desktop.layerShell) {
-                    // Wayland: the pointer is only known inside the window, and the window moves under it, so each step
-                    // moves by what the pointer is away from where it was pressed, at most once per frame or two.
-                    const now = Date.now()
-                    if (now - lastStep < 24)
-                        return
-                    lastStep = now
-                    root.dragStep((centroid.position.x - centroid.pressPosition.x) * island.scale,
-                                  (centroid.position.y - centroid.pressPosition.y) * island.scale)
-                } else {
-                    const c = desktop.cursorPos()
-                    root.widgetCx = startCx
-                    root.widgetY = startY
-                    root.dragStep(c.x - startCursor.x, c.y - startCursor.y)
-                }
+                // The card moves inside the (full-screen) window, so it is under the pointer again at once: each step
+                // moves it by how far the pointer is from where it was picked up.
+                root.dragStep((centroid.position.x - centroid.pressPosition.x) * island.scale,
+                              (centroid.position.y - centroid.pressPosition.y) * island.scale)
             }
         }
 

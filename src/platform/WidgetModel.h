@@ -18,9 +18,15 @@ constexpr qreal EdgeGap = 8;                // where it sticks: this far from th
 
 inline qreal clampTo(qreal v, qreal lo, qreal hi) { return hi < lo ? lo : std::clamp(v, lo, hi); }
 
-// The window for an anchor: kept inside the screen. `open` picks the big one.
-inline QRectF windowRect(bool open, qreal cx, qreal y, const QSizeF &screen)
+enum Kind { Floating = 0, Open = 1, Dragging = 2 };
+
+// The window for an anchor: kept inside the screen. Open: the big one. Dragging: the whole screen, so the card moves
+// inside one window instead of the window being moved (a compositor takes a round trip for each move, which stutters).
+inline QRectF windowRect(int kind, qreal cx, qreal y, const QSizeF &screen)
 {
+    if (kind == Dragging)
+        return QRectF(0, 0, screen.width(), screen.height());
+    const bool open = kind == Open;
     const qreal w = open ? OpenW : FloatW, h = open ? OpenH : FloatH;
     return QRectF(clampTo(cx - w / 2, 0, screen.width() - w), clampTo(y, 0, screen.height() - h), w, h);
 }
