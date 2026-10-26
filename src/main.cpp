@@ -24,7 +24,14 @@
 #include "platform/MediaPlayers.h"
 #include "platform/SystemEvents.h"
 
+#ifdef Q_OS_WIN
+#include "platform/WinAudioSessions.h"
+#endif
+
 #include <QDir>
+#include <QElapsedTimer>
+#include <QFileInfo>
+#include <QTimer>
 #include <QApplication>
 #include <QFile>
 #include <QIcon>
@@ -148,6 +155,27 @@ int main(int argc, char *argv[])
     app.setWindowIcon(QIcon(QStringLiteral(":/qt/qml/Notch/src/qml/icons/notch.png")));
     app.setApplicationVersion(QStringLiteral(NOTCH_VERSION));
     quitOnSignals(app);
+
+#ifdef Q_OS_WIN
+    // `notch --dump-discord <file>`: for 90 s, write what Discord's audio sessions do (capture / render, active or
+    // not, how loud) about every 200 ms, to see how mute, deafen and leaving a call show up. Runs beside a running Notch.
+    if (const int i = app.arguments().indexOf(QStringLiteral("--dump-discord")); i >= 0 && i + 1 < app.arguments().size()) {
+        auto *sessions = new WinAudioSessions;
+        auto *out = new QFile(app.arguments().at(i + 1));
+        if (!out->open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return 1;
+        auto *clock = new QElapsedTimer;
+        clock->start();
+        QTimer::singleShot(150000, &app, &QCoreApplication::quit);
+        auto *tick = new QTimer(&app);
+        QObject::connect(tick, &QTimer::timeout, &app, [=] {
+            out->write(QByteArray::number(clock->elapsed() / 1000.0, 'f', 1) + "s " + sessions->dump() + '\n');
+            out->flush();
+        });
+        tick->start(200);
+        return app.exec();
+    }
+#endif
 
     const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
                             + QStringLiteral("/notch");

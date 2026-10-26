@@ -38,12 +38,41 @@ Activities::Activities(QObject *parent)
     connect(&m_downloadPoll, &QTimer::timeout, this, &Activities::scanDownloads);
     scanDownloads();
 
-    m_privacyPoll.setInterval(2000);
+    m_privacyPoll.setInterval(5000); // a mute toggled from the notch re-reads at once (toggleMicMute)
     connect(&m_privacyPoll, &QTimer::timeout, this, &Activities::pollPrivacy);
     connect(&m_pactl, &QProcess::readyReadStandardOutput, this, [this] { m_pactlOut += m_pactl.readAllStandardOutput(); });
     connect(&m_pactl, &QProcess::finished, this, &Activities::readMicOutputs);
 #if defined(Q_OS_LINUX) || defined(Q_OS_WIN)
     m_privacyPoll.start(); // the microphone's mute state is also shown by the idle clock
+#endif
+#ifdef Q_OS_WIN
+    m_discordPoll.setInterval(3000);
+    connect(&m_discordPoll, &QTimer::timeout, this, &Activities::pollDiscord);
+    m_discordPoll.start();
+    connect(&m_rpc, &DiscordRpc::changed, this, &Activities::discordChanged);
+    m_rpc.setEnabled(discordRpc());
+#endif
+}
+
+void Activities::setDiscordRpc(bool on)
+{
+    store(QStringLiteral("discordRpc"), on);
+#ifdef Q_OS_WIN
+    m_rpc.setEnabled(on);
+#endif
+}
+
+// Discord's call state from its audio session on the microphone (see WinAudioSessions).
+void Activities::pollDiscord()
+{
+#ifdef Q_OS_WIN
+    const DiscordAudio audio = m_sessions.read();
+    const bool active = audio.captureActive;
+    const CallState before = m_call.state;
+    m_call.update(active, audio.capturePeak);
+    m_discordPoll.setInterval(active ? 120 : 3000); // quick while a call can be followed, lazy otherwise
+    if (m_call.state != before)
+        emit discordChanged();
 #endif
 }
 
@@ -78,7 +107,12 @@ void Activities::setIdleClock(bool on)
 
 QString Activities::capsuleMode() const
 {
-    const QString mode = m_settings.value(QStringLiteral("capsuleMode"), QStringLiteral("hidden")).toString();
+#ifdef Q_OS_WIN
+    const QString fallback = QStringLiteral("capsule"); // the island is on by default on Windows; the toggle in Settings turns it off
+#else
+    const QString fallback = QStringLiteral("hidden");
+#endif
+    const QString mode = m_settings.value(QStringLiteral("capsuleMode"), fallback).toString();
     return mode == QLatin1String("capsule") || mode == QLatin1String("open") ? mode : QStringLiteral("hidden");
 }
 

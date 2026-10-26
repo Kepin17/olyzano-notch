@@ -12,7 +12,20 @@ constexpr qsizetype WindowBytes = Window * qsizetype(sizeof(float));
 AudioLevels::AudioLevels(QObject *parent)
     : QObject(parent)
     , m_levels(BandCount, 0.0)
+    , m_target(BandCount, 0.0)
 {
+    m_tick.setInterval(33); // bars move on a steady ~30 Hz beat, however unevenly the audio arrives
+    connect(&m_tick, &QTimer::timeout, this, [this] {
+        const double dt = m_clock.restart();
+        bool moved = false;
+        for (int i = 0; i < BandCount; ++i) {
+            const double next = smoothLevel(m_levels[i], m_target[i], dt);
+            moved = moved || std::abs(next - m_levels[i]) > 0.002;
+            m_levels[i] = next;
+        }
+        if (moved) // idle bars stay still instead of waking QML 30 times a second
+            emit levelsChanged();
+    });
     m_stopTimer.setSingleShot(true);
     m_stopTimer.setInterval(1000); // brief grace so flicking between views doesn't restart capture
     connect(&m_stopTimer, &QTimer::timeout, this, &AudioLevels::stop);
@@ -41,6 +54,10 @@ void AudioLevels::acquire()
     ++m_users;
     m_stopTimer.stop();
     start();
+    if (!m_tick.isActive()) {
+        m_clock.start();
+        m_tick.start();
+    }
 }
 
 void AudioLevels::release()
@@ -82,6 +99,8 @@ void AudioLevels::stop()
             m_process.kill();
     }
     m_buffer.clear();
+    m_tick.stop();
+    m_target.fill(0.0);
     m_levels.fill(0.0);
     emit levelsChanged();
 }
@@ -101,9 +120,9 @@ void AudioLevels::apply(const QList<double> &fresh)
 {
     if (m_users == 0 && !m_stopTimer.isActive())
         return; // a late reading after stop()
-    for (int i = 0; i < BandCount && i < fresh.size(); ++i) // jump up, fall back slowly: reads like a VU meter
-        m_levels[i] = fresh[i] > m_levels[i] ? fresh[i] : m_levels[i] * 0.8 + fresh[i] * 0.2;
-    emit levelsChanged();
+    for (int i = 0; i < BandCount && i < fresh.size(); ++i) // the tick moves the bars toward this
+        if (std::abs(fresh[i] - m_target[i]) > 0.01 || fresh[i] == 0.0) // a change under 1 % is noise, not music
+            m_target[i] = fresh[i];
 }
 
 void AudioLevels::setAvailable(bool available)

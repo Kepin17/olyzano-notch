@@ -10,6 +10,12 @@
 #include <QTimer>
 #include <QVariantList>
 
+#include "platform/DiscordCall.h"
+#ifdef Q_OS_WIN
+#include "platform/DiscordRpc.h"
+#include "platform/WinAudioSessions.h"
+#endif
+
 // What the notch shows while something is going on, as `activities` in QML:
 // - a timer, stopwatch or Pomodoro (shared by every monitor's notch),
 // - downloads still being written to the Downloads folder (browsers' .part / .crdownload files),
@@ -30,6 +36,13 @@ class Activities : public QObject
     Q_PROPERTY(QStringList micApps READ micApps NOTIFY privacyChanged)
     Q_PROPERTY(QStringList cameraApps READ cameraApps NOTIFY privacyChanged)
     Q_PROPERTY(int micMuted READ micMuted NOTIFY privacyChanged) // default microphone: 1 muted, 0 live, -1 unknown
+    // Discord on Windows: "off" | "call" (in a voice call) | "talking" (the microphone is picking up a voice)
+    // | "muted" | "deafened" (the last two need discordRpc: Discord says so itself).
+    Q_PROPERTY(QString discordState READ discordState NOTIFY discordChanged)
+    // Ask the running Discord whether you are muted or deafened (Settings; off until the person turns it on).
+    Q_PROPERTY(bool discordRpc READ discordRpc WRITE setDiscordRpc NOTIFY settingsChanged)
+    Q_PROPERTY(bool discordAvailable READ discordAvailable CONSTANT) // this build carries a Discord app
+    Q_PROPERTY(QString discordStatus READ discordStatus NOTIFY discordChanged)
     // The small clock pill shown while nothing else is (Settings).
     Q_PROPERTY(bool idleClock READ idleClock WRITE setIdleClock NOTIFY settingsChanged)
     // How the notch sits on the screen: "hidden" (a line until the pointer rests there), "capsule" (a small
@@ -54,6 +67,37 @@ public:
     QStringList micApps() const { return m_mic; }
     QStringList cameraApps() const { return m_camera; }
     int micMuted() const { return m_micMuted; }
+    QString discordState() const
+    {
+        if (m_call.state == CallState::Off)
+            return QStringLiteral("off");
+#ifdef Q_OS_WIN
+        // Only inside a call: Discord can be muted all day, and that is not worth an icon.
+        if (m_rpc.mute() == DiscordIpc::Mute::Deafened)
+            return QStringLiteral("deafened");
+        if (m_rpc.mute() == DiscordIpc::Mute::Muted)
+            return QStringLiteral("muted");
+#endif
+        return m_call.state == CallState::Talking ? QStringLiteral("talking") : QStringLiteral("call");
+    }
+    bool discordRpc() const { return m_settings.value(QStringLiteral("discordRpc"), false).toBool(); }
+    void setDiscordRpc(bool on);
+    static bool discordAvailable()
+    {
+#ifdef Q_OS_WIN
+        return DiscordRpc::built();
+#else
+        return false;
+#endif
+    }
+    QString discordStatus() const
+    {
+#ifdef Q_OS_WIN
+        return m_rpc.status();
+#else
+        return QString();
+#endif
+    }
     bool idleClock() const { return m_settings.value(QStringLiteral("idleClock"), true).toBool(); }
     void setIdleClock(bool on);
     QString capsuleMode() const;
@@ -86,6 +130,7 @@ signals:
     void timerFinished(const QString &title, const QString &detail);
     void downloadsChanged();
     void privacyChanged();
+    void discordChanged();
     void settingsChanged();
 
 private:
@@ -95,6 +140,7 @@ private:
     void scanDownloads();
     void pollPrivacy();
     void readMicOutputs();
+    void pollDiscord();
 
     QSettings m_settings;
 
@@ -120,4 +166,11 @@ private:
     QByteArray m_pactlOut;
     QStringList m_mic, m_camera;
     int m_micMuted = -1;
+
+    QTimer m_discordPoll; // slow while no call, fast enough to follow speech during one
+    CallTracker m_call;
+#ifdef Q_OS_WIN
+    WinAudioSessions m_sessions;
+    DiscordRpc m_rpc;
+#endif
 };

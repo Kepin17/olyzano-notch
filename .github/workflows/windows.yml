@@ -36,10 +36,17 @@ jobs:
         run: vcpkg install openssl:x64-windows
 
       - name: Configure
+        # The Discord app for "muted / deafened" comes from repository secrets (Settings -> Secrets -> Actions:
+        # DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET). Without them the build still works, minus that feature.
+        env:
+          DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
+          DISCORD_CLIENT_SECRET: ${{ secrets.DISCORD_CLIENT_SECRET }}
         run: >
           cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
           -DCMAKE_PREFIX_PATH="$env:QT_ROOT_DIR"
+          -DNOTCH_DISCORD_CLIENT_ID="$env:DISCORD_CLIENT_ID"
+          -DNOTCH_DISCORD_CLIENT_SECRET="$env:DISCORD_CLIENT_SECRET"
 
       - name: Build
         run: cmake --build build -- -k 0 # keep going: one run shows every compile error

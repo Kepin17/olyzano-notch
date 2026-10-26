@@ -106,16 +106,42 @@ if(WIN32)
     target_link_libraries(notch PRIVATE Qt6::DBus)
     target_compile_definitions(notch PRIVATE NOTCH_HAVE_KDECONNECT)
     target_sources(notch PRIVATE src/platform/WinPrivacy.h src/platform/WinPrivacy.cpp src/platform/ColorPicker_win.cpp
+                                 src/platform/WinAudioSessions.h src/platform/WinAudioSessions.cpp
+                                 src/platform/DiscordRpc.h src/platform/DiscordRpc.cpp
                                  src/platform/WinBluetooth.h src/platform/WinBluetooth.cpp
                                  src/platform/MediaPlayers_win.cpp src/platform/MediaNames.h src/platform/AudioLevels_win.cpp
                                  src/platform/DesktopNotifications_win.cpp)
     # user32/shell32: AppDock lists and raises windows, and asks the Recycle Bin. ole32/advapi32: microphone, registry.
     # windowsapp: the WinRT APIs (Bluetooth, media sessions) through C++/WinRT, which ships with the Windows SDK.
-    target_link_libraries(notch PRIVATE user32 shell32 ole32 advapi32 windowsapp winmm) # winmm: PlaySound
+    target_link_libraries(notch PRIVATE user32 shell32 ole32 advapi32 crypt32 windowsapp winmm) # winmm: PlaySound; crypt32: the saved Discord sign-in is encrypted for this user
     # C++/WinRT's coroutine support needs C++20 (under C++17 it pulls in the removed <experimental/coroutine>).
     set_source_files_properties(src/platform/WinBluetooth.cpp src/platform/MediaPlayers_win.cpp
                                 src/platform/DesktopNotifications_win.cpp
                                 PROPERTIES COMPILE_OPTIONS "/std:c++20")
+    # The Discord app behind "muted / deafened" in the island. Pass them on the command line or from CI secrets
+    # (-DNOTCH_DISCORD_CLIENT_ID=... -DNOTCH_DISCORD_CLIENT_SECRET=...); never write them in a file that is committed.
+    # Without them the feature says so in Settings and the island still shows in-call / talking.
+    set(NOTCH_DISCORD_CLIENT_ID "" CACHE STRING "Discord application client ID")
+    set(NOTCH_DISCORD_CLIENT_SECRET "" CACHE STRING "Discord application client secret")
+    # Or from a `.env` next to this file (copy .env.example); a value given with -D wins.
+    if(EXISTS "${CMAKE_SOURCE_DIR}/.env")
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/.env")
+        file(STRINGS "${CMAKE_SOURCE_DIR}/.env" _notch_env REGEX "^NOTCH_DISCORD_CLIENT_(ID|SECRET)=")
+        foreach(_line IN LISTS _notch_env)
+            string(REGEX MATCH "^([A-Z_]+)=(.*)$" _unused "${_line}")
+            set(_name "${CMAKE_MATCH_1}")
+            set(_value "${CMAKE_MATCH_2}")
+            string(STRIP "${_value}" _value)
+            string(REGEX REPLACE "^\"(.*)\"$" "\\1" _value "${_value}") # allow quotes
+            if(NOT ${_name})
+                set(${_name} "${_value}")
+            endif()
+        endforeach()
+    endif()
+    if(NOTCH_DISCORD_CLIENT_ID AND NOTCH_DISCORD_CLIENT_SECRET)
+        target_compile_definitions(notch PRIVATE NOTCH_DISCORD_CLIENT_ID="${NOTCH_DISCORD_CLIENT_ID}"
+                                                 NOTCH_DISCORD_CLIENT_SECRET="${NOTCH_DISCORD_CLIENT_SECRET}")
+    endif()
     configure_file(packaging/windows/notch.rc.in ${CMAKE_CURRENT_BINARY_DIR}/notch.rc)
     target_sources(notch PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/notch.rc)
     set_target_properties(notch PROPERTIES WIN32_EXECUTABLE TRUE) # a window, not a console
@@ -130,7 +156,7 @@ qt_add_qml_module(notch
         src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkSeparator.qml
         src/qml/SettingToggle.qml src/qml/Chip.qml src/qml/WheelScroller.qml
         src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml src/qml/ActionBar.qml src/qml/Bar.qml src/qml/Segmented.qml src/qml/Launcher.qml src/qml/SignalIcon.qml src/qml/CircleAction.qml src/qml/ColorPage.qml src/qml/AppMenuPopup.qml src/qml/CalendarCard.qml src/qml/QuickSettings.qml src/qml/LyricsPanel.qml
-        src/qml/Dock.qml src/qml/TimerPage.qml
+        src/qml/Dock.qml src/qml/TimerPage.qml src/qml/DiscordBadge.qml
     RESOURCES
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg
         src/qml/images/traktir.jpeg src/qml/icons/info.svg src/qml/icons/grid.svg src/qml/icons/ethernet.svg src/qml/icons/eye.svg src/qml/icons/eye-off.svg src/qml/icons/external.svg src/qml/icons/undo.svg src/qml/icons/play.svg src/qml/icons/pause.svg src/qml/icons/stop.svg src/qml/icons/minus.svg src/qml/icons/check.svg src/qml/icons/copy.svg src/qml/icons/pin.svg src/qml/icons/image.svg src/qml/icons/eyedropper.svg src/qml/icons/unlock.svg src/qml/icons/trash.svg src/qml/icons/palette.svg src/qml/icons/pen.svg

@@ -96,7 +96,7 @@ void AudioLevels::runLoopback()
                     if (int(window.size()) == Window) {
                         const QList<double> fresh = bandLevels(window.data(), Window, rate);
                         QMetaObject::invokeMethod(this, [this, fresh] { apply(fresh); }, Qt::QueuedConnection);
-                        window.clear();
+                        window.erase(window.begin(), window.begin() + Window / 2); // 50 % overlap: no transient falls between windows
                     }
                 }
                 capture->ReleaseBuffer(frames);

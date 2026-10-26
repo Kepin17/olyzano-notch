@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QByteArray>
+#include <QElapsedTimer>
 #include <QList>
 #include <QObject>
 #include <QProcess>
@@ -52,7 +53,10 @@ private:
     QProcess m_process;
     QByteArray m_buffer;
     QList<qreal> m_levels;
+    QList<qreal> m_target; // the latest reading; m_levels follow it on a steady tick
     QTimer m_stopTimer;
+    QTimer m_tick;
+    QElapsedTimer m_clock;
     int m_users = 0;
     bool m_available = true;
 };

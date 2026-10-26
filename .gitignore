@@ -2,4 +2,5 @@ build/
 *.user
 __pycache__/
 server/.env
+/.env
 build-*/

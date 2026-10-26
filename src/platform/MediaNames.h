@@ -30,6 +30,9 @@ inline const Known *known(const QString &key)
         {"zunemusic", "Media Player", "microsoft.media.player"},
         {"zunevideo", "Movies & TV", "video.ui"},
         {"vlc", "VLC", "vlc"},
+        {"discord", "Discord", "discord"},
+        {"discordptb", "Discord", "discordptb"},
+        {"discordcanary", "Discord", "discordcanary"},
         {"applemusicwin", "Apple Music", "applemusic"},
     };
     for (const Known &k : table)

@@ -33,15 +33,18 @@ Row {
             id: bar
             required property int index
             property real fake: 0.3
-            // Boosted: everyday audio sits well below full scale, bars should still dance.
+            // Boosted: everyday audio sits well below full scale, bars should still dance. The curve
+            // rises 1.8x at the bottom and flattens toward 1, so loud music no longer clips flat.
+            readonly property real raw: audio.available && audio.levels.length > index ? audio.levels[index] : 0
             readonly property real level: audio.available && audio.levels.length > index
-                                          ? Math.min(1, audio.levels[index] * 1.8) : fake
+                                          ? raw * (1.8 - 0.8 * raw) : fake
             anchors.verticalCenter: parent.verticalCenter
             width: eq.barWidth
             radius: width / 2
             color: eq.color
             height: eq.live ? Math.max(eq.barWidth, level * eq.maxHeight) : eq.barWidth
-            Behavior on height { NumberAnimation { duration: 80 } }
+            // The levels are already smoothed on a 33 ms tick; this bridges two ticks so a bar never jumps.
+            Behavior on height { NumberAnimation { duration: 70 } }
             SequentialAnimation on fake {
                 running: eq.live && !audio.available
                 loops: Animation.Infinite

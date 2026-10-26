@@ -25,7 +25,7 @@ Window {
     property var trayItems: []
     property real trayX: 0
     readonly property int trayShown: 6
-    onQuickOpenChanged: if (quickOpen) { menuOpen = -1; calOpen = false; trayMenu = false; trayMore = false; launcherOpen = false; kdeOpen = false }
+    onQuickOpenChanged: if (quickOpen) { quick2.active = true; menuOpen = -1; calOpen = false; trayMenu = false; trayMore = false; launcherOpen = false; kdeOpen = false }
     onMenuOpenChanged: if (menuOpen >= 0) { quickOpen = false; calOpen = false; trayMenu = false; trayMore = false; launcherOpen = false; kdeOpen = false }
     onCalOpenChanged: if (calOpen) { quickOpen = false; menuOpen = -1; trayMenu = false; trayMore = false; launcherOpen = false; kdeOpen = false }
     onTrayMenuChanged: if (trayMenu) { quickOpen = false; calOpen = false; menuOpen = -1; trayMore = false; launcherOpen = false; kdeOpen = false }
@@ -36,7 +36,7 @@ Window {
     onKdeOpenChanged: if (kdeOpen) { quickOpen = false; calOpen = false; menuOpen = -1; trayMenu = false; trayMore = false; launcherOpen = false }
     Timer { id: kdeCloser; interval: 900; onTriggered: if (!kdeHover.hovered && !kdeIconHover.hovered) root.kdeOpen = false }
     onLauncherOpenChanged: {
-        if (launcherOpen) { quickOpen = false; calOpen = false; menuOpen = -1; trayMenu = false; trayMore = false; kdeOpen = false }
+        if (launcherOpen) { launch.active = true; quickOpen = false; calOpen = false; menuOpen = -1; trayMenu = false; trayMore = false; kdeOpen = false }
         desktop.setKeyboardInteractive(root, launcherOpen) // typing in the search field
     }
     onActiveChanged: if (!active && launcherOpen) launcherOpen = false // the keyboard went elsewhere: it is done
@@ -398,13 +398,18 @@ Window {
     }
 
     // ---- the app launcher ----
-    Launcher {
+    // Built the first time it is opened, then kept (memory); the Loader takes the card's size, so it can be hovered and masked.
+    Loader {
         id: launch
+        readonly property string query: item ? item.query : ""
+        active: false
         x: 8
         y: root.stripH + 6
-        open: root.launcherOpen && root.shown
-        onCloseRequested: root.launcherOpen = false
-        HoverHandler { id: launchHover; onHoveredChanged: if (!hovered && root.launcherOpen && launch.query === "") launcherCloser.restart() }
+        sourceComponent: Launcher {
+            open: root.launcherOpen && root.shown
+            onCloseRequested: root.launcherOpen = false
+        }
+        data: HoverHandler { id: launchHover; onHoveredChanged: if (!hovered && root.launcherOpen && launch.query === "") launcherCloser.restart() }
     }
     Timer { id: launcherCloser; interval: 2500; onTriggered: if (!launchHover.hovered && launch.query === "") root.launcherOpen = false }
 
@@ -494,12 +499,13 @@ Window {
     }
 
     // ---- Quick Settings ----
-    QuickSettings {
+    Loader {
         id: quick2
+        active: false // built the first time Quick Settings is opened, then kept
         x: root.width - width - 10
         y: root.stripH + 6
-        open: root.quickOpen && root.shown
-        HoverHandler {
+        sourceComponent: QuickSettings { open: root.quickOpen && root.shown }
+        data: HoverHandler {
             id: quickHover
             onHoveredChanged: if (!hovered && root.quickOpen) quickCloser.restart()
         }

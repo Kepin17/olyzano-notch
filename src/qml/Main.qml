@@ -54,9 +54,9 @@ Window {
     readonly property bool selecting: page === "shelf" && selection.length > 0
     readonly property bool inRemoved: notch.categoryFilter === "__removed__" // Recently removed view
     readonly property bool anyMenu: menu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible
-                                    || toolsMenu.visible || extractPopup.visible || settingsPage.overlayOpen
+                                    || toolsMenu.visible || extractPopup.visible || (settingsLoader.item !== null && settingsLoader.item.overlayOpen)
                                     || quickLookCard.visible || vaultPopup.visible || confirmDelete.visible
-                                    || sharePopup.visible || incomingPopup.visible
+                                    || (shareLoader.item !== null && shareLoader.item.visible) || incomingPopup.visible
                                     || sortMenu.visible || removedMenu.visible
                                     || removedChipMenu.visible
     readonly property bool dragOver: dragLive && (edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver)
@@ -66,6 +66,16 @@ Window {
     // `notch --debug-hover` prints what the pointer does at the top edge.
     readonly property bool debugHover: Qt.application.arguments.indexOf("--debug-hover") >= 0
     function dbg(what) { if (debugHover) console.log("hover", Date.now() % 100000, what, "mode=" + mode, "open=" + open, "dwelled=" + dwelled) }
+    // With --debug-hover, frames that take longer than ~1.5 refreshes while the island moves.
+    property double lastFrame: 0
+    onFrameSwapped: {
+        if (!debugHover)
+            return
+        const now = Date.now()
+        if (lastFrame > 0 && now - lastFrame > 24 && (Math.abs(island.width - island.targetWidth) > 0.5 || Math.abs(island.height - island.targetHeight) > 0.5))
+            dbg("slow frame " + (now - lastFrame) + " ms")
+        lastFrame = now
+    }
     readonly property bool engaged: !gaming.active && (pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt")
                                     || dragOver || anyMenu
                                     || saveDialog.visible || addDialog.visible)
@@ -143,8 +153,12 @@ Window {
     readonly property string capTime: clock(capPos) + (media.lengthMs > 0 ? " / " + clock(media.lengthMs) : "")
     TextMetrics { id: capLineSize; font.pixelSize: 14; font.weight: Font.DemiBold; text: root.capLine }
     TextMetrics { id: capTimeSize; font.pixelSize: 13; font.family: "monospace"; text: root.capTime }
-    // margins + wave + gaps + the time + the microphone icon, and a little spare
-    readonly property real capOverhead: 2 * 24 + 22 + 3 * 10 + capTimeSize.advanceWidth + (activities.micApps.length > 0 ? 25 : 0) + (sharingNow ? 24 : 0) + 16
+    // which app is playing, small and secondary; only when the line already names the song
+    readonly property string capSource: media.title !== "" ? media.identity : ""
+    TextMetrics { id: capSourceSize; font.pixelSize: 11; text: root.capSource }
+    // margins + wave + gaps + the app name + the time + the microphone and Discord icons, and a little spare
+    readonly property real capOverhead: 2 * 24 + 22 + 3 * 10 + capTimeSize.advanceWidth + (capSource !== "" ? capSourceSize.advanceWidth + 10 : 0)
+                                        + (activities.micApps.length > 0 ? 25 : 0) + (activities.discordState !== "off" ? 24 : 0) + (sharingNow ? 24 : 0) + 16
     readonly property real capMaxWidth: root.width - 40
     readonly property bool capWraps: capLyric && capLineSize.advanceWidth + capOverhead > capMaxWidth
     readonly property real capWidth: !capLyric ? 400 : capWraps ? capMaxWidth : Math.max(400, capLineSize.advanceWidth + capOverhead)
@@ -253,12 +267,15 @@ Window {
         return null
     }
 
-    function debugSettings(section) { settingsPage.category = section } // `notch --shot-settings file.png <section>`
-    function debugShare() { sharePopup.openFor([]) } // `notch --shot-page file.png share`: the share window, for a picture
+    // Settings and the share window are built the first time they are needed, not at start-up (memory).
+    function settingsPage() { settingsLoader.active = true; return settingsLoader.item }
+    function sharePopup() { shareLoader.active = true; return shareLoader.item }
+    function debugSettings(section) { settingsPage().category = section } // `notch --shot-settings file.png <section>`
+    function debugShare() { sharePopup().openFor([]) } // `notch --shot-page file.png share`: the share window, for a picture
     function showShares() {
         pinned = true // opens the panel and keeps it while the shares are looked at
         page = "shelf"
-        Qt.callLater(() => sharePopup.openSessions())
+        Qt.callLater(() => sharePopup().openSessions())
     }
 
     function showToast(kind, title, detail, icon, ms) {
@@ -409,9 +426,21 @@ Window {
             desktop.setInputRegion(root, Qt.rect(0, 0, width, height))
         else if (mode === "hidden" || (mode === "idle" && capsuleMode !== "capsule")) // the idle clock is see-through for clicks; the top edge opens Notch (the capsule itself can be pointed at)
             desktop.setInputRegion(root, Qt.rect(edge.x, 0, edge.width, edge.height))
-        else
-            desktop.setInputRegion(root, Qt.rect(island.x, 0, island.width, Math.max(island.height, edge.height)))
+        else {
+            // Covers where the island is going, not where it is this frame: a native mask change per animation
+            // frame is what made opening lag on Windows. A little slack while it moves, so the spring's overshoot
+            // is not clipped; maskSettle tightens it once the island has come to rest.
+            const slack = maskSettle.running ? 24 : 0
+            const w = Math.max(island.width, island.targetWidth) + 2 * slack
+            const h = Math.max(island.height, island.targetHeight, edge.height) + slack
+            desktop.setInputRegion(root, Qt.rect((width - w) / 2, 0, w, h))
+        }
     }
+    function maskMoving() {
+        maskSettle.restart()
+        updateMask()
+    }
+    Timer { id: maskSettle; interval: 350; onTriggered: root.updateMask() }
     onVisibleChanged: updateMask()
     onModeChanged: updateMask()
     Connections {
@@ -483,7 +512,7 @@ Window {
     }
 
     function shareFiles(ids) {
-        sharePopup.openFor(ids)
+        sharePopup().openFor(ids)
         clearSelection()
     }
 
@@ -593,7 +622,12 @@ Window {
         page = "shelf"
     }
 
-    onPageChanged: if (page === "note") notePage.load()
+    onPageChanged: {
+        if (page === "note")
+            notePage.load()
+        else if (page === "settings")
+            settingsLoader.active = true
+    }
     function restartInfo() { infoTimer.restart() }
 
     function showPreview(item) {
@@ -619,11 +653,14 @@ Window {
     Item {
         id: island
         x: (root.width - width) / 2
-        width: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 380
+        // Where the island is heading; width and height follow it with the springs below.
+        readonly property real targetWidth: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 380
              : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
              : root.mode === "idle" ? (root.musicShown ? root.capWidth : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
-        height: root.mode === "open" ? panel.implicitHeight + (root.dragOver ? 8 : 0)
+        readonly property real targetHeight: root.mode === "open" ? panel.implicitHeight + (root.dragOver ? 8 : 0)
               : root.mode === "prompt" ? 92 : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? (root.capWraps ? 58 : 38) : 26) : 0
+        width: targetWidth
+        height: targetHeight
         focus: true
 
         readonly property real shoulder: Math.min(10, Math.max(0, height) / 3)
@@ -631,10 +668,13 @@ Window {
         readonly property bool closing: root.mode === "hidden"
 
         // Height is stiffer than width: the drop falls first, then spreads and settles.
-        Behavior on height { SpringAnimation { spring: 4.2; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : 0.32; epsilon: 0.25 } }
-        Behavior on width { SpringAnimation { spring: island.closing ? 5 : 2.6; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : 0.3; epsilon: 0.25 } }
-        onWidthChanged: root.updateMask()
-        onHeightChanged: root.updateMask()
+        // Windows redraws a layered window less smoothly than KWin does, so there the spring rings less.
+        readonly property real openDamping: Qt.platform.os === "windows" ? 0.55 : 0.32
+        // A stiffer spring settles a few tens of ms sooner; epsilon 0.4 ends the tail of the animation earlier (invisible at that size).
+        Behavior on height { SpringAnimation { spring: 5.5; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : island.openDamping; epsilon: 0.4 } }
+        Behavior on width { SpringAnimation { spring: island.closing ? 6 : 3.4; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : island.openDamping; epsilon: 0.4 } }
+        onTargetWidthChanged: root.maskMoving()
+        onTargetHeightChanged: root.maskMoving()
 
         Keys.onReleased: (e) => {
             if (e.key === Qt.Key_Space && !e.isAutoRepeat && quickLookCard.visible) {
@@ -927,6 +967,7 @@ Window {
                 font.weight: Font.DemiBold
             }
             Item { Layout.fillWidth: true }
+            DiscordBadge { Layout.alignment: Qt.AlignVCenter }
             // Microphone: orange while recording, red and struck through while muted.
             LineIcon {
                 visible: activities.micMuted >= 0
@@ -989,12 +1030,19 @@ Window {
                 maximumLineCount: 2
                 elide: Text.ElideRight
             }
+            Text { // the app that is playing: Spotify, Chrome, ...
+                visible: root.capSource !== ""
+                text: root.capSource
+                color: root.textSecondary
+                font.pixelSize: 11
+            }
             Text {
                 text: root.capTime
                 color: root.textSecondary
                 font.pixelSize: 13
                 font.family: "monospace"
             }
+            DiscordBadge { Layout.alignment: Qt.AlignVCenter }
             LineIcon { // something is being shared
                 visible: root.sharingNow
                 glyph: "share"
@@ -1305,11 +1353,17 @@ Window {
                         if (lyrics.enabled || lyrics.consented) {
                             lyrics.enabled = !lyrics.enabled // switched on once in Settings: from here it is a plain toggle
                         } else {
-                            settingsPage.category = "general" // the first time: Settings says what is sent
+                            root.settingsPage().category = "general" // the first time: Settings says what is sent
                             root.page = "settings"
                         }
                     }
-                    onOpenShares: sharePopup.visible && sharePopup.view === "sessions" ? sharePopup.close() : sharePopup.openSessions()
+                    onOpenShares: {
+                        const s = root.sharePopup()
+                        if (s.visible && s.view === "sessions")
+                            s.close()
+                        else
+                            s.openSessions()
+                    }
                 }
 
                 // Music: the player, and (when lyrics are on) the words beside it, half and half.
@@ -1791,9 +1845,15 @@ Window {
                     shell: root
                 }
 
-                SettingsPage {
-                    id: settingsPage
-                    shell: root
+                Loader {
+                    id: settingsLoader
+                    active: false // switched on the first time Settings is opened, then kept
+                    visible: root.page === "settings"
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 12
+                    Layout.preferredHeight: 480
+                    sourceComponent: SettingsPage { shell: root }
                 }
 
                 Rectangle {
@@ -2204,9 +2264,10 @@ Window {
         }
     }
 
-    SharePopup {
-        id: sharePopup
-        shell: root
+    Loader {
+        id: shareLoader
+        active: false // built the first time something is shared, then kept
+        sourceComponent: SharePopup { shell: root }
     }
 
     IncomingPopup {

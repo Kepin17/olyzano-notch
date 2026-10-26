@@ -172,6 +172,25 @@ RowLayout {
                 onToggled: notch.autostart = !notch.autostart
             }
 
+            SettingToggle {
+                title: "Dynamic island"
+                caption: "A small black capsule stays at the top and shows what is going on: the song playing, the app using the microphone"
+                    + (Qt.platform.os === "windows" ? ", a Discord call," : "") + " and notifications from this computer."
+                checked: activities.capsuleMode !== "hidden"
+                onToggled: activities.capsuleMode = activities.capsuleMode === "hidden" ? "capsule" : "hidden"
+            }
+
+            SettingToggle {
+                visible: Qt.platform.os === "windows"
+                title: "Discord muted / deafened"
+                caption: !activities.discordAvailable ? "This build has no Discord app, so the island can only show that you are in a Discord call."
+                    : activities.discordRpc ? (activities.discordStatus !== "" ? activities.discordStatus : "Starting")
+                    : "While you are in a Discord call, show a slashed microphone when you are muted and slashed headphones when you are deafened. Discord asks you to approve Olyzano Notch once; nothing else is read."
+                enabled: activities.discordAvailable
+                checked: activities.discordRpc
+                onToggled: activities.discordRpc = !activities.discordRpc
+            }
+
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 6

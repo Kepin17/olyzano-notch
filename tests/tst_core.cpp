@@ -30,6 +30,8 @@
 #include "platform/NotificationFilter.h"
 #include "platform/SoundsModel.h"
 #include "platform/AudioBands.h"
+#include "platform/DiscordCall.h"
+#include "platform/DiscordIpc.h"
 #include "platform/DockModel.h"
 #include "platform/WellbeingModel.h"
 
@@ -516,6 +518,58 @@ private slots:
         QCOMPARE(MediaNames::processName(QStringLiteral("MSEdge")), QStringLiteral("msedge"));
         QCOMPARE(MediaNames::processName(QStringLiteral("308046B0AF4A39CB")), QStringLiteral("firefox"));
         QCOMPARE(MediaNames::processName(QStringLiteral("Spotify.exe")), QStringLiteral("spotify"));
+        QCOMPARE(MediaNames::displayName(QStringLiteral("Discord.exe")), QStringLiteral("Discord"));
+        QCOMPARE(MediaNames::processName(QStringLiteral("com.squirrel.Discord.Discord")), QStringLiteral("discord"));
+    }
+
+    void discordPipeFrames()
+    {
+        using namespace DiscordIpc;
+        // A frame is opcode + length (both little endian int32) + JSON, and one read can hold several.
+        QByteArray wire = encode(Handshake, {{"v", 1}, {"client_id", "123"}}) + encode(Frame, {{"cmd", "GET_VOICE_SETTINGS"}});
+        QCOMPARE(wire.left(8), QByteArray("\x00\x00\x00\x00\x19\x00\x00\x00", 8)); // op 0, 25 bytes of JSON
+        qint32 op = -1;
+        QJsonObject message;
+        QVERIFY(take(wire, &op, &message));
+        QCOMPARE(op, qint32(Handshake));
+        QCOMPARE(message.value("client_id").toString(), QStringLiteral("123"));
+        QVERIFY(take(wire, &op, &message));
+        QCOMPARE(op, qint32(Frame));
+        QCOMPARE(message.value("cmd").toString(), QStringLiteral("GET_VOICE_SETTINGS"));
+        QVERIFY(wire.isEmpty());
+        // Half a frame waits for the rest; nonsense in the header is dropped, not buffered for ever.
+        QByteArray half = encode(Frame, {{"cmd", "x"}});
+        QByteArray rest = half.mid(half.size() - 3);
+        half.chop(3);
+        QVERIFY(!take(half, &op, &message));
+        half += rest;
+        QVERIFY(take(half, &op, &message));
+        QByteArray junk("\x01\x00\x00\x00\xff\xff\xff\x7f", 8);
+        QVERIFY(!take(junk, &op, &message));
+        QVERIFY(junk.isEmpty());
+    }
+
+    void discordMuteState()
+    {
+        using DiscordIpc::Mute;
+        QCOMPARE(DiscordIpc::muteFrom({}), Mute::Unknown);
+        QCOMPARE(DiscordIpc::muteFrom({{"mute", false}, {"deaf", false}}), Mute::Live);
+        QCOMPARE(DiscordIpc::muteFrom({{"mute", true}, {"deaf", false}}), Mute::Muted);
+        QCOMPARE(DiscordIpc::muteFrom({{"mute", true}, {"deaf", true}}), Mute::Deafened);
+        QCOMPARE(DiscordIpc::muteFrom({{"deaf", true}}), Mute::Deafened); // deafened wins whatever `mute` says
+    }
+
+    void discordCallState()
+    {
+        CallTracker call;
+        QCOMPARE(call.update(false, 0.0), CallState::Off);
+        QCOMPARE(call.update(true, 0.0), CallState::InCall);   // in a call, nobody talking
+        QCOMPARE(call.update(true, 0.3), CallState::Talking);  // a voice
+        for (int i = 0; i < 4; ++i)                            // short gaps between words keep it talking
+            QCOMPARE(call.update(true, 0.0), CallState::Talking);
+        QCOMPARE(call.update(true, 0.0), CallState::InCall);   // a longer silence ends it
+        QCOMPARE(call.update(true, 0.3), CallState::Talking);
+        QCOMPARE(call.update(false, 0.3), CallState::Off);     // leaving the call wins over the meter
     }
 
     void soundRules()
@@ -989,6 +1043,38 @@ private slots:
         const std::vector<float> silence(n, 0.0f);
         for (double v : bandLevels(silence.data(), n, rate))
             QCOMPARE(v, 0.0);
+    }
+
+    void smoothedLevels()
+    {
+        // Rises faster than it falls, and never overshoots the target.
+        const double up = smoothLevel(0.0, 1.0, 33);
+        const double down = 1.0 - smoothLevel(1.0, 0.0, 33);
+        QVERIFY(up > down);
+        QVERIFY(up < 1.0 && up > 0.0);
+        // Falling is monotonic towards the target.
+        double v = 1.0;
+        for (int i = 0; i < 20; ++i) {
+            const double next = smoothLevel(v, 0.0, 33);
+            QVERIFY(next < v);
+            v = next;
+        }
+        // One long step equals the same time in short steps: uneven audio updates don't change the motion.
+        double stepped = 0.0;
+        for (int i = 0; i < 10; ++i)
+            stepped = smoothLevel(stepped, 0.8, 10);
+        QVERIFY(std::abs(stepped - smoothLevel(0.0, 0.8, 100)) < 1e-9);
+        // A +-5 % flicker in the input barely moves the bar once it has settled.
+        double bar = 0.5;
+        for (int i = 0; i < 60; ++i)
+            bar = smoothLevel(bar, i % 2 ? 0.55 : 0.45, 33);
+        double lo = 1, hi = 0;
+        for (int i = 0; i < 20; ++i) {
+            bar = smoothLevel(bar, i % 2 ? 0.55 : 0.45, 33);
+            lo = std::min(lo, bar);
+            hi = std::max(hi, bar);
+        }
+        QVERIFY(hi - lo < 0.04);
     }
 
     void renameAndNamingHelpers()

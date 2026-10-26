@@ -15,6 +15,7 @@ Runs on **Linux (KDE Plasma, Wayland or X11)** and **Windows 10 / 11**.
 - [Settings and storage](#settings-and-storage)
 - [Build from source](#build-from-source)
 - [Project layout](#project-layout)
+- Guides: [user guide](docs/user-guide.md) · [developer guide](docs/developer-guide.md)
 
 ---
 
@@ -282,6 +283,15 @@ While the notch is closed it shows what is going on as a small pill, the most im
 an **incoming call** (KDE Connect), a **break** of the stretch reminder, the **timer**, a **Nearby transfer** with its
 percentage, a **browser download** still being written to Downloads (size and speed), or files being **copied**.
 A hairline along the bottom shows the progress.
+
+On Windows the **dynamic island** (a small capsule always shown at the top) is on by default; *Settings → General → Dynamic island* turns it off.
+With music it names the app playing (Spotify, Chrome, …). When **Discord** is in a voice call a small green ring appears in the capsule, and it fills
+green while your microphone picks up your voice. This comes from Discord's own audio session on your microphone: no Discord account, login or
+network is involved, and it cannot tell which channel you are in or who else is there.
+Optionally (*Settings → General → Discord muted / deafened*, off by default) the ring becomes a red slashed microphone while you are **muted** and
+red slashed headphones while you are **deafened**. Nothing else shows that, so Notch asks the running Discord through its local connection: Discord
+opens an approval window once, and the sign-in is kept encrypted for your Windows user. It needs a build made with a Discord app
+(see the developer guide); a build without one says so in Settings and keeps the plain ring.
 
 When nothing is going on, the **idle clock** shows the time, the **microphone** (red and struck through when muted,
 orange while an app records) and the **battery**. Rest the pointer on it to open Olyzano Notch. Turn it off in
