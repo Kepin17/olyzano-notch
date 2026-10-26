@@ -59,6 +59,12 @@ summary::-webkit-details-marker{display:none}
 summary::before{content:"+";display:inline-block;width:1.2em;font-family:var(--mono)}
 details[open] summary::before{content:"−"}
 details ul{margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:.92rem}
+/* the 3D notch beside the hero text: only where the device can show it (see the loader below) */
+.hero{position:relative}
+.hero .wrap{position:relative;z-index:1}
+#hero3d{position:absolute;right:max(0px,calc((100% - 960px) / 2 - 40px));top:0;width:min(46%,520px);height:430px;pointer-events:none;opacity:0;transition:opacity 1.2s;z-index:0}
+#hero3d.on{opacity:1}
+@media (max-width:899px){#hero3d{display:none}}
 /* what it does: a bento grid of small living pictures */
 .bento{display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
 .bc{grid-column:span 2;position:relative;display:flex;flex-direction:column;background:var(--soft);border:1px solid var(--line);border-radius:18px;padding:18px 18px 20px;overflow:hidden;transition:transform .3s cubic-bezier(.3,1.25,.45,1),border-color .2s}
@@ -696,7 +702,7 @@ footer a{color:var(--dim)}
   </ul>
 </div></nav>
 
-<header class="hero"><div class="wrap">
+<header class="hero"><canvas id="hero3d" aria-hidden="true" data-3d=""></canvas><div class="wrap">
   <p class="eyebrow" id="ver">LINUX · WINDOWS · MIT LICENSE</p>
   <h1>A temporary shelf for the files you are working with.</h1>
   <p class="lead">Move the pointer to the top edge of your screen and Olyzano Notch slides out. Drop files on it, take them back when you need them, and send them to a phone or another computer. Originals are never touched, and the shelf cleans itself up.</p>
@@ -2304,6 +2310,22 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
     } else els.forEach(make);
   })();
   window.notchDemo = { play: play, scenes: scenes.map(function (s) { return s.id; }) };
+})();
+</script>
+<script>
+// The 3D notch in the hero: loaded only when the device can show it and the visitor has not asked for less motion or less data.
+(function () {
+  var c = document.getElementById("hero3d");
+  if (!c) return;
+  if (new URLSearchParams(location.search).get("3d") === "0" || c.dataset["3d"] === "off") return;
+  if (matchMedia("(prefers-reduced-motion: reduce)").matches || (navigator.connection && navigator.connection.saveData) || innerWidth < 900) return;
+  try { var t = document.createElement("canvas"); if (!(t.getContext("webgl2") || t.getContext("webgl"))) return; } catch (e) { return; }
+  var io = new IntersectionObserver(function (es) {
+    if (!es[0].isIntersecting) return;
+    io.disconnect();
+    import("./js/hero3d.js").then(function (m) { m.start(c); }).catch(function () { c.remove(); });
+  }, { rootMargin: "200px" });
+  io.observe(c);
 })();
 </script>
 </body>
