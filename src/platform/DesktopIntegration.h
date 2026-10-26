@@ -50,9 +50,6 @@ public:
     Q_INVOKABLE QSizeF screenSize(QWindow *window) const;
     
     Q_INVOKABLE QPointF snapWidget(qreal cx, qreal y, qreal itemW, qreal itemH, QWindow *window) const;
-    // The edge strip asks for the panel at the top centre of its screen (widget mode).
-    Q_INVOKABLE void openDocked(QWindow *strip);
-    void attachEdgeStrip(QWindow *window); // the strip itself: 300 x 4 at the top centre, over everything
     // Tray actions land on the primary monitor's Notch (page: "" toggles pin, "settings").
     Q_INVOKABLE void toggleFromTray(const QString &page);
 

@@ -301,35 +301,3 @@ void DesktopIntegration::placeDocked(QWindow *window)
     window->resize(int(WidgetModel::OpenW), int(WidgetModel::OpenH));
     centerOnScreen(window);
 }
-
-void DesktopIntegration::openDocked(QWindow *strip)
-{
-    const QScreen *screen = strip ? strip->screen() : nullptr;
-    m_windows.removeAll(nullptr);
-    for (QWindow *w : std::as_const(m_windows))
-        if (!screen || w->screen() == screen)
-            QMetaObject::invokeMethod(w, "openFromEdgeStrip");
-}
-
-void DesktopIntegration::attachEdgeStrip(QWindow *window)
-{
-#ifdef NOTCH_HAVE_LAYERSHELL
-    if (auto *ls = dockLayer(window)) {
-        ls->setScope(QStringLiteral("notch-edge"));
-#ifdef NOTCH_LAYERSHELL_SET_SCREEN
-        ls->setScreen(window->screen());
-#endif
-        ls->setLayer(LayerShellQt::Window::LayerOverlay);
-        ls->setAnchors(LayerShellQt::Window::AnchorTop);
-        ls->setExclusiveZone(-1);
-        ls->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityNone);
-        ls->setMargins(QMargins());
-        return;
-    }
-#endif
-    window->setFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool | Qt::WindowDoesNotAcceptFocus);
-    if (window->screen()) {
-        const QRect g = window->screen()->geometry();
-        window->setGeometry(g.x() + (g.width() - window->width()) / 2, g.y(), window->width(), window->height());
-    }
-}

@@ -224,7 +224,7 @@ RowLayout {
                 Caption {
                     Layout.fillWidth: true
                     text: activities.capsuleMode === "capsule" ? "A small black capsule stays at the top, like a Dynamic Island. Point at it to open Olyzano Notch."
-                        : activities.capsuleMode === "widget" ? "Beta: a floating card you can drag anywhere. Click it to open Olyzano Notch beside it; the thin line at the top edge still opens the panel at the top centre. It may still have rough edges."
+                        : activities.capsuleMode === "widget" ? "Beta: a floating card you can drag anywhere. Click it to open Olyzano Notch beside it; pointing at the top edge opens nothing. It may still have rough edges."
                         : activities.capsuleMode === "open" ? "The panel stays open at the top of the screen."
                         : "Only a thin line shows at the top edge. Rest the pointer there to open Olyzano Notch."
                 }

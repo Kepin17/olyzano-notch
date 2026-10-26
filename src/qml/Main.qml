@@ -37,15 +37,14 @@ Window {
     // ---- Widget mode (beta): the notch as a floating card you drag anywhere ----
     // The window follows the card: a small one while it floats, the big one while its panel is open (the panel grows
     // from the card's spot); (widgetCx, widgetY) is the card's middle and top on this screen. `docked` is the island's
-    // own place at the top centre (the stretch reminder, and the panel when opened from the top-edge strip).
+    // own place at the top centre (the stretch reminder).
     readonly property bool widgetMode: capsuleMode === "widget"
-    property bool openFromEdge: false
     property real widgetCx: 0
     property real widgetY: 14
     property rect winRect: Qt.rect(0, 0, 840, 620)
     property bool geoWidget: false // the window is placed by the card (not at the top centre)
     property bool dragging: false
-    readonly property bool docked: !widgetMode || openFromEdge || mode === "prompt" || mode === "hidden"
+    readonly property bool docked: !widgetMode || mode === "prompt" || mode === "hidden"
     readonly property bool floating: !docked && mode !== "open"
     readonly property string screenName: root.screen ? root.screen.name : ""
     function loadWidgetPos() {
@@ -74,12 +73,6 @@ Window {
     onGeoWidgetChanged: updateMask()
     onScreenChanged: { loadWidgetPos(); applyGeometry() }
     Connections { target: activities; function onWidgetReset() { root.loadWidgetPos() } }
-    function openFromEdgeStrip() { // the top-edge strip (widget mode): the panel at the top centre
-        if (!widgetMode)
-            return
-        openFromEdge = true
-        dwelled = true
-    }
     function dragStep(dx, dy) { // the card moved by (dx, dy) screen pixels
         const size = desktop.screenSize(root)
         const k = activities.capsuleScale
@@ -489,7 +482,6 @@ Window {
         applyGeometry()
         if (open)
             return
-        openFromEdge = false
         page = "shelf"
         editingCategory = ""
         clearSelection()
@@ -2186,8 +2178,8 @@ Window {
     // The only live area while hidden: a thin strip on the top edge.
     Item {
         id: edge
-        enabled: !root.geoWidget
-        visible: !root.geoWidget
+        enabled: !root.widgetMode // widget mode: pointing at the top edge opens nothing, the card is what you click
+        visible: !root.widgetMode
         x: (root.width - width) / 2
         width: 300
         height: 3

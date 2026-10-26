@@ -341,7 +341,6 @@ int main(int argc, char *argv[])
     QHash<QScreen *, QQuickWindow *> docks;
     // And a status bar along the top of each monitor (Settings → Panel). Created before the notch, so the notch draws above it.
     QQmlComponent barWindow(&engine, "Notch", "Bar");
-    QQmlComponent edgeWindow(&engine, "Notch", "EdgeStrip");
     QHash<QScreen *, QQuickWindow *> bars;
     if (const int i = app.arguments().indexOf(QStringLiteral("--super-key")); i >= 0) { // who gets the Windows key: status | on | off
         const QString what = i + 1 < app.arguments().size() ? app.arguments().at(i + 1) : QStringLiteral("status");
@@ -378,15 +377,6 @@ int main(int argc, char *argv[])
             bars.insert(screen, bar);
         } else {
             qCritical().noquote() << barWindow.errorString();
-        }
-        if (auto *strip = qobject_cast<QQuickWindow *>(edgeWindow.create())) { // widget mode: the thin line that opens the panel
-            strip->setScreen(screen);
-            desktop.attachEdgeStrip(strip);
-            const auto show = [strip, &activities] { strip->setVisible(activities.capsuleMode() == QLatin1String("widget")); };
-            show();
-            QObject::connect(&activities, &Activities::settingsChanged, strip, show);
-        } else {
-            qCritical().noquote() << edgeWindow.errorString();
         }
         auto *window = qobject_cast<QQuickWindow *>(notchWindow.create());
         if (!window) {
