@@ -65,6 +65,19 @@ inline Release parseRelease(const QByteArray &json)
     return r;
 }
 
+// The reply of /repos/<owner>/<repo>/contributors: people with commits, most first; bots are left out.
+inline QStringList parseContributors(const QByteArray &json)
+{
+    QStringList names;
+    for (const QJsonValue &v : QJsonDocument::fromJson(json).array()) {
+        const QJsonObject o = v.toObject();
+        const QString login = o.value(QStringLiteral("login")).toString();
+        if (!login.isEmpty() && o.value(QStringLiteral("type")).toString() != QLatin1String("Bot") && !login.endsWith(QLatin1String("[bot]")))
+            names << login;
+    }
+    return names;
+}
+
 // The file for this system: the .deb on Linux; on Windows the installer, or the zip when the app runs from a folder it was unpacked to.
 // Empty when there is none (the release page is then what opens).
 inline QString pickAsset(const QList<QPair<QString, QString>> &assets, const QString &platform, bool portable)

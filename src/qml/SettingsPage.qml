@@ -181,13 +181,13 @@ RowLayout {
             SettingToggle {
                 title: "Dynamic island"
                 caption: "A small black capsule stays at the top and shows what is going on: the song playing, the app using the microphone"
-                    + (Qt.platform.os === "windows" ? ", a Discord call," : "") + " and notifications from this computer."
+                    + (Qt.platform.os === "windows" || Qt.platform.os === "linux" ? ", a Discord call," : "") + " and notifications from this computer."
                 checked: activities.capsuleMode !== "hidden"
                 onToggled: activities.capsuleMode = activities.capsuleMode === "hidden" ? "capsule" : "hidden"
             }
 
             SettingToggle {
-                visible: Qt.platform.os === "windows"
+                visible: Qt.platform.os === "windows" || Qt.platform.os === "linux"
                 title: "Discord muted / deafened"
                 caption: !activities.discordAvailable ? "This build has no Discord app, so the island can only show that you are in a Discord call."
                     : activities.discordRpc ? (activities.discordStatus !== "" ? activities.discordStatus : "Starting")
@@ -862,6 +862,7 @@ RowLayout {
 
         ColumnLayout {
             visible: settingsScroll.category === "about"
+            onVisibleChanged: if (visible) updates.loadContributors()
             Layout.fillWidth: true
             spacing: 16
 
@@ -956,6 +957,20 @@ RowLayout {
                     PillButton { text: "Source code"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch") }
                     PillButton { text: "Releases"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/releases") }
                     PillButton { text: "Report a problem"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/issues") }
+                }
+            }
+
+            SettingCard {
+                title: "Thanks to the contributors"
+                visible: updates.contributors.length > 0
+                Caption { Layout.fillWidth: true; text: "People who sent code to Olyzano Notch on GitHub. Thank you! Click a name to open their profile." }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Repeater {
+                        model: updates.contributors
+                        PillButton { text: modelData; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/" + modelData) }
+                    }
                 }
             }
 

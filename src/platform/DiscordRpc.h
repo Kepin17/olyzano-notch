@@ -14,7 +14,7 @@
 // Talks to the running Discord program through its local pipe (RPC) to learn whether you are muted or deafened,
 // which nothing else shows (not the audio, not the window). It needs the Discord app this build was made with
 // (NOTCH_DISCORD_CLIENT_ID / NOTCH_DISCORD_CLIENT_SECRET) and your OK once, in a window Discord opens; the sign-in
-// is then kept encrypted for this Windows user. Off until turned on in Settings. Nothing leaves the computer
+// is then kept encrypted for this Windows user (a file only you can read on Linux). Off until turned on in Settings. Nothing leaves the computer
 // except Discord's own sign-in request to discord.com.
 class DiscordRpc : public QObject
 {

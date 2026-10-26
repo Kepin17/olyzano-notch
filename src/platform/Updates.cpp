@@ -14,6 +14,7 @@
 
 namespace {
 const QUrl LatestUrl(QStringLiteral("https://api.github.com/repos/Kepin17/olyzano-notch/releases/latest"));
+const QUrl PeopleUrl(QStringLiteral("https://api.github.com/repos/Kepin17/olyzano-notch/contributors?per_page=50"));
 constexpr qint64 DaySecs = 86400;
 }
 
@@ -96,6 +97,35 @@ QString Updates::status() const
     if (newer())
         return skipped() ? tr("%1 is available (you skipped it).").arg(latest()) : tr("%1 is available.").arg(latest());
     return tr("You have the newest version (%1).").arg(m_installed);
+}
+
+void Updates::loadContributors()
+{
+    if (m_contributors.isEmpty())
+        m_contributors = m_settings.value(QStringLiteral("contributors")).toStringList();
+    const qint64 now = QDateTime::currentSecsSinceEpoch();
+    if (m_peopleReply || !enabled() || (!m_contributors.isEmpty() && now - m_settings.value(QStringLiteral("contributorsAt")).toLongLong() < DaySecs))
+        return;
+    QNetworkRequest request(PeopleUrl);
+    request.setHeader(QNetworkRequest::UserAgentHeader, QStringLiteral("OlyzanoNotch/%1").arg(m_installed.isEmpty() ? QStringLiteral("dev") : m_installed));
+    request.setRawHeader("Accept", "application/vnd.github+json");
+    request.setTransferTimeout(10000);
+    m_peopleReply = m_nam.get(request);
+    connect(m_peopleReply, &QNetworkReply::finished, this, [this] {
+        QNetworkReply *reply = m_peopleReply;
+        m_peopleReply = nullptr;
+        reply->deleteLater();
+        if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 200)
+            return; // keep what is cached; "thanks" is not worth an error message
+        const QStringList names = UpdateModel::parseContributors(reply->readAll());
+        if (names.isEmpty())
+            return;
+        m_contributors = names;
+        m_settings.setValue(QStringLiteral("contributors"), names);
+        m_settings.setValue(QStringLiteral("contributorsAt"), QDateTime::currentSecsSinceEpoch());
+        emit contributorsChanged();
+    });
+    emit contributorsChanged();
 }
 
 void Updates::check()

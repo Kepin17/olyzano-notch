@@ -107,44 +107,44 @@ if(WIN32)
     target_compile_definitions(notch PRIVATE NOTCH_HAVE_KDECONNECT)
     target_sources(notch PRIVATE src/platform/WinPrivacy.h src/platform/WinPrivacy.cpp src/platform/ColorPicker_win.cpp
                                  src/platform/WinAudioSessions.h src/platform/WinAudioSessions.cpp
-                                 src/platform/DiscordRpc.h src/platform/DiscordRpc.cpp
                                  src/platform/WinBluetooth.h src/platform/WinBluetooth.cpp
                                  src/platform/MediaPlayers_win.cpp src/platform/MediaNames.h src/platform/AudioLevels_win.cpp
                                  src/platform/DesktopNotifications_win.cpp)
     # user32/shell32: AppDock lists and raises windows, and asks the Recycle Bin. ole32/advapi32: microphone, registry.
     # windowsapp: the WinRT APIs (Bluetooth, media sessions) through C++/WinRT, which ships with the Windows SDK.
-    target_link_libraries(notch PRIVATE user32 shell32 ole32 advapi32 crypt32 windowsapp winmm) # winmm: PlaySound; crypt32: the saved Discord sign-in is encrypted for this user
+    target_link_libraries(notch PRIVATE user32 shell32 ole32 advapi32 crypt32 windowsapp winmm) # winmm: PlaySound; crypt32: the saved Discord sign-in is encrypted for this user (on Linux it is a file only you can read)
     # C++/WinRT's coroutine support needs C++20 (under C++17 it pulls in the removed <experimental/coroutine>).
     set_source_files_properties(src/platform/WinBluetooth.cpp src/platform/MediaPlayers_win.cpp
                                 src/platform/DesktopNotifications_win.cpp
                                 PROPERTIES COMPILE_OPTIONS "/std:c++20")
-    # The Discord app behind "muted / deafened" in the island. Pass them on the command line or from CI secrets
-    # (-DNOTCH_DISCORD_CLIENT_ID=... -DNOTCH_DISCORD_CLIENT_SECRET=...); never write them in a file that is committed.
-    # Without them the feature says so in Settings and the island still shows in-call / talking.
-    set(NOTCH_DISCORD_CLIENT_ID "" CACHE STRING "Discord application client ID")
-    set(NOTCH_DISCORD_CLIENT_SECRET "" CACHE STRING "Discord application client secret")
-    # Or from a `.env` next to this file (copy .env.example); a value given with -D wins.
-    if(EXISTS "${CMAKE_SOURCE_DIR}/.env")
-        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/.env")
-        file(STRINGS "${CMAKE_SOURCE_DIR}/.env" _notch_env REGEX "^NOTCH_DISCORD_CLIENT_(ID|SECRET)=")
-        foreach(_line IN LISTS _notch_env)
-            string(REGEX MATCH "^([A-Z_]+)=(.*)$" _unused "${_line}")
-            set(_name "${CMAKE_MATCH_1}")
-            set(_value "${CMAKE_MATCH_2}")
-            string(STRIP "${_value}" _value)
-            string(REGEX REPLACE "^\"(.*)\"$" "\\1" _value "${_value}") # allow quotes
-            if(NOT ${_name})
-                set(${_name} "${_value}")
-            endif()
-        endforeach()
-    endif()
-    if(NOTCH_DISCORD_CLIENT_ID AND NOTCH_DISCORD_CLIENT_SECRET)
-        target_compile_definitions(notch PRIVATE NOTCH_DISCORD_CLIENT_ID="${NOTCH_DISCORD_CLIENT_ID}"
-                                                 NOTCH_DISCORD_CLIENT_SECRET="${NOTCH_DISCORD_CLIENT_SECRET}")
-    endif()
     configure_file(packaging/windows/notch.rc.in ${CMAKE_CURRENT_BINARY_DIR}/notch.rc)
     target_sources(notch PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/notch.rc)
     set_target_properties(notch PROPERTIES WIN32_EXECUTABLE TRUE) # a window, not a console
+endif()
+target_sources(notch PRIVATE src/platform/DiscordRpc.h src/platform/DiscordRpc.cpp) # Windows and Linux; other systems build it but never start it
+# The Discord app behind "muted / deafened" in the island. Pass them on the command line or from CI secrets
+# (-DNOTCH_DISCORD_CLIENT_ID=... -DNOTCH_DISCORD_CLIENT_SECRET=...); never write them in a file that is committed.
+# Without them the feature says so in Settings and the island still shows in-call / talking.
+set(NOTCH_DISCORD_CLIENT_ID "" CACHE STRING "Discord application client ID")
+set(NOTCH_DISCORD_CLIENT_SECRET "" CACHE STRING "Discord application client secret")
+# Or from a `.env` next to this file (copy .env.example); a value given with -D wins.
+if(EXISTS "${CMAKE_SOURCE_DIR}/.env")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/.env")
+    file(STRINGS "${CMAKE_SOURCE_DIR}/.env" _notch_env REGEX "^NOTCH_DISCORD_CLIENT_(ID|SECRET)=")
+    foreach(_line IN LISTS _notch_env)
+        string(REGEX MATCH "^([A-Z_]+)=(.*)$" _unused "${_line}")
+        set(_name "${CMAKE_MATCH_1}")
+        set(_value "${CMAKE_MATCH_2}")
+        string(STRIP "${_value}" _value)
+        string(REGEX REPLACE "^\"(.*)\"$" "\\1" _value "${_value}") # allow quotes
+        if(NOT ${_name})
+            set(${_name} "${_value}")
+        endif()
+    endforeach()
+endif()
+if(NOTCH_DISCORD_CLIENT_ID AND NOTCH_DISCORD_CLIENT_SECRET)
+    target_compile_definitions(notch PRIVATE NOTCH_DISCORD_CLIENT_ID="${NOTCH_DISCORD_CLIENT_ID}"
+                                             NOTCH_DISCORD_CLIENT_SECRET="${NOTCH_DISCORD_CLIENT_SECRET}")
 endif()
 qt_add_qml_module(notch
     URI Notch

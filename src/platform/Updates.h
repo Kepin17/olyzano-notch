@@ -23,12 +23,15 @@ class Updates : public QObject
     Q_PROPERTY(bool checking READ checking NOTIFY changed)
     Q_PROPERTY(QString status READ status NOTIFY changed)       // one line for Settings
     Q_PROPERTY(QString lastChecked READ lastChecked NOTIFY changed)
+    Q_PROPERTY(QStringList contributors READ contributors NOTIFY contributorsChanged) // GitHub logins, for the thank-you in About
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY settingsChanged)
     Q_PROPERTY(bool quiet READ quiet WRITE setQuiet NOTIFY settingsChanged) // set from QML: a game, a call or a timer is on, so no toast now
 
 public:
     explicit Updates(QObject *parent = nullptr);
 
+    QStringList contributors() const { return m_contributors; }
+    Q_INVOKABLE void loadContributors(); // once a day at most, and only while the update check is on
     QString installed() const { return m_installed; }
     QString latest() const { return m_release.valid() ? m_release.version() : QString(); }
     bool newer() const { return m_release.valid() && UpdateModel::isNewer(m_release.tag, m_installed); }
@@ -52,6 +55,7 @@ public:
 
 signals:
     void changed();
+    void contributorsChanged();
     void settingsChanged();
     void updateFound(const QString &version);  // once per version, at a quiet moment
     void checked();                             // a check has ended (well or not)
@@ -65,6 +69,8 @@ private:
     QNetworkAccessManager m_nam;
     QNetworkReply *m_reply = nullptr;
     QSettings m_settings;
+    QStringList m_contributors;
+    QNetworkReply *m_peopleReply = nullptr;
     QString m_installed, m_error;
     UpdateModel::Release m_release;
     bool m_quiet = false;

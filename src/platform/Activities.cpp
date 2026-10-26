@@ -42,6 +42,7 @@ Activities::Activities(QObject *parent)
     connect(&m_privacyPoll, &QTimer::timeout, this, &Activities::pollPrivacy);
     connect(&m_pactl, &QProcess::readyReadStandardOutput, this, [this] { m_pactlOut += m_pactl.readAllStandardOutput(); });
     connect(&m_pactl, &QProcess::finished, this, &Activities::readMicOutputs);
+    connect(&m_micTap, &QProcess::readyReadStandardOutput, this, &Activities::onMicTap);
 #if defined(Q_OS_LINUX) || defined(Q_OS_WIN)
     m_privacyPoll.start(); // the microphone's mute state is also shown by the idle clock
 #endif
@@ -49,6 +50,8 @@ Activities::Activities(QObject *parent)
     m_discordPoll.setInterval(3000);
     connect(&m_discordPoll, &QTimer::timeout, this, &Activities::pollDiscord);
     m_discordPoll.start();
+#endif
+#ifdef NOTCH_DISCORD_RPC
     connect(&m_rpc, &DiscordRpc::changed, this, &Activities::discordChanged);
     m_rpc.setEnabled(discordRpc());
 #endif
@@ -57,7 +60,7 @@ Activities::Activities(QObject *parent)
 void Activities::setDiscordRpc(bool on)
 {
     store(QStringLiteral("discordRpc"), on);
-#ifdef Q_OS_WIN
+#ifdef NOTCH_DISCORD_RPC
     m_rpc.setEnabled(on);
 #endif
 }
@@ -392,21 +395,72 @@ void Activities::readMicOutputs()
         monitor.insert(source.value(QLatin1String("index")).toInt(), name.endsWith(QLatin1String(".monitor")));
     }
     QStringList mic;
+    bool discordOpen = false; // a Discord recording stream that is not paused: Discord only holds one in a call
     for (const QJsonValue &v : QJsonDocument::fromJson(docs.last()).array()) {
         const QJsonObject stream = v.toObject();
         if (monitor.value(stream.value(QLatin1String("source")).toInt(), false))
             continue;
         const QJsonObject props = stream.value(QLatin1String("properties")).toObject();
         QString name = props.value(QLatin1String("application.name")).toString();
-        if (name == QLatin1String("OlyzanoKaraoke"))
-            continue; // our own karaoke loop is not an app listening
+        if (name == QLatin1String("OlyzanoKaraoke") || name == QLatin1String("OlyzanoMicLevel"))
+            continue; // our own karaoke loop and level reader are not an app listening
         if (name.isEmpty())
             name = props.value(QLatin1String("application.process.binary")).toString();
         if (!name.isEmpty() && !mic.contains(name))
             mic << name;
+        if (!stream.value(QLatin1String("corked")).toBool()
+            && (name.contains(QLatin1String("discord"), Qt::CaseInsensitive)
+                || props.value(QLatin1String("application.process.binary")).toString().contains(QLatin1String("discord"), Qt::CaseInsensitive)))
+            discordOpen = true;
     }
+    // No loudness is read here (that needs a recording stream of our own), so a call shows as "in call", not "talking".
+    const CallState before = m_call.state;
+    m_call.update(discordOpen, m_speaking ? 1 : 0);
+    if (m_call.state != before)
+        emit discordChanged();
     if (mic != m_mic) {
         m_mic = mic;
         emit privacyChanged();
+    }
+    syncMicTap();
+}
+
+// Linux: read the microphone only while an app already has it open and it is not muted, so a voice can light the icon.
+void Activities::syncMicTap()
+{
+    const bool want = privacyIndicators() && !m_mic.isEmpty() && m_micMuted != 1;
+    if (want && m_micTap.state() == QProcess::NotRunning) {
+        m_micTap.start(QStringLiteral("parec"), {QStringLiteral("--device=@DEFAULT_SOURCE@"), QStringLiteral("--raw"),
+                                                 QStringLiteral("--format=s16le"), QStringLiteral("--rate=8000"),
+                                                 QStringLiteral("--channels=1"), QStringLiteral("--latency-msec=60"),
+                                                 QStringLiteral("--client-name=OlyzanoMicLevel")});
+    } else if (!want && m_micTap.state() != QProcess::NotRunning) {
+        m_micTap.kill();
+        if (m_speaking) {
+            m_speaking = false;
+            emit micSpeakingChanged();
+        }
+    }
+}
+
+void Activities::onMicTap()
+{
+    const QByteArray data = m_micTap.readAllStandardOutput();
+    const auto *samples = reinterpret_cast<const qint16 *>(data.constData());
+    int peak = 0;
+    for (int i = 0; i < data.size() / 2; ++i)
+        peak = qMax(peak, qAbs(int(samples[i])));
+    if (peak > 1300) // about -28 dBFS: a voice, not the room
+        m_voiceSeen.start();
+    const bool speaking = m_voiceSeen.isValid() && m_voiceSeen.elapsed() < 400; // holds between words
+    if (speaking != m_speaking) {
+        m_speaking = speaking;
+        emit micSpeakingChanged();
+    }
+    if (m_call.state != CallState::Off) { // a Discord call: "talking" follows the same voice
+        const CallState before = m_call.state;
+        m_call.update(true, speaking ? 1 : 0);
+        if (m_call.state != before)
+            emit discordChanged();
     }
 }

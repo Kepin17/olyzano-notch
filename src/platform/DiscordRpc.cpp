@@ -13,8 +13,10 @@
 #include <QUrl>
 #include <QUrlQuery>
 
+#ifdef Q_OS_WIN
 #include <windows.h>
 #include <wincrypt.h>
+#endif
 
 #ifndef NOTCH_DISCORD_CLIENT_ID
 #define NOTCH_DISCORD_CLIENT_ID ""
@@ -29,8 +31,13 @@ const QString RedirectUri = QStringLiteral("http://localhost"); // must be liste
 QString clientId() { return QStringLiteral(NOTCH_DISCORD_CLIENT_ID); }
 
 // The sign-in is kept encrypted for this Windows user (DPAPI): another user, or a copy of the file, cannot read it.
+// On Linux it is a plain file that only this user may open (0600), like ssh keys and browser tokens.
 QByteArray dpapi(const QByteArray &in, bool encrypt)
 {
+#ifndef Q_OS_WIN
+    Q_UNUSED(encrypt)
+    return in;
+#else
     DATA_BLOB source{DWORD(in.size()), reinterpret_cast<BYTE *>(const_cast<char *>(in.constData()))};
     DATA_BLOB result{};
     const BOOL ok = encrypt ? CryptProtectData(&source, L"Olyzano Notch", nullptr, nullptr, nullptr, CRYPTPROTECT_UI_FORBIDDEN, &result)
@@ -40,7 +47,30 @@ QByteArray dpapi(const QByteArray &in, bool encrypt)
     const QByteArray out(reinterpret_cast<const char *>(result.pbData), int(result.cbData));
     LocalFree(result.pbData);
     return out;
+#endif
 }
+
+// Discord's pipe number i: 0..9 is `discord-ipc-N`; on Linux 10..29 are the same names where Flatpak and Snap put them.
+QString pipeName(int i)
+{
+    const QString name = QStringLiteral("discord-ipc-%1").arg(i % 10);
+#ifdef Q_OS_WIN
+    return name;
+#else
+    const QString run = qEnvironmentVariable("XDG_RUNTIME_DIR", QStringLiteral("/tmp"));
+    switch (i / 10) {
+    case 1: return run + QStringLiteral("/app/com.discordapp.Discord/") + name;
+    case 2: return run + QStringLiteral("/snap.discord/") + name;
+    default: return run + u'/' + name;
+    }
+#endif
+}
+constexpr int PipeCount =
+#ifdef Q_OS_WIN
+    10;
+#else
+    30;
+#endif
 
 QString tokenFile()
 {
@@ -63,8 +93,8 @@ DiscordRpc::DiscordRpc(QObject *parent)
     connect(&m_socket, &QLocalSocket::errorOccurred, this, [this] {
         if (!m_enabled || m_socket.state() != QLocalSocket::UnconnectedState)
             return;
-        if (++m_pipe <= 9) { // that pipe is not there: Discord may hold the next one
-            m_socket.connectToServer(QStringLiteral("discord-ipc-%1").arg(m_pipe));
+        if (++m_pipe < PipeCount) { // that pipe is not there: Discord may hold the next one
+            m_socket.connectToServer(pipeName(m_pipe));
             return;
         }
         setStatus(QStringLiteral("Waiting for Discord to start"));
@@ -111,7 +141,7 @@ void DiscordRpc::tryConnect()
     if (!m_enabled || !built() || m_socket.state() != QLocalSocket::UnconnectedState)
         return;
     m_pipe = 0;
-    m_socket.connectToServer(QStringLiteral("discord-ipc-0"));
+    m_socket.connectToServer(pipeName(0));
 }
 
 void DiscordRpc::onReadyRead()
@@ -177,6 +207,8 @@ void DiscordRpc::saveTokens() const
     QFile file(tokenFile());
     if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
         file.write(dpapi(QJsonDocument(QJsonObject{{QStringLiteral("access"), m_access}, {QStringLiteral("refresh"), m_refresh}}).toJson(), true));
+    file.close();
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
 }
 
 // AUTHENTICATE with the saved sign-in; ask Discord for a new one (it opens an approval window) when there is none.

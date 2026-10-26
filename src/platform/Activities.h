@@ -11,8 +11,11 @@
 #include <QVariantList>
 
 #include "platform/DiscordCall.h"
-#ifdef Q_OS_WIN
+#if defined(Q_OS_WIN) || defined(Q_OS_LINUX)
+#define NOTCH_DISCORD_RPC // mute / deafen from Discord's own RPC pipe
 #include "platform/DiscordRpc.h"
+#endif
+#ifdef Q_OS_WIN
 #include "platform/WinAudioSessions.h"
 #endif
 
@@ -35,6 +38,7 @@ class Activities : public QObject
     Q_PROPERTY(QVariantList downloads READ downloads NOTIFY downloadsChanged)
     Q_PROPERTY(QStringList micApps READ micApps NOTIFY privacyChanged)
     Q_PROPERTY(QStringList cameraApps READ cameraApps NOTIFY privacyChanged)
+    Q_PROPERTY(bool micSpeaking READ micSpeaking NOTIFY micSpeakingChanged) // Linux: an app has the microphone, it is live, and there is a voice
     Q_PROPERTY(int micMuted READ micMuted NOTIFY privacyChanged) // default microphone: 1 muted, 0 live, -1 unknown
     // Discord on Windows: "off" | "call" (in a voice call) | "talking" (the microphone is picking up a voice)
     // | "muted" | "deafened" (the last two need discordRpc: Discord says so itself).
@@ -67,11 +71,12 @@ public:
     QStringList micApps() const { return m_mic; }
     QStringList cameraApps() const { return m_camera; }
     int micMuted() const { return m_micMuted; }
+    bool micSpeaking() const { return m_speaking; }
     QString discordState() const
     {
         if (m_call.state == CallState::Off)
             return QStringLiteral("off");
-#ifdef Q_OS_WIN
+#ifdef NOTCH_DISCORD_RPC
         // Only inside a call: Discord can be muted all day, and that is not worth an icon.
         if (m_rpc.mute() == DiscordIpc::Mute::Deafened)
             return QStringLiteral("deafened");
@@ -84,7 +89,7 @@ public:
     void setDiscordRpc(bool on);
     static bool discordAvailable()
     {
-#ifdef Q_OS_WIN
+#ifdef NOTCH_DISCORD_RPC
         return DiscordRpc::built();
 #else
         return false;
@@ -92,7 +97,7 @@ public:
     }
     QString discordStatus() const
     {
-#ifdef Q_OS_WIN
+#ifdef NOTCH_DISCORD_RPC
         return m_rpc.status();
 #else
         return QString();
@@ -131,6 +136,7 @@ signals:
     void downloadsChanged();
     void privacyChanged();
     void discordChanged();
+    void micSpeakingChanged();
     void settingsChanged();
 
 private:
@@ -166,11 +172,18 @@ private:
     QByteArray m_pactlOut;
     QStringList m_mic, m_camera;
     int m_micMuted = -1;
+    QProcess m_micTap; // Linux: loudness of the microphone while an app uses it; the sound is never kept, only a peak per chunk
+    QElapsedTimer m_voiceSeen;
+    bool m_speaking = false;
+    void syncMicTap();
+    void onMicTap();
 
     QTimer m_discordPoll; // slow while no call, fast enough to follow speech during one
     CallTracker m_call;
 #ifdef Q_OS_WIN
     WinAudioSessions m_sessions;
+#endif
+#ifdef NOTCH_DISCORD_RPC
     DiscordRpc m_rpc;
 #endif
 };

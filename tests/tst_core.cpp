@@ -523,6 +523,13 @@ private slots:
         QCOMPARE(MediaNames::processName(QStringLiteral("com.squirrel.Discord.Discord")), QStringLiteral("discord"));
     }
 
+    void contributorsSkipBots()
+    {
+        const QByteArray json = R"([{"login":"Kepin17","type":"User"},{"login":"dependabot[bot]","type":"Bot"},{"login":"helngopidingin","type":"User"}])";
+        QCOMPARE(UpdateModel::parseContributors(json), (QStringList{"Kepin17", "helngopidingin"}));
+        QVERIFY(UpdateModel::parseContributors("{}").isEmpty());
+    }
+
     void discordPipeFrames()
     {
         using namespace DiscordIpc;

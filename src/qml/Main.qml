@@ -168,7 +168,7 @@ Window {
     TextMetrics { id: capSourceSize; font.pixelSize: 11; text: root.capSource }
     // margins + wave + gaps + the app name + the time + the microphone and Discord icons, and a little spare
     readonly property real capOverhead: 2 * 24 + 22 + 3 * 10 + capTimeSize.advanceWidth + (capSource !== "" ? capSourceSize.advanceWidth + 10 : 0)
-                                        + (activities.micApps.length > 0 ? 25 : 0) + (activities.discordState !== "off" ? 24 : 0) + (sharingNow ? 24 : 0) + 16
+                                        + (activities.micApps.length > 0 ? 25 : 0) + (activities.cameraApps.length > 0 ? 25 : 0) + (activities.discordState !== "off" ? 24 : 0) + (sharingNow ? 24 : 0) + 16
     readonly property real capMaxWidth: root.width - 40
     readonly property bool capWraps: capLyric && capLineSize.advanceWidth + capOverhead > capMaxWidth
     readonly property real capWidth: !capLyric ? 400 : capWraps ? capMaxWidth : Math.max(400, capLineSize.advanceWidth + capOverhead)
@@ -983,7 +983,15 @@ Window {
                 visible: activities.micMuted >= 0
                 glyph: activities.micMuted === 1 ? "mic-off" : "mic"
                 sourceSize: Qt.size(13, 13)
-                color: activities.micMuted === 1 ? theme.danger : activities.micApps.length > 0 ? theme.warn : root.textSecondary
+                color: activities.micMuted === 1 ? theme.danger : activities.micSpeaking ? theme.success : activities.micApps.length > 0 ? theme.warn : root.textSecondary
+                scale: activities.micSpeaking ? 1.25 : 1
+                Behavior on scale { NumberAnimation { duration: 120 } }
+            }
+            LineIcon { // a camera is on
+                visible: activities.privacyIndicators && activities.cameraApps.length > 0
+                glyph: "camera"
+                sourceSize: Qt.size(13, 13)
+                color: theme.success
             }
             // Battery
             Item {
@@ -1060,10 +1068,18 @@ Window {
                 color: theme.accent
             }
             LineIcon {
+                visible: activities.privacyIndicators && activities.cameraApps.length > 0
+                glyph: "camera"
+                sourceSize: Qt.size(15, 15)
+                color: theme.success
+            }
+            LineIcon {
                 visible: activities.micApps.length > 0
                 glyph: "mic"
                 sourceSize: Qt.size(15, 15)
-                color: theme.warn
+                color: activities.micSpeaking ? theme.success : theme.warn
+                scale: activities.micSpeaking ? 1.25 : 1
+                Behavior on scale { NumberAnimation { duration: 120 } }
             }
         }
 
