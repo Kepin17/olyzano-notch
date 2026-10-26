@@ -65,6 +65,7 @@ $("#settingsBtn").innerHTML = icon("gear", 15);
 tabsEl.replaceChildren(...TABS.map(([id, name, ic]) => h("button", { class: "tab", role: "tab", "data-tab": id, "aria-selected": "false", onclick: () => go(id) }, h("span", { html: icon(ic, 13) }), name)),
   h("span", { class: "grow" }),
   h("button", { class: "tab act", id: "noteBtn", onclick: () => newNote() }, h("span", { html: icon("pen", 13) }), "Note"),
+  h("button", { class: "tab act scan", id: "scanBtn", onclick: () => $("#camera").click() }, h("span", { html: icon("image", 13) }), "Scan"),
   h("button", { class: "tab act", id: "addBtn", onclick: () => $("#picker").click() }, h("span", { html: icon("plus", 13) }), "Add"));
 
 // a note: some text, kept on the shelf as a .txt file
@@ -128,6 +129,13 @@ addEventListener("paste", async e => {
   if (fs.length) { e.preventDefault(); setOpen(true); if (state.tab !== "files") state.tab = "files"; await ingest(fs.map((f, i) => f.name && f.name !== "image.png" ? f : new File([f], "Clipboard " + new Date().toISOString().slice(0, 19).replace("T", " ").replace(/:/g, ".") + (fs.length > 1 ? " " + (i + 1) : "") + "." + (f.type.split("/")[1] || "png"), { type: f.type }))); return; }
   const text = e.clipboardData?.getData("text/plain");
   if (text && text.trim()) { setOpen(true); await ingest([new File([text], (/^https?:\/\//.test(text.trim()) ? "Link " : "Snippet ") + new Date().toISOString().slice(0, 16).replace("T", " ").replace(":", ".") + ".txt", { type: "text/plain" })]); }
+});
+// a photo of a page becomes a one-page PDF on the shelf (the camera opens on a phone, the picker elsewhere)
+$("#camera").addEventListener("change", async e => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try { const [pdf] = await (await import("./tools/pdf.js")).imagesToPdf([f]); await ingest([new File([pdf.blob], "Scan " + new Date().toLocaleString([], { dateStyle: "short", timeStyle: "short" }).replace(/[\/:]/g, "-") + ".pdf", { type: "application/pdf" })]); }
+  catch { toast("Could not turn the photo into a PDF"); }
 });
 $("#picker").addEventListener("change", async e => { const l = [...e.target.files]; e.target.value = ""; await ingest(l); });
 on("files", () => render());

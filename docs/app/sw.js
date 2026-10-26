@@ -1,5 +1,5 @@
 // Offline: the app shell and the vendored libraries are cached on first load; OCR data from the CDN is cached as it is used.
-const V = "notch-web-3";
+const V = "notch-web-4";
 const SHELL = ["./", "index.html", "style.css", "manifest.webmanifest", "icons/notch.png", "icons/traktir.jpeg",
   "js/main.js", "js/app.js", "js/util.js", "js/store.js", "js/crypto.js", "js/vault.js", "js/dialogs.js", "js/ingest.js", "js/shelf.js", "js/icons.js", "js/themes.js", "js/themes-apply.js",
   "js/palette.js", "js/settings.js", "js/tools.js", "js/tools/image.js", "js/tools/pdf.js", "js/tools/zip.js", "js/tools/ocr.js", "js/tools/misc.js", "js/workers/image.js", "js/timer.js", "js/color.js", "js/share.js", "js/music.js"];
@@ -14,6 +14,8 @@ self.addEventListener("fetch", e => {
       const cache = await caches.open("shared");
       const files = form.getAll("files");
       for (const f of files) await cache.put("/shared/" + Date.now() + "-" + encodeURIComponent(f.name), new Response(f, { headers: { "x-name": encodeURIComponent(f.name), "content-type": f.type } }));
+      const text = [form.get("title"), form.get("text"), form.get("url")].filter(x => typeof x === "string" && x.trim()).join("\n");
+      if (text) { files.push(new File([text], "Shared text.txt", { type: "text/plain" })); await cache.put("/shared/" + Date.now() + "-text", new Response(text, { headers: { "x-name": encodeURIComponent("Shared text.txt"), "content-type": "text/plain" } })); }
       return Response.redirect("./?shared=" + files.length, 303);
     })());
     return;
