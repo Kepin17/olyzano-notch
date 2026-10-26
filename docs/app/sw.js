@@ -1,6 +1,6 @@
 // Offline: the app shell and the vendored libraries are cached on first load; OCR data from the CDN is cached as it is used.
-const V = "notch-web-4";
-const SHELL = ["./", "index.html", "style.css", "manifest.webmanifest", "icons/notch.png", "icons/traktir.jpeg",
+const V = "notch-web-5";
+const SHELL = ["./", "index.html", "style.css", "manifest.webmanifest", "icons/notch.png", "icons/icon-maskable-512.png", "icons/traktir.jpeg",
   "js/main.js", "js/app.js", "js/util.js", "js/store.js", "js/crypto.js", "js/vault.js", "js/dialogs.js", "js/ingest.js", "js/shelf.js", "js/icons.js", "js/themes.js", "js/themes-apply.js",
   "js/palette.js", "js/settings.js", "js/tools.js", "js/tools/image.js", "js/tools/pdf.js", "js/tools/zip.js", "js/tools/ocr.js", "js/tools/misc.js", "js/workers/image.js", "js/timer.js", "js/color.js", "js/share.js", "js/music.js"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });

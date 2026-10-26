@@ -8,14 +8,84 @@
   "background_color": "#000000",
   "theme_color": "#000000",
   "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
   ],
   "share_target": {
     "action": "./share-target",
     "method": "POST",
     "enctype": "multipart/form-data",
-    "params": { "title": "title", "text": "text", "url": "url", "files": [{ "name": "files", "accept": ["*/*"] }] }
+    "params": {
+      "title": "title",
+      "text": "text",
+      "url": "url",
+      "files": [
+        {
+          "name": "files",
+          "accept": [
+            "*/*"
+          ]
+        }
+      ]
+    }
   },
-  "categories": ["productivity", "utilities"]
+  "categories": [
+    "productivity",
+    "utilities"
+  ],
+  "shortcuts": [
+    {
+      "name": "Files",
+      "short_name": "Files",
+      "url": "./?tab=files",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "Timer",
+      "short_name": "Timer",
+      "url": "./?tab=timer",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    },
+    {
+      "name": "File tools",
+      "short_name": "Tools",
+      "url": "./?tab=tools",
+      "icons": [
+        {
+          "src": "icons/icon-192.png",
+          "sizes": "192x192"
+        }
+      ]
+    }
+  ],
+  "display_override": [
+    "standalone",
+    "minimal-ui"
+  ]
 }
