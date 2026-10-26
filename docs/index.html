@@ -191,10 +191,29 @@ details ul{margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:.92rem}
 #demo .ctrl button:hover{border-color:var(--ink)}
 #demo .demo-head{display:flex;align-items:end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:20px}
 #demo .demo-head .sec-lead{margin:0}
-#demo .dchips{display:flex;gap:18px;overflow-x:auto;padding:2px 0 12px;margin-bottom:14px;border-bottom:1px solid var(--line);scrollbar-width:thin}
-#demo .dchips button{flex:none;position:relative;border:0;background:none;color:var(--faint);font:500 .82rem var(--mono);letter-spacing:.02em;padding:4px 0 8px;cursor:pointer}
-#demo .dchips button[aria-current="true"]{color:var(--ink)}
-#demo .dchips button i{position:absolute;left:0;bottom:-13px;height:2px;width:0;background:var(--accent)}
+#demo .dgrid{display:grid;grid-template-columns:minmax(220px,270px) minmax(0,1fr);gap:34px;align-items:stretch}
+#demo .dnav{display:flex;flex-direction:column;min-width:0}
+#demo .dnav .sec-lead{margin-bottom:18px}
+#demo .dmain{min-width:0}
+#demo .dchips{position:relative;flex:1 1 0;min-height:220px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;overscroll-behavior:contain;padding:0 6px 0 0;margin:0 0 16px;scrollbar-width:thin;scrollbar-color:var(--line) transparent}
+#demo .dchips button{flex:none;position:relative;display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;background:none;color:var(--dim);font:500 .9rem var(--sans);padding:9px 12px;border-radius:10px;cursor:pointer;transition:background .15s,color .15s}
+#demo .dchips button em{font:600 .72rem var(--mono);font-style:normal;color:var(--faint);width:1.6em;flex:none}
+#demo .dchips button:hover{background:var(--soft);color:var(--ink)}
+#demo .dchips button[aria-current="true"]{background:var(--soft);color:var(--ink);font-weight:650}
+#demo .dchips button[aria-current="true"] em{color:var(--accent)}
+#demo .dchips button i{position:absolute;left:12px;right:12px;bottom:3px;height:2px;border-radius:1px;background:transparent;overflow:hidden}
+#demo .dchips button i::after{content:"";display:block;height:100%;width:0;background:var(--accent)}
+#demo .dchips button i.full::after{width:100%}
+#demo .ctrl{margin-top:auto}
+@media (max-width:900px){
+  #demo .dgrid{grid-template-columns:1fr;gap:0}
+  #demo .dnav .ctrl{order:-1;margin:0 0 12px;align-self:flex-end}
+  #demo .dchips{flex:none;min-height:0;flex-direction:row;gap:16px;overflow-x:auto;overflow-y:hidden;padding:2px 0 12px;margin-bottom:14px;border-bottom:1px solid var(--line);max-height:none!important}
+  #demo .dchips button{width:auto;padding:4px 0 8px;border-radius:0;background:none!important;font:500 .82rem var(--mono);white-space:nowrap}
+  #demo .dchips button em{display:none}
+  #demo .dchips button[aria-current="true"]{color:var(--ink)}
+  #demo .dchips button i{left:0;right:0;bottom:-13px}
+}
 #demo .stage-wrap{position:relative;width:100%;aspect-ratio:960/600;border-radius:8px;overflow:hidden;border:1px solid var(--line);background:#0b0c10}
 #demo .cap{min-height:1.6em;margin-top:14px;color:var(--dim);font-size:.95rem;transition:opacity .25s}
 #demo .cap.out{opacity:0}
@@ -678,18 +697,18 @@ footer a{color:var(--dim)}
 </div></header>
 
 <section id="demo"><div class="wrap">
-  <div class="demo-head">
-    <div>
-      <h2>See it in action</h2>
-      <p class="sec-lead">Every feature, played on a pretend KDE Plasma desktop. Pick one, or let the tour run.</p>
-    </div>
+  <div class="dgrid">
+  <div class="dnav">
+    <h2>See it in action</h2>
+    <p class="sec-lead">Every feature, played on a pretend KDE Plasma desktop. Pick one, or let the tour run.</p>
+    <div class="dchips" id="chips" role="tablist" aria-orientation="vertical" aria-label="Features"></div>
     <div class="ctrl">
       <button id="prev" aria-label="Previous feature">&lsaquo;</button>
       <button id="pause" aria-label="Pause the tour">&#10073;&#10073;</button>
       <button id="next" aria-label="Next feature">&rsaquo;</button>
     </div>
   </div>
-  <div class="dchips" id="chips" role="tablist" aria-label="Features"></div>
+  <div class="dmain">
     <div class="stage-wrap" id="stageWrap">
       <div class="dstage" id="stage" aria-hidden="true">
         <div class="wall">
@@ -721,6 +740,8 @@ footer a{color:var(--dim)}
       </div>
     </div>
   <p class="cap" id="cap" aria-live="polite"></p>
+  </div>
+  </div>
 </div></section>
 
 <section id="download"><div class="wrap">
@@ -1187,7 +1208,9 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
   var S = $("stage"), W = $("stageWrap"), C = $("cursor"), DR = $("drag"), D = $("dock"), CAP = $("cap"),
       WINS = $("wins"), VEIL = $("veil"), SL = $("sndLine"), DL = $("dlabel");
   var k = 1;
-  function fit() { k = W.clientWidth / 960; S.style.transform = "scale(" + k + ")"; }
+  function fit() {
+    k = W.clientWidth / 960; S.style.transform = "scale(" + k + ")";
+  }
   fit();
   if ("ResizeObserver" in window) new ResizeObserver(fit).observe(W); else addEventListener("resize", fit);
 
@@ -2113,7 +2136,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
   scenes.forEach(function (sc, i) {
     var b = document.createElement("button");
     b.setAttribute("role", "tab");
-    b.innerHTML = sc.name + "<i></i>";
+    b.innerHTML = "<em>" + String(i + 1).padStart(2, "0") + "</em><span>" + sc.name + "</span><i></i>";
     b.addEventListener("click", function () { play(i); });
     CH.appendChild(b);
   });
@@ -2121,12 +2144,14 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
     [].forEach.call(CH.children, function (b, i) {
       var bar = b.querySelector("i");
       b.setAttribute("aria-current", i === cur ? "true" : "false");
-      bar.style.transition = "none"; bar.style.width = "0";
+      bar.getAnimations({ subtree: true }).forEach(function (a) { a.cancel(); }); bar.classList.remove("full");
       if (i === cur) {
-        // Scroll the chip row only (never the page, which the visitor may be reading elsewhere).
-        CH.scrollTo({ left: b.offsetLeft - CH.clientWidth / 2 + b.offsetWidth / 2, behavior: REDUCED ? "auto" : "smooth" });
-        if (!REDUCED) { void bar.offsetWidth; bar.style.transition = "width " + dur + "ms linear"; bar.style.width = "100%"; }
-        else bar.style.width = "100%";
+        // Scroll the list only (never the page, which the visitor may be reading elsewhere): sideways on a phone, up and down beside the stage.
+        if (CH.scrollHeight > CH.clientHeight + 1 && getComputedStyle(CH).flexDirection === "column")
+          CH.scrollTo({ top: b.offsetTop - CH.clientHeight / 2 + b.offsetHeight / 2, behavior: REDUCED ? "auto" : "smooth" });
+        else CH.scrollTo({ left: b.offsetLeft - CH.clientWidth / 2 + b.offsetWidth / 2, behavior: REDUCED ? "auto" : "smooth" });
+        if (!REDUCED && bar.animate) bar.animate([{ width: "0%" }, { width: "100%" }], { duration: dur, fill: "forwards", easing: "linear", pseudoElement: "::after" });
+        else bar.classList.add("full");
       }
     });
   }
