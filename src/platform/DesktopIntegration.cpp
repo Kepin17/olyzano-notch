@@ -3,6 +3,7 @@
 #include "models/FileItem.h"
 #include "platform/WidgetModel.h"
 
+#include <QCursor>
 #include <QGuiApplication>
 #include <QPainterPath>
 #include <QRegion>
@@ -258,6 +259,11 @@ void DesktopIntegration::setClickThrough(QWindow *window, bool on)
 {
     if (window)
         window->setFlag(Qt::WindowTransparentForInput, on);
+}
+
+QPointF DesktopIntegration::cursorPos() const
+{
+    return QPointF(QCursor::pos());
 }
 
 QSizeF DesktopIntegration::screenSize(QWindow *window) const

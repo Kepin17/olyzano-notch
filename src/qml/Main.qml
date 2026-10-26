@@ -45,6 +45,7 @@ Window {
     property rect winRect: Qt.rect(0, 0, 840, 620)
     property bool geoWidget: false // the window is placed by the card (not at the top centre)
     property bool dragging: false
+    property string dragMask: ""
     readonly property bool docked: !widgetMode || mode === "prompt" || mode === "hidden"
     readonly property bool floating: !docked && mode !== "open"
     readonly property string screenName: root.screen ? root.screen.name : ""
@@ -57,7 +58,7 @@ Window {
     }
     function applyGeometry() {
         if (widgetMode && !docked) {
-            winRect = desktop.placeWidget(root, dragging ? 2 : mode === "open" ? 1 : 0, widgetCx, widgetY)
+            winRect = desktop.placeWidget(root, dragging && desktop.layerShell ? 2 : mode === "open" ? 1 : 0, widgetCx, widgetY)
             geoWidget = true
         } else if (geoWidget) {
             geoWidget = false
@@ -66,14 +67,47 @@ Window {
     }
     onWidgetModeChanged: { if (widgetMode) loadWidgetPos(); applyGeometry(); updateMask() }
     onDockedChanged: { applyGeometry(); updateMask() }
-    // While dragging the window is the whole screen and the card moves inside it: nothing to place per step.
-    onWidgetCxChanged: if (geoWidget && !dragging) applyGeometry()
-    onWidgetYChanged: if (geoWidget && !dragging) applyGeometry()
+    // Wayland, while dragging: the window is the whole screen and the card moves inside it, nothing to place per step.
+    // Windows and X11: the small window itself follows the pointer.
+    onWidgetCxChanged: if (geoWidget && !(dragging && desktop.layerShell)) applyGeometry()
+    onWidgetYChanged: if (geoWidget && !(dragging && desktop.layerShell)) applyGeometry()
     onDraggingChanged: { applyGeometry(); updateMask() }
     onWinRectChanged: updateMask()
     onGeoWidgetChanged: updateMask()
     onScreenChanged: { loadWidgetPos(); applyGeometry() }
     Connections { target: activities; function onWidgetReset() { root.loadWidgetPos() } }
+    // The same three steps for the card and for the open panel's title bar.
+    property real dragStartCx: 0
+    property real dragStartY: 0
+    property point dragStartCursor
+    property double dragLastMove: 0
+    function dragBegin() {
+        dragStartCx = widgetCx
+        dragStartY = widgetY
+        dragStartCursor = desktop.cursorPos()
+        dragLastMove = 0
+        dragging = true
+    }
+    // (lx, ly): how far the pointer is from where it was picked up, in the dragged item's own units (Wayland knows
+    // nothing else); elsewhere the real pointer is read, so the window cannot run away from it.
+    function dragMove(lx, ly, k) {
+        if (desktop.layerShell) {
+            dragStep(lx * k, ly * k)
+            return
+        }
+        const now = Date.now()
+        if (now - dragLastMove < 8) // at most about 120 moves a second
+            return
+        dragLastMove = now
+        const c = desktop.cursorPos()
+        widgetCx = dragStartCx
+        widgetY = dragStartY
+        dragStep(c.x - dragStartCursor.x, c.y - dragStartCursor.y)
+    }
+    function dragEnd() {
+        dragging = false
+        finishDrag()
+    }
     function dragStep(dx, dy) { // the card moved by (dx, dy) screen pixels
         const size = desktop.screenSize(root)
         const k = island.scale
@@ -529,9 +563,13 @@ Window {
         else if (anyMenu)
             desktop.setInputRegion(root, Qt.rect(0, 0, width, height))
         else if (geoWidget) { // the card (or its panel) in its own window
-            if (dragging) {
-                desktop.setInputRegion(root, Qt.rect(0, 0, width, height))
+            if (dragging) { // once: a mask change at every step makes a Windows window flash
+                if (dragMask !== width + "x" + height) {
+                    dragMask = width + "x" + height
+                    desktop.setInputRegion(root, Qt.rect(0, 0, width, height))
+                }
             } else {
+                dragMask = ""
                 const slack = maskSettle.running ? 24 : 0
                 const k = floating ? activities.capsuleScale : 1
                 const w = Math.min(width, Math.max(island.width, island.targetWidth) * k + 2 * slack)
@@ -1318,13 +1356,9 @@ Window {
                         target: null
                         acceptedButtons: Qt.LeftButton
                         dragThreshold: 8
-                        onActiveChanged: {
-                            root.dragging = active
-                            if (!active)
-                                root.finishDrag()
-                        }
-                        onCentroidChanged: if (active) root.dragStep(centroid.position.x - centroid.pressPosition.x,
-                                                                      centroid.position.y - centroid.pressPosition.y)
+                        onActiveChanged: if (active) root.dragBegin(); else root.dragEnd()
+                        onCentroidChanged: if (active) root.dragMove(centroid.position.x - centroid.pressPosition.x,
+                                                                      centroid.position.y - centroid.pressPosition.y, 1)
                     }
 
                     IconButton {
@@ -2139,19 +2173,9 @@ Window {
             target: null
             acceptedButtons: Qt.LeftButton
             dragThreshold: 8
-            onActiveChanged: {
-                root.dragging = active
-                if (!active)
-                    root.finishDrag()
-            }
-            onCentroidChanged: {
-                if (!active)
-                    return
-                // The card moves inside the (full-screen) window, so it is under the pointer again at once: each step
-                // moves it by how far the pointer is from where it was picked up.
-                root.dragStep((centroid.position.x - centroid.pressPosition.x) * island.scale,
-                              (centroid.position.y - centroid.pressPosition.y) * island.scale)
-            }
+            onActiveChanged: if (active) root.dragBegin(); else root.dragEnd()
+            onCentroidChanged: if (active) root.dragMove(centroid.position.x - centroid.pressPosition.x,
+                                                         centroid.position.y - centroid.pressPosition.y, island.scale)
         }
 
         // Real pointer motion means no drag is in progress (a drag delivers drag events instead).
