@@ -7,6 +7,7 @@ A round of polish: a modern music player and capsule, room for the notch like a 
 - **Room for the notch (Windows and KDE Plasma on Wayland).** *Settings → General → Keep other windows clear of the capsule* keeps a strip free along the top, so maximised windows start below the capsule, like under a taskbar. Off by default. On Windows the status bar's "keep windows out from under it" works now too.
 - **The microphone icon no longer stays green.** The voice detector follows the loudness of the room instead of a fixed line, and there is a *Voice sensitivity* choice (Linux).
 - **Windows:** dragging the Widget is smooth and no longer vanishes; in gaming mode the notch stays on screen (it just cannot be opened); a card in *Settings → About* and a note in the installer explain how to make RivaTuner / MSI Afterburner ignore Notch (set *Application detection level* to None for `notch.exe`).
+- **Lyrics are on by default** and the Lyrics card is gone from Settings: the Music page's *Lyrics* button turns them on and off. Notch looks the song up on lrclib.net (only the artist, title, album and length are sent); press the button to stop it.
 - Also from 0.12.2: the contributors card in *Settings → About* always shows.
 
 ### Downloads

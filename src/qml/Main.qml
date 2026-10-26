@@ -284,24 +284,36 @@ Window {
     readonly property string capSub: capLyric ? (media.title !== "" ? media.title + (media.artist !== "" ? " · " + media.artist : "") : "")
         : [media.artist, media.album].filter(t => t !== "").join(" · ") || (media.title !== "" ? media.identity : "")
     readonly property string capTime: clock(capPos) + (media.lengthMs > 0 ? " / " + clock(media.lengthMs) : "")
-    // which app is playing and where it is: what the second line says while the pointer rests on the capsule
-    readonly property string capHover: (media.identity !== "" ? media.identity + " · " : "") + capTime
+    // which app is playing: what the second line says while the pointer rests on the capsule
+    readonly property string capHover: media.identity
     TextMetrics { id: capLineSize; font.pixelSize: 13; font.weight: Font.DemiBold; text: root.capTitle }
     // margins + cover + wave + gaps + the microphone, camera, Discord and share icons, and a little spare
-    readonly property real capOverhead: 2 * 24 + 30 + 26 + 3 * 10
+    TextMetrics { id: capTimeSize; font.pixelSize: 11; font.features: { "tnum": 1 }; text: root.capTime }
+    readonly property real capOverhead: 2 * 24 + 30 + 26 + capTimeSize.advanceWidth + 4 * 10
                                         + (activities.micApps.length > 0 ? 25 : 0) + (activities.cameraApps.length > 0 ? 25 : 0) + (activities.discordState !== "off" ? 24 : 0) + (sharingNow ? 24 : 0) + 16
     readonly property real capMaxWidth: ((widgetMode ? 720 : root.width) - 40) / activities.capsuleScale
-    readonly property real capWidth: !capLyric ? 400 : Math.min(capMaxWidth, Math.max(400, capLineSize.advanceWidth + capOverhead))
+    readonly property real capWidth: !capLyric ? 430 : Math.min(capMaxWidth, Math.max(430, capLineSize.advanceWidth + capOverhead))
     // the colour of the cover, for the wave and the progress line
     ArtColor { id: capColor; source: media.artUrl; fallback: theme.media }
-    // a new song: the cover pops and the text slides in
-    property real capPop: 1
-    property real capSlide: 1
+    // A new song: the old one leaves downward and the new one comes in from above (the cover and both lines together).
+    // What is shown is swapped at the middle of the roll; a sung line changing is not a new song and just fades.
+    property real capRoll: 0 // 0 at rest; 0 -> 1 the old song going down; -1 -> 0 the new one arriving
+    property bool capSwitching: false
+    property string shownTitle: capTitle
+    property string shownSub: capSub
+    property url shownArt: media.artUrl
+    onCapTitleChanged: if (!capSwitching) shownTitle = capTitle
+    onCapSubChanged: if (!capSwitching) shownSub = capSub
+    readonly property url artNow: media.artUrl
+    onArtNowChanged: if (!capSwitching) shownArt = artNow
     property string capLastKey: media.title + "|" + media.artUrl
-    ParallelAnimation {
+    SequentialAnimation {
         id: capChange
-        NumberAnimation { target: root; property: "capPop"; from: 0.8; to: 1; duration: 340; easing.type: Easing.OutBack }
-        NumberAnimation { target: root; property: "capSlide"; from: 0; to: 1; duration: 300; easing.type: Easing.OutCubic }
+        ScriptAction { script: root.capSwitching = true }
+        NumberAnimation { target: root; property: "capRoll"; to: 1; duration: 150; easing.type: Easing.InQuad }
+        ScriptAction { script: { root.shownTitle = root.capTitle; root.shownSub = root.capSub; root.shownArt = root.artNow; root.capRoll = -1 } }
+        NumberAnimation { target: root; property: "capRoll"; to: 0; duration: 300; easing.type: Easing.OutCubic }
+        ScriptAction { script: root.capSwitching = false }
     }
     Timer { id: pauseTimer; interval: 120000; onTriggered: root.musicStale = true }
     Timer {
@@ -324,7 +336,11 @@ Window {
             const key = media.title + "|" + media.artUrl
             if (key !== root.capLastKey) {
                 root.capLastKey = key
-                capChange.restart()
+                if (root.mode === "idle" && root.musicShown)
+                    capChange.restart()
+                else {
+                    root.shownTitle = root.capTitle; root.shownSub = root.capSub; root.shownArt = root.artNow
+                }
             }
         }
         function onTrackChanged() { root.musicStale = false }
@@ -514,6 +530,8 @@ Window {
         function onTrackChanged(title, artist, art) {
             if (!notch.alerts || root.open)
                 return
+            if (root.mode === "idle" && root.musicShown && root.capsuleMode !== "hidden")
+                return // the capsule is showing the song: it rolls to the new one itself
             root.toast = { kind: "media", title: title, detail: artist, icon: "", art: art, level: -1 }
             toastTimer.interval = 3200
             toastTimer.restart()
@@ -1258,19 +1276,20 @@ Window {
                 Layout.preferredWidth: 30
                 Layout.preferredHeight: 30
                 Layout.alignment: Qt.AlignVCenter
-                source: media.artUrl
+                source: root.shownArt
                 radius: 8
-                scale: root.capPop
+                opacity: 1 - Math.abs(root.capRoll)
+                transform: Translate { y: root.capRoll * 12 }
             }
             ColumnLayout {
                 Layout.fillWidth: true
                 Layout.alignment: Qt.AlignVCenter
                 spacing: 0
-                opacity: root.capSlide
-                transform: Translate { x: (1 - root.capSlide) * 10 }
+                opacity: 1 - Math.abs(root.capRoll)
+                transform: Translate { y: root.capRoll * 12 }
                 MarqueeText {
                     Layout.fillWidth: true
-                    text: root.capTitle
+                    text: root.shownTitle
                     color: root.textPrimary
                     pixelSize: 13
                     weight: Font.DemiBold
@@ -1279,11 +1298,19 @@ Window {
                 MarqueeText {
                     Layout.fillWidth: true
                     visible: text !== ""
-                    text: islandHover.hovered ? root.capHover : root.capSub
+                    text: islandHover.hovered ? root.capHover : root.shownSub
                     color: root.textSecondary
                     pixelSize: 11
                     running: capRow.visible && !islandHover.hovered
                 }
+            }
+            Text { // where it is in the song
+                visible: media.lengthMs > 0
+                text: root.capTime
+                color: root.textSecondary
+                font.pixelSize: 11
+                font.features: { "tnum": 1 }
+                Layout.alignment: Qt.AlignVCenter
             }
             Equalizer {
                 barWidth: 2.5
@@ -1638,14 +1665,7 @@ Window {
                     onAddFiles: addDialog.open()
                     onNewNote: root.newNote()
                     lyricsOn: lyrics.enabled
-                    onToggleLyrics: {
-                        if (lyrics.enabled || lyrics.consented) {
-                            lyrics.enabled = !lyrics.enabled // switched on once in Settings: from here it is a plain toggle
-                        } else {
-                            root.settingsPage().category = "general" // the first time: Settings says what is sent
-                            root.page = "settings"
-                        }
-                    }
+                    onToggleLyrics: lyrics.enabled = !lyrics.enabled // on by default; the button is the only switch
                     onOpenShares: {
                         const s = root.sharePopup()
                         if (s.visible && s.view === "sessions")

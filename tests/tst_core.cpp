@@ -903,23 +903,17 @@ private slots:
         QCOMPARE(Lrc::indexAt({}, 5), -1);
     }
 
-    void lyricsAreLookedUpCachedAndOffByDefault()
+    void lyricsAreLookedUpCachedAndOnByDefault()
     {
         FakeLyricsServer web;
         const QByteArray song = R"({"syncedLyrics":"[00:01.00] hello\n[00:05.00] there","plainLyrics":"hello\nthere","instrumental":false})";
         web.routes.insert(QStringLiteral("/api/get"), {200, song});
         const QString conf = m_tmp.filePath(QStringLiteral("lyrics-a.conf")), cache = m_tmp.filePath(QStringLiteral("lyrics-cache"));
         {
-            Lyrics off(conf, cache);
+            Lyrics off(conf, cache); // named "off" below, once it is switched off
             off.setBaseUrl(web.url());
-            QCOMPARE(off.state(), QStringLiteral("off"));
-            QVERIFY(!off.consented()); // never switched on yet
+            QVERIFY(off.enabled()); // on by default: the Lyrics button on the Music page turns it off
             off.track(QStringLiteral("Artist"), QStringLiteral("Song"), QStringLiteral("Album"), 200000);
-            QTest::qWait(150);
-            QCOMPARE(web.hits, 0); // nothing is sent until it is switched on
-            QCOMPARE(off.requests(), 0);
-
-            off.setEnabled(true); // asks for the song already playing
             QTRY_COMPARE(off.state(), QStringLiteral("synced"));
             QCOMPARE(web.hits, 1);
             QCOMPARE(off.lines().size(), 2);

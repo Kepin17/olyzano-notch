@@ -29,6 +29,11 @@ Rectangle {
         if (!scrubbing)
             position = media.positionMs()
     }
+    function jump(ms) { // skip within the song
+        position = Math.max(0, Math.min(media.lengthMs, position + ms))
+        media.seek(position)
+        interacted()
+    }
     function fmt(ms) {
         const s = Math.max(0, Math.floor(ms / 1000))
         const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60
@@ -239,7 +244,7 @@ Rectangle {
                 Layout.fillWidth: true
                 spacing: 3
                 opacity: card.slide
-                transform: Translate { x: (1 - card.slide) * 14 }
+                transform: Translate { y: (card.slide - 1) * 12 } // the new song comes down from above
                 Text {
                     Layout.fillWidth: true
                     text: media.title || media.identity
@@ -347,8 +352,23 @@ Rectangle {
         // transport: previous, a big play / pause, next
         RowLayout {
             Layout.fillWidth: true
-            spacing: 18
+            spacing: card.compact ? 8 : 14
             Item { Layout.fillWidth: true }
+            RoundButton { // back 10 seconds
+                implicitWidth: 40
+                implicitHeight: 40
+                Accessible.name: "Back 10 seconds"
+                enabled: media.canSeek && media.lengthMs > 0
+                onClicked: card.jump(-10000)
+                contentItem: Text {
+                    text: "−10"
+                    color: card.fgDim
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
             RoundButton {
                 implicitWidth: 46
                 implicitHeight: 46
@@ -404,6 +424,21 @@ Rectangle {
                 enabled: media.canNext
                 onClicked: media.next()
                 contentItem: Item { Skip { anchors.centerIn: parent } }
+            }
+            RoundButton { // forward 10 seconds
+                implicitWidth: 40
+                implicitHeight: 40
+                Accessible.name: "Forward 10 seconds"
+                enabled: media.canSeek && media.lengthMs > 0
+                onClicked: card.jump(10000)
+                contentItem: Text {
+                    text: "+10"
+                    color: card.fgDim
+                    font.pixelSize: 12
+                    font.weight: Font.DemiBold
+                    horizontalAlignment: Text.AlignHCenter
+                    verticalAlignment: Text.AlignVCenter
+                }
             }
             Item { Layout.fillWidth: true }
         }

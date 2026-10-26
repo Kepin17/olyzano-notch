@@ -460,12 +460,11 @@ Limits: it only talks to Olyzano Notch (not Google's Quick Share), it needs both
   - Linux: MPRIS players (Elisa, browsers, Spotify…); sound through `parec`.
   - Windows: the media sessions the volume flyout shows (browsers, Spotify, Media Player…); sound from the speakers'
     loopback (no microphone permission).
-- **Lyrics and karaoke:** with *Settings → General → Lyrics* on, the Music page splits in two like Spotify's lyrics
+- **Lyrics and karaoke:** the Music page's *Lyrics* button splits it in two like Spotify's lyrics
   view: the player on the left, only the words on the right, the line being sung big and the list following the song
   (tap a line to jump there). The capsule shows the line too. The lyrics come from [lrclib.net](https://lrclib.net),
   an open lyrics service: **the artist, title, album and length of what plays are sent to it, nothing else, and only
-  when this is on (it is off by default)**. They are kept in the cache, so a song is asked about once
-  (*Forget the saved lyrics* clears them). The mic button on the player (Linux) plays your voice through the speakers
+  while the Lyrics button is on (it is on by default; press it to switch lyrics off)**. They are kept in the cache, so a song is asked about once. The mic button on the player (Linux) plays your voice through the speakers
   or headphones with the music, with larger lyrics; use headphones (a speaker echoes, and Bluetooth ones add a delay).
   It is switched off when you press it again or quit.
   Not every song is there: lrclib.net is community-made, and newer or less known artists are often missing ("No lyrics found").

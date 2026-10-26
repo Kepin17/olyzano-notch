@@ -31,9 +31,9 @@ public:
     // Empty paths: the usual config and cache folders.
     explicit Lyrics(const QString &settingsPath = {}, const QString &cacheDir = {}, QObject *parent = nullptr);
 
-    bool enabled() const { return m_settings.value(QStringLiteral("enabled"), false).toBool(); }
+    bool enabled() const { return m_settings.value(QStringLiteral("enabled"), true).toBool(); }
     void setEnabled(bool on);
-    bool consented() const { return m_settings.value(QStringLiteral("consented"), enabled()).toBool(); }
+    bool consented() const { return m_settings.value(QStringLiteral("consented"), true).toBool(); }
     QString state() const { return m_state; }
     QVariantList lines() const { return m_lineList; }
     QString plain() const { return m_plain; }

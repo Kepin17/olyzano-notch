@@ -41,7 +41,6 @@ RowLayout {
         ["alerts", "Prayer times", "prayer salat sholat solat adzan azan fajr subuh dhuhr zuhur asr ashar maghrib isha isya mosque muslim reminder city kemenag"], ["alerts", "Charger & Bluetooth alerts", "battery plug device connect low"], ["alerts", "Clock when idle", "time clock capsule"],
         ["alerts", "Downloads in the notch", "download browser progress"], ["alerts", "Phone calls & notifications", "kde connect phone"],
         ["alerts", "Microphone & camera indicators", "privacy dot mic camera"], ["alerts", "Notifications from this computer", "desktop apps slack"],
-        ["alerts", "Lyrics", "song music lrclib karaoke"],
         ["files", "Keep files for", "retention days expire delete"], ["files", "Sort new files by type", "rules category pdf images"],
         ["files", "Storage folder", "where files are stored directory"], ["files", "Add new screenshots", "spectacle screenshot"],
         ["files", "Add new downloads", "browser downloads folder"], ["files", "Add files from KDE Connect", "phone"],
@@ -542,17 +541,6 @@ RowLayout {
                     checked: desktopNotifications.enabled
                     onToggled: desktopNotifications.enabled = !desktopNotifications.enabled
                 }
-            }
-
-            SettingCard {
-                title: "Lyrics"
-                SettingToggle {
-                    title: "Show the lyrics of the song that plays"
-                    caption: "Looks the song up on lrclib.net, an open lyrics service: the artist, title, album and length of what plays are sent, nothing else. Off by default."
-                    checked: lyrics.enabled
-                    onToggled: lyrics.enabled = !lyrics.enabled
-                }
-                PillButton { text: "Forget the saved lyrics"; onClicked: lyrics.clearCache() }
             }
         }
 
