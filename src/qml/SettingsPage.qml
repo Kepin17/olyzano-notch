@@ -919,7 +919,7 @@ RowLayout {
                             anchors { fill: parent; margins: 10 }
                             contentHeight: notesText.implicitHeight
                             boundsBehavior: Flickable.StopAtBounds
-                            Text { id: notesText; width: parent.width; text: updates.notes.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/^#+\s*/gm, "").replace(/^\s*[-*]\s+/gm, "• ").replace(/[*`]/g, ""); color: theme.textDim; font.pixelSize: 12; wrapMode: Text.Wrap; textFormat: Text.PlainText }
+                            Text { id: notesText; width: parent.width; text: updates.notes.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/^#+\s*/gm, "").replace(/^[ \t]*[-*][ \t]+/gm, "• ").replace(/[*`]/g, ""); color: theme.textDim; font.pixelSize: 12; wrapMode: Text.Wrap; textFormat: Text.PlainText }
                         }
                     }
                     Flow {
