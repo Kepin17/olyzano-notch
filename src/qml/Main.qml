@@ -75,13 +75,13 @@ Window {
     Connections { target: activities; function onWidgetReset() { root.loadWidgetPos() } }
     function dragStep(dx, dy) { // the card moved by (dx, dy) screen pixels
         const size = desktop.screenSize(root)
-        const k = activities.capsuleScale
+        const k = island.scale
         const w = island.targetWidth * k, h = island.targetHeight * k
         widgetCx = Math.max(w / 2, Math.min(size.width - w / 2, widgetCx + dx))
         widgetY = Math.max(0, Math.min(size.height - h, widgetY + dy))
     }
     function finishDrag() {
-        const k = activities.capsuleScale
+        const k = island.scale
         const q = desktop.snapWidget(widgetCx, widgetY, island.targetWidth * k, island.targetHeight * k, root)
         widgetCx = q.x
         widgetY = q.y
@@ -135,7 +135,7 @@ Window {
         lastFrame = now
     }
     readonly property bool engaged: !gaming.active && (pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt" && !floating)
-                                    || dragOver || anyMenu
+                                    || dragOver || anyMenu || dragging
                                     || saveDialog.visible || addDialog.visible)
     // hidden: only the top-edge strip is live. peek: copy in progress. open: full panel.
     // toast: a short system alert (charger, Bluetooth). Shown even while hidden, like Dynamic Island.
@@ -1290,6 +1290,21 @@ Window {
                     Layout.leftMargin: root.page === "shelf" ? 12 : 6
                     Layout.rightMargin: 8
                     spacing: 8
+
+                    // Widget mode: the open panel is moved by its title bar too (the buttons keep their clicks).
+                    DragHandler {
+                        enabled: root.geoWidget && root.mode === "open"
+                        target: null
+                        acceptedButtons: Qt.LeftButton
+                        dragThreshold: 8
+                        onActiveChanged: {
+                            root.dragging = active
+                            if (!active)
+                                root.finishDrag()
+                        }
+                        onCentroidChanged: if (active) root.dragStep(centroid.position.x - centroid.pressPosition.x,
+                                                                      centroid.position.y - centroid.pressPosition.y)
+                    }
 
                     IconButton {
                         visible: root.page !== "shelf"
