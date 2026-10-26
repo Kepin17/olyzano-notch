@@ -277,23 +277,32 @@ Window {
     property bool musicStale: false
     readonly property bool musicShown: media.active && !musicStale
     property real capPos: 0 // ms, read once a second while the capsule shows the song
-    // What the capsule says (the line being sung, else the song) and how wide it must be to say all of it: it
-    // widens up to nearly the window; a line longer than that wraps onto a second line, never cut off.
-    readonly property bool capLyric: lyrics.enabled && lyrics.currentText !== "" // only a sung line widens the capsule; the song name stays one line
-    readonly property string capLine: capLyric ? lyrics.currentText
-        : media.title !== "" ? media.title + (media.artist !== "" ? " · " + media.artist : "") : media.identity
+    // What the capsule says: line 1 the sung line (else the title), line 2 the artist and album (else the song). A line
+    // longer than the room glides sideways (MarqueeText); the capsule only widens for a sung line, up to nearly the window.
+    readonly property bool capLyric: lyrics.enabled && lyrics.currentText !== "" // only a sung line widens the capsule; the song name stays at 400
+    readonly property string capTitle: capLyric ? lyrics.currentText : media.title !== "" ? media.title : media.identity
+    readonly property string capSub: capLyric ? (media.title !== "" ? media.title + (media.artist !== "" ? " · " + media.artist : "") : "")
+        : [media.artist, media.album].filter(t => t !== "").join(" · ") || (media.title !== "" ? media.identity : "")
     readonly property string capTime: clock(capPos) + (media.lengthMs > 0 ? " / " + clock(media.lengthMs) : "")
-    TextMetrics { id: capLineSize; font.pixelSize: 14; font.weight: Font.DemiBold; text: root.capLine }
-    TextMetrics { id: capTimeSize; font.pixelSize: 13; font.family: "monospace"; text: root.capTime }
-    // which app is playing, small and secondary; only when the line already names the song
-    readonly property string capSource: media.title !== "" ? media.identity : ""
-    TextMetrics { id: capSourceSize; font.pixelSize: 11; text: root.capSource }
-    // margins + wave + gaps + the app name + the time + the microphone and Discord icons, and a little spare
-    readonly property real capOverhead: 2 * 24 + 22 + 3 * 10 + capTimeSize.advanceWidth + (capSource !== "" ? capSourceSize.advanceWidth + 10 : 0)
+    // which app is playing and where it is: what the second line says while the pointer rests on the capsule
+    readonly property string capHover: (media.identity !== "" ? media.identity + " · " : "") + capTime
+    TextMetrics { id: capLineSize; font.pixelSize: 13; font.weight: Font.DemiBold; text: root.capTitle }
+    // margins + cover + wave + gaps + the microphone, camera, Discord and share icons, and a little spare
+    readonly property real capOverhead: 2 * 24 + 30 + 26 + 3 * 10
                                         + (activities.micApps.length > 0 ? 25 : 0) + (activities.cameraApps.length > 0 ? 25 : 0) + (activities.discordState !== "off" ? 24 : 0) + (sharingNow ? 24 : 0) + 16
     readonly property real capMaxWidth: ((widgetMode ? 720 : root.width) - 40) / activities.capsuleScale
-    readonly property bool capWraps: capLyric && capLineSize.advanceWidth + capOverhead > capMaxWidth
-    readonly property real capWidth: !capLyric ? 400 : capWraps ? capMaxWidth : Math.max(400, capLineSize.advanceWidth + capOverhead)
+    readonly property real capWidth: !capLyric ? 400 : Math.min(capMaxWidth, Math.max(400, capLineSize.advanceWidth + capOverhead))
+    // the colour of the cover, for the wave and the progress line
+    ArtColor { id: capColor; source: media.artUrl; fallback: theme.media }
+    // a new song: the cover pops and the text slides in
+    property real capPop: 1
+    property real capSlide: 1
+    property string capLastKey: media.title + "|" + media.artUrl
+    ParallelAnimation {
+        id: capChange
+        NumberAnimation { target: root; property: "capPop"; from: 0.8; to: 1; duration: 340; easing.type: Easing.OutBack }
+        NumberAnimation { target: root; property: "capSlide"; from: 0; to: 1; duration: 300; easing.type: Easing.OutCubic }
+    }
     Timer { id: pauseTimer; interval: 120000; onTriggered: root.musicStale = true }
     Timer {
         interval: 1000
@@ -312,6 +321,11 @@ Window {
                 pauseTimer.restart()
             }
             root.capPos = media.positionMs()
+            const key = media.title + "|" + media.artUrl
+            if (key !== root.capLastKey) {
+                root.capLastKey = key
+                capChange.restart()
+            }
         }
         function onTrackChanged() { root.musicStale = false }
     }
@@ -821,7 +835,7 @@ Window {
              : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
              : root.mode === "idle" ? (root.musicShown ? root.capWidth : root.infoShown ? 390 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         readonly property real targetHeight: root.mode === "open" ? panel.implicitHeight + (root.dragOver ? 8 : 0)
-              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? (root.capWraps ? 58 : 38) : 26) : 0
+              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? 48 : 26) : 0
         width: targetWidth
         height: targetHeight
         focus: true
@@ -1228,41 +1242,54 @@ Window {
             }
         }
 
-        // Idle with music: the wave, the song and where it is, instead of the clock.
+        // Idle with music: the cover, the song on two lines, the wave and a thin progress line, instead of the clock.
         RowLayout {
+            id: capRow
             anchors.fill: parent
             anchors.leftMargin: island.shoulder + 14
             anchors.rightMargin: island.shoulder + 14
+            anchors.topMargin: 3
+            anchors.bottomMargin: 9 // the progress line runs below
             spacing: 10
             opacity: root.mode === "idle" && root.musicShown && island.height > 20 ? 1 : 0
             visible: opacity > 0
             Behavior on opacity { NumberAnimation { duration: 160 } }
+            CoverArt {
+                Layout.preferredWidth: 30
+                Layout.preferredHeight: 30
+                Layout.alignment: Qt.AlignVCenter
+                source: media.artUrl
+                radius: 8
+                scale: root.capPop
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignVCenter
+                spacing: 0
+                opacity: root.capSlide
+                transform: Translate { x: (1 - root.capSlide) * 10 }
+                MarqueeText {
+                    Layout.fillWidth: true
+                    text: root.capTitle
+                    color: root.textPrimary
+                    pixelSize: 13
+                    weight: Font.DemiBold
+                    running: capRow.visible
+                }
+                MarqueeText {
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    text: islandHover.hovered ? root.capHover : root.capSub
+                    color: root.textSecondary
+                    pixelSize: 11
+                    running: capRow.visible && !islandHover.hovered
+                }
+            }
             Equalizer {
                 barWidth: 2.5
                 maxHeight: 18
+                color: capColor.color
                 Layout.alignment: Qt.AlignVCenter
-            }
-            Text {
-                Layout.fillWidth: true
-                text: root.capLine
-                color: root.textPrimary
-                font.pixelSize: 14
-                font.weight: Font.DemiBold
-                wrapMode: root.capWraps ? Text.Wrap : Text.NoWrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
-            }
-            Text { // the app that is playing: Spotify, Chrome, ...
-                visible: root.capSource !== ""
-                text: root.capSource
-                color: root.textSecondary
-                font.pixelSize: 11
-            }
-            Text {
-                text: root.capTime
-                color: root.textSecondary
-                font.pixelSize: 13
-                font.family: "monospace"
             }
             DiscordBadge { Layout.alignment: Qt.AlignVCenter }
             LineIcon { // something is being shared
@@ -1284,6 +1311,26 @@ Window {
                 color: activities.micSpeaking ? theme.success : theme.warn
                 scale: activities.micSpeaking ? 1.25 : 1
                 Behavior on scale { NumberAnimation { duration: 120 } }
+            }
+        }
+        Rectangle { // how far into the song: a thin line along the bottom edge
+            visible: capRow.visible && media.lengthMs > 0
+            opacity: capRow.opacity
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.leftMargin: island.shoulder + 16
+            anchors.rightMargin: island.shoulder + 16
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 4
+            height: 2
+            radius: 1
+            color: Qt.rgba(1, 1, 1, 0.14)
+            Rectangle {
+                width: parent.width * Math.min(1, root.capPos / Math.max(1, media.lengthMs))
+                height: parent.height
+                radius: 1
+                color: capColor.color
+                Behavior on width { NumberAnimation { duration: 900 } }
             }
         }
 

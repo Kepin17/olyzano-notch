@@ -9,7 +9,7 @@
 // jump while the capsule changes between the clock and a song.
 namespace ReserveModel {
 
-constexpr int BaseHeight = 44;
+constexpr int BaseHeight = 48;
 
 inline int heightFor(double scale) { return qRound(BaseHeight * qBound(0.8, scale, 1.3)); }
 

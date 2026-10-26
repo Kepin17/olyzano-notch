@@ -723,10 +723,10 @@ private slots:
     void reservePlan()
     {
         using namespace ReserveModel;
-        QCOMPARE(heightFor(1.0), 44);
-        QCOMPARE(heightFor(1.3), 57);
-        QCOMPARE(heightFor(0.8), 35);
-        QCOMPARE(heightFor(9), 57); // the scale is clamped like the setting
+        QCOMPARE(heightFor(1.0), 48);
+        QCOMPARE(heightFor(1.3), 62);
+        QCOMPARE(heightFor(0.8), 38);
+        QCOMPARE(heightFor(9), 62); // the scale is clamped like the setting
         // off, or any mode but the capsule: nothing is kept
         QCOMPARE(plan("capsule", false, 1, 0, true).notchZone, 0);
         for (const char *mode : {"hidden", "widget", "open"}) {
@@ -734,12 +734,12 @@ private slots:
             QCOMPARE(plan(mode, true, 1, 0, false).appBar, 0);
         }
         // Wayland: the island adds only what the status bar does not already keep
-        QCOMPARE(plan("capsule", true, 1, 0, true).notchZone, 44);
-        QCOMPARE(plan("capsule", true, 1, 30, true).notchZone, 14);
+        QCOMPARE(plan("capsule", true, 1, 0, true).notchZone, 48);
+        QCOMPARE(plan("capsule", true, 1, 30, true).notchZone, 18);
         QCOMPARE(plan("capsule", true, 1, 60, true).notchZone, 0);
         // Windows: one strip, the taller of the two
-        QCOMPARE(plan("capsule", true, 1, 0, false).appBar, 44);
-        QCOMPARE(plan("capsule", true, 1, 30, false).appBar, 44);
+        QCOMPARE(plan("capsule", true, 1, 0, false).appBar, 48);
+        QCOMPARE(plan("capsule", true, 1, 30, false).appBar, 48);
         QCOMPARE(plan("capsule", true, 1, 60, false).appBar, 60);
         QCOMPARE(plan("capsule", false, 1, 30, false).appBar, 30); // the bar alone still keeps its own room
         QCOMPARE(plan("hidden", false, 1, 30, true).notchZone, 0);

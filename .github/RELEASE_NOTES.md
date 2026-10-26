@@ -1,27 +1,18 @@
-## Olyzano Notch 0.12.2
+## Olyzano Notch 0.12.3
 
-A small fix on top of 0.12.1:
-- **Settings → About now always shows the "Thanks to the contributors" card** (it could stay hidden while the list was cached from the day before).
+A round of polish: a modern music player and capsule, room for the notch like a taskbar, and fixes for Windows.
 
-### What came with 0.12.1
-A round of polish for the notch, plus a task list, widget mode and prayer times.
-
-- **The capsule is no longer hidden by KDE's top panel.** The notch now sits above Plasma's own panel and menu bar.
-- **Spectrum styles.** Pick how the song's spectrum looks: Bars, Thin, Dots, Wave, Pulse or Off (*Settings → General*).
-- **Capsule size.** A slider (80–130%) makes the whole capsule smaller or bigger.
-- **Widget mode (beta).** A fourth way to place the notch (*Settings → General → Widget · Beta*): a floating rounded card with the same content that you drag anywhere. It snaps to the screen edges and the middle line, keeps its place per monitor (*Reset position* puts it back), and a click opens the panel beside it. Pointing at the top edge opens nothing in this mode. It is a beta: tell us what feels off.
-- **Prayer time reminders.** On by default and switchable in *Settings → Alerts & activities*: pick your city, and Notch tells you in the notch when each prayer time comes (with a heads-up before, and the next prayer in the closed capsule). Calculated on your computer, nothing is sent anywhere; Kemenag RI by default, other methods and the Hanafi Asr are in Settings.
-- **Tasks with deadlines.** A new *Tasks* section: type "Buy milk fri 17:00" (also "tomorrow", "12 nov", "in 45m") or press *Pick date & time* for a calendar and a time wheel, tick tasks off, and Notch reminds you 15 minutes before and when the deadline comes. The next task shows in the idle capsule (it can be switched off).
-- **Pointing at a running timer opens the Timer** right away, the way pointing at the song opens the player.
-- **Smoother panel.** The panel closes sooner when the pointer leaves, and its content appears only once the black background has grown to fit, so nothing shows outside it.
-- On Windows the status bar can no longer slip over the notch and block its menu.
-- Windows build fix and SHA-256 checksums (`SHA256SUMS-windows.txt`, `SHA256SUMS-linux.txt`) with every release.
-- Discord muted / deafened now works on Linux too (it needs a Discord app: see `.env.example`), and *Settings → About* thanks the contributors, fetched from GitHub.
+- **New music player.** The cover is big, on a blurred copy of itself, with the colour of the cover on the progress line, the sound wave and the play button. The cover pops and the text slides in when the song changes; a thin progress line shows a thumb when you point at it; one big play button, and the small buttons tidied into a quiet row.
+- **A modern music capsule.** The closed notch shows a small cover, the title and the artist on two lines (long ones glide sideways instead of being cut off), the sound wave in the cover's colour and a thin progress line. Point at it for the app and the time.
+- **Room for the notch (Windows and KDE Plasma on Wayland).** *Settings → General → Keep other windows clear of the capsule* keeps a strip free along the top, so maximised windows start below the capsule, like under a taskbar. Off by default. On Windows the status bar's "keep windows out from under it" works now too.
+- **The microphone icon no longer stays green.** The voice detector follows the loudness of the room instead of a fixed line, and there is a *Voice sensitivity* choice (Linux).
+- **Windows:** dragging the Widget is smooth and no longer vanishes; in gaming mode the notch stays on screen (it just cannot be opened); a card in *Settings → About* and a note in the installer explain how to make RivaTuner / MSI Afterburner ignore Notch (set *Application detection level* to None for `notch.exe`).
+- Also from 0.12.2: the contributors card in *Settings → About* always shows.
 
 ### Downloads
-- **Linux:** `notch_0.12.2_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.12.2_amd64.deb`, then restart Olyzano Notch.
-- **Windows:** `Notch-0.12.2-windows-x64-setup.exe`, or the portable `.zip`.
+- **Linux:** `notch_0.12.3_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.12.3_amd64.deb`, then restart Olyzano Notch.
+- **Windows:** `Notch-0.12.3-windows-x64-setup.exe`, or the portable `.zip`.
 - Optional components (OCR, KDE Connect, PDF tools on Windows): see the [install page](https://kepin17.github.io/olyzano-notch/#optional).
 
 ### Is the Windows warning safe to click through?
-Windows SmartScreen says *"Windows protected your PC"* because the installer is not code-signed yet and Notch is new to Microsoft, not because anything was found in it. Click **More info → Run anyway**. To check the file yourself, compare its SHA-256 with `SHA256SUMS-windows.txt` (and `SHA256SUMS-linux.txt` for the `.deb`) on this page: in PowerShell, `Get-FileHash .\Notch-0.12.2-windows-x64-setup.exe`. The code is open and built by GitHub Actions from this repository.
+Windows SmartScreen says *"Windows protected your PC"* because the installer is not code-signed yet and Notch is new to Microsoft, not because anything was found in it. Click **More info → Run anyway**. To check the file yourself, compare its SHA-256 with `SHA256SUMS-windows.txt` (and `SHA256SUMS-linux.txt` for the `.deb`) on this page: in PowerShell, `Get-FileHash .\Notch-0.12.3-windows-x64-setup.exe`. The code is open and built by GitHub Actions from this repository.

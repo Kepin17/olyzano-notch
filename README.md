@@ -23,8 +23,8 @@ Runs on **Linux (KDE Plasma, Wayland or X11)** and **Windows 10 / 11**. Free and
 
 | | |
 |---|---|
-| **Linux** (Debian 13, Ubuntu 25.04+, KDE neon) | Download the `.deb` from the [install page](https://kepin17.github.io/olyzano-notch/), then `sudo apt install ./notch_0.12.2_amd64.deb` |
-| **Windows 10 / 11** | Download `Notch-0.12.2-windows-x64-setup.exe` (or the portable `.zip`) and run it. SmartScreen: *More info → Run anyway* |
+| **Linux** (Debian 13, Ubuntu 25.04+, KDE neon) | Download the `.deb` from the [install page](https://kepin17.github.io/olyzano-notch/), then `sudo apt install ./notch_0.12.3_amd64.deb` |
+| **Windows 10 / 11** | Download `Notch-0.12.3-windows-x64-setup.exe` (or the portable `.zip`) and run it. SmartScreen: *More info → Run anyway* |
 | **No install** | Open the [web version](https://kepin17.github.io/olyzano-notch/app/): files stay in your browser, nothing is uploaded |
 
 Then move the mouse to the top-centre of the screen. Details: [Install](#install).
@@ -76,14 +76,14 @@ Tested on Kubuntu 26.04 (Qt 6.10, KDE Plasma on Wayland).
 **[latest release](https://github.com/Kepin17/olyzano-notch/releases/latest)**, or from a terminal:
 
 ```bash
-wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.12.2/notch_0.12.2_amd64.deb
+wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.12.3/notch_0.12.3_amd64.deb
 ```
 
 **2. Install** it. `apt` pulls in everything it needs (Qt 6 runtime, `layer-shell-qt`, Poppler, Ghostscript,
 `gocryptfs`, `fuse3`, `pulseaudio-utils`, …):
 
 ```bash
-sudo apt install ./notch_0.12.2_amd64.deb
+sudo apt install ./notch_0.12.3_amd64.deb
 ```
 
 **3. Start** **Olyzano Notch** from the application menu, or turn on **Settings → General → Start at login**.
@@ -197,7 +197,7 @@ Controls that a platform cannot offer are hidden or greyed out.
   with the same content; it snaps to the screen edges and the middle line, remembers its place on each monitor, and a
   click opens the panel beside it; pointing at the top edge opens nothing in this mode) or **Always open**
   (the panel stays open). *Keep other windows clear of the capsule* (off by default, Windows and KDE Plasma on Wayland) keeps a strip free along the top so maximised windows start below the capsule, like under a taskbar. *Capsule size* and the spectrum style (*Bars, Thin, Dots, Wave, Pulse, Off*) are in the same place.
-  While music plays the capsule shows the song with its sound wave and time (`1:23 / 5:37`), and a click or pointing at
+  While music plays the capsule shows the cover, the title and the artist on two lines (long ones glide sideways), the sound wave in the colour of the cover and a thin progress line; pointing at it shows the app and the time (`1:23 / 5:37`), and a click or pointing at
   it opens just the Music section; after a pause the song stays for 2 minutes, then the clock returns.
 - **One section at a time:** a bar of actions under the title, **Files · Music · Timer · Share**, shows just that
   section; **Music** is only the player. **Add** opens a file picker (you can still drop files on the notch, or paste).

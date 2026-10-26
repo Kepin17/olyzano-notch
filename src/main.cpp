@@ -473,7 +473,7 @@ int main(int argc, char *argv[])
             if (page == QLatin1String("timer-run")) // a 25 minute timer running, to see the ring
                 activities.startTimer(25 * 60, QStringLiteral("Tea"));
             if (page == QLatin1String("capsule")) // the closed notch as it rests (set capsuleMode=capsule in activities.conf)
-                return QTimer::singleShot(1800, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+                return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 1800, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
             w->setProperty("pinned", true);
             if (page == QLatin1String("share")) {
                 QMetaObject::invokeMethod(w, "debugShare");
