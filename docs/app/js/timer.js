@@ -54,8 +54,9 @@ function step() {
 function refreshPill() {
   const el = $("#pillText");
   if (!el) return;
-  el.textContent = T ? (T.kind === "stopwatch" ? "⏱ " : T.phase === "Break" ? "🧘 " : "⏱ ") + clock(leftMs()) : "Olyzano Notch";
+  el.textContent = T ? (T.kind === "stopwatch" ? "⏱ " : T.phase === "Break" ? "🧘 " : "⏱ ") + clock(leftMs()) : new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
+setInterval(refreshPill, 10000); refreshPill();
 if (T) run();
 document.addEventListener("timer-ended", () => $("#page")?.dataset.view === "timer" && render({ page: $("#page"), refresh: () => render({ page: $("#page"), refresh: () => {} }) }));
 

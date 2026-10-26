@@ -46,6 +46,8 @@ async function render() {
   $("#back").hidden = state.tab !== "settings";
   $("#search").hidden = state.tab !== "files";
   tabsEl.hidden = state.tab === "settings";
+  $("#noteBtn").hidden = $("#addBtn").hidden = state.tab !== "files";
+  notch.dataset.wide = String(["tools", "settings", "music"].includes(state.tab));
   $$(".tab", tabsEl).forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === state.tab)));
   $("#settingsBtn").classList.toggle("on", state.tab === "settings");
   const c = await counts();
@@ -60,7 +62,27 @@ async function render() {
 $("#back").innerHTML = icon("back", 16);
 $("#palette").innerHTML = icon("search", 15);
 $("#settingsBtn").innerHTML = icon("gear", 15);
-tabsEl.replaceChildren(...TABS.map(([id, name, ic]) => h("button", { class: "tab", role: "tab", "data-tab": id, "aria-selected": "false", onclick: () => go(id) }, h("span", { html: icon(ic, 14) }), name)));
+tabsEl.replaceChildren(...TABS.map(([id, name, ic]) => h("button", { class: "tab", role: "tab", "data-tab": id, "aria-selected": "false", onclick: () => go(id) }, h("span", { html: icon(ic, 13) }), name)),
+  h("span", { class: "grow" }),
+  h("button", { class: "tab act", id: "noteBtn", onclick: () => newNote() }, h("span", { html: icon("pen", 13) }), "Note"),
+  h("button", { class: "tab act", id: "addBtn", onclick: () => $("#picker").click() }, h("span", { html: icon("plus", 13) }), "Add"));
+
+// a note: some text, kept on the shelf as a .txt file
+function newNote() {
+  const dlg = $("#dlg");
+  const name = h("input", { class: "field", placeholder: "Title (optional)", style: { width: "100%" } });
+  const body = h("textarea", { class: "field", rows: 8, placeholder: "Write something to keep", style: { width: "100%", height: "auto", padding: "10px 14px", borderRadius: "16px", resize: "vertical" } });
+  const save = async () => {
+    if (!body.value.trim()) return;
+    dlg.close();
+    const title = (name.value.trim() || "Note " + new Date().toISOString().slice(0, 16).replace("T", " ").replace(":", ".")).replace(/[\\/:*?"<>|]/g, "-");
+    await ingest([new File([body.value], title + ".txt", { type: "text/plain" })]);
+  };
+  dlg.replaceChildren(h("div", { class: "pal-in col" }, h("b", { style: { fontSize: "15px", margin: "4px 6px 0" } }, "New note"), name, body,
+    h("div", { class: "row", style: { justifyContent: "flex-end" } }, h("button", { class: "tbtn", onclick: () => dlg.close() }, "Cancel"), h("button", { class: "tbtn primary", onclick: save }, "Save to the shelf"))));
+  dlg.showModal();
+  body.focus();
+}
 $("#back").addEventListener("click", () => go(state.prev || "files"));
 $("#settingsBtn").addEventListener("click", () => go(state.tab === "settings" ? state.prev || "files" : "settings"));
 $("#palette").addEventListener("click", () => openPalette({ go, ctx }));
