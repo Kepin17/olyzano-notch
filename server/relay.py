@@ -376,7 +376,7 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(404, {"error": "expired"})
         if part == "/meta":
             # now: lets the page count down against the server's clock, not the phone's
-            return self.reply(200, {"size": info["size"], "pin_required": bool(info["pin_hash"]),
+            return self.reply(200, {"size": info["size"], "pin_required": bool(info["pin_hash"]), "pin_length": info.get("pin_len", 0),
                                     "expires_at": info["expires_at"], "now": int(time.time()),
                                     "single_use": info["max_downloads"] == 1})
         if self.store.pin_locked(sid, self.ip()):
@@ -503,6 +503,7 @@ class Handler(BaseHTTPRequestHandler):
         expires = int(time.time()) + ttl
         self.store.save_meta(sid, {
             "size": length, "expires_at": expires, "max_downloads": max_dl, "downloads": 0, "owner": member["id"],
+            "pin_len": len(pin) if pin.isdigit() and len(pin) <= 12 else 0,  # only how many digits, so the page can draw the boxes
             "pin_salt": salt.hex() if pin else "",
             "pin_hash": hashlib.pbkdf2_hmac("sha256", pin.encode(), salt, 100_000).hex() if pin else "",
         })

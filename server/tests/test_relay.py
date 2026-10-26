@@ -132,6 +132,16 @@ class RelayTest(unittest.TestCase):
         import json
         self.assertLessEqual(json.loads(body)["expires_at"], time.time() + 3601)
 
+    def test_meta_tells_how_many_digits_the_pin_has(self):
+        def length(**headers):
+            sid = self.upload(**headers)
+            return json.loads(self.call("GET", "/s/%s/meta" % sid, key=None)[1])["pin_length"]
+        self.assertEqual(length(**{"X-Pin": "482193"}), 6)
+        self.assertEqual(length(**{"X-Pin": "1234"}), 4)
+        self.assertEqual(length(), 0)                      # no PIN
+        self.assertEqual(length(**{"X-Pin": "ab12"}), 0)   # not digits: the page shows a single field
+        self.assertEqual(length(**{"X-Pin": "1" * 13}), 0)  # too long for boxes
+
     def test_pin_and_lockout(self):
         sid = self.upload(**{"X-Pin": "1234"})
         meta = self.call("GET", "/s/%s/meta" % sid, key=None)[1]

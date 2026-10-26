@@ -2055,6 +2055,8 @@ private slots:
         QCOMPARE(page.status, 200);
         QVERIFY(!page.body.contains("secret plans")); // no file names before the PIN
         QVERIFY(page.body.contains("\"protection\":\"pin\""));
+        QVERIFY(page.body.contains("\"pin_length\":4")); // the digits' count, for the boxes: not the PIN itself
+        QVERIFY(!page.body.contains("4821"));
         QCOMPARE(httpGet(QUrl(base + QStringLiteral("list"))).status, 403);
         QCOMPARE(httpGet(QUrl(base + QStringLiteral("f/0"))).status, 403);
         QCOMPARE(httpGet(QUrl(base + QStringLiteral("f/0")), {}, "4822").status, 403);

@@ -240,8 +240,13 @@ QByteArray ShareServer::page() const
                      {QStringLiteral("now"), double(QDateTime::currentSecsSinceEpoch())}};
     if (m_protection.isEmpty())
         data.insert(QStringLiteral("files"), QJsonDocument::fromJson(fileList()).object().value(QStringLiteral("files")));
-    else
+    else {
         data.insert(QStringLiteral("protection"), m_protection);
+        // How many digits a PIN has (never which), so the page can draw one box per digit.
+        static const QRegularExpression digits(QStringLiteral("^[0-9]{1,12}$"));
+        if (m_protection == QLatin1String("pin") && digits.match(m_secret).hasMatch())
+            data.insert(QStringLiteral("pin_length"), int(m_secret.size()));
+    }
     // "<" never appears raw inside the tag, so no file name can close the script element.
     QByteArray json = QJsonDocument(data).toJson(QJsonDocument::Compact).replace('<', "\\u003c");
     QByteArray html = f.readAll();

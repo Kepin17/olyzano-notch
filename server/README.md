@@ -57,6 +57,8 @@ names or contents.
 
 ## What the recipient sees
 
+The page is flat and plain, in the system's light or dark. A PIN is typed into one box for each digit (the relay tells the page only how many digits the PIN has, never which; a password, or a share made before this was added, gets a single field).
+
 One page for single files and for lists: image thumbnails, per-file download, tick several or take all as a
 zip (made in their browser; for very large selections the page suggests downloading one by one). The page
 is `page.html`, the same file Notch serves for "This WiFi" shares, so both look alike. A file picked from a
