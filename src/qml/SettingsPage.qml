@@ -1139,6 +1139,19 @@ RowLayout {
             }
 
             SettingCard {
+                title: "Contribute"
+                Caption { Layout.fillWidth: true; text: "Olyzano Notch is open source and welcomes help: code, translations, ideas, bug reports. Fork the project, make your change on a branch and send a pull request." }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    PillButton { text: "How to contribute"; iconName: "external"; checked: true; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch#contributing") }
+                    PillButton { text: "Developer guide"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/blob/main/docs/developer-guide.md") }
+                    PillButton { text: "Open issues"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/issues") }
+                    PillButton { text: "Send a pull request"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/pulls") }
+                }
+            }
+
+            SettingCard {
                 title: "Thanks to the contributors"
                 visible: updates.contributors.length > 0
                 Caption { Layout.fillWidth: true; text: "People who sent code to Olyzano Notch on GitHub. Thank you! Click a name to open their profile." }
