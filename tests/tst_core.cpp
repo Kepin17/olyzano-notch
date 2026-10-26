@@ -22,6 +22,8 @@
 #include "platform/CalendarModel.h"
 #include "platform/DoomscrollModel.h"
 #include "platform/TasksModel.h"
+#include "platform/Cities.h"
+#include "platform/PrayerModel.h"
 #include "platform/UpdateModel.h"
 #include "platform/WidgetModel.h"
 #include "platform/LauncherModel.h"
@@ -614,6 +616,61 @@ private slots:
         QCOMPARE(windowRect(Dragging, 100, 100, screen), QRectF(0, 0, 1920, 1080)); // a drag: the whole screen
         QCOMPARE(islandX(windowRect(Dragging, 100, 100, screen), 500, 400), 300.0);
         QCOMPARE(defaultAnchor(screen), QPointF(960, 14));
+    }
+
+    void prayerMatchesReference()
+    {
+        using namespace PrayerModel;
+        // Fajr, Sunrise, Dhuhr, Asr, Maghrib, Isha from the Aladhan calculator for the same method, place and day.
+        // The plain method is checked within a minute; Kemenag adds its 2 minutes of caution (and takes 2 from sunrise).
+        struct Ref { QDate d; double lat, lon, tz; const char *method; const char *t[6]; };
+        const Ref refs[] = {
+            {QDate(2026, 11, 2), -6.2088, 106.8456, 7, "kemenag", {"04:06", "05:26", "11:36", "14:54", "17:46", "18:58"}},
+            {QDate(2026, 1, 15), -5.1477, 119.4327, 8, "kemenag", {"04:36", "06:00", "12:12", "15:36", "18:23", "19:38"}},
+            {QDate(2026, 3, 20), 21.4225, 39.8262, 3, "ummalqura", {"05:09", "06:25", "12:28", "15:52", "18:32", "20:02"}},
+            {QDate(2026, 6, 21), 51.5074, -0.1278, 1, "mwl", {"02:31", "04:43", "13:02", "17:25", "21:22", "23:27"}},
+        };
+        for (const Ref &r : refs) {
+            const Method &m = method(QString::fromLatin1(r.method));
+            const Times t = times(r.d, r.lat, r.lon, r.tz, m);
+            QVERIFY(t.valid());
+            for (int i = 0; i < PrayerCount; ++i) {
+                const QTime want = QTime::fromString(QString::fromLatin1(r.t[i]), "HH:mm").addSecs((i == Sunrise ? -m.ihtiyat : m.ihtiyat) * 60);
+                const int off = qAbs(want.secsTo(t.at[i].time())) / 60;
+                if (off > 1)
+                    qWarning() << r.method << r.d << shortName(i) << "got" << t.at[i].toString("HH:mm") << "want" << want.toString("HH:mm");
+                QVERIFY(off <= 1);
+            }
+            QVERIFY(t.at[Fajr] < t.at[Sunrise] && t.at[Sunrise] < t.at[Dhuhr] && t.at[Dhuhr] < t.at[Asr]
+                    && t.at[Asr] < t.at[Maghrib] && t.at[Maghrib] < t.at[Isha]);
+        }
+        // Hanafi Asr is later; Umm al-Qura Isha is 90 minutes after Maghrib; the next prayer; names
+        const Times a = times(QDate(2026, 11, 2), -6.2088, 106.8456, 7, method("mwl"), 1);
+        QVERIFY(times(QDate(2026, 11, 2), -6.2088, 106.8456, 7, method("mwl"), 2).at[Asr] > a.at[Asr]);
+        const Times q = times(QDate(2026, 3, 20), 21.4225, 39.8262, 3, method("ummalqura"));
+        QCOMPARE(q.at[Maghrib].secsTo(q.at[Isha]), 90 * 60);
+        QCOMPARE(next(a, a.at[Dhuhr].addSecs(-60)), int(Dhuhr));
+        QCOMPARE(next(a, a.at[Fajr].addSecs(-3600)), int(Fajr));
+        QCOMPARE(next(a, a.at[Isha].addSecs(60)), -1);
+        QCOMPARE(name(Dhuhr, QDate(2026, 11, 6)), QStringLiteral("Dhuhr · Jumat")); // a Friday
+        QCOMPARE(name(Dhuhr, QDate(2026, 11, 2)), QStringLiteral("Dhuhr · Zuhur"));
+        // Far north in summer the twilight never ends: no nonsense, Fajr still before sunrise and Isha after Maghrib
+        const Times n = times(QDate(2026, 6, 21), 64.1, -21.9, 0, method("mwl")); // Reykjavik
+        QVERIFY(!n.valid() || (n.at[Fajr] < n.at[Sunrise] && n.at[Isha] > n.at[Maghrib]));
+    }
+
+    void prayerCities()
+    {
+        QCOMPARE(Cities::guess("Asia/Jakarta"), QStringLiteral("Jakarta"));
+        QCOMPARE(Cities::guess("Asia/Makassar"), QStringLiteral("Makassar"));
+        QVERIFY(Cities::guess("Antarctica/Troll").isEmpty());
+        for (const char *z : {"Asia/Jakarta", "Asia/Makassar", "Asia/Jayapura", "Asia/Pontianak", "Asia/Riyadh", "Europe/London", "Australia/Perth"})
+            QVERIFY(Cities::indexOf(Cities::guess(z)) >= 0); // every guess is a city that is in the list
+        int n = 0;
+        const Cities::City *c = Cities::all(&n);
+        QVERIFY(n > 80);
+        for (int i = 0; i < n; ++i)
+            QVERIFY(c[i].lat >= -90 && c[i].lat <= 90 && c[i].lon >= -180 && c[i].lon <= 180);
     }
 
     void contributorsSkipBots()

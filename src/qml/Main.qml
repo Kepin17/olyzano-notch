@@ -145,7 +145,7 @@ Window {
                                       : toast.kind === "bluetooth" ? accent
                                       : toast.kind === "lowbattery" ? theme.danger
                                       : toast.kind === "media" ? theme.media
-                                      : toast.kind === "update" || toast.kind === "task" ? accent
+                                      : toast.kind === "update" || toast.kind === "task" || toast.kind === "prayer" ? accent
                                       : toast.kind === "file" ? theme.info
                                       : toast.kind === "timer" ? theme.accent
                                       : toast.kind === "call" || toast.kind === "phone" || toast.kind === "wellbeing" ? theme.success
@@ -163,6 +163,14 @@ Window {
         target: tasks
         function onTaskWarning(title) { root.showToast("task", title, "Due in 15 minutes", "check", 6000) }
         function onTaskDue(title) { root.showToast("task", title, "Deadline now", "check", 8000) }
+    }
+
+    // ---- Prayer times: a note when one comes, and a heads-up before ----
+    Connections {
+        target: prayer
+        function onPrayerTime(name, time) { root.showToast("prayer", name, "It is time · " + time, "notifications", 9000); sounds.play("notify") }
+        function onPrayerSoon(name, minutes) { root.showToast("prayer", name, "In " + minutes + " minute" + (minutes === 1 ? "" : "s"), "notifications", 6000) }
+        function onPlaceNote(text) { root.showToast("prayer", "Prayer times", text, "notifications", 7000) }
     }
 
     // ---- A new version: once, and not in the middle of a game, a call or a timer ----
@@ -207,6 +215,12 @@ Window {
     // plain idle clock gives way to a window that reaches the top edge.
     readonly property bool idleShown: capsuleMode === "capsule" || capsuleMode === "widget" || (activities.idleClock && !idleCovered)
     readonly property bool taskShown: activities.taskInCapsule && tasks.hasNext
+    readonly property bool prayerShown: prayer.enabled && prayer.ready && prayer.inCapsule && prayer.hasNext
+    readonly property bool infoShown: taskShown || prayerShown
+    // With a task and a prayer both to show, the capsule says one, then the other, every 8 seconds.
+    property int infoTurn: 0
+    Timer { interval: 8000; repeat: true; running: root.taskShown && root.prayerShown && root.mode === "idle"; onTriggered: root.infoTurn++ }
+    readonly property bool showPrayer: prayerShown && (!taskShown || infoTurn % 2 === 1)
     property date idleNow: new Date()
     Timer {
         interval: 5000
@@ -755,7 +769,7 @@ Window {
         // Where the island is heading; width and height follow it with the springs below.
         readonly property real targetWidth: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 380
              : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
-             : root.mode === "idle" ? (root.musicShown ? root.capWidth : root.taskShown ? 390 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
+             : root.mode === "idle" ? (root.musicShown ? root.capWidth : root.infoShown ? 390 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         readonly property real targetHeight: root.mode === "open" ? panel.implicitHeight + (root.dragOver ? 8 : 0)
               : root.mode === "prompt" ? 92 : root.mode === "toast" ? 46 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? (root.capWraps ? 58 : 38) : 26) : 0
         width: targetWidth
@@ -1105,16 +1119,18 @@ Window {
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
             }
-            Text { // the next task and what is left to it
-                visible: root.taskShown
+            Text { // the next task and what is left to it, or the next prayer
+                visible: root.infoShown
                 Layout.fillWidth: true
                 Layout.leftMargin: 6
-                text: "• " + tasks.nextTitle + " · " + tasks.nextRemaining
-                color: tasks.nextState === "overdue" ? theme.danger : tasks.nextState === "soon" ? theme.accent : root.textSecondary
+                text: root.showPrayer ? "🕌 " + prayer.nextName + " " + prayer.nextTime + " · " + prayer.nextRemaining
+                                      : "• " + tasks.nextTitle + " · " + tasks.nextRemaining
+                color: root.showPrayer ? (prayer.soon ? theme.accent : root.textSecondary)
+                       : tasks.nextState === "overdue" ? theme.danger : tasks.nextState === "soon" ? theme.accent : root.textSecondary
                 font.pixelSize: 11
                 elide: Text.ElideRight
             }
-            Item { Layout.fillWidth: true; visible: !root.taskShown }
+            Item { Layout.fillWidth: true; visible: !root.infoShown }
             DiscordBadge { Layout.alignment: Qt.AlignVCenter }
             // Microphone: orange while recording, red and struck through while muted.
             LineIcon {
@@ -2108,7 +2124,7 @@ Window {
             onTapped: {
                 if (root.musicShown) root.page = "music"
                 else if (root.live && root.live.kind === "timer") root.page = "timer"
-                else if (root.taskShown) root.page = "tasks"
+                else if (root.taskShown && !root.showPrayer) root.page = "tasks"
                 root.dwelled = true
             }
         }

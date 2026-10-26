@@ -15,6 +15,7 @@
 #include "platform/GamingMode.h"
 #include "platform/AppMenu.h"
 #include "platform/Doomscroll.h"
+#include "platform/Prayer.h"
 #include "platform/Tasks.h"
 #include "platform/Updates.h"
 #include "platform/Launcher.h"
@@ -221,6 +222,7 @@ int main(int argc, char *argv[])
     Launcher launcher(&dock);
     Doomscroll doomscroll(&dock, &media, &wellbeing);
     Tasks tasks;
+    Prayer prayer;
     Updates updates;
     if (const int i = app.arguments().indexOf(QStringLiteral("--dump-menu")); i >= 0 && i + 1 < app.arguments().size()) { // the menu of a process, for checking
         fputs(appMenu.dump(app.arguments().at(i + 1).toLongLong()).constData(), stdout);
@@ -331,6 +333,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("doomscroll"), &doomscroll);
     engine.rootContext()->setContextProperty(QStringLiteral("updates"), &updates);
     engine.rootContext()->setContextProperty(QStringLiteral("tasks"), &tasks);
+    engine.rootContext()->setContextProperty(QStringLiteral("prayer"), &prayer);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
 
     // One Notch per monitor, following hotplug.

@@ -38,7 +38,7 @@ RowLayout {
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
         ["panel", "Transparency and blur", "glass opacity bar"], ["panel", "What the bar shows", "app name date seconds battery percentage"],
         ["panel", "Quick Settings", "wifi bluetooth volume brightness power click hover"],
-        ["alerts", "Charger & Bluetooth alerts", "battery plug device connect low"], ["alerts", "Clock when idle", "time clock capsule"],
+        ["alerts", "Prayer times", "prayer salat sholat solat adzan azan fajr subuh dhuhr zuhur asr ashar maghrib isha isya mosque muslim reminder city kemenag"], ["alerts", "Charger & Bluetooth alerts", "battery plug device connect low"], ["alerts", "Clock when idle", "time clock capsule"],
         ["alerts", "Downloads in the notch", "download browser progress"], ["alerts", "Phone calls & notifications", "kde connect phone"],
         ["alerts", "Microphone & camera indicators", "privacy dot mic camera"], ["alerts", "Notifications from this computer", "desktop apps slack"],
         ["alerts", "Lyrics", "song music lrclib karaoke"],
@@ -140,7 +140,8 @@ RowLayout {
     Rectangle { Layout.fillHeight: true; implicitWidth: 1; color: theme.outline }
 
     // ---- the chosen section ----
-    function scrollTo(y) { scroller.contentItem.contentY = y } // for screenshots
+    function scrollTo(y) { scrollTimer.target = y; scrollTimer.restart() } // for screenshots, once the section has laid out
+    Timer { id: scrollTimer; property real target: 0; interval: 400; onTriggered: scroller.contentItem.contentY = target }
     ScrollView {
         id: scroller
         Layout.fillWidth: true
@@ -386,6 +387,127 @@ RowLayout {
                 caption: "A green dot beside the notch while a camera is on; the open panel names the apps using the camera or the microphone."
                 checked: activities.privacyIndicators
                 onToggled: activities.privacyIndicators = !activities.privacyIndicators
+            }
+
+            SettingCard {
+                id: prayerCard
+                title: "Prayer times"
+                SettingToggle {
+                    title: "Prayer time reminders"
+                    caption: !prayer.ready ? "Choose your city below. Notch then tells you when each prayer time comes, here in the notch."
+                             : "Calculated here for " + prayer.place + ", offline. May differ by a minute or two from your local authority."
+                    checked: prayer.enabled
+                    onToggled: prayer.enabled = !prayer.enabled
+                }
+                ColumnLayout {
+                    visible: prayer.enabled
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text { text: "City"; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium }
+                    TextField {
+                        id: cityField
+                        Layout.fillWidth: true
+                        implicitHeight: 30
+                        leftPadding: 12
+                        topPadding: 0
+                        bottomPadding: 0
+                        verticalAlignment: TextInput.AlignVCenter
+                        placeholderText: prayer.city !== "" ? prayer.city : "Search a city, e.g. Bandung"
+                        placeholderTextColor: theme.placeholder
+                        color: theme.text
+                        font.pixelSize: 12
+                        background: Rectangle { radius: theme.radiusMd; color: theme.surface; border.width: 1; border.color: cityField.activeFocus ? theme.accent : "transparent" }
+                    }
+                    Flickable {
+                        visible: cityField.text.trim() !== ""
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(150, cityList.implicitHeight)
+                        contentHeight: cityList.implicitHeight
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        Column {
+                            id: cityList
+                            width: parent.width
+                            Repeater {
+                                model: prayer.cities.filter(c => (c.name + " " + c.country).toLowerCase().indexOf(cityField.text.trim().toLowerCase()) >= 0).slice(0, 30)
+                                Rectangle {
+                                    required property var modelData
+                                    width: cityList.width
+                                    height: 28
+                                    radius: theme.radiusMd
+                                    color: cityMouse.containsMouse ? theme.surfaceHover : "transparent"
+                                    Text { anchors.verticalCenter: parent.verticalCenter; x: 10; text: modelData.name + " · " + modelData.country; color: theme.text; font.pixelSize: 12 }
+                                    MouseArea { id: cityMouse; anchors.fill: parent; hoverEnabled: true; onClicked: { prayer.city = modelData.name; cityField.text = "" } }
+                                }
+                            }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Text { text: "Or your own place:"; color: theme.textDim; font.pixelSize: 11 }
+                        TextField { id: latField; implicitWidth: 86; implicitHeight: 26; topPadding: 0; bottomPadding: 0; placeholderText: "latitude"; placeholderTextColor: theme.placeholder; color: theme.text; font.pixelSize: 11
+                                    background: Rectangle { radius: theme.radiusMd; color: theme.surface } }
+                        TextField { id: lonField; implicitWidth: 86; implicitHeight: 26; topPadding: 0; bottomPadding: 0; placeholderText: "longitude"; placeholderTextColor: theme.placeholder; color: theme.text; font.pixelSize: 11
+                                    background: Rectangle { radius: theme.radiusMd; color: theme.surface } }
+                        PillButton { text: "Use"; enabled: latField.text !== "" && lonField.text !== ""; onClicked: prayer.setCustomPlace(Number(latField.text.replace(",", ".")), Number(lonField.text.replace(",", "."))) }
+                    }
+                    Text { text: "Method"; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Repeater {
+                            model: prayer.methods
+                            PillButton { required property var modelData; text: modelData.name; checked: prayer.method === modelData.id; onClicked: prayer.method = modelData.id }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text { text: "Asr"; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium }
+                        PillButton { text: "Shafi'i, Maliki, Hanbali"; checked: prayer.asr === 1; onClicked: prayer.asr = 1 }
+                        PillButton { text: "Hanafi"; checked: prayer.asr === 2; onClicked: prayer.asr = 2 }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text { text: "Remind me before"; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium }
+                        Repeater {
+                            model: [[0, "Off"], [5, "5 min"], [10, "10 min"], [15, "15 min"]]
+                            PillButton { required property var modelData; text: modelData[1]; checked: prayer.beforeMinutes === modelData[0]; onClicked: prayer.beforeMinutes = modelData[0] }
+                        }
+                    }
+                    SettingToggle {
+                        title: "Next prayer in the capsule"
+                        caption: "While nothing plays and no timer runs, the capsule shows the next prayer and the time left (alternating with the next task)."
+                        checked: prayer.inCapsule
+                        onToggled: prayer.inCapsule = !prayer.inCapsule
+                    }
+                    Text { visible: prayer.ready; text: "Today"; color: theme.textDim; font.pixelSize: 11; font.weight: Font.DemiBold }
+                    Flow {
+                        visible: prayer.ready
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Repeater {
+                            model: prayer.today
+                            Rectangle {
+                                required property var modelData
+                                implicitWidth: dayCol.implicitWidth + 20
+                                implicitHeight: 38
+                                radius: theme.radiusMd
+                                color: modelData.next ? theme.accentSoft : theme.surface
+                                border.width: modelData.next ? 1 : 0
+                                border.color: theme.accent
+                                Column {
+                                    id: dayCol
+                                    anchors.centerIn: parent
+                                    Text { anchors.horizontalCenter: parent.horizontalCenter; text: modelData.time; color: theme.text; font.pixelSize: 13; font.weight: Font.DemiBold }
+                                    Text { anchors.horizontalCenter: parent.horizontalCenter; text: modelData.name; color: modelData.prayer ? theme.textDim : theme.textFaint; font.pixelSize: 10 }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             SettingCard {

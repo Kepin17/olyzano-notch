@@ -350,6 +350,16 @@ orange while an app records) and the **battery**. Rest the pointer on it to open
 the open panel names the apps. **Phone:** incoming and missed calls, the phone's notifications ("Notification from
 WhatsApp · Mom", never the message itself) and a low phone battery, through KDE Connect.
 
+## Prayer times
+
+On by default and switchable in *Settings → Alerts & activities → Prayer times*. Pick your city from the built-in list
+(or type a latitude and longitude); Notch works out the five prayer times and sunrise on your computer (nothing is sent
+anywhere). When a time comes a short note appears in the notch, with a heads-up before it (10 minutes by default, 5, 15 or
+off), and while nothing else is going on the closed notch shows the next prayer and the time left. The default method is
+**Kemenag RI**; Muslim World League, Umm al-Qura, Egyptian, Karachi and ISNA are there too, and Asr can follow the
+Hanafi school. It may differ by a minute or two from your local authority. Before you choose a city, Notch guesses one from the
+system time zone when it can (Jakarta, Makassar, Jayapura …) and says so once.
+
 ## Timer and Pomodoro
 
 Open Olyzano Notch and press the **clock button** in the header.
