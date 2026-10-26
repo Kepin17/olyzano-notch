@@ -1,6 +1,9 @@
 #include "NotchController.h"
 
 #include "services/CleanupService.h"
+#ifdef Q_OS_WIN
+#include "platform/WinPrivacy.h"
+#endif
 #include "services/FileService.h"
 #include "services/ZipWriter.h"
 #include "services/TextTools.h"
@@ -1198,6 +1201,20 @@ int NotchController::applyRulesToExisting()
 void NotchController::copyText(const QString &text)
 {
     QGuiApplication::clipboard()->setText(text);
+}
+
+bool NotchController::rtssHooked() const
+{
+#ifdef Q_OS_WIN
+    return WinPrivacy::rtssHooked();
+#else
+    return false;
+#endif
+}
+
+QString NotchController::exePath() const
+{
+    return QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
 }
 
 void NotchController::addColor(const QString &hex)

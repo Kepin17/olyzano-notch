@@ -504,6 +504,18 @@ Limits: it only talks to Olyzano Notch (not Google's Quick Share), it needs both
     MSIX package, which Olyzano Notch isn't; then Settings says it isn't available on this install.
 ---
 
+### RivaTuner / MSI Afterburner shows its overlay on Notch
+
+RivaTuner Statistics Server (RTSS, also inside MSI Afterburner) hooks any program that draws with the GPU and treats it as a
+game, so with *Application detection level* set to **High** it can put its overlay on Olyzano Notch. Notch cannot opt out
+from inside; RTSS has to be told once to ignore it:
+
+1. Open RivaTuner Statistics Server and click the **+** button (bottom left).
+2. Pick `notch.exe` (*Settings → About → RivaTuner* in Notch copies its path for you).
+3. Select it in the list and set **Application detection level** to **None**.
+
+The installer reminds you of this when RTSS is installed.
+
 ## Settings and storage
 
 | What | Linux | Windows |

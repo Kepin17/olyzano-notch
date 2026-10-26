@@ -1186,6 +1186,36 @@ RowLayout {
             }
 
             SettingCard {
+                id: compatCard
+                visible: Qt.platform.os === "windows"
+                title: "RivaTuner / MSI Afterburner"
+                property bool hooked: false
+                Component.onCompleted: hooked = notch.rtssHooked()
+                Connections { target: settingsScroll; function onCategoryChanged() { compatCard.hooked = notch.rtssHooked() } }
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    color: compatCard.hooked ? theme.warn : theme.textDim
+                    font.pixelSize: 12
+                    text: compatCard.hooked ? "RivaTuner (RTSS) is hooked into Olyzano Notch right now, so its overlay can show on the notch as if it were a game."
+                                            : "RivaTuner (RTSS, also inside MSI Afterburner) treats any app that draws with the GPU as a game. If its overlay shows on Olyzano Notch, tell it to ignore Notch once:"
+                }
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    color: theme.text
+                    font.pixelSize: 12
+                    text: "1. Open RivaTuner Statistics Server.\n2. Click the + button (bottom left) and pick notch.exe (copy its path below).\n3. Set Application detection level to None for it."
+                }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    PillButton { text: "Copy path of notch.exe"; iconName: "copy"; onClicked: notch.copyText(notch.exePath()) }
+                    PillButton { text: "Open the guide"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch#rivatuner--msi-afterburner-shows-its-overlay-on-notch") }
+                }
+            }
+
+            SettingCard {
                 title: "Problems?"
                 RowLayout {
                     Layout.fillWidth: true

@@ -181,6 +181,9 @@ public:
     Q_INVOKABLE QStringList categoryItemIds(const QString &categoryId) const;
     Q_INVOKABLE QStringList fileUrls(const QStringList &ids) const; // file:// of the stored copies
     Q_INVOKABLE void copyText(const QString &text);
+    // Windows: RivaTuner (RTSS / MSI Afterburner) is hooked into this app and may draw its overlay on it. False elsewhere.
+    Q_INVOKABLE bool rtssHooked() const;
+    Q_INVOKABLE QString exePath() const; // this program, for the guide that tells RTSS to ignore it
     Q_INVOKABLE void setTypeRule(const QString &group, const QString &categoryId); // empty = no rule
     // Vault. Passwords go straight to gocryptfs and are not kept. Return "" or a reason.
     Q_INVOKABLE QString createVault(const QString &password);

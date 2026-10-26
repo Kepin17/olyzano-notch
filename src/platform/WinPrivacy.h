@@ -27,6 +27,8 @@ inline QString appName(const QString &key)
 QStringList appsUsing(const wchar_t *capability); // L"microphone" or L"webcam"; Notch itself left out
 int micMuted();                                   // 1 muted, 0 live, -1 no microphone
 void toggleMicMute();
+// RivaTuner Statistics Server (also behind MSI Afterburner) has hooked this process: its hook library is loaded here.
+bool rtssHooked();
 #endif
 
 }

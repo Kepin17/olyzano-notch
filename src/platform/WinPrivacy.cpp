@@ -99,4 +99,10 @@ void toggleMicMute()
     volume->Release();
 }
 
+
+bool rtssHooked()
+{
+    return GetModuleHandleW(L"RTSSHooks64.dll") != nullptr || GetModuleHandleW(L"RTSSHooks.dll") != nullptr;
+}
+
 }

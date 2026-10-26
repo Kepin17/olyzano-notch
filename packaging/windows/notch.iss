@@ -42,3 +42,21 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\notch.exe"; Description: "Start Olyzano Notch"; Flags: nowait postinstall skipifsilent
+
+[Code]
+// RivaTuner (RTSS / MSI Afterburner) treats any GPU-drawing app as a game; say once how to tell it to ignore Notch.
+function RtssInstalled: Boolean;
+begin
+  Result := RegKeyExists(HKLM32, 'SOFTWARE\Unwinder\RTSS') or RegKeyExists(HKLM, 'SOFTWARE\Unwinder\RTSS')
+         or DirExists(ExpandConstant('{commonpf32}\RivaTuner Statistics Server'));
+end;
+
+procedure CurStepChanged(CurStep: TSetupStep);
+begin
+  if (CurStep = ssPostInstall) and (not WizardSilent) and RtssInstalled then
+    MsgBox('RivaTuner Statistics Server is installed. If its overlay shows on Olyzano Notch:' + #13#10#13#10 +
+           '1. Open RivaTuner and click the + button.' + #13#10 +
+           '2. Pick ' + ExpandConstant('{app}\notch.exe') + #13#10 +
+           '3. Set "Application detection level" to None for it.' + #13#10#13#10 +
+           'Settings > About in Olyzano Notch has this too.', mbInformation, MB_OK);
+end;
