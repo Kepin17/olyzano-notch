@@ -46,14 +46,14 @@ Tested on Kubuntu 26.04 (Qt 6.10, KDE Plasma on Wayland).
 **[latest release](https://github.com/Kepin17/olyzano-notch/releases/latest)**, or from a terminal:
 
 ```bash
-wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.11.0/notch_0.11.0_amd64.deb
+wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.12.0/notch_0.12.0_amd64.deb
 ```
 
 **2. Install** it. `apt` pulls in everything it needs (Qt 6 runtime, `layer-shell-qt`, Poppler, Ghostscript,
 `gocryptfs`, `fuse3`, `pulseaudio-utils`, …):
 
 ```bash
-sudo apt install ./notch_0.11.0_amd64.deb
+sudo apt install ./notch_0.12.0_amd64.deb
 ```
 
 **3. Start** **Olyzano Notch** from the application menu, or turn on **Settings → General → Start at login**.
@@ -255,6 +255,8 @@ A dock of its own on the **bottom, left or right** edge of every monitor (*Setti
 
 On KDE Plasma the dock learns the open windows from KWin; on other Linux desktops it can only start apps and guesses
 which are running. Window thumbnails aren't possible: Wayland doesn't let an app capture other apps' windows.
+
+**Updates** (*Settings → About*): once a day Notch asks GitHub whether a newer release is out (an anonymous request: GitHub sees your IP address and the version, nothing else) and tells you once per version, with what is new and a **Download** button for the file that fits your system. *Check now* asks at once, *Skip this version* and *Remind me in a week* are there, and a switch turns the check off. It never installs anything by itself. `notch --check-updates` prints what it found.
 
 **Doomscrolling** (*Settings → Wellbeing*): when Instagram, TikTok or YouTube Shorts is in front while you are using the computer, Notch adds it up over the last hour and asks "Still scrolling?" past a limit you set (15 minutes or 30 videos by default). It goes by the window in front, what the browser plays (a Short is a video of a minute or less) and your idle time; nothing is read from the pages and only the kind of site is kept. `notch --doom-debug <site> <seconds>` shows what it would say.
 

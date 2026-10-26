@@ -21,6 +21,7 @@
 #include "platform/KaraokeModel.h"
 #include "platform/CalendarModel.h"
 #include "platform/DoomscrollModel.h"
+#include "platform/UpdateModel.h"
 #include "platform/LauncherModel.h"
 #include "platform/ColorFormat.h"
 #include "platform/PanelModel.h"
@@ -865,6 +866,38 @@ private slots:
             Tracker m; m.limitMs = 4000; now = 1000000;
             m.muteFor(now, 3600000);
             for (int i = 0; i < 20; ++i, now += 2000) QVERIFY(m.tick(now, Site::TikTok, true, {}) == Tracker::Event::None);
+        }
+        {
+            using namespace UpdateModel;
+            QCOMPARE(parseVersion(QStringLiteral("v0.11.0")), (QList<int>{0, 11, 0}));
+            QCOMPARE(parseVersion(QStringLiteral("0.12.0-beta.1")), (QList<int>{0, 12, 0}));
+            QCOMPARE(parseVersion(QStringLiteral(" 1.2 ")), (QList<int>{1, 2}));
+            QVERIFY(parseVersion(QStringLiteral("latest")).isEmpty());
+            QVERIFY(parseVersion({}).isEmpty());
+            QVERIFY(isNewer(QStringLiteral("v0.11.0"), QStringLiteral("0.10.0")));
+            QVERIFY(isNewer(QStringLiteral("0.10.0"), QStringLiteral("0.9.3")));        // numbers, not text
+            QVERIFY(!isNewer(QStringLiteral("0.9.3"), QStringLiteral("0.10.0")));
+            QVERIFY(!isNewer(QStringLiteral("0.11"), QStringLiteral("0.11.0")));        // a missing part is 0
+            QVERIFY(isNewer(QStringLiteral("0.11.1"), QStringLiteral("0.11")));
+            QVERIFY(!isNewer(QStringLiteral("0.11.0"), QStringLiteral("0.11.0")));
+            QVERIFY(!isNewer(QStringLiteral("nightly"), QStringLiteral("0.11.0")));      // garbage is never newer
+            QVERIFY(!isNewer(QStringLiteral("0.12.0"), QStringLiteral("dev")));
+            const auto asset = [](const QString &n) { return QJsonObject{{"name", n}, {"browser_download_url", QStringLiteral("https://github.com/o/r/releases/download/v0.12.0/") + n}}; };
+            const QJsonObject body{{"tag_name", "v0.12.0"}, {"body", " What is new \n- one "}, {"html_url", "https://github.com/o/r/releases/tag/v0.12.0"}, {"draft", false}, {"prerelease", false},
+                                   {"assets", QJsonArray{asset("notch_0.12.0_amd64.deb"), asset("Notch-0.12.0-windows-x64-setup.exe"), asset("Notch-0.12.0-windows-x64-portable.zip")}}};
+            const QByteArray json = QJsonDocument(body).toJson();
+            const Release r = parseRelease(json);
+            QVERIFY(r.valid());
+            QCOMPARE(r.version(), QStringLiteral("0.12.0"));
+            QCOMPARE(r.notes.left(9), QStringLiteral("What is n"));
+            QVERIFY(pickAsset(r.assets, QStringLiteral("linux"), false).endsWith(QLatin1String("amd64.deb")));
+            QVERIFY(pickAsset(r.assets, QStringLiteral("windows"), false).endsWith(QLatin1String("setup.exe")));
+            QVERIFY(pickAsset(r.assets, QStringLiteral("windows"), true).endsWith(QLatin1String("portable.zip")));
+            QVERIFY(pickAsset({}, QStringLiteral("linux"), false).isEmpty());
+            QVERIFY(!parseRelease(QJsonDocument(QJsonObject{{"tag_name", "v9.0.0"}, {"prerelease", true}}).toJson()).valid());
+            QVERIFY(!parseRelease(QJsonDocument(QJsonObject{{"tag_name", "v9.0.0"}, {"draft", true}}).toJson()).valid());
+            QVERIFY(!parseRelease("not json").valid());
+            QVERIFY(!parseRelease(QJsonDocument(QJsonObject{{"message", "API rate limit exceeded"}}).toJson()).valid());
         }
         QCOMPARE(LauncherModel::groupOf({QStringLiteral("Network"), QStringLiteral("WebBrowser")}), QStringLiteral("Internet"));
         QCOMPARE(LauncherModel::groupOf({QStringLiteral("Utility"), QStringLiteral("Game")}), QStringLiteral("Games"));

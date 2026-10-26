@@ -15,6 +15,7 @@
 #include "platform/GamingMode.h"
 #include "platform/AppMenu.h"
 #include "platform/Doomscroll.h"
+#include "platform/Updates.h"
 #include "platform/Launcher.h"
 #include "platform/TrayHost.h"
 #include "platform/Karaoke.h"
@@ -154,6 +155,13 @@ int main(int argc, char *argv[])
     app.setDesktopFileName(QStringLiteral("notch"));
     app.setWindowIcon(QIcon(QStringLiteral(":/qt/qml/Notch/src/qml/icons/notch.png")));
     app.setApplicationVersion(QStringLiteral(NOTCH_VERSION));
+    if (app.arguments().contains(QStringLiteral("--check-updates"))) { // works beside a running Notch, too // asks GitHub now and prints what it found (NOTCH_FAKE_VERSION=0.10.0 pretends to be older)
+        Updates u;
+        QTimer::singleShot(20000, &app, [&] { fputs("timed out\n", stdout); app.exit(1); });
+        QObject::connect(&u, &Updates::checked, &app, [&] { fputs(u.report().constData(), stdout); app.quit(); });
+        u.check();
+        return app.exec();
+    }
     quitOnSignals(app);
 
 #ifdef Q_OS_WIN
@@ -211,6 +219,7 @@ int main(int argc, char *argv[])
     TrayHost trayHost;
     Launcher launcher(&dock);
     Doomscroll doomscroll(&dock, &media, &wellbeing);
+    Updates updates;
     if (const int i = app.arguments().indexOf(QStringLiteral("--dump-menu")); i >= 0 && i + 1 < app.arguments().size()) { // the menu of a process, for checking
         fputs(appMenu.dump(app.arguments().at(i + 1).toLongLong()).constData(), stdout);
         return 0;
@@ -318,6 +327,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("trayHost"), &trayHost);
     engine.rootContext()->setContextProperty(QStringLiteral("launcher"), &launcher);
     engine.rootContext()->setContextProperty(QStringLiteral("doomscroll"), &doomscroll);
+    engine.rootContext()->setContextProperty(QStringLiteral("updates"), &updates);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
 
     // One Notch per monitor, following hotplug.

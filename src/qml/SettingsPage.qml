@@ -32,7 +32,7 @@ RowLayout {
     ]
     // What a search can find: section, setting, words that also describe it.
     readonly property var index: [
-        ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
+        ["about", "Updates", "update upgrade new version release check download latest github notify"], ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
         ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Sounds", "sound effects volume quiet mute"],
         ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"],
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
@@ -103,6 +103,12 @@ RowLayout {
                         font.pixelSize: 13
                         font.weight: side.on ? Font.DemiBold : Font.Medium
                         elide: Text.ElideRight
+                    }
+                    Rectangle { // an update is waiting
+                        visible: side.modelData[0] === "about" && updates.newer && !updates.skipped
+                        Layout.preferredWidth: 8; Layout.preferredHeight: 8; Layout.rightMargin: 8
+                        radius: 4
+                        color: theme.accent
                     }
                 }
             }
@@ -878,6 +884,59 @@ RowLayout {
                         Text { text: "Version " + Qt.application.version; color: theme.textDim; font.pixelSize: 12 }
                         Text { text: "A Dynamic-Island style notch for your files, music and desktop."; color: theme.textDim; font.pixelSize: 12; wrapMode: Text.Wrap; Layout.fillWidth: true }
                     }
+                }
+            }
+
+            SettingCard {
+                title: "Updates"
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
+                    Rectangle {
+                        Layout.preferredWidth: 10; Layout.preferredHeight: 10; radius: 5
+                        color: updates.checking ? theme.textFaint : updates.newer && !updates.skipped ? theme.accent : theme.success
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 1
+                        Text { Layout.fillWidth: true; text: updates.status; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium; wrapMode: Text.Wrap }
+                        Text { text: "You have " + updates.installed + " · last checked " + updates.lastChecked; color: theme.textDim; font.pixelSize: 11 }
+                    }
+                    PillButton { text: updates.checking ? "Checking…" : "Check now"; iconName: "search"; enabled: !updates.checking; onClicked: updates.check() }
+                }
+                ColumnLayout { // what the new version brings
+                    visible: updates.newer
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Text { text: "What's new in " + updates.latest; color: theme.text; font.pixelSize: 12; font.weight: Font.DemiBold }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        implicitHeight: Math.min(notesText.implicitHeight + 20, 190)
+                        radius: theme.radiusMd
+                        color: theme.well
+                        clip: true
+                        Flickable {
+                            anchors { fill: parent; margins: 10 }
+                            contentHeight: notesText.implicitHeight
+                            boundsBehavior: Flickable.StopAtBounds
+                            Text { id: notesText; width: parent.width; text: updates.notes.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/^#+\s*/gm, "").replace(/[*`]/g, ""); color: theme.textDim; font.pixelSize: 12; wrapMode: Text.Wrap; textFormat: Text.PlainText }
+                        }
+                    }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        PillButton { text: "Download"; iconName: "download"; checked: true; onClicked: updates.download() }
+                        PillButton { text: "Release page"; iconName: "external"; onClicked: Qt.openUrlExternally(updates.page) }
+                        PillButton { visible: !updates.skipped; text: "Remind me in a week"; onClicked: updates.remindLater() }
+                        PillButton { text: updates.skipped ? "Don't skip it" : "Skip this version"; onClicked: updates.skipped ? updates.unskip() : updates.skip() }
+                    }
+                    Caption { Layout.fillWidth: true; text: "Download opens the file for this system in your browser. Notch does not install anything by itself: close it, install, and open it again." }
+                }
+                SettingToggle {
+                    title: "Check for updates automatically"
+                    caption: "Once a day, Notch asks GitHub whether a newer release is out. It is an anonymous request: GitHub sees your IP address and the version of Notch, nothing else. Turn it off and nothing is ever sent."
+                    checked: updates.enabled
+                    onToggled: updates.enabled = !updates.enabled
                 }
             }
 

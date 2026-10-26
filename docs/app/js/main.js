@@ -143,7 +143,12 @@ import("./music.js"); // listens for "play" from the shelf
 let deferred;
 addEventListener("beforeinstallprompt", e => { e.preventDefault(); deferred = e; $("#heroInstall").hidden = false; });
 $("#heroInstall").addEventListener("click", async () => { if (deferred) { deferred.prompt(); deferred = null; $("#heroInstall").hidden = true; } });
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator) {
+  const hadWorker = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.register("sw.js").catch(() => {});
+  // a new version took over while this page was open: say so, and reload on request
+  navigator.serviceWorker.addEventListener("controllerchange", () => { if (hadWorker) toast("A new version of Notch for the web is ready", { label: "Reload", run: () => location.reload() }); });
+}
 navigator.storage?.persist?.();
 
 // a file shared to the installed app from the phone's share sheet (see sw.js)

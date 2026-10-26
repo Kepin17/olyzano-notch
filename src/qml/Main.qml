@@ -87,6 +87,7 @@ Window {
                                       : toast.kind === "bluetooth" ? accent
                                       : toast.kind === "lowbattery" ? theme.danger
                                       : toast.kind === "media" ? theme.media
+                                      : toast.kind === "update" ? accent
                                       : toast.kind === "file" ? theme.info
                                       : toast.kind === "timer" ? theme.accent
                                       : toast.kind === "call" || toast.kind === "phone" || toast.kind === "wellbeing" ? theme.success
@@ -98,6 +99,15 @@ Window {
 
     // ---- Doomscrolling: quiet in a game or on a call ----
     Binding { target: doomscroll; property: "quiet"; value: gaming.active || root.call !== null }
+
+    // ---- A new version: once, and not in the middle of a game, a call or a timer ----
+    Binding { target: updates; property: "quiet"; value: gaming.active || root.call !== null || activities.timerKind !== "" }
+    Connections {
+        target: updates
+        function onUpdateFound(version) {
+            root.showToast("update", "Notch " + version + " is available", "Settings → About has the details", "download", 9000)
+        }
+    }
 
     // ---- Stretch reminder ----
     // A film, a call or a Pomodoro holds the reminder back (each can be switched off in Settings).
