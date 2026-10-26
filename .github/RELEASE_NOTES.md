@@ -11,3 +11,6 @@ Notch now tells you when a newer version is out.
 - **Linux:** `notch_0.12.0_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.12.0_amd64.deb`, then restart Olyzano Notch.
 - **Windows:** `Notch-0.12.0-windows-x64-setup.exe`, or the portable `.zip`.
 - Optional components (OCR, KDE Connect, PDF tools on Windows): see the [install page](https://kepin17.github.io/olyzano-notch/#optional).
+
+### Is the Windows warning safe to click through?
+Windows SmartScreen says *"Windows protected your PC"* because the installer is not code-signed yet and Notch is new to Microsoft, not because anything was found in it. Click **More info → Run anyway**. To check the file yourself, compare its SHA-256 with `SHA256SUMS-windows.txt` (and `SHA256SUMS-linux.txt` for the `.deb`) on this page: in PowerShell, `Get-FileHash .\Notch-0.12.0-windows-x64-setup.exe`. The code is open and built by GitHub Actions from this repository.

@@ -103,8 +103,9 @@ For OCR, KDE Connect and the rest, see [optional components](#optional-component
    Artifacts*.
 2. Run the installer. It installs for your user (no administrator prompt), adds a Start-menu entry and can
    start Olyzano Notch when you sign in. The portable zip needs no install: extract it anywhere and run `notch.exe`.
-3. The build is not code-signed, so Windows SmartScreen says *"Windows protected your PC"*:
-   click **More info → Run anyway**.
+3. The build is not code-signed yet, so Windows SmartScreen says *"Windows protected your PC"*: this is because Notch is new to
+   Microsoft, not because anything was found in it. Click **More info → Run anyway**. To check the file, compare
+   `Get-FileHash <file>` in PowerShell with `SHA256SUMS-windows.txt` on the release page.
 
 **Good to know**
 
