@@ -59,17 +59,6 @@ summary::-webkit-details-marker{display:none}
 summary::before{content:"+";display:inline-block;width:1.2em;font-family:var(--mono)}
 details[open] summary::before{content:"−"}
 details ul{margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:.92rem}
-#webapp .wa-grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,7fr);gap:40px;align-items:center}
-#webapp h2{margin-top:0}
-.wa-list{list-style:none;margin:18px 0 22px;padding:0;display:grid;gap:10px}
-.wa-list li{display:grid;grid-template-columns:7.5em 1fr;gap:10px;padding:10px 0;border-top:1px solid var(--line);font-size:.93rem}
-.wa-list li b{font-weight:650}.wa-list li span{color:var(--dim)}
-.wa-frame{border:1px solid var(--line);border-radius:14px;overflow:hidden;background:#0b0c10;box-shadow:0 24px 60px -24px rgba(0,0,0,.45)}
-.wa-bar{display:flex;align-items:center;gap:6px;height:34px;padding:0 12px;background:var(--soft);border-bottom:1px solid var(--line)}
-.wa-bar i{width:10px;height:10px;border-radius:50%;background:var(--line)}
-.wa-bar span{margin-left:10px;font:500 .74rem var(--mono);color:var(--faint);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.wa-frame iframe{display:block;width:100%;height:540px;border:0;background:#0b0c10}
-@media (max-width:900px){#webapp .wa-grid{grid-template-columns:1fr}.wa-frame iframe{height:480px}}
 /* what it does: a bento grid of small living pictures */
 .bento{display:grid;grid-template-columns:repeat(6,1fr);gap:14px}
 .bc{grid-column:span 2;position:relative;display:flex;flex-direction:column;background:var(--soft);border:1px solid var(--line);border-radius:18px;padding:18px 18px 20px;overflow:hidden;transition:transform .3s cubic-bezier(.3,1.25,.45,1),border-color .2s}
@@ -854,27 +843,6 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
   </div>
 </div></section>
 
-<section id="webapp"><div class="wrap">
-  <div class="wa-grid">
-    <div class="wa-copy">
-      <p class="eyebrow">NO INSTALL NEEDED</p>
-      <h2>Use it in the browser</h2>
-      <p class="sec-lead">The same notch in a tab, with the file tools: convert images, merge PDFs, read text from a picture, zip a folder. <b>Your files never leave this device</b>: it all runs in the browser.</p>
-      <ul class="wa-list">
-        <li><b>Images</b><span>PNG, JPG, WebP (HEIC in); resize; compress to a size</span></li>
-        <li><b>PDF</b><span>images to PDF, merge, split, extract pages, rotate, compress</span></li>
-        <li><b>Text &amp; archives</b><span>OCR in many languages, zip and unzip, QR codes, checksums</span></li>
-        <li><b>The notch</b><span>categories, a 24-hour bin, locked categories, timer, colours, 14 themes</span></li>
-      </ul>
-      <div class="actions"><a class="btn" href="app/">Open the web app</a><a class="btn ghost" href="app/?tab=tools">File tools</a></div>
-      <p class="meta">Installable on your phone or computer, and it works offline.</p>
-    </div>
-    <div class="wa-frame" aria-label="A live preview of the web app">
-      <div class="wa-bar"><i></i><i></i><i></i><span>kepin17.github.io/olyzano-notch/app</span></div>
-      <iframe id="waFrame" title="Olyzano Notch for the web" data-src="app/?embed=1&tab=tools" loading="lazy"></iframe>
-    </div>
-  </div>
-</div></section>
 
 <footer><div class="wrap">
   <span>Olyzano Notch is released under the MIT License.</span>
@@ -2334,13 +2302,6 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       var io = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { make(e.target); io.unobserve(e.target); } }); }, { rootMargin: "300px" });
       els.forEach(function (el) { io.observe(el); });
     } else els.forEach(make);
-
-    // the web app, live, in its frame: loaded when it is near
-    var fr = document.getElementById("waFrame");
-    if (fr && "IntersectionObserver" in window) {
-      var io2 = new IntersectionObserver(function (es) { if (es[0].isIntersecting) { fr.src = fr.dataset.src; io2.disconnect(); } }, { rootMargin: "400px" });
-      io2.observe(fr);
-    } else if (fr) fr.src = fr.dataset.src;
   })();
   window.notchDemo = { play: play, scenes: scenes.map(function (s) { return s.id; }) };
 })();
