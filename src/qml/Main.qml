@@ -135,7 +135,7 @@ Window {
         lastFrame = now
     }
     readonly property bool engaged: !gaming.active && (pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt" && !floating)
-                                    || dragOver || anyMenu || dragging
+                                    || dragOver || anyMenu || (dragging && mode === "open")
                                     || saveDialog.visible || addDialog.visible)
     // hidden: only the top-edge strip is live. peek: copy in progress. open: full panel.
     // toast: a short system alert (charger, Bluetooth). Shown even while hidden, like Dynamic Island.
