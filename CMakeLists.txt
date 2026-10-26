@@ -142,10 +142,19 @@ if(EXISTS "${CMAKE_SOURCE_DIR}/.env")
         endif()
     endforeach()
 endif()
+# The values go into a generated header, not onto the compiler's command line: MSVC/Ninja strip the quotes of a
+# -DNAME="value" define, and a secret that starts with a digit then fails to compile.
+set(_discord_id "")
+set(_discord_secret "")
 if(NOTCH_DISCORD_CLIENT_ID AND NOTCH_DISCORD_CLIENT_SECRET)
-    target_compile_definitions(notch PRIVATE NOTCH_DISCORD_CLIENT_ID="${NOTCH_DISCORD_CLIENT_ID}"
-                                             NOTCH_DISCORD_CLIENT_SECRET="${NOTCH_DISCORD_CLIENT_SECRET}")
+    string(REPLACE "\\" "\\\\" _discord_id "${NOTCH_DISCORD_CLIENT_ID}")
+    string(REPLACE "\"" "\\\"" _discord_id "${_discord_id}")
+    string(REPLACE "\\" "\\\\" _discord_secret "${NOTCH_DISCORD_CLIENT_SECRET}")
+    string(REPLACE "\"" "\\\"" _discord_secret "${_discord_secret}")
 endif()
+file(WRITE "${CMAKE_BINARY_DIR}/generated/notch_discord_app.h"
+     "#pragma once\n#define NOTCH_DISCORD_CLIENT_ID \"${_discord_id}\"\n#define NOTCH_DISCORD_CLIENT_SECRET \"${_discord_secret}\"\n")
+target_include_directories(notch PRIVATE "${CMAKE_BINARY_DIR}/generated")
 qt_add_qml_module(notch
     URI Notch
     VERSION 1.0

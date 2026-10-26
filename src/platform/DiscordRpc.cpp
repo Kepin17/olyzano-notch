@@ -18,12 +18,7 @@
 #include <wincrypt.h>
 #endif
 
-#ifndef NOTCH_DISCORD_CLIENT_ID
-#define NOTCH_DISCORD_CLIENT_ID ""
-#endif
-#ifndef NOTCH_DISCORD_CLIENT_SECRET
-#define NOTCH_DISCORD_CLIENT_SECRET ""
-#endif
+#include "notch_discord_app.h" // written by CMake from .env / -D / CI secrets; empty strings without them
 
 namespace {
 const QString RedirectUri = QStringLiteral("http://localhost"); // must be listed under the Discord app's redirects
