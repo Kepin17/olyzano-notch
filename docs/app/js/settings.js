@@ -1,4 +1,4 @@
-import { h, $, formatBytes, toast } from "./util.js";
+import { h, $, mount, formatBytes, toast } from "./util.js";
 import { THEMES } from "./themes.js";
 import { applyTheme } from "./themes-apply.js";
 import { prefs } from "./store.js";
@@ -13,7 +13,7 @@ export async function render(ctx) {
   const set = (k, v) => { prefs.set(k, v); applyTheme(); ctx.refresh(); };
   const row = (title, sub, control) => h("div", { class: "settings-row" }, h("div", {}, h("b", {}, title), sub ? h("small", {}, sub) : null), control);
 
-  page.replaceChildren(
+  mount(page, 
     h("h3", {}, "Theme"),
     h("div", { class: "themes" }, ...THEMES.map(t => {
       const p = t[mode === "light" ? "light" : mode === "system" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : "dark"];

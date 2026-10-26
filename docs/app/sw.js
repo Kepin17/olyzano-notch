@@ -2,7 +2,7 @@
 const V = "notch-web-1";
 const SHELL = ["./", "index.html", "style.css", "manifest.webmanifest", "icons/notch.png", "icons/traktir.jpeg",
   "js/main.js", "js/app.js", "js/util.js", "js/store.js", "js/crypto.js", "js/vault.js", "js/dialogs.js", "js/ingest.js", "js/shelf.js", "js/icons.js", "js/themes.js", "js/themes-apply.js",
-  "js/palette.js", "js/settings.js", "js/tools.js", "js/timer.js", "js/color.js", "js/share.js", "js/music.js"];
+  "js/palette.js", "js/settings.js", "js/tools.js", "js/tools/image.js", "js/tools/pdf.js", "js/tools/zip.js", "js/tools/ocr.js", "js/tools/misc.js", "js/workers/image.js", "js/timer.js", "js/color.js", "js/share.js", "js/music.js"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", e => {
@@ -22,7 +22,7 @@ self.addEventListener("fetch", e => {
   const own = url.origin === location.origin && !url.pathname.includes("/vendor/");
   // the app's own files: the network first (so an update shows at once), the cache when offline; libraries: the cache first
   e.respondWith(own
-    ? fetch(e.request).then(res => { if (res.ok) { const copy = res.clone(); caches.open(V).then(c => c.put(e.request, copy)); } return res; }).catch(() => caches.match(e.request))
+    ? fetch(e.request, { cache: "no-cache" }).then(res => { if (res.ok) { const copy = res.clone(); caches.open(V).then(c => c.put(e.request, copy)); } return res; }).catch(() => caches.match(e.request))
     : caches.match(e.request).then(hit => hit || fetch(e.request).then(res => {
         if (res.ok && (url.origin === location.origin || /jsdelivr|unpkg/.test(url.host))) { const copy = res.clone(); caches.open(V).then(c => c.put(e.request, copy)); }
         return res;

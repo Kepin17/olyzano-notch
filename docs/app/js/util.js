@@ -92,6 +92,9 @@ export function download(blob, name) {
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
 }
 
+// Fill an element with children, leaving out null and false (replaceChildren would print "null").
+export const mount = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter(k => k != null && k !== false));
+
 export function toast(msg, action) {
   const box = document.getElementById("toasts");
   if (!box) return;
