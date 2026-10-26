@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Olyzano Notch for the web</title>
+<meta name="description" content="A notch in your browser: a temporary file shelf with image and PDF tools, OCR, zip, timer and more. Your files never leave your device.">
+<meta name="theme-color" content="#000000">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/notch.png">
+<link rel="apple-touch-icon" href="icons/notch.png">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wall" aria-hidden="true"><i></i><i></i><i></i></div>
+
+<main class="hero" id="hero">
+  <img src="icons/notch.png" width="64" height="64" alt="">
+  <h1>Olyzano Notch <span>for the web</span></h1>
+  <p>A shelf for the files you are working with, and the tools to change them. Convert images, merge PDFs, read text from a picture, zip a folder. <b>Your files stay on this device.</b></p>
+  <div class="hero-actions">
+    <button class="btn primary" id="heroOpen">Open the notch</button>
+    <button class="btn" id="heroTools">File tools</button>
+    <button class="btn" id="heroInstall" hidden>Install the app</button>
+  </div>
+  <p class="hint">Drop files anywhere · paste with <kbd>Ctrl</kbd>+<kbd>V</kbd> · <kbd>Ctrl</kbd>+<kbd>K</kbd> for the command palette</p>
+</main>
+
+<div id="notch" class="notch" data-open="false">
+  <div class="island" id="island">
+    <button class="pill" id="pill" aria-label="Open the notch" aria-expanded="false">
+      <span class="pill-dot"></span><span id="pillText">Olyzano Notch</span><span class="pill-count" id="pillCount" hidden>0</span>
+    </button>
+    <section class="sheet" aria-hidden="true"><div class="sheet-in" id="sheet">
+      <header class="bar">
+        <button class="ib" id="back" aria-label="Back" hidden></button>
+        <h2 id="title">Olyzano Notch</h2><span class="count" id="count" hidden>0</span>
+        <span class="grow"></span>
+        <input class="search" id="search" type="search" placeholder="Search" aria-label="Search the shelf" hidden>
+        <button class="ib" id="palette" aria-label="Command palette (Ctrl+K)" title="Command palette (Ctrl+K)"></button>
+        <button class="ib" id="settingsBtn" aria-label="Settings"></button>
+        <button class="pillbtn" id="pinBtn" aria-pressed="false">Pin</button>
+      </header>
+      <nav class="tabs" id="tabs" role="tablist"></nav>
+      <div class="page" id="page"></div>
+    </div></section>
+  </div>
+</div>
+
+<div class="drop" id="drop"><div><b>Release to add</b><span>The files are copied into this browser's storage</span></div></div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+<dialog id="dlg"></dialog>
+<input type="file" id="picker" multiple hidden>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

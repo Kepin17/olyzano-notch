@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Notch web: tests</title>
+<style>body{font:14px/1.5 system-ui;background:#111;color:#eee;padding:20px}.ok{color:#5c5}.bad{color:#f66;font-weight:700}code{color:#9cf}</style></head>
+<body><h1>Olyzano Notch for the web: tests</h1><p>The pure functions, run in this browser. Open this page; every line should say <span class="ok">PASS</span>.</p><div id="out"></div>
+<script type="module">
+import { uniqueName, parsePageRanges, parseLrc, formatBytes, clock, kindOf, extOf, baseOf } from "./js/util.js";
+import { fmt } from "./js/color.js";
+import { wifiQr } from "./js/tools/misc.js";
+import { THEMES } from "./js/themes.js";
+const out = document.getElementById("out");
+let fails = 0;
+const eq = (name, got, want) => {
+  const ok = JSON.stringify(got) === JSON.stringify(want);
+  if (!ok) fails++;
+  const d = document.createElement("div");
+  d.innerHTML = `<span class="${ok ? "ok" : "bad"}">${ok ? "PASS" : "FAIL"}</span> ${name}` + (ok ? "" : ` <code>got ${JSON.stringify(got)}, wanted ${JSON.stringify(want)}</code>`);
+  out.append(d);
+};
+eq("a taken name gets (2)", uniqueName(["photo.jpg"], "photo.jpg"), "photo (2).jpg");
+eq("(2) is taken too: (3)", uniqueName(["a.txt", "a (2).txt"], "a.txt"), "a (3).txt");
+eq("a free name stays", uniqueName(["a.txt"], "b.txt"), "b.txt");
+eq("no extension", uniqueName(["notes"], "notes"), "notes (2)");
+eq("page ranges: 2-5, 8, 10-", parsePageRanges("2-5, 8, 10-", 12).pages, [2, 3, 4, 5, 8, 10, 11, 12]);
+eq("page ranges: no duplicates, in order", parsePageRanges("3,1,3", 5).pages, [3, 1]);
+eq("page ranges: a reversed range", parsePageRanges("4-2", 5).pages, [2, 3, 4]);
+eq("page ranges: beyond the file is an error", parsePageRanges("9", 5).error !== "", true);
+eq("page ranges: text is an error", parsePageRanges("abc", 5).error !== "", true);
+eq("page ranges: empty is an error", parsePageRanges("", 5).error !== "", true);
+const lrc = parseLrc("[00:12.50]second\n[00:01.00]first\n[00:30.00][01:00.00]twice\nno stamp");
+eq("lrc sorted", lrc.map(l => l.text), ["first", "second", "twice", "twice"]);
+eq("lrc seconds", lrc.map(l => l.t), [1, 12.5, 30, 60]);
+eq("bytes", [formatBytes(500), formatBytes(1536), formatBytes(5 * 1048576), formatBytes(20 * 1048576)], ["1 KB", "2 KB", "5.0 MB", "20 MB"]);
+eq("clock", [clock(0), clock(65000), clock(3725000)], ["00:00", "01:05", "1:02:05"]);
+eq("kind of a file", [kindOf({ name: "a.pdf", type: "" }), kindOf({ name: "a.HEIC", type: "" }), kindOf({ name: "a.mp3", type: "audio/mpeg" }), kindOf({ name: "a.zip", type: "" })], ["pdf", "image", "audio", "archive"]);
+eq("extension and base", [extOf("a.tar.gz"), baseOf("a.tar.gz"), extOf("README")], ["gz", "a.tar", ""]);
+eq("colour formats", [fmt("#3daee9", "hex"), fmt("#3daee9", "rgb"), fmt("#ff0000", "hsl")], ["#3DAEE9", "rgb(61, 174, 233)", "hsl(0, 100%, 50%)"]);
+eq("wifi QR text", [wifiQr("olyzano room", "olzm0404"), wifiQr("a;b", "p:x"), wifiQr("cafe", "", false)], ["WIFI:T:WPA;S:olyzano room;P:olzm0404;;", String.raw`WIFI:T:WPA;S:a\;b;P:p\:x;;`, "WIFI:T:nopass;S:cafe;;"]);
+eq("fourteen themes, each with dark and light", [THEMES.length, THEMES.every(t => t.dark && t.light && /^#/.test(t.dark.accent) && /^#/.test(t.light.accent))], [14, true]);
+const total = document.createElement("h2"); total.textContent = fails ? fails + " failed" : "All passed"; total.className = fails ? "bad" : "ok"; out.prepend(total);
+</script></body></html>

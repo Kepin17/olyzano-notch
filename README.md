@@ -19,6 +19,19 @@ Runs on **Linux (KDE Plasma, Wayland or X11)** and **Windows 10 / 11**.
 
 ---
 
+## In the browser
+
+**[Olyzano Notch for the web](https://kepin17.github.io/olyzano-notch/app/)** is the same notch in a browser tab (and installable as an app, also offline): a shelf for files, and the file tools, with **nothing uploaded**: your files stay in the browser's own storage.
+
+- **Images:** convert (PNG, JPG, WebP, HEIC in), resize, compress to a size.
+- **PDF:** images to PDF, merge, split, extract pages (`2-5, 8, 10-`), rotate, compress.
+- **Text and archives:** OCR (several languages), zip and unzip, QR codes (make and read), checksums, Base64.
+- **The notch's own things:** categories, search, a 24-hour *Recently removed* with undo, locked categories (AES-256), timer and Pomodoro, a colour picker, a music player with `.lrc` lyrics, 14 themes, and `Ctrl+K` for a command palette. On a phone, install it and use *Share → Olyzano Notch* to put files on the shelf.
+
+What a web page cannot do stays in the desktop app: the status bar, tray, Quick Settings, KDE Connect, the dock, gaming mode and watching your screenshots folder. The code is in [`docs/app`](docs/app) (plain ES modules, no build step; `docs/app/tests.html` runs its tests).
+
+---
+
 ## Install
 
 The easiest way is the **[install page](https://kepin17.github.io/olyzano-notch/)**, which links the newest download for your system.
