@@ -123,9 +123,8 @@
   .pin:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 
   /* the code: one box for each digit */
-  .code { display: flex; justify-content: center; gap: 8px; margin-top: 14px; width: 100%; }
-  .code .gap { flex: 0 0 8px; }
-  .digit { flex: 1 1 0; min-width: 0; max-width: 48px; height: 56px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); text-align: center; caret-color: var(--accent);
+  .code { --cols: 6; display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 48px)); justify-content: center; gap: 8px; margin-top: 14px; width: 100%; }
+  .digit { width: 100%; min-width: 0; height: 56px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); text-align: center; caret-color: var(--accent);
            font: 600 22px/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace; padding: 0; transition: border-color .12s, box-shadow .12s; }
   .digit.on { border-color: var(--dim); }
   .digit:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
@@ -443,8 +442,14 @@ function codeBoxes(length, done) {
     const b = h("input", { class: "digit", type: "text", inputmode: "numeric", pattern: "[0-9]*", autocomplete: i === 0 ? "one-time-code" : "off",
                            "aria-label": "Digit " + (i + 1) + " of " + length });
     boxes.push(b); el.append(b);
-    if (length > 6 && i === Math.ceil(length / 2) - 1) el.append(h("span", { class: "gap" }));
   }
+  // All in one row when they fit at 36 px or more; otherwise two balanced rows (12 digits become 6 + 6), so nothing is squeezed or cut off.
+  const fit = () => {
+    const room = el.clientWidth, gap = innerWidth <= 400 ? 6 : 8;
+    el.style.setProperty("--cols", room && length * 36 + (length - 1) * gap > room ? Math.ceil(length / 2) : length);
+  };
+  new ResizeObserver(fit).observe(el);
+  requestAnimationFrame(fit);
   const full = () => boxes.every(b => b.value);
   const mark = b => b.classList.toggle("on", !!b.value);
   const fill = (text, from) => {
