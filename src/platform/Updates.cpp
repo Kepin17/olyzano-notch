@@ -35,6 +35,7 @@ Updates::Updates(QObject *parent)
         if (!m_release.valid())
             m_release = {};
     }
+    m_contributors = m_settings.value(QStringLiteral("contributors")).toStringList(); // the thank-you list shows at once, even offline
     m_start.setSingleShot(true);
     m_start.setInterval(20000); // after start-up has settled
     connect(&m_start, &QTimer::timeout, this, [this] { if (enabled()) ask(false); });
@@ -101,8 +102,6 @@ QString Updates::status() const
 
 void Updates::loadContributors()
 {
-    if (m_contributors.isEmpty())
-        m_contributors = m_settings.value(QStringLiteral("contributors")).toStringList();
     const qint64 now = QDateTime::currentSecsSinceEpoch();
     if (m_peopleReply || !enabled() || (!m_contributors.isEmpty() && now - m_settings.value(QStringLiteral("contributorsAt")).toLongLong() < DaySecs))
         return;
