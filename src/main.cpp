@@ -479,6 +479,10 @@ int main(int argc, char *argv[])
             if (page == QLatin1String("capsule")) // the closed notch as it rests (set capsuleMode=capsule in activities.conf)
                 return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 1800, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
             w->setProperty("pinned", true);
+            if (page.startsWith(QLatin1String("share-"))) { // the share dialog after Share: share-ready | share-pin | share-many | share-list
+                QMetaObject::invokeMethod(w, "debugShareReady", Q_ARG(QVariant, page.mid(6)));
+                return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 2500, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+            }
             if (page == QLatin1String("share")) {
                 QMetaObject::invokeMethod(w, "debugShare");
                 return QTimer::singleShot(1200, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });

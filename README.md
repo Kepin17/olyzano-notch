@@ -390,6 +390,8 @@ ScreenSaver D-Bus service) on Linux and from Windows itself.
 
 Right-click a file (or select several and press **Share**) → **Share via QR…**, then scan the code with a phone.
 
+One dialog, two steps: set the options, press **Share**, and the same dialog shows the QR code on the left and the link (with **Copy**) on the right. **Done** closes it and the share keeps running; **Sharing** in the toolbar lists everything shared now.
+
 ### Two ways to share
 
 | | **This WiFi** | **My server** |

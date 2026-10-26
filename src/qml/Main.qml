@@ -23,6 +23,10 @@ Window {
     readonly property int panelWidth: lyricsSplit ? 780 : page === "settings" ? 720 : openWidth
 
     property bool pinned: false
+    // The panel's place in the window, for the share dialog: it is centred inside the panel and dims only the panel, and the
+    // panel is at least as tall as the dialog needs (so the dialog never hangs out of it onto the desktop).
+    readonly property rect panelRect: Qt.rect(island.x, island.y, island.width, island.height)
+    readonly property real shareNeed: shareLoader.item !== null && shareLoader.item.visible ? shareLoader.item.height + 40 : 0
     readonly property string capsuleMode: activities.capsuleMode
     onCapsuleModeChanged: {
         pinned = capsuleMode === "open" // "Always open" is a pin that stays
@@ -540,6 +544,23 @@ Window {
         if (parts.length > 1) settingsPage().scrollTo(Number(parts[1]))
     }
     function _unusedDebugSettings(section) { settingsPage().category = section } // `notch --shot-settings file.png <section>`
+    // `notch --shot-page file.png share-ready|share-pin|share-many|share-list`: a note is shared on "This WiFi" and the dialog shown
+    function debugShareReady(kind) {
+        const count = kind === "many" || kind === "list" ? 3 : 1
+        for (let i = 0; i < count; ++i)
+            notch.addTextNote("A note to share through the QR code, number " + (i + 1) + ".\n")
+        Qt.callLater(() => {
+            const pop = sharePopup()
+            const ids = notch.visibleIds()
+            pop.openFor(ids.slice(0, count))
+            pop.debugBegin(kind === "pin" ? "482193" : "")
+            if (kind === "list") {
+                pop.openFor(ids.slice(0, 1)) // a second share
+                pop.debugBegin("")
+                pop.view = "sessions"
+            }
+        })
+    }
     function debugShare() { sharePopup().openFor([]) } // `notch --shot-page file.png share`: the share window, for a picture
     function showShares() {
         pinned = true // opens the panel and keeps it while the shares are looked at
@@ -973,7 +994,7 @@ Window {
         readonly property real targetWidth: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 400
              : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
              : root.mode === "idle" ? (root.musicShown ? root.capWidth : root.infoShown ? 390 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
-        readonly property real targetHeight: root.mode === "open" ? panel.implicitHeight + (root.dragOver ? 8 : 0)
+        readonly property real targetHeight: root.mode === "open" ? Math.max(panel.implicitHeight + (root.dragOver ? 8 : 0), root.shareNeed)
               : root.mode === "prompt" ? 92 : root.mode === "toast" ? 56 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? 48 : 26) : 0
         width: targetWidth
         height: targetHeight

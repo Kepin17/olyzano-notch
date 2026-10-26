@@ -2,15 +2,15 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-// Share via QR. "setup": choose how and with what protection. "sessions": everything being shared right
-// now (several at once), each with its QR code. Drives the `share` object (ShareController).
+// Share via QR. "setup": choose how and with what protection. "ready": the QR code on the left and the link on the
+// right, in this same dialog right after Share. "sessions": everything being shared right now (several at once). Drives the `share` object (ShareController).
 Popup {
     id: pop
     required property var shell
     property var ids: []
     property bool hasVault: false
-    property string view: "setup" // setup | sessions
-    property string expandedId: ""
+    property string view: "setup" // setup | ready | sessions
+    property string readyId: ""   // the share whose QR and link the "ready" view shows
     property string mode: "local" // local | relay | nearby
     property string nearbyId: ""
     property string receiveError: ""
@@ -47,10 +47,25 @@ Popup {
 
     // Responsive: as wide as the panel allows (never off the window), and as tall as the window leaves room for;
     // what does not fit scrolls inside instead of running off the screen.
-    x: (shell.width - width) / 2
-    y: 64
-    width: Math.min(view === "sessions" ? 460 : 440, shell.width - 32)
-    height: Math.min(implicitHeight, Math.max(240, shell.height - y - 24))
+    // Inside the open panel, centred there: nothing hangs out of it, and the panel (kept tall enough by Main) never hides behind.
+    x: shell.panelRect.x + (shell.panelRect.width - width) / 2
+    y: shell.panelRect.y + Math.max(16, (shell.panelRect.height - height) / 2)
+    width: Math.min(view === "ready" ? 520 : view === "sessions" ? 460 : 440, shell.panelRect.width - 32)
+    height: Math.min(implicitHeight, Math.max(240, shell.height - 48))
+    // The panel behind steps back instead of competing with the dialog (only the panel is dimmed, not the desktop around it).
+    modal: true
+    dim: true
+    Overlay.modal: Item {
+        Rectangle {
+            x: shell.panelRect.x
+            y: shell.panelRect.y
+            width: shell.panelRect.width
+            height: shell.panelRect.height
+            radius: 22
+            color: Qt.rgba(0, 0, 0, 0.5)
+        }
+        Behavior on opacity { NumberAnimation { duration: 120 } }
+    }
     padding: 16
     focus: true
     enter: Transition {
@@ -84,6 +99,13 @@ Popup {
         view = "sessions"
         open()
     }
+    function debugBegin(pin) { // pictures only: share on "This WiFi" with an optional PIN
+        mode = "local"
+        protection = pin !== "" ? "pin" : "none"
+        secret.text = pin
+        single = false
+        begin()
+    }
     function begin() {
         if (mode === "nearby") {
             if (nearby.send(ids, nearbyId) !== "")
@@ -93,9 +115,9 @@ Popup {
         tried = true
         if (secretError !== "")
             return
-        expandedId = share.start(ids, mode, ttl, protection, secret.text, single, address, serverId)
+        readyId = share.start(ids, mode, ttl, protection, secret.text, single, address, serverId)
         secret.clear()
-        view = "sessions"
+        view = readyId !== "" ? "ready" : "sessions"
     }
     function mb(bytes) { return bytes >= 10 * 1048576 ? Math.round(bytes / 1048576) + " MB" : (bytes / 1048576).toFixed(1) + " MB" }
     // The longest expiry this server's rules allow (or the longest we offer).
@@ -118,6 +140,10 @@ Popup {
     }
     onOpened: now = Math.floor(Date.now() / 1000)
     onClosed: secret.clear()
+    Connections {
+        target: share
+        function onCountChanged() { if (pop.view === "ready" && share.count === 0) pop.view = "sessions" } // nothing left to show
+    }
 
     Timer {
         interval: 1000
@@ -143,7 +169,14 @@ Popup {
 
         RowLayout {
             Layout.fillWidth: true
-            SectionLabel { text: pop.view === "setup" ? "Share via QR" : "Sharing now" }
+            spacing: 6
+            IconButton {
+                visible: pop.view === "ready" || (pop.view === "sessions" && pop.ids.length > 0)
+                iconName: "back"
+                Accessible.name: pop.view === "ready" ? "Back to the list" : "Back to the new share"
+                onClicked: pop.view = pop.view === "ready" ? "sessions" : "setup"
+            }
+            SectionLabel { text: pop.view === "setup" ? "Share via QR" : pop.view === "ready" ? "Ready to scan" : "Sharing now" }
             Item { Layout.fillWidth: true }
             PillButton {
                 iconName: "laptop"
@@ -161,6 +194,7 @@ Popup {
                 text: "New share"
                 onClicked: pop.view = "setup"
             }
+            IconButton { iconName: "close"; Accessible.name: "Close"; onClicked: pop.close() }
         }
 
         Caption {
@@ -385,6 +419,159 @@ Popup {
             }
         }
 
+        // ---- ready: the QR on the left, the link on the right ----
+        ColumnLayout {
+            visible: pop.view === "ready"
+            Layout.fillWidth: true
+            spacing: 10
+            Repeater {
+                model: share
+                delegate: GridLayout {
+                    id: rd
+                    required property string sessionId
+                    required property string name
+                    required property string mode
+                    required property string status
+                    required property string url
+                    required property double progress
+                    required property double expiresAt
+                    required property int fileCount
+                    required property int downloads
+                    required property string message
+                    required property string endReason
+                    required property string protection
+                    required property string serverName
+                    required property bool active
+                    readonly property var snapshot: ({ status: status, progress: progress, expiresAt: expiresAt, downloads: downloads, message: message })
+                    visible: sessionId === pop.readyId
+                    Layout.fillWidth: true
+                    columns: pop.width >= 480 ? 2 : 1
+                    columnSpacing: 20
+                    rowSpacing: 14
+
+                    Rectangle { // the code (a calm placeholder with the progress while it is being made)
+                        Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
+                        implicitWidth: 188
+                        implicitHeight: 188
+                        radius: 12
+                        color: rd.status === "ready" ? "white" : theme.well
+                        border.width: rd.status === "ready" ? 0 : 1
+                        border.color: theme.outline
+                        Image {
+                            visible: rd.status === "ready"
+                            anchors.centerIn: parent
+                            width: 172
+                            height: 172
+                            sourceSize: Qt.size(172, 172)
+                            fillMode: Image.PreserveAspectFit
+                            smooth: false
+                            cache: false
+                            source: rd.status === "ready" ? pop.qrSource(rd.url) : ""
+                        }
+                        ColumnLayout {
+                            visible: rd.status !== "ready"
+                            anchors.centerIn: parent
+                            width: parent.width - 32
+                            spacing: 10
+                            Text {
+                                Layout.fillWidth: true
+                                horizontalAlignment: Text.AlignHCenter
+                                wrapMode: Text.Wrap
+                                text: pop.statusText(rd.snapshot)
+                                color: rd.status === "error" ? theme.danger : theme.textDim
+                                font.pixelSize: 12
+                            }
+                            ProgressBar {
+                                Layout.fillWidth: true
+                                visible: rd.status === "preparing" || rd.status === "uploading"
+                                indeterminate: rd.status === "preparing" || rd.progress < 0
+                                value: Math.max(0, rd.progress)
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        Layout.alignment: Qt.AlignTop
+                        spacing: 8
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            LineIcon {
+                                glyph: rd.mode === "relay" ? "server" : "wifi"
+                                sourceSize: Qt.size(16, 16)
+                                color: rd.active ? theme.accent : theme.textDim
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: rd.name
+                                color: theme.text
+                                font.pixelSize: 14
+                                font.weight: Font.DemiBold
+                                elide: Text.ElideMiddle
+                            }
+                            LineIcon {
+                                visible: rd.protection !== ""
+                                glyph: "lock"
+                                sourceSize: Qt.size(13, 13)
+                                color: theme.textDim
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: (rd.fileCount > 1 ? rd.fileCount + " files" : "1 file")
+                                  + (rd.serverName !== "" && share.servers.length > 1 ? " · " + rd.serverName : "")
+                                  + (rd.protection === "pin" ? " · PIN required" : rd.protection === "password" ? " · password required" : "")
+                            color: theme.textDim
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: pop.statusText(rd.snapshot)
+                            color: rd.status === "error" ? theme.danger : rd.active ? theme.text : theme.textDim
+                            font.pixelSize: 13
+                            wrapMode: Text.Wrap
+                        }
+                        Caption {
+                            Layout.fillWidth: true
+                            visible: rd.status === "ready"
+                            text: (rd.mode === "local" ? "Phone and computer must be on the same WiFi." : "Encrypted: only people with this exact link can open it.")
+                                  + (rd.protection === "pin" ? " They also need the PIN." : rd.protection === "password" ? " They also need the password." : "")
+                                  + (rd.mode === "local" && rd.fileCount > 1 ? " Stays open until it expires or you press Stop." : "")
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            visible: rd.status === "ready"
+                            spacing: 6
+                            TextField {
+                                id: readyLink
+                                Layout.fillWidth: true
+                                implicitHeight: 30
+                                leftPadding: 10
+                                readOnly: true
+                                text: rd.url
+                                color: theme.textDim
+                                font.pixelSize: 11
+                                selectByMouse: true
+                                background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: theme.outline }
+                            }
+                            PillButton { text: "Copy"; onClicked: { readyLink.selectAll(); readyLink.copy(); readyLink.deselect() } }
+                        }
+                        Item { Layout.fillWidth: true; Layout.fillHeight: true; Layout.minimumHeight: 4 }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            PillButton { visible: rd.active; text: "Stop sharing"; onClicked: share.stop(rd.sessionId) }
+                            PillButton { visible: !rd.active; text: "Back to the list"; onClicked: pop.view = "sessions" }
+                            Item { Layout.fillWidth: true }
+                            PillButton { text: "Done"; checked: true; onClicked: pop.close() }
+                        }
+                    }
+                }
+            }
+        }
+
         // ---- sessions ----
         ColumnLayout {
             visible: pop.view === "sessions"
@@ -425,14 +612,13 @@ Popup {
                             required property string protection
                             required property string serverName
                             required property bool active
-                            readonly property bool open: pop.expandedId === sessionId && status === "ready"
                             readonly property var snapshot: ({ status: status, progress: progress, expiresAt: expiresAt, downloads: downloads, message: message })
                             Layout.fillWidth: true
                             implicitHeight: body.implicitHeight + 20
                             radius: theme.radiusMd
                             color: theme.card
                             border.width: 1
-                            border.color: open ? theme.accent : theme.outline
+                            border.color: theme.outline
 
                             ColumnLayout {
                                 id: body
@@ -478,8 +664,8 @@ Popup {
                                     }
                                     PillButton {
                                         visible: card.status === "ready"
-                                        text: card.open ? "Hide" : "QR"
-                                        onClicked: pop.expandedId = card.open ? "" : card.sessionId
+                                        text: "QR"
+                                        onClicked: { pop.readyId = card.sessionId; pop.view = "ready" }
                                     }
                                     PillButton {
                                         visible: card.active
@@ -501,61 +687,6 @@ Popup {
                                     value: Math.max(0, card.progress)
                                 }
 
-                                ColumnLayout {
-                                    visible: card.open
-                                    Layout.fillWidth: true
-                                    spacing: 6
-                                    Rectangle {
-                                        Layout.alignment: Qt.AlignHCenter
-                                        implicitWidth: 236
-                                        implicitHeight: 236
-                                        radius: 10
-                                        color: "white"
-                                        Image {
-                                            anchors.centerIn: parent
-                                            width: 220
-                                            height: 220
-                                            sourceSize: Qt.size(220, 220)
-                                            fillMode: Image.PreserveAspectFit
-                                            smooth: false
-                                            cache: false
-                                            source: card.open ? pop.qrSource(card.url) : ""
-                                        }
-                                    }
-                                    Caption {
-                                        Layout.fillWidth: true
-                                        horizontalAlignment: Text.AlignHCenter
-                                        text: (card.mode === "local" ? "Phone and computer must be on the same WiFi." : "Encrypted: only people with this exact link can open it.")
-                                              + (card.protection === "pin" ? " They also need the PIN."
-                                                 : card.protection === "password" ? " They also need the password." : "")
-                                    }
-                                    Caption {
-                                        Layout.fillWidth: true
-                                        horizontalAlignment: Text.AlignHCenter
-                                        visible: card.mode === "local" && card.fileCount > 1
-                                        text: "Stays open until it expires or you press Stop."
-                                    }
-                                    TextField {
-                                        id: linkField
-                                        Layout.fillWidth: true
-                                        implicitHeight: 28
-                                        leftPadding: 10
-                                        readOnly: true
-                                        text: card.url
-                                        color: theme.textDim
-                                        font.pixelSize: 11
-                                        selectByMouse: true
-                                        background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: theme.outline }
-                                    }
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        Item { Layout.fillWidth: true }
-                                        PillButton {
-                                            text: "Copy link"
-                                            onClicked: { linkField.selectAll(); linkField.copy(); linkField.deselect() }
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
