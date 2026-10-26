@@ -133,7 +133,9 @@ if (new URLSearchParams(location.search).get("shared")) {
 }
 
 // first look: open the notch (pinned) on desktop, closed pill on phones
+const embed = new URLSearchParams(location.search).has("embed"); // shown inside the install page: always open
+if (embed) { document.body.classList.add("embed"); state.pinned = true; }
 const start = new URLSearchParams(location.search).get("tab");
 if (start && pages[start]) { state.tab = start; setOpen(true); }
-else if (matchMedia("(min-width: 700px)").matches) { await sleep(250); setOpen(true); }
+else if (embed || matchMedia("(min-width: 700px)").matches) { await sleep(250); setOpen(true); }
 else render();
