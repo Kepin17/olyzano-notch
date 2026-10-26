@@ -33,8 +33,10 @@ h1{font-size:1.25rem;margin:0 0 .5rem}p{margin:.25rem 0;color:#a3a7b0}@media(pre
 </style></head><body><main><h1>%s</h1><p>%s</p></main></body></html>""" % (title, title, text)).encode()
 
 
-LANDING = note_page("Notch share relay", "This server holds files that people share from Olyzano Notch. "
-                    "Open the link you were sent; there is nothing to see at this address.")
+# It says the same whatever the server holds: a share is only reachable through its own long link, and this page must
+# not tell a stranger whether anything is being shared.
+LANDING = note_page("No files shared", "There are no files shared at this address right now. "
+                    "To download a file, open the link you were sent.")
 NOT_FOUND_PAGE = note_page("Nothing here", "This address does not lead to a share. The link may be mistyped, or the share has expired.")
 NOTE_CSP = "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'"
 ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")

@@ -42,7 +42,7 @@ class RelayTest(unittest.TestCase):
         status, body, r = self.call("GET", "/", key=None)
         self.assertEqual(status, 200)
         self.assertIn("text/html", r.getheader("Content-Type"))
-        self.assertIn(b"Notch share relay", body)
+        self.assertIn(b"No files shared", body)
         status, body, r = self.call("GET", "/nothing/here", key=None, headers={"Accept": "text/html,application/xhtml+xml"})
         self.assertEqual(status, 404)
         self.assertIn("text/html", r.getheader("Content-Type"))
