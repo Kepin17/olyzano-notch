@@ -25,6 +25,7 @@
 #include "platform/Cities.h"
 #include "platform/PrayerModel.h"
 #include "platform/UpdateModel.h"
+#include "platform/VoiceModel.h"
 #include "platform/WidgetModel.h"
 #include "platform/LauncherModel.h"
 #include "platform/ColorFormat.h"
@@ -671,6 +672,51 @@ private slots:
         QVERIFY(n > 80);
         for (int i = 0; i < n; ++i)
             QVERIFY(c[i].lat >= -90 && c[i].lat <= 90 && c[i].lon >= -180 && c[i].lon <= 180);
+    }
+
+    void voiceFollowsTheRoom()
+    {
+        using VoiceModel::Detector;
+        qint64 t = 0;
+        // a hot microphone: the room hums at 1800 RMS, which a fixed line at ~1300 would call a voice all day
+        for (int level : {0, 1, 2}) {
+            Detector d;
+            d.level = level;
+            bool ever = false;
+            for (int i = 0; i < 400; ++i, t += 60)
+                ever = d.update(1800 + (i % 3) * 40, t) || ever;
+            QVERIFY2(!ever || level == 2, "a steady hum must not read as a voice");
+        }
+        Detector d;
+        for (int i = 0; i < 100; ++i, t += 60)
+            QVERIFY(!d.update(1800, t));
+        QVERIFY(d.update(9000, t) == false);          // one loud chunk alone: a click
+        t += 60;
+        QVERIFY(d.update(9000, t));                   // two in a row: a voice
+        t += 60;
+        QVERIFY(d.update(1800, t));                   // between words it holds
+        t += 400;
+        QVERIFY(!d.update(1800, t));                  // then lets go
+        QVERIFY(d.floor() > 1700 && d.floor() < 1900); // and the voice did not raise the background
+        // a quiet room: ordinary speech stands out, the room does not
+        Detector q;
+        for (int i = 0; i < 50; ++i, t += 60)
+            QVERIFY(!q.update(150, t));
+        q.update(4000, t += 60);
+        QVERIFY(q.update(4000, t += 60));
+        // the room getting louder is learned slowly, so it stops counting as a voice after a while
+        Detector n;
+        for (int i = 0; i < 50; ++i, t += 60)
+            n.update(300, t);
+        bool stillVoice = true;
+        for (int i = 0; i < 1500 && stillVoice; ++i, t += 60)
+            stillVoice = n.update(2000, t);
+        QVERIFY(!stillVoice);
+        QVERIFY(VoiceModel::sensitivity(0).least > VoiceModel::sensitivity(1).least && VoiceModel::sensitivity(1).least > VoiceModel::sensitivity(2).least);
+        QByteArray two(8, 0);
+        reinterpret_cast<qint16 *>(two.data())[0] = 1000;
+        reinterpret_cast<qint16 *>(two.data())[1] = -1000;
+        QVERIFY(qAbs(VoiceModel::rms(two) - std::sqrt(2e6 / 4)) < 1);
     }
 
     void contributorsSkipBots()

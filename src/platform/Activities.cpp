@@ -465,6 +465,8 @@ void Activities::syncMicTap()
 {
     const bool want = privacyIndicators() && !m_mic.isEmpty() && m_micMuted != 1;
     if (want && m_micTap.state() == QProcess::NotRunning) {
+        m_voice.reset();   // a new reading starts with a new idea of how loud the room is
+        m_tapRest.clear();
         m_micTap.start(QStringLiteral("parec"), {QStringLiteral("--device=@DEFAULT_SOURCE@"), QStringLiteral("--raw"),
                                                  QStringLiteral("--format=s16le"), QStringLiteral("--rate=8000"),
                                                  QStringLiteral("--channels=1"), QStringLiteral("--latency-msec=60"),
@@ -480,14 +482,16 @@ void Activities::syncMicTap()
 
 void Activities::onMicTap()
 {
-    const QByteArray data = m_micTap.readAllStandardOutput();
-    const auto *samples = reinterpret_cast<const qint16 *>(data.constData());
-    int peak = 0;
-    for (int i = 0; i < data.size() / 2; ++i)
-        peak = qMax(peak, qAbs(int(samples[i])));
-    if (peak > 1300) // about -28 dBFS: a voice, not the room
-        m_voiceSeen.start();
-    const bool speaking = m_voiceSeen.isValid() && m_voiceSeen.elapsed() < 400; // holds between words
+    QByteArray data = m_tapRest + m_micTap.readAllStandardOutput();
+    m_tapRest = data.size() % 2 ? data.right(1) : QByteArray();
+    if (data.size() % 2)
+        data.chop(1);
+    if (data.isEmpty())
+        return;
+    if (!m_voiceClock.isValid())
+        m_voiceClock.start();
+    m_voice.level = micSensitivity();
+    const bool speaking = m_voice.update(VoiceModel::rms(data), m_voiceClock.elapsed());
     if (speaking != m_speaking) {
         m_speaking = speaking;
         emit micSpeakingChanged();

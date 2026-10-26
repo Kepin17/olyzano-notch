@@ -388,6 +388,17 @@ RowLayout {
                 checked: activities.privacyIndicators
                 onToggled: activities.privacyIndicators = !activities.privacyIndicators
             }
+            RowLayout {
+                visible: Qt.platform.os === "linux" && activities.privacyIndicators
+                Layout.fillWidth: true
+                spacing: 8
+                Text { text: "Voice sensitivity"; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium }
+                Repeater {
+                    model: [[0, "Low"], [1, "Normal"], [2, "High"]]
+                    PillButton { required property var modelData; text: modelData[1]; checked: activities.micSensitivity === modelData[0]; onClicked: activities.micSensitivity = modelData[0] }
+                }
+                Caption { Layout.fillWidth: true; text: "How clearly a voice must stand out from the room before the microphone icon turns green. Lower it if it stays on, raise it if it misses you." }
+            }
 
             SettingCard {
                 id: prayerCard

@@ -12,6 +12,7 @@
 #include <QVariantList>
 
 #include "platform/DiscordCall.h"
+#include "platform/VoiceModel.h"
 #if defined(Q_OS_WIN) || defined(Q_OS_LINUX)
 #define NOTCH_DISCORD_RPC // mute / deafen from Discord's own RPC pipe
 #include "platform/DiscordRpc.h"
@@ -39,6 +40,7 @@ class Activities : public QObject
     Q_PROPERTY(QVariantList downloads READ downloads NOTIFY downloadsChanged)
     Q_PROPERTY(QStringList micApps READ micApps NOTIFY privacyChanged)
     Q_PROPERTY(QStringList cameraApps READ cameraApps NOTIFY privacyChanged)
+    Q_PROPERTY(int micSensitivity READ micSensitivity WRITE setMicSensitivity NOTIFY settingsChanged) // how clearly a voice must stand out: 0 low, 1 normal, 2 high
     Q_PROPERTY(bool micSpeaking READ micSpeaking NOTIFY micSpeakingChanged) // Linux: an app has the microphone, it is live, and there is a voice
     Q_PROPERTY(int micMuted READ micMuted NOTIFY privacyChanged) // default microphone: 1 muted, 0 live, -1 unknown
     // Discord on Windows: "off" | "call" (in a voice call) | "talking" (the microphone is picking up a voice)
@@ -77,6 +79,8 @@ public:
     QStringList cameraApps() const { return m_camera; }
     int micMuted() const { return m_micMuted; }
     bool micSpeaking() const { return m_speaking; }
+    int micSensitivity() const { return qBound(0, m_settings.value(QStringLiteral("micSensitivity"), 1).toInt(), 2); }
+    void setMicSensitivity(int level) { store(QStringLiteral("micSensitivity"), qBound(0, level, 2)); m_voice.level = micSensitivity(); }
     QString discordState() const
     {
         if (m_call.state == CallState::Off)
@@ -189,7 +193,9 @@ private:
     QStringList m_mic, m_camera;
     int m_micMuted = -1;
     QProcess m_micTap; // Linux: loudness of the microphone while an app uses it; the sound is never kept, only a peak per chunk
-    QElapsedTimer m_voiceSeen;
+    QElapsedTimer m_voiceClock;
+    VoiceModel::Detector m_voice;
+    QByteArray m_tapRest; // an odd byte left over from the last read of 16-bit samples
     bool m_speaking = false;
     void syncMicTap();
     void onMicTap();
