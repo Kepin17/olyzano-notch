@@ -28,7 +28,70 @@ Window {
         pinned = capsuleMode === "open" // "Always open" is a pin that stays
         updateMask()
     }
-    Component.onCompleted: if (capsuleMode === "open") pinned = true
+    Component.onCompleted: {
+        if (capsuleMode === "open") pinned = true
+        loadWidgetPos()
+        applyGeometry()
+    }
+
+    // ---- Widget mode (beta): the notch as a floating card you drag anywhere ----
+    // The window follows the card: a small one while it floats, the big one while its panel is open (the panel grows
+    // from the card's spot); (widgetCx, widgetY) is the card's middle and top on this screen. `docked` is the island's
+    // own place at the top centre (the stretch reminder, and the panel when opened from the top-edge strip).
+    readonly property bool widgetMode: capsuleMode === "widget"
+    property bool openFromEdge: false
+    property real widgetCx: 0
+    property real widgetY: 14
+    property rect winRect: Qt.rect(0, 0, 840, 620)
+    property bool geoWidget: false // the window is placed by the card (not at the top centre)
+    property bool dragging: false
+    readonly property bool docked: !widgetMode || openFromEdge || mode === "prompt" || mode === "hidden"
+    readonly property bool floating: !docked && mode !== "open"
+    readonly property string screenName: root.screen ? root.screen.name : ""
+    function loadWidgetPos() {
+        const size = desktop.screenSize(root)
+        const p = activities.widgetPos(screenName, size.width, size.height)
+        const q = desktop.snapWidget(p.x, p.y, 400, 38, root) // back on the screen if it changed size
+        widgetCx = q.x === p.x ? p.x : Math.max(200, Math.min(size.width - 200, p.x))
+        widgetY = Math.max(0, Math.min(size.height - 38, p.y))
+    }
+    function applyGeometry() {
+        if (widgetMode && !docked) {
+            winRect = desktop.placeWidget(root, mode === "open", widgetCx, widgetY)
+            geoWidget = true
+        } else if (geoWidget) {
+            geoWidget = false
+            desktop.placeDocked(root)
+        }
+    }
+    onWidgetModeChanged: { if (widgetMode) loadWidgetPos(); applyGeometry(); updateMask() }
+    onDockedChanged: { applyGeometry(); updateMask() }
+    onWidgetCxChanged: if (geoWidget) applyGeometry()
+    onWidgetYChanged: if (geoWidget) applyGeometry()
+    onWinRectChanged: updateMask()
+    onGeoWidgetChanged: updateMask()
+    onScreenChanged: { loadWidgetPos(); applyGeometry() }
+    Connections { target: activities; function onWidgetReset() { root.loadWidgetPos() } }
+    function openFromEdgeStrip() { // the top-edge strip (widget mode): the panel at the top centre
+        if (!widgetMode)
+            return
+        openFromEdge = true
+        dwelled = true
+    }
+    function dragStep(dx, dy) { // the card moved by (dx, dy) screen pixels
+        const size = desktop.screenSize(root)
+        const k = activities.capsuleScale
+        const w = island.targetWidth * k, h = island.targetHeight * k
+        widgetCx = Math.max(w / 2, Math.min(size.width - w / 2, widgetCx + dx))
+        widgetY = Math.max(0, Math.min(size.height - h, widgetY + dy))
+    }
+    function finishDrag() {
+        const k = activities.capsuleScale
+        const q = desktop.snapWidget(widgetCx, widgetY, island.targetWidth * k, island.targetHeight * k, root)
+        widgetCx = q.x
+        widgetY = q.y
+        activities.setWidgetPos(screenName, widgetCx, widgetY)
+    }
     property bool open: false
     property bool dwelled: false
     property string page: "shelf" // shelf | preview | settings | note
@@ -76,7 +139,7 @@ Window {
             dbg("slow frame " + (now - lastFrame) + " ms")
         lastFrame = now
     }
-    readonly property bool engaged: !gaming.active && (pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt")
+    readonly property bool engaged: !gaming.active && (pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt" && !floating)
                                     || dragOver || anyMenu
                                     || saveDialog.visible || addDialog.visible)
     // hidden: only the top-edge strip is live. peek: copy in progress. open: full panel.
@@ -147,7 +210,7 @@ Window {
                                         && (dock.coveredScreen === "*" || !root.screen || dock.coveredScreen === root.screen.name)
     // The capsule stays up whatever is in front (a maximised browser playing music used to hide it); only the
     // plain idle clock gives way to a window that reaches the top edge.
-    readonly property bool idleShown: capsuleMode === "capsule" || (activities.idleClock && !idleCovered)
+    readonly property bool idleShown: capsuleMode === "capsule" || capsuleMode === "widget" || (activities.idleClock && !idleCovered)
     readonly property bool taskShown: activities.taskInCapsule && tasks.hasNext
     property date idleNow: new Date()
     Timer {
@@ -177,7 +240,7 @@ Window {
     // margins + wave + gaps + the app name + the time + the microphone and Discord icons, and a little spare
     readonly property real capOverhead: 2 * 24 + 22 + 3 * 10 + capTimeSize.advanceWidth + (capSource !== "" ? capSourceSize.advanceWidth + 10 : 0)
                                         + (activities.micApps.length > 0 ? 25 : 0) + (activities.cameraApps.length > 0 ? 25 : 0) + (activities.discordState !== "off" ? 24 : 0) + (sharingNow ? 24 : 0) + 16
-    readonly property real capMaxWidth: (root.width - 40) / activities.capsuleScale
+    readonly property real capMaxWidth: ((widgetMode ? 720 : root.width) - 40) / activities.capsuleScale
     readonly property bool capWraps: capLyric && capLineSize.advanceWidth + capOverhead > capMaxWidth
     readonly property real capWidth: !capLyric ? 400 : capWraps ? capMaxWidth : Math.max(400, capLineSize.advanceWidth + capOverhead)
     Timer { id: pauseTimer; interval: 120000; onTriggered: root.musicStale = true }
@@ -421,8 +484,10 @@ Window {
     }
     onOpenChanged: {
         dbg("open=" + open)
+        applyGeometry()
         if (open)
             return
+        openFromEdge = false
         page = "shelf"
         editingCategory = ""
         clearSelection()
@@ -451,7 +516,18 @@ Window {
             desktop.setInputRegion(root, Qt.rect(0, height - 1, 1, 1))
         else if (anyMenu)
             desktop.setInputRegion(root, Qt.rect(0, 0, width, height))
-        else if (mode === "hidden" || (mode === "idle" && capsuleMode !== "capsule")) // the idle clock is see-through for clicks; the top edge opens Notch (the capsule itself can be pointed at)
+        else if (geoWidget) { // the card (or its panel) in its own window
+            if (dragging) {
+                desktop.setInputRegion(root, Qt.rect(0, 0, width, height))
+            } else {
+                const slack = maskSettle.running ? 24 : 0
+                const k = floating ? activities.capsuleScale : 1
+                const w = Math.min(width, Math.max(island.width, island.targetWidth) * k + 2 * slack)
+                const h = Math.min(height - island.y, Math.max(island.height, island.targetHeight) * k + slack)
+                const mid = Math.max(w / 2, Math.min(width - w / 2, widgetCx - winRect.x))
+                desktop.setInputRegion(root, Qt.rect(mid - w / 2, island.y, w, h))
+            }
+        } else if (mode === "hidden" || (mode === "idle" && capsuleMode !== "capsule")) // the idle clock is see-through for clicks; the top edge opens Notch (the capsule itself can be pointed at)
             desktop.setInputRegion(root, Qt.rect(edge.x, 0, edge.width, edge.height))
         else {
             // Covers where the island is going, not where it is this frame: a native mask change per animation
@@ -470,7 +546,7 @@ Window {
     }
     Timer { id: maskSettle; interval: 350; onTriggered: root.updateMask() }
     onVisibleChanged: updateMask()
-    onModeChanged: updateMask()
+    onModeChanged: { applyGeometry(); updateMask() }
     Connections {
         target: gaming
         function onChanged() {
@@ -680,7 +756,8 @@ Window {
 
     Item {
         id: island
-        x: (root.width - width) / 2
+        x: root.geoWidget ? Math.max(0, Math.min(root.width - width, root.widgetCx - root.winRect.x - width / 2)) : (root.width - width) / 2
+        y: root.geoWidget ? Math.max(0, Math.min(root.height - height, root.widgetY - root.winRect.y)) : 0
         // Where the island is heading; width and height follow it with the springs below.
         readonly property real targetWidth: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 380
              : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
@@ -691,7 +768,7 @@ Window {
         height: targetHeight
         focus: true
         // The capsule's size is the person's choice (Settings); everything in it scales together, glued to the top edge.
-        scale: root.mode === "idle" ? activities.capsuleScale : 1
+        scale: root.mode === "idle" || root.floating ? activities.capsuleScale : 1
         transformOrigin: Item.Top
         Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
@@ -782,9 +859,32 @@ Window {
         }
 
         // Liquid silhouette: flat top fused to the screen edge, concave shoulders, round bottom.
+        // Widget mode: a plain rounded card with a soft shadow instead of the island's silhouette.
+        readonly property bool roundShape: root.geoWidget
+        Repeater { // a soft shadow: a few faint rounded layers, wider and lower each time (no effect pass)
+            model: island.roundShape && island.height > 0.5 ? 4 : 0
+            Rectangle {
+                required property int index
+                x: -(index + 1) * 2.5
+                y: 3 + index * 1.5
+                width: parent.width + (index + 1) * 5
+                height: parent.height + (index + 1) * 3
+                radius: Math.min(20, Math.max(0, parent.height) / 2) + (index + 1) * 2
+                color: "#000000"
+                opacity: 0.08 - index * 0.015
+            }
+        }
+        Rectangle {
+            anchors.fill: parent
+            visible: island.roundShape && island.height > 0.5
+            radius: Math.min(20, Math.max(0, height) / 2)
+            color: theme.island
+            border.width: 1
+            border.color: root.dragOver ? root.accent : root.mode === "toast" ? root.toastColor : theme.outline
+        }
         Shape {
             anchors.fill: parent
-            visible: island.height > 0.5
+            visible: island.height > 0.5 && !island.roundShape
             preferredRendererType: Shape.CurveRenderer
             ShapePath {
                 id: sp
@@ -1993,6 +2093,58 @@ Window {
             }
         }
 
+        // Widget mode: a click opens the panel beside the card, a drag moves the card.
+        TapHandler {
+            enabled: root.floating && !root.dragging
+            onTapped: {
+                if (root.musicShown) root.page = "music"
+                else if (root.live && root.live.kind === "timer") root.page = "timer"
+                else if (root.taskShown) root.page = "tasks"
+                root.dwelled = true
+            }
+        }
+        DragHandler {
+            id: widgetDrag
+            enabled: root.floating
+            target: null
+            acceptedButtons: Qt.LeftButton
+            dragThreshold: 8
+            property real startCx: 0
+            property real startY: 0
+            property point startCursor
+            property double lastStep: 0
+            onActiveChanged: {
+                root.dragging = active
+                if (active) {
+                    startCx = root.widgetCx
+                    startY = root.widgetY
+                    startCursor = desktop.cursorPos()
+                    lastStep = 0
+                } else {
+                    root.finishDrag()
+                }
+            }
+            onCentroidChanged: {
+                if (!active)
+                    return
+                if (desktop.layerShell) {
+                    // Wayland: the pointer is only known inside the window, and the window moves under it, so each step
+                    // moves by what the pointer is away from where it was pressed, at most once per frame or two.
+                    const now = Date.now()
+                    if (now - lastStep < 24)
+                        return
+                    lastStep = now
+                    root.dragStep((centroid.position.x - centroid.pressPosition.x) * island.scale,
+                                  (centroid.position.y - centroid.pressPosition.y) * island.scale)
+                } else {
+                    const c = desktop.cursorPos()
+                    root.widgetCx = startCx
+                    root.widgetY = startY
+                    root.dragStep(c.x - startCursor.x, c.y - startCursor.y)
+                }
+            }
+        }
+
         // Real pointer motion means no drag is in progress (a drag delivers drag events instead).
         // Synthetic hovers (sent while animating) repeat the last position, so they don't count.
         HoverHandler {
@@ -2001,7 +2153,9 @@ Window {
             onHoveredChanged: {
                 root.dbg("island hovered=" + hovered)
                 if (hovered && root.mode === "idle") {
-                    if (root.capsuleMode === "capsule") { // the capsule is there to be pointed at: open at once
+                    if (root.widgetMode) {
+                        // the card opens on a click: pointing at it is how it is picked up to be moved
+                    } else if (root.capsuleMode === "capsule") { // the capsule is there to be pointed at: open at once
                         dwellTimer.stop()
                         root.dwelled = true
                     } else {
@@ -2027,8 +2181,8 @@ Window {
     // mic icon already turns orange.)
     Rectangle {
         visible: activities.privacyIndicators && root.mode !== "open" && activities.cameraApps.length > 0
-        x: root.width / 2 + Math.max(island.width, 44) / 2 + 6
-        y: 3
+        x: (root.geoWidget ? island.x + island.width / 2 : root.width / 2) + Math.max(island.width, 44) / 2 + 6
+        y: root.geoWidget ? island.y + 3 : 3
         width: 7; height: 7; radius: 3.5
         color: "#30d158"
     }
@@ -2051,6 +2205,8 @@ Window {
     // The only live area while hidden: a thin strip on the top edge.
     Item {
         id: edge
+        enabled: !root.geoWidget
+        visible: !root.geoWidget
         x: (root.width - width) / 2
         width: 300
         height: 3

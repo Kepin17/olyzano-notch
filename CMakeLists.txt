@@ -165,7 +165,7 @@ qt_add_qml_module(notch
         src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkSeparator.qml
         src/qml/SettingToggle.qml src/qml/Chip.qml src/qml/WheelScroller.qml
         src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml src/qml/ActionBar.qml src/qml/Bar.qml src/qml/Segmented.qml src/qml/Launcher.qml src/qml/SignalIcon.qml src/qml/CircleAction.qml src/qml/ColorPage.qml src/qml/AppMenuPopup.qml src/qml/CalendarCard.qml src/qml/QuickSettings.qml src/qml/LyricsPanel.qml
-        src/qml/Dock.qml src/qml/TimerPage.qml src/qml/TasksPage.qml src/qml/DiscordBadge.qml
+        src/qml/Dock.qml src/qml/TimerPage.qml src/qml/TasksPage.qml src/qml/EdgeStrip.qml src/qml/DiscordBadge.qml
     RESOURCES
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg
         src/qml/images/traktir.jpeg src/qml/icons/info.svg src/qml/icons/grid.svg src/qml/icons/ethernet.svg src/qml/icons/eye.svg src/qml/icons/eye-off.svg src/qml/icons/external.svg src/qml/icons/undo.svg src/qml/icons/play.svg src/qml/icons/pause.svg src/qml/icons/stop.svg src/qml/icons/minus.svg src/qml/icons/check.svg src/qml/icons/copy.svg src/qml/icons/pin.svg src/qml/icons/image.svg src/qml/icons/eyedropper.svg src/qml/icons/unlock.svg src/qml/icons/trash.svg src/qml/icons/palette.svg src/qml/icons/pen.svg

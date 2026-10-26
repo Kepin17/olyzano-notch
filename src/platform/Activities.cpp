@@ -8,6 +8,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QStandardPaths>
+#include "platform/WidgetModel.h"
 #ifdef Q_OS_WIN
 #include "platform/WinPrivacy.h"
 #endif
@@ -108,6 +109,29 @@ void Activities::setIdleClock(bool on)
     store(QStringLiteral("idleClock"), on);
 }
 
+QPointF Activities::widgetPos(const QString &screen, qreal screenW, qreal screenH) const
+{
+    const QString key = QStringLiteral("widget/") + screen;
+    if (!m_settings.contains(key + QStringLiteral("/x")))
+        return WidgetModel::defaultAnchor({screenW, screenH});
+    return {m_settings.value(key + QStringLiteral("/x")).toDouble(), m_settings.value(key + QStringLiteral("/y")).toDouble()};
+}
+
+void Activities::setWidgetPos(const QString &screen, qreal x, qreal y)
+{
+    const QString key = QStringLiteral("widget/") + screen;
+    m_settings.setValue(key + QStringLiteral("/x"), qRound(x));
+    m_settings.setValue(key + QStringLiteral("/y"), qRound(y));
+    emit settingsChanged();
+}
+
+void Activities::resetWidgetPos()
+{
+    m_settings.remove(QStringLiteral("widget"));
+    emit settingsChanged();
+    emit widgetReset();
+}
+
 QString Activities::eqStyle() const
 {
     const QString style = m_settings.value(QStringLiteral("eqStyle"), QStringLiteral("bars")).toString();
@@ -127,12 +151,12 @@ QString Activities::capsuleMode() const
     const QString fallback = QStringLiteral("hidden");
 #endif
     const QString mode = m_settings.value(QStringLiteral("capsuleMode"), fallback).toString();
-    return mode == QLatin1String("capsule") || mode == QLatin1String("open") ? mode : QStringLiteral("hidden");
+    return mode == QLatin1String("capsule") || mode == QLatin1String("open") || mode == QLatin1String("widget") ? mode : QStringLiteral("hidden");
 }
 
 void Activities::setCapsuleMode(const QString &mode)
 {
-    store(QStringLiteral("capsuleMode"), mode == QLatin1String("capsule") || mode == QLatin1String("open") ? mode : QStringLiteral("hidden"));
+    store(QStringLiteral("capsuleMode"), mode == QLatin1String("capsule") || mode == QLatin1String("open") || mode == QLatin1String("widget") ? mode : QStringLiteral("hidden"));
 }
 
 void Activities::toggleMicMute()

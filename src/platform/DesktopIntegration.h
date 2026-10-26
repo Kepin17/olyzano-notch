@@ -6,6 +6,9 @@
 #include <QRectF>
 #include <QVariantList>
 #include <QWindow>
+#include <QRectF>
+#include <QSizeF>
+#include <QPointF>
 
 // All window-system specifics live here. One Notch window per monitor: on Wayland an app
 // can't read the global cursor position, so each output gets its own top-edge strip and
@@ -41,6 +44,16 @@ public:
     // Blur what's behind this rounded rect of `window` (KDE Plasma, with KF6WindowSystem); an empty rect stops it.
     Q_INVOKABLE void setBlurRegion(QWindow *window, const QRectF &rect, qreal radius);
     bool canBlur() const;
+    // Widget mode. The notch window follows the floating card: `open` picks the big window (the panel is open), else a
+    // small one. (cx, y): the card's middle and top, in pixels of the screen. Returns the window's rect on that screen.
+    Q_INVOKABLE QRectF placeWidget(QWindow *window, bool open, qreal cx, qreal y);
+    Q_INVOKABLE void placeDocked(QWindow *window); // back to the top-centre place of the island
+    Q_INVOKABLE QSizeF screenSize(QWindow *window) const;
+    Q_INVOKABLE QPointF cursorPos() const; // where the pointer is on the whole desktop (X11, Windows; on Wayland it is not known)
+    Q_INVOKABLE QPointF snapWidget(qreal cx, qreal y, qreal itemW, qreal itemH, QWindow *window) const;
+    // The edge strip asks for the panel at the top centre of its screen (widget mode).
+    Q_INVOKABLE void openDocked(QWindow *strip);
+    void attachEdgeStrip(QWindow *window); // the strip itself: 300 x 4 at the top centre, over everything
     // Tray actions land on the primary monitor's Notch (page: "" toggles pin, "settings").
     Q_INVOKABLE void toggleFromTray(const QString &page);
 

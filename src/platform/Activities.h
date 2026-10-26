@@ -4,6 +4,7 @@
 #include <QFileSystemWatcher>
 #include <QHash>
 #include <QObject>
+#include <QPointF>
 #include <QProcess>
 #include <QSettings>
 #include <QStringList>
@@ -50,7 +51,7 @@ class Activities : public QObject
     // The small clock pill shown while nothing else is (Settings).
     Q_PROPERTY(bool idleClock READ idleClock WRITE setIdleClock NOTIFY settingsChanged)
     // How the notch sits on the screen: "hidden" (a line until the pointer rests there), "capsule" (a small
-    // capsule always shown, like a Dynamic Island) or "open" (the panel stays open).
+    // capsule always shown, like a Dynamic Island), "widget" (a floating card you drag anywhere) or "open" (the panel stays open).
     Q_PROPERTY(QString capsuleMode READ capsuleMode WRITE setCapsuleMode NOTIFY settingsChanged)
     // The spectrum beside the song: "bars" | "thin" | "dots" | "wave" | "pulse" | "off"; the capsule's size, 0.8 to 1.3.
     Q_PROPERTY(QString eqStyle READ eqStyle WRITE setEqStyle NOTIFY settingsChanged)
@@ -109,6 +110,10 @@ public:
     }
     bool idleClock() const { return m_settings.value(QStringLiteral("idleClock"), true).toBool(); }
     void setIdleClock(bool on);
+    // Widget mode: where the floating card is, per screen: its middle (x) and top (y) in pixels of that screen.
+    Q_INVOKABLE QPointF widgetPos(const QString &screen, qreal screenW, qreal screenH) const;
+    Q_INVOKABLE void setWidgetPos(const QString &screen, qreal x, qreal y);
+    Q_INVOKABLE void resetWidgetPos();
     QString eqStyle() const;
     void setEqStyle(const QString &style);
     qreal capsuleScale() const { return qBound(0.8, m_settings.value(QStringLiteral("capsuleScale"), 1.0).toDouble(), 1.3); }
@@ -146,6 +151,7 @@ signals:
     void downloadsChanged();
     void privacyChanged();
     void discordChanged();
+    void widgetReset(); // the card goes back to its first place
     void micSpeakingChanged();
     void settingsChanged();
 

@@ -34,7 +34,7 @@ RowLayout {
     readonly property var index: [
         ["about", "Updates", "update upgrade new version release check download latest github notify"], ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
         ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Sounds", "sound effects volume quiet mute"],
-        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"],
+        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"],
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
         ["panel", "Transparency and blur", "glass opacity bar"], ["panel", "What the bar shows", "app name date seconds battery percentage"],
         ["panel", "Quick Settings", "wifi bluetooth volume brightness power click hover"],
@@ -210,7 +210,7 @@ RowLayout {
                 Row {
                     spacing: 6
                     Repeater {
-                        model: [["hidden", "Hidden"], ["capsule", "Capsule"], ["open", "Always open"]]
+                        model: [["hidden", "Hidden"], ["capsule", "Capsule"], ["widget", "Widget · Beta"], ["open", "Always open"]]
                         PillButton {
                             required property var modelData
                             text: modelData[1]
@@ -218,10 +218,12 @@ RowLayout {
                             onClicked: activities.capsuleMode = modelData[0]
                         }
                     }
+                    PillButton { visible: activities.capsuleMode === "widget"; text: "Reset position"; iconName: "undo"; onClicked: activities.resetWidgetPos() }
                 }
                 Caption {
                     Layout.fillWidth: true
                     text: activities.capsuleMode === "capsule" ? "A small black capsule stays at the top, like a Dynamic Island. Point at it to open Olyzano Notch."
+                        : activities.capsuleMode === "widget" ? "Beta: a floating card you can drag anywhere. Click it to open Olyzano Notch beside it; the thin line at the top edge still opens the panel at the top centre. It may still have rough edges."
                         : activities.capsuleMode === "open" ? "The panel stays open at the top of the screen."
                         : "Only a thin line shows at the top edge. Rest the pointer there to open Olyzano Notch."
                 }

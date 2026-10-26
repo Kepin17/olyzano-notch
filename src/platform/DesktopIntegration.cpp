@@ -1,7 +1,9 @@
 #include "DesktopIntegration.h"
 
 #include "models/FileItem.h"
+#include "platform/WidgetModel.h"
 
+#include <QCursor>
 #include <QGuiApplication>
 #include <QPainterPath>
 #include <QRegion>
@@ -249,4 +251,91 @@ void DesktopIntegration::toggleFromTray(const QString &page)
         if (w->screen() == QGuiApplication::primaryScreen())
             target = w;
     QMetaObject::invokeMethod(target, "toggleFromTray", Q_ARG(QVariant, page));
+}
+
+// ---- Widget mode ----
+
+QSizeF DesktopIntegration::screenSize(QWindow *window) const
+{
+    return window && window->screen() ? QSizeF(window->screen()->geometry().size()) : QSizeF(1920, 1080);
+}
+
+QPointF DesktopIntegration::cursorPos() const
+{
+    return QPointF(QCursor::pos());
+}
+
+QPointF DesktopIntegration::snapWidget(qreal cx, qreal y, qreal itemW, qreal itemH, QWindow *window) const
+{
+    return WidgetModel::snap(cx, y, itemW, itemH, screenSize(window));
+}
+
+QRectF DesktopIntegration::placeWidget(QWindow *window, bool open, qreal cx, qreal y)
+{
+    if (!window || !window->screen())
+        return {};
+    const QRectF r = WidgetModel::windowRect(open, cx, y, screenSize(window));
+    const QRect g = window->screen()->geometry();
+#ifdef NOTCH_HAVE_LAYERSHELL
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
+        if (auto *ls = LayerShellQt::Window::get(window)) {
+            ls->setAnchors(LayerShellQt::Window::Anchors(LayerShellQt::Window::AnchorTop | LayerShellQt::Window::AnchorLeft));
+            ls->setMargins(QMargins(qRound(r.x()), qRound(r.y()), 0, 0));
+            window->resize(qRound(r.width()), qRound(r.height()));
+            return r;
+        }
+    }
+#endif
+    window->setGeometry(g.x() + qRound(r.x()), g.y() + qRound(r.y()), qRound(r.width()), qRound(r.height()));
+    return r;
+}
+
+void DesktopIntegration::placeDocked(QWindow *window)
+{
+    if (!window || !window->screen())
+        return;
+#ifdef NOTCH_HAVE_LAYERSHELL
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
+        if (auto *ls = LayerShellQt::Window::get(window)) {
+            ls->setAnchors(LayerShellQt::Window::AnchorTop);
+            ls->setMargins(QMargins());
+            window->resize(int(WidgetModel::OpenW), int(WidgetModel::OpenH));
+            return;
+        }
+    }
+#endif
+    window->resize(int(WidgetModel::OpenW), int(WidgetModel::OpenH));
+    centerOnScreen(window);
+}
+
+void DesktopIntegration::openDocked(QWindow *strip)
+{
+    const QScreen *screen = strip ? strip->screen() : nullptr;
+    m_windows.removeAll(nullptr);
+    for (QWindow *w : std::as_const(m_windows))
+        if (!screen || w->screen() == screen)
+            QMetaObject::invokeMethod(w, "openFromEdgeStrip");
+}
+
+void DesktopIntegration::attachEdgeStrip(QWindow *window)
+{
+#ifdef NOTCH_HAVE_LAYERSHELL
+    if (auto *ls = dockLayer(window)) {
+        ls->setScope(QStringLiteral("notch-edge"));
+#ifdef NOTCH_LAYERSHELL_SET_SCREEN
+        ls->setScreen(window->screen());
+#endif
+        ls->setLayer(LayerShellQt::Window::LayerOverlay);
+        ls->setAnchors(LayerShellQt::Window::AnchorTop);
+        ls->setExclusiveZone(-1);
+        ls->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityNone);
+        ls->setMargins(QMargins());
+        return;
+    }
+#endif
+    window->setFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool | Qt::WindowDoesNotAcceptFocus);
+    if (window->screen()) {
+        const QRect g = window->screen()->geometry();
+        window->setGeometry(g.x() + (g.width() - window->width()) / 2, g.y(), window->width(), window->height());
+    }
 }
