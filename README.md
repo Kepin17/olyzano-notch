@@ -23,8 +23,8 @@ Runs on **Linux (KDE Plasma, Wayland or X11)** and **Windows 10 / 11**. Free and
 
 | | |
 |---|---|
-| **Linux** (Debian 13, Ubuntu 25.04+, KDE neon) | Download the `.deb` from the [install page](https://kepin17.github.io/olyzano-notch/), then `sudo apt install ./notch_0.12.1_amd64.deb` |
-| **Windows 10 / 11** | Download `Notch-0.12.1-windows-x64-setup.exe` (or the portable `.zip`) and run it. SmartScreen: *More info → Run anyway* |
+| **Linux** (Debian 13, Ubuntu 25.04+, KDE neon) | Download the `.deb` from the [install page](https://kepin17.github.io/olyzano-notch/), then `sudo apt install ./notch_0.12.2_amd64.deb` |
+| **Windows 10 / 11** | Download `Notch-0.12.2-windows-x64-setup.exe` (or the portable `.zip`) and run it. SmartScreen: *More info → Run anyway* |
 | **No install** | Open the [web version](https://kepin17.github.io/olyzano-notch/app/): files stay in your browser, nothing is uploaded |
 
 Then move the mouse to the top-centre of the screen. Details: [Install](#install).
@@ -76,14 +76,14 @@ Tested on Kubuntu 26.04 (Qt 6.10, KDE Plasma on Wayland).
 **[latest release](https://github.com/Kepin17/olyzano-notch/releases/latest)**, or from a terminal:
 
 ```bash
-wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.12.1/notch_0.12.1_amd64.deb
+wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.12.2/notch_0.12.2_amd64.deb
 ```
 
 **2. Install** it. `apt` pulls in everything it needs (Qt 6 runtime, `layer-shell-qt`, Poppler, Ghostscript,
 `gocryptfs`, `fuse3`, `pulseaudio-utils`, …):
 
 ```bash
-sudo apt install ./notch_0.12.1_amd64.deb
+sudo apt install ./notch_0.12.2_amd64.deb
 ```
 
 **3. Start** **Olyzano Notch** from the application menu, or turn on **Settings → General → Start at login**.
