@@ -32,6 +32,7 @@ Window {
         if (capsuleMode === "open") pinned = true
         loadWidgetPos()
         applyGeometry()
+        desktop.setClickThrough(root, gaming.active)
     }
 
     // ---- Widget mode (beta): the notch as a floating card you drag anywhere ----
@@ -520,7 +521,10 @@ Window {
 
     // Everything outside the live area is click-through.
     function updateMask() {
-        if (gaming.active) // gaming mode over a full-screen app: nothing here can be reached (one corner pixel stays, as an empty mask means none)
+        // Gaming mode over a full-screen app: the notch stays on screen but nothing can be reached. On Wayland an empty input
+        // region does it (one corner pixel stays, as an empty mask means none). Elsewhere (Windows) a mask also clips what is
+        // drawn, so the mask stays the notch's own shape and the window is made click-through instead (setClickThrough).
+        if (gaming.active && desktop.layerShell)
             desktop.setInputRegion(root, Qt.rect(0, height - 1, 1, 1))
         else if (anyMenu)
             desktop.setInputRegion(root, Qt.rect(0, 0, width, height))
@@ -558,6 +562,7 @@ Window {
     Connections {
         target: gaming
         function onChanged() {
+            desktop.setClickThrough(root, gaming.active)
             root.updateMask()
             if (gaming.active) { // a full-screen app arrived: let go of the pointer and close
                 root.dwelled = false
@@ -1574,14 +1579,14 @@ Window {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.preferredWidth: 1
-                        Layout.minimumHeight: 214
+                        Layout.minimumHeight: 290
                     }
                     LyricsPanel {
                         visible: lyrics.enabled
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.preferredWidth: 1
-                        Layout.minimumHeight: 214
+                        Layout.minimumHeight: 290
                     }
                 }
 

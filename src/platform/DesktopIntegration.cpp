@@ -254,6 +254,12 @@ void DesktopIntegration::toggleFromTray(const QString &page)
 
 // ---- Widget mode ----
 
+void DesktopIntegration::setClickThrough(QWindow *window, bool on)
+{
+    if (window)
+        window->setFlag(Qt::WindowTransparentForInput, on);
+}
+
 QSizeF DesktopIntegration::screenSize(QWindow *window) const
 {
     return window && window->screen() ? QSizeF(window->screen()->geometry().size()) : QSizeF(1920, 1080);

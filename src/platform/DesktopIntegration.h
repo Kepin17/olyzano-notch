@@ -48,6 +48,8 @@ public:
     Q_INVOKABLE QRectF placeWidget(QWindow *window, int kind, qreal cx, qreal y); // kind: 0 floating, 1 open, 2 dragging (WidgetModel::Kind)
     Q_INVOKABLE void placeDocked(QWindow *window); // back to the top-centre place of the island
     Q_INVOKABLE QSizeF screenSize(QWindow *window) const;
+    // Visible but out of the pointer's way: clicks go to what is behind (gaming mode keeps the notch on screen, shut).
+    Q_INVOKABLE void setClickThrough(QWindow *window, bool on);
     
     Q_INVOKABLE QPointF snapWidget(qreal cx, qreal y, qreal itemW, qreal itemH, QWindow *window) const;
     // Tray actions land on the primary monitor's Notch (page: "" toggles pin, "settings").

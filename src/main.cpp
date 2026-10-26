@@ -480,7 +480,7 @@ int main(int argc, char *argv[])
                 return QTimer::singleShot(1200, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
             }
             w->setProperty("page", page.startsWith(QLatin1String("timer")) ? QStringLiteral("timer") : page);
-            QTimer::singleShot(1500, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+            QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 1500, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
         });
     }
     // `notch --shot-settings file.png [section]`: the open Settings page, the same way.
