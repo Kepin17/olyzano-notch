@@ -23,19 +23,43 @@ ColumnLayout {
             page.picking = false
         }
     }
-    function shift(days, hours, minutes) { // the picker's arrows; the first touch starts from the next full hour
+    // The date picker: two months, then the time. `draft` is what the person is choosing (a Date).
+    property var draft: new Date()
+    property int viewYear: new Date().getFullYear()
+    property int viewMonth: new Date().getMonth() + 1 // 1-12
+    function openPicker() {
         const d = page.due ? new Date(page.due.getTime()) : new Date(Math.ceil(Date.now() / 3600000) * 3600000)
-        d.setDate(d.getDate() + days)
-        d.setHours(d.getHours() + hours, d.getMinutes() + minutes, 0, 0)
-        page.due = d
+        page.draft = d
+        page.viewYear = d.getFullYear()
+        page.viewMonth = d.getMonth() + 1
+        hourTumbler.currentIndex = d.getHours()
+        minuteTumbler.currentIndex = d.getMinutes()
+        page.picking = true
     }
-    function setIn(ms) { page.due = new Date(Math.ceil((Date.now() + ms) / 60000) * 60000) }
+    function stepMonth(by) {
+        const m = page.viewMonth - 1 + by
+        page.viewYear += Math.floor(m / 12)
+        page.viewMonth = ((m % 12) + 12) % 12 + 1
+    }
+    function pickDay(y, m, d) {
+        const n = new Date(page.draft.getTime())
+        n.setFullYear(y, m - 1, d)
+        page.draft = n
+    }
+    function applyPicker() {
+        const d = new Date(page.draft.getTime())
+        d.setHours(hourTumbler.currentIndex, minuteTumbler.currentIndex, 0, 0)
+        page.due = d
+        page.picking = false
+    }
+    function setIn(ms) { page.due = new Date(Math.ceil((Date.now() + ms) / 60000) * 60000); page.picking = false }
     function setAt(h, plusDays) {
         const d = new Date()
         d.setDate(d.getDate() + plusDays)
         d.setHours(h, 0, 0, 0)
         if (d.getTime() <= Date.now() && plusDays === 0) d.setDate(d.getDate() + 1)
         page.due = d
+        page.picking = false
     }
     onVisibleChanged: if (visible) field.forceActiveFocus()
 
@@ -73,36 +97,149 @@ ColumnLayout {
         PillButton { text: "In 1 hour"; onClicked: page.setIn(3600000) }
         PillButton { text: "This evening"; onClicked: page.setAt(18, 0) }
         PillButton { text: "Tomorrow 9:00"; onClicked: page.setAt(9, 1) }
-        PillButton { text: page.due ? Qt.formatDateTime(page.due, "ddd d MMM, HH:mm") : "Pick date & time"; iconName: "timer"; checked: page.picking || page.due !== null; onClicked: { if (!page.due) page.shift(0, 0, 0); page.picking = !page.picking } }
+        PillButton { text: page.due ? Qt.formatDateTime(page.due, "ddd d MMM, HH:mm") : "Pick date & time"; iconName: "timer"; checked: page.picking || page.due !== null; onClicked: page.picking ? page.picking = false : page.openPicker() }
         PillButton { visible: page.due !== null; text: "No deadline"; onClicked: { page.due = null; page.picking = false } }
     }
-    Rectangle { // the picker: any day and time
-        visible: page.picking && page.due !== null
+    Rectangle { // the picker: two months to choose the day, then the time
+        id: picker
+        visible: page.picking
         Layout.fillWidth: true
-        implicitHeight: pickRow.implicitHeight + 16
+        implicitHeight: pickBody.implicitHeight + 20
         radius: theme.radiusMd
         color: theme.surface
-        component Step: RowLayout {
-            id: st
-            property string label
-            property string value
-            signal down()
-            signal up()
-            spacing: 2
-            Text { text: st.label; color: theme.textDim; font.pixelSize: 11; Layout.rightMargin: 2 }
-            IconButton { iconName: "minus"; Accessible.name: "Earlier"; onClicked: st.down() }
-            Text { text: st.value; color: shell.textPrimary; font.pixelSize: 13; font.weight: Font.Medium; Layout.minimumWidth: 44; horizontalAlignment: Text.AlignHCenter }
-            IconButton { iconName: "plus"; Accessible.name: "Later"; onClicked: st.up() }
+
+        component Month: ColumnLayout {
+            id: month
+            property int year
+            property int mon // 1-12
+            property bool first: false // has the "previous" arrow
+            property bool last: false  // has the "next" arrow
+            readonly property var cells: { topbar.firstDay; return topbar.monthGrid(year, mon) }
+            readonly property bool sixRows: cells.length > 35 && cells[35].inMonth
+            spacing: 4
+            Layout.fillWidth: true
+            Layout.preferredWidth: 1
+            RowLayout {
+                Layout.fillWidth: true
+                IconButton { visible: month.first; iconName: "chevron"; rotation: 90; Accessible.name: "Previous month"; onClicked: page.stepMonth(-1) }
+                Item { visible: !month.first; implicitWidth: 28; implicitHeight: 28 }
+                Text {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    text: Qt.locale().monthName(month.mon - 1, Locale.LongFormat) + " " + month.year
+                    color: shell.textPrimary
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                }
+                IconButton { visible: month.last; iconName: "chevron"; rotation: -90; Accessible.name: "Next month"; onClicked: page.stepMonth(1) }
+                Item { visible: !month.last; implicitWidth: 28; implicitHeight: 28 }
+            }
+            GridLayout {
+                Layout.fillWidth: true
+                columns: 7
+                columnSpacing: 0
+                rowSpacing: 1
+                Repeater {
+                    model: 7
+                    Text {
+                        Layout.fillWidth: true; Layout.preferredWidth: 1
+                        text: Qt.locale().dayName((topbar.firstDay + index) % 7, Locale.ShortFormat)
+                        color: theme.textDim
+                        font.pixelSize: 10
+                        horizontalAlignment: Text.AlignHCenter
+                    }
+                }
+                Repeater {
+                    model: month.cells
+                    delegate: Item {
+                        id: cell
+                        required property var modelData
+                        required property int index
+                        readonly property bool past: new Date(modelData.year, modelData.month - 1, modelData.day + 1).getTime() <= Date.now() // yesterday and earlier
+                        readonly property bool chosen: modelData.inMonth && page.draft.getFullYear() === modelData.year
+                                                       && page.draft.getMonth() + 1 === modelData.month && page.draft.getDate() === modelData.day
+                        readonly property bool sunday: new Date(modelData.year, modelData.month - 1, modelData.day).getDay() === 0
+                        readonly property bool shown: cell.modelData.inMonth && (cell.index < 35 || month.sixRows)
+                        clip: true // a cell that is not this month's keeps its place (a hidden one would shift the grid)
+                        Layout.fillWidth: true; Layout.preferredWidth: 1
+                        Layout.preferredHeight: cell.index >= 35 && !month.sixRows ? 0 : 28
+                        Rectangle {
+                            visible: cell.shown
+                            anchors.centerIn: parent
+                            width: 26; height: 26; radius: 13
+                            color: cell.chosen ? theme.accent : cellMouse.containsMouse && !cell.past ? theme.surfaceHover : "transparent"
+                            border.width: cell.modelData.today && !cell.chosen ? 1.5 : 0
+                            border.color: theme.accent
+                            Text {
+                                anchors.centerIn: parent
+                                text: cell.modelData.day
+                                color: cell.chosen ? theme.onColor(theme.accent) : cell.past ? theme.textFaint : cell.sunday ? theme.danger : shell.textPrimary
+                                font.pixelSize: 12
+                                font.weight: cell.chosen || cell.modelData.today ? Font.DemiBold : Font.Normal
+                            }
+                        }
+                        MouseArea {
+                            id: cellMouse
+                            anchors.fill: parent
+                            enabled: !cell.past && cell.shown
+                            hoverEnabled: true
+                            onClicked: page.pickDay(cell.modelData.year, cell.modelData.month, cell.modelData.day)
+                        }
+                    }
+                }
+            }
         }
-        RowLayout {
-            id: pickRow
-            anchors.fill: parent
-            anchors.margins: 8
-            spacing: 6
-            Step { label: "Week"; value: page.due ? Qt.formatDate(page.due, "d MMM") : ""; onDown: page.shift(-7, 0, 0); onUp: page.shift(7, 0, 0) }
-            Step { label: "Day"; value: page.due ? Qt.formatDate(page.due, "ddd d") : ""; onDown: page.shift(-1, 0, 0); onUp: page.shift(1, 0, 0) }
-            Step { label: "Hour"; value: page.due ? Qt.formatTime(page.due, "HH") : ""; onDown: page.shift(0, -1, 0); onUp: page.shift(0, 1, 0) }
-            Step { label: "Min"; value: page.due ? Qt.formatTime(page.due, "mm") : ""; onDown: page.shift(0, 0, -5); onUp: page.shift(0, 0, 5) }
+
+        component Wheel: Tumbler {
+            id: wheel
+            property int items: 24
+            implicitWidth: 52
+            implicitHeight: 96
+            visibleItemCount: 3
+            model: items
+            wrap: true
+            delegate: Text {
+                required property int index
+                text: (index < 10 ? "0" : "") + index
+                color: wheel.currentIndex === index ? shell.textPrimary : theme.textDim
+                font.pixelSize: wheel.currentIndex === index ? 18 : 14
+                font.weight: wheel.currentIndex === index ? Font.DemiBold : Font.Normal
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                opacity: 1.0 - Math.abs(Tumbler.displacement) * 0.5
+            }
+        }
+
+        ColumnLayout {
+            id: pickBody
+            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 10 }
+            spacing: 8
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 16
+                Month { year: page.viewYear; mon: page.viewMonth; first: true }
+                Month { year: page.viewMonth === 12 ? page.viewYear + 1 : page.viewYear; mon: page.viewMonth === 12 ? 1 : page.viewMonth + 1; last: true }
+            }
+            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: theme.outline }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Text { text: "Time"; color: theme.textDim; font.pixelSize: 12 }
+                Wheel { id: hourTumbler; items: 24 }
+                Text { text: ":"; color: shell.textPrimary; font.pixelSize: 18; font.weight: Font.DemiBold }
+                Wheel { id: minuteTumbler; items: 60 }
+                Text {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    text: Qt.formatDate(page.draft, "dddd d MMMM yyyy") + ", " + (hourTumbler.currentIndex < 10 ? "0" : "") + hourTumbler.currentIndex
+                          + ":" + (minuteTumbler.currentIndex < 10 ? "0" : "") + minuteTumbler.currentIndex
+                    color: shell.textPrimary
+                    font.pixelSize: 12
+                    wrapMode: Text.Wrap
+                }
+                PillButton { text: "Cancel"; onClicked: page.picking = false }
+                PillButton { text: "Apply"; checked: true; onClicked: page.applyPicker() }
+            }
         }
     }
     Text {
@@ -115,7 +252,7 @@ ColumnLayout {
     }
 
     Text {
-        visible: tasks.list.length === 0
+        visible: tasks.list.length === 0 && !page.picking
         Layout.fillWidth: true
         Layout.topMargin: 14
         horizontalAlignment: Text.AlignHCenter
@@ -126,7 +263,7 @@ ColumnLayout {
     }
 
     Flickable {
-        visible: tasks.list.length > 0
+        visible: tasks.list.length > 0 && !page.picking
         Layout.fillWidth: true
         Layout.preferredHeight: Math.min(col.implicitHeight, 190)
         contentHeight: col.implicitHeight
@@ -189,7 +326,7 @@ ColumnLayout {
     }
     RowLayout {
         Layout.fillWidth: true
-        visible: tasks.list.length > 0
+        visible: tasks.list.length > 0 && !page.picking
         Text {
             Layout.fillWidth: true
             text: tasks.openCount + " open" + (tasks.overdueCount > 0 ? " · " + tasks.overdueCount + " overdue" : "")

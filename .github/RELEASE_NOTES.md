@@ -5,7 +5,7 @@ A round of polish for the notch, plus a task list.
 - **The capsule is no longer hidden by KDE's top panel.** The notch now sits above Plasma's own panel and menu bar.
 - **Spectrum styles.** Pick how the song's spectrum looks: Bars, Thin, Dots, Wave, Pulse or Off (*Settings → General*).
 - **Capsule size.** A slider (80–130%) makes the whole capsule smaller or bigger.
-- **Tasks with deadlines.** A new *Tasks* section: type "Buy milk fri 17:00" (also "tomorrow", "12 nov", "in 45m") or pick any date and time with the arrows, tick tasks off, and Notch reminds you 15 minutes before and when the deadline comes. The next task shows in the idle capsule (it can be switched off).
+- **Tasks with deadlines.** A new *Tasks* section: type "Buy milk fri 17:00" (also "tomorrow", "12 nov", "in 45m") or press *Pick date & time* for a calendar and a time wheel, tick tasks off, and Notch reminds you 15 minutes before and when the deadline comes. The next task shows in the idle capsule (it can be switched off).
 - **Pointing at a running timer opens the Timer** right away, the way pointing at the song opens the player.
 - **Smoother panel.** The panel closes sooner when the pointer leaves, and its content appears only once the black background has grown to fit, so nothing shows outside it.
 - Windows build fix and SHA-256 checksums (`SHA256SUMS-windows.txt`, `SHA256SUMS-linux.txt`) with every release.
