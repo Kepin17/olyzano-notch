@@ -273,9 +273,12 @@ Window {
     }
 
     // ---- Now playing in the capsule ----
-    // The song takes the capsule over while it plays, and for 2 minutes after a pause; then the clock returns.
+    // The song takes the capsule over while it plays, and for 5 seconds after it stops or is paused (a change of song
+    // or a short pause must not flash the clock); if nothing plays again by then, the idle capsule returns.
     property bool musicStale: false
-    readonly property bool musicShown: media.active && !musicStale
+    property bool musicGrace: false // the player went away a moment ago: the song stays a few seconds more
+    Timer { id: graceTimer; interval: 5000; onTriggered: root.musicGrace = false }
+    readonly property bool musicShown: (media.active && !musicStale) || musicGrace
     property real capPos: 0 // ms, read once a second while the capsule shows the song
     // What the capsule says: line 1 the sung line (else the title), line 2 the artist and album (else the song). A line
     // longer than the room glides sideways (MarqueeText); the capsule only widens for a sung line, up to nearly the window.
@@ -302,10 +305,10 @@ Window {
     property string shownTitle: capTitle
     property string shownSub: capSub
     property url shownArt: media.artUrl
-    onCapTitleChanged: if (!capSwitching) shownTitle = capTitle
-    onCapSubChanged: if (!capSwitching) shownSub = capSub
+    onCapTitleChanged: if (!capSwitching && media.active) shownTitle = capTitle // when the player goes, the last song stays
+    onCapSubChanged: if (!capSwitching && media.active) shownSub = capSub
     readonly property url artNow: media.artUrl
-    onArtNowChanged: if (!capSwitching) shownArt = artNow
+    onArtNowChanged: if (!capSwitching && media.active) shownArt = artNow
     property string capLastKey: media.title + "|" + media.artUrl
     SequentialAnimation {
         id: capChange
@@ -315,7 +318,7 @@ Window {
         NumberAnimation { target: root; property: "capRoll"; to: 0; duration: 300; easing.type: Easing.OutCubic }
         ScriptAction { script: root.capSwitching = false }
     }
-    Timer { id: pauseTimer; interval: 120000; onTriggered: root.musicStale = true }
+    Timer { id: pauseTimer; interval: 5000; onTriggered: root.musicStale = true }
     Timer {
         interval: 1000
         repeat: true
@@ -326,6 +329,13 @@ Window {
     Connections {
         target: media
         function onChanged() {
+            if (media.active) {
+                root.musicGrace = false
+                graceTimer.stop()
+            } else if (!root.musicGrace && root.mode === "idle") {
+                root.musicGrace = true // the song stays on the capsule for a moment
+                graceTimer.restart()
+            }
             if (media.playing || !media.active) {
                 root.musicStale = false
                 pauseTimer.stop()
@@ -334,7 +344,7 @@ Window {
             }
             root.capPos = media.positionMs()
             const key = media.title + "|" + media.artUrl
-            if (key !== root.capLastKey) {
+            if (media.active && key !== root.capLastKey) {
                 root.capLastKey = key
                 if (root.mode === "idle" && root.musicShown)
                     capChange.restart()

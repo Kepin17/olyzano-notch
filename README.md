@@ -198,7 +198,7 @@ Controls that a platform cannot offer are hidden or greyed out.
   click opens the panel beside it; pointing at the top edge opens nothing in this mode) or **Always open**
   (the panel stays open). *Keep other windows clear of the capsule* (off by default, Windows and KDE Plasma on Wayland) keeps a strip free along the top so maximised windows start below the capsule, like under a taskbar. *Capsule size* and the spectrum style (*Bars, Thin, Dots, Wave, Pulse, Off*) are in the same place.
   While music plays the capsule shows the cover, the title and the artist on two lines (long ones glide sideways), the sound wave in the colour of the cover and a thin progress line; pointing at it shows the app and the time (`1:23 / 5:37`), and a click or pointing at
-  it opens just the Music section; after a pause the song stays for 2 minutes, then the clock returns.
+  it opens just the Music section; after a pause or when the player closes the song stays for 5 seconds (a change of song never flashes the clock), then the idle capsule returns.
 - **One section at a time:** a bar of actions under the title, **Files · Music · Timer · Share**, shows just that
   section; **Music** is only the player. **Add** opens a file picker (you can still drop files on the notch, or paste).
 - **Every monitor has its own shelf** at its top edge; it opens wherever you move the mouse.
