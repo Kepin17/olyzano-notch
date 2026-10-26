@@ -33,7 +33,14 @@ Window {
         loadWidgetPos()
         applyGeometry()
         desktop.setClickThrough(root, gaming.active)
+        applyReserve()
     }
+
+    // ---- Room at the top: other windows keep clear of the capsule (Settings → General) ----
+    readonly property int barReservePx: topbar.enabled && topbar.behavior === "always" && topbar.reserve ? topbar.height : 0
+    function applyReserve() { desktop.reserve(root, capsuleMode, activities.reserveSpace, activities.capsuleScale, barReservePx) }
+    Connections { target: activities; function onSettingsChanged() { root.applyReserve() } }
+    Connections { target: topbar; function onChanged() { root.applyReserve() } }
 
     // ---- Widget mode (beta): the notch as a floating card you drag anywhere ----
     // The window follows the card: a small one while it floats, the big one while its panel is open (the panel grows
@@ -74,7 +81,7 @@ Window {
     onDraggingChanged: { applyGeometry(); updateMask() }
     onWinRectChanged: updateMask()
     onGeoWidgetChanged: updateMask()
-    onScreenChanged: { loadWidgetPos(); applyGeometry() }
+    onScreenChanged: { loadWidgetPos(); applyGeometry(); applyReserve() }
     Connections { target: activities; function onWidgetReset() { root.loadWidgetPos() } }
     // The same three steps for the card and for the open panel's title bar.
     property real dragStartCx: 0
@@ -595,7 +602,7 @@ Window {
         updateMask()
     }
     Timer { id: maskSettle; interval: 350; onTriggered: root.updateMask() }
-    onVisibleChanged: updateMask()
+    onVisibleChanged: { updateMask(); applyReserve() }
     onModeChanged: { applyGeometry(); updateMask() }
     Connections {
         target: gaming

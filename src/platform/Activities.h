@@ -58,6 +58,7 @@ class Activities : public QObject
     // The spectrum beside the song: "bars" | "thin" | "dots" | "wave" | "pulse" | "off"; the capsule's size, 0.8 to 1.3.
     Q_PROPERTY(QString eqStyle READ eqStyle WRITE setEqStyle NOTIFY settingsChanged)
     Q_PROPERTY(qreal capsuleScale READ capsuleScale WRITE setCapsuleScale NOTIFY settingsChanged)
+    Q_PROPERTY(bool reserveSpace READ reserveSpace WRITE setReserveSpace NOTIFY settingsChanged) // keep other windows clear of the capsule
     Q_PROPERTY(bool taskInCapsule READ taskInCapsule WRITE setTaskInCapsule NOTIFY settingsChanged) // the next task in the idle capsule
     // Settings
     Q_PROPERTY(bool showDownloads READ showDownloads WRITE setShowDownloads NOTIFY settingsChanged)
@@ -122,6 +123,8 @@ public:
     void setEqStyle(const QString &style);
     qreal capsuleScale() const { return qBound(0.8, m_settings.value(QStringLiteral("capsuleScale"), 1.0).toDouble(), 1.3); }
     void setCapsuleScale(qreal scale) { store(QStringLiteral("capsuleScale"), qRound(qBound(0.8, scale, 1.3) * 100) / 100.0); }
+    bool reserveSpace() const { return m_settings.value(QStringLiteral("reserveSpace"), false).toBool(); }
+    void setReserveSpace(bool on) { store(QStringLiteral("reserveSpace"), on); }
     bool taskInCapsule() const { return m_settings.value(QStringLiteral("taskInCapsule"), true).toBool(); }
     void setTaskInCapsule(bool on) { store(QStringLiteral("taskInCapsule"), on); }
     QString capsuleMode() const;

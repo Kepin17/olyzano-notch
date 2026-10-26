@@ -34,7 +34,7 @@ RowLayout {
     readonly property var index: [
         ["about", "Updates", "update upgrade new version release check download latest github notify"], ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
         ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Sounds", "sound effects volume quiet mute"],
-        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"],
+        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"],
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
         ["panel", "Transparency and blur", "glass opacity bar"], ["panel", "What the bar shows", "app name date seconds battery percentage"],
         ["panel", "Quick Settings", "wifi bluetooth volume brightness power click hover"],
@@ -229,6 +229,16 @@ RowLayout {
                         : activities.capsuleMode === "open" ? "The panel stays open at the top of the screen."
                         : "Only a thin line shows at the top edge. Rest the pointer there to open Olyzano Notch."
                 }
+            }
+
+            SettingToggle {
+                visible: desktop.canReserve && activities.capsuleMode === "capsule"
+                title: "Keep other windows clear of the capsule"
+                caption: "Maximised windows start below the capsule, like under a taskbar, instead of behind it. A strip as tall as the capsule is kept free along the top"
+                         + (topbar.enabled && topbar.reserve ? " (the status bar already keeps room, so only the difference is added)." : ".")
+                         + " On Windows and KDE Plasma (Wayland)."
+                checked: activities.reserveSpace
+                onToggled: activities.reserveSpace = !activities.reserveSpace
             }
 
             ColumnLayout {

@@ -196,7 +196,7 @@ Controls that a platform cannot offer are hidden or greyed out.
   always shown, like a Dynamic Island; point at it to open), **Widget · Beta** (a floating rounded card you drag anywhere,
   with the same content; it snaps to the screen edges and the middle line, remembers its place on each monitor, and a
   click opens the panel beside it; pointing at the top edge opens nothing in this mode) or **Always open**
-  (the panel stays open). *Capsule size* and the spectrum style (*Bars, Thin, Dots, Wave, Pulse, Off*) are in the same place.
+  (the panel stays open). *Keep other windows clear of the capsule* (off by default, Windows and KDE Plasma on Wayland) keeps a strip free along the top so maximised windows start below the capsule, like under a taskbar. *Capsule size* and the spectrum style (*Bars, Thin, Dots, Wave, Pulse, Off*) are in the same place.
   While music plays the capsule shows the song with its sound wave and time (`1:23 / 5:37`), and a click or pointing at
   it opens just the Music section; after a pause the song stays for 2 minutes, then the clock returns.
 - **One section at a time:** a bar of actions under the title, **Files · Music · Timer · Share**, shows just that

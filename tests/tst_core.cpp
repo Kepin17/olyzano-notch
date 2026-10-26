@@ -24,6 +24,7 @@
 #include "platform/TasksModel.h"
 #include "platform/Cities.h"
 #include "platform/PrayerModel.h"
+#include "platform/ReserveModel.h"
 #include "platform/UpdateModel.h"
 #include "platform/VoiceModel.h"
 #include "platform/WidgetModel.h"
@@ -717,6 +718,31 @@ private slots:
         reinterpret_cast<qint16 *>(two.data())[0] = 1000;
         reinterpret_cast<qint16 *>(two.data())[1] = -1000;
         QVERIFY(qAbs(VoiceModel::rms(two) - std::sqrt(2e6 / 4)) < 1);
+    }
+
+    void reservePlan()
+    {
+        using namespace ReserveModel;
+        QCOMPARE(heightFor(1.0), 44);
+        QCOMPARE(heightFor(1.3), 57);
+        QCOMPARE(heightFor(0.8), 35);
+        QCOMPARE(heightFor(9), 57); // the scale is clamped like the setting
+        // off, or any mode but the capsule: nothing is kept
+        QCOMPARE(plan("capsule", false, 1, 0, true).notchZone, 0);
+        for (const char *mode : {"hidden", "widget", "open"}) {
+            QCOMPARE(plan(mode, true, 1, 0, true).notchZone, 0);
+            QCOMPARE(plan(mode, true, 1, 0, false).appBar, 0);
+        }
+        // Wayland: the island adds only what the status bar does not already keep
+        QCOMPARE(plan("capsule", true, 1, 0, true).notchZone, 44);
+        QCOMPARE(plan("capsule", true, 1, 30, true).notchZone, 14);
+        QCOMPARE(plan("capsule", true, 1, 60, true).notchZone, 0);
+        // Windows: one strip, the taller of the two
+        QCOMPARE(plan("capsule", true, 1, 0, false).appBar, 44);
+        QCOMPARE(plan("capsule", true, 1, 30, false).appBar, 44);
+        QCOMPARE(plan("capsule", true, 1, 60, false).appBar, 60);
+        QCOMPARE(plan("capsule", false, 1, 30, false).appBar, 30); // the bar alone still keeps its own room
+        QCOMPARE(plan("hidden", false, 1, 30, true).notchZone, 0);
     }
 
     void contributorsSkipBots()

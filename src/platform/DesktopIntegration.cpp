@@ -1,7 +1,11 @@
 #include "DesktopIntegration.h"
 
 #include "models/FileItem.h"
+#include "platform/ReserveModel.h"
 #include "platform/WidgetModel.h"
+#ifdef Q_OS_WIN
+#include "platform/WinAppBar.h"
+#endif
 
 #include <QCursor>
 #include <QGuiApplication>
@@ -312,4 +316,44 @@ void DesktopIntegration::placeDocked(QWindow *window)
 #endif
     window->resize(int(WidgetModel::OpenW), int(WidgetModel::OpenH));
     centerOnScreen(window);
+}
+
+// ---- Keeping windows clear of the capsule ----
+
+DesktopIntegration::DesktopIntegration()
+{
+#ifdef Q_OS_WIN
+    m_appBar = std::make_unique<WinAppBar>();
+#endif
+}
+
+DesktopIntegration::~DesktopIntegration() = default;
+
+bool DesktopIntegration::canReserve() const
+{
+#ifdef Q_OS_WIN
+    return true;
+#else
+    return QGuiApplication::platformName().startsWith(QLatin1String("wayland")) && m_layerShell;
+#endif
+}
+
+void DesktopIntegration::reserve(QWindow *window, const QString &mode, bool on, qreal scale, int barPx)
+{
+    if (!window)
+        return;
+#ifdef Q_OS_WIN
+    if (!window->isVisible()) // the native window may still be replaced while it is being set up; QML asks again once shown
+        return;
+    m_appBar->set(window, ReserveModel::plan(mode, on, scale, barPx, false).appBar);
+#else
+#ifdef NOTCH_HAVE_LAYERSHELL
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
+        if (auto *ls = LayerShellQt::Window::get(window)) {
+            const int zone = ReserveModel::plan(mode, on, scale, barPx, true).notchZone;
+            ls->setExclusiveZone(zone > 0 ? zone : -1); // -1: sit over everything, take nothing
+        }
+    }
+#endif
+#endif
 }

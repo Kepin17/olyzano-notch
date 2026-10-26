@@ -6,6 +6,10 @@
 #include <QRectF>
 #include <QVariantList>
 #include <QWindow>
+#include <memory>
+#ifdef Q_OS_WIN
+class WinAppBar;
+#endif
 #include <QRectF>
 #include <QSizeF>
 #include <QPointF>
@@ -20,6 +24,7 @@ class DesktopIntegration : public QObject
     Q_OBJECT
     Q_PROPERTY(bool layerShell READ layerShell CONSTANT)
     Q_PROPERTY(bool canBlur READ canBlur CONSTANT)
+    Q_PROPERTY(bool canReserve READ canReserve CONSTANT) // other windows can be kept clear of a strip at the top (Windows, Wayland)
 
 public:
     // Must be called before the window is first shown; window->screen() picks the monitor.
@@ -35,6 +40,12 @@ public:
     // Move a dock to another edge. Call while it is hidden: a layer-shell surface takes anchors when mapped.
     void moveDock(QWindow *window, const QString &side);
     bool layerShell() const { return m_layerShell; }
+    bool canReserve() const;
+    // Keep a strip free at the top for the notch's capsule (ReserveModel decides how much): `mode` is the capsule mode,
+    // `barPx` what the status bar already keeps free. Call again whenever any of them changes.
+    Q_INVOKABLE void reserve(QWindow *window, const QString &mode, bool on, qreal scale, int barPx);
+    DesktopIntegration();
+    ~DesktopIntegration() override;
 
     // Only this rect of `window` receives input; clicks elsewhere fall through to windows below.
     Q_INVOKABLE void setInputRegion(QWindow *window, const QRectF &rect);
@@ -58,5 +69,8 @@ public:
 
 private:
     QList<QPointer<QWindow>> m_windows;
+#ifdef Q_OS_WIN
+    std::unique_ptr<WinAppBar> m_appBar;
+#endif
     bool m_layerShell = false;
 };

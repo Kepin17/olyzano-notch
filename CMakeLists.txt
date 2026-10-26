@@ -108,6 +108,7 @@ if(WIN32)
     target_sources(notch PRIVATE src/platform/WinPrivacy.h src/platform/WinPrivacy.cpp src/platform/ColorPicker_win.cpp
                                  src/platform/WinAudioSessions.h src/platform/WinAudioSessions.cpp
                                  src/platform/WinBluetooth.h src/platform/WinBluetooth.cpp
+                                 src/platform/WinAppBar.h src/platform/WinAppBar.cpp
                                  src/platform/MediaPlayers_win.cpp src/platform/MediaNames.h src/platform/AudioLevels_win.cpp
                                  src/platform/DesktopNotifications_win.cpp)
     # user32/shell32: AppDock lists and raises windows, and asks the Recycle Bin. ole32/advapi32: microphone, registry.
