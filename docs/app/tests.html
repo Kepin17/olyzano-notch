@@ -3,7 +3,7 @@
 <style>body{font:14px/1.5 system-ui;background:#111;color:#eee;padding:20px}.ok{color:#5c5}.bad{color:#f66;font-weight:700}code{color:#9cf}</style></head>
 <body><h1>Olyzano Notch for the web: tests</h1><p>The pure functions, run in this browser. Open this page; every line should say <span class="ok">PASS</span>.</p><div id="out"></div>
 <script type="module">
-import { uniqueName, parsePageRanges, parseLrc, formatBytes, clock, kindOf, extOf, baseOf } from "./js/util.js";
+import { uniqueName, parsePageRanges, parseLrc, formatBytes, clock, kindOf, extOf, baseOf, shareLink } from "./js/util.js";
 import { fmt } from "./js/color.js";
 import { wifiQr } from "./js/tools/misc.js";
 import { THEMES } from "./js/themes.js";
@@ -34,6 +34,7 @@ eq("clock", [clock(0), clock(65000), clock(3725000)], ["00:00", "01:05", "1:02:0
 eq("kind of a file", [kindOf({ name: "a.pdf", type: "" }), kindOf({ name: "a.HEIC", type: "" }), kindOf({ name: "a.mp3", type: "audio/mpeg" }), kindOf({ name: "a.zip", type: "" })], ["pdf", "image", "audio", "archive"]);
 eq("extension and base", [extOf("a.tar.gz"), baseOf("a.tar.gz"), extOf("README")], ["gz", "a.tar", ""]);
 eq("colour formats", [fmt("#3daee9", "hex"), fmt("#3daee9", "rgb"), fmt("#ff0000", "hsl")], ["#3DAEE9", "rgb(61, 174, 233)", "hsl(0, 100%, 50%)"]);
+eq("share link from a QR", [shareLink(" https://relay.example/s/ab#KEY "), shareLink("http://192.168.1.5:4000/t0k/"), shareLink("WIFI:T:WPA;S:a;;"), shareLink("javascript:alert(1)")], ["https://relay.example/s/ab#KEY", "http://192.168.1.5:4000/t0k/", "", ""]);
 eq("wifi QR text", [wifiQr("olyzano room", "olzm0404"), wifiQr("a;b", "p:x"), wifiQr("cafe", "", false)], ["WIFI:T:WPA;S:olyzano room;P:olzm0404;;", String.raw`WIFI:T:WPA;S:a\;b;P:p\:x;;`, "WIFI:T:nopass;S:cafe;;"]);
 eq("fourteen themes, each with dark and light", [THEMES.length, THEMES.every(t => t.dark && t.light && /^#/.test(t.dark.accent) && /^#/.test(t.light.accent))], [14, true]);
 const total = document.createElement("h2"); total.textContent = fails ? fails + " failed" : "All passed"; total.className = fails ? "bad" : "ok"; out.prepend(total);

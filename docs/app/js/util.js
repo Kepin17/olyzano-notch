@@ -111,3 +111,7 @@ export function lazyScript(src) {
     document.head.append(s);
   }));
 }
+
+// A share link from a computer running Olyzano Notch (a WiFi address, or a relay link with the key after #): only http(s).
+export const shareLink = text => { try { const u = new URL(String(text).trim()); return /^https?:$/.test(u.protocol) ? u.href : ""; } catch { return ""; } };
+
