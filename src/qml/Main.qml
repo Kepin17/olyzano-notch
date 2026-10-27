@@ -787,9 +787,19 @@ Window {
             return
         }
         blurOn = true
+        // The island as it is now (not where it is going), so the blur never shows past its edge; the edge look's concave
+        // shoulders are left out.
         const k = floating || mode === "idle" ? activities.capsuleScale : 1
-        const w = island.width * k, h = island.height * k
-        desktop.setBlurRegion(root, Qt.rect(island.x + (island.width - w) / 2, island.y, w, h), island.roundShape ? island.roundRadius : Math.min(24, h / 2))
+        const inset = island.roundShape ? 0 : island.shoulder * k
+        const w = island.width * k - 2 * inset, h = island.height * k
+        desktop.setBlurRegion(root, Qt.rect(island.x + (island.width * (1 - k)) / 2 + inset, island.y, w, h), island.roundShape ? island.roundRadius : Math.min(24, h / 2))
+    }
+    // While the island springs to its size the blur follows it, a few times a second at most.
+    Timer { id: blurFollow; interval: 40; onTriggered: root.updateBlur() }
+    Connections {
+        target: island
+        function onWidthChanged() { if (activities.glass && !blurFollow.running) blurFollow.start() }
+        function onHeightChanged() { if (activities.glass && !blurFollow.running) blurFollow.start() }
     }
     Connections { target: activities; function onSettingsChanged() { root.updateBlur() } }
     function maskMoving() {
