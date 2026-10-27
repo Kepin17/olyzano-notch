@@ -20,6 +20,7 @@
 #include <QStandardPaths>
 #include <QUrl>
 
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <deque>
@@ -78,6 +79,7 @@ struct MediaPlayers::Worker {
     std::vector<std::pair<QString, MediaSession>> sessions;
     std::vector<Watch> watches;
     QHash<QString, QPair<QString, QString>> art; // key -> (track, artUrl)
+    QHash<QString, Session> last;                // key -> the last complete read, for a read that fails or comes back blank
 
     void markDirty(bool list = false)
     {
@@ -190,6 +192,8 @@ struct MediaPlayers::Worker {
                     r.status = QStringLiteral("Playing");
                 else if (status == PlaybackStatus::Paused)
                     r.status = QStringLiteral("Paused");
+                else if ((status == PlaybackStatus::Changing || status == PlaybackStatus::Opened) && last.contains(key))
+                    r.status = last.value(key).status; // between two tracks: not a stopped player
                 const auto controls = info.Controls();
                 r.canNext = controls.IsNextEnabled();
                 r.canPrevious = controls.IsPreviousEnabled();
@@ -217,12 +221,32 @@ struct MediaPlayers::Worker {
                     r.artUrl = cached->second;
                 } else {
                     r.artUrl = saveArt(props.Thumbnail());
-                    art.insert(key, {track, r.artUrl});
+                    if (!r.artUrl.isEmpty() || r.title.isEmpty())
+                        art.insert(key, {track, r.artUrl}); // a cover that has not arrived yet is asked for again
                 }
+                // Apps blank the metadata for a moment between tracks: keep the old text and cover instead of flashing empty.
+                const auto before = last.constFind(key);
+                if (before != last.cend() && r.title.isEmpty() && r.artist.isEmpty() && r.status != QLatin1String("Stopped")) {
+                    r.title = before->title;
+                    r.artist = before->artist;
+                    r.album = before->album;
+                    r.artUrl = before->artUrl;
+                }
+                if (before != last.cend() && r.artUrl.isEmpty() && r.title == before->title && r.artist == before->artist)
+                    r.artUrl = before->artUrl;
+                last.insert(key, r);
             } catch (const winrt::hresult_error &) {
+                // a read that fails (the app is busy or going away) shows what was there, not a stopped, blank player
+                const auto before = last.constFind(key);
+                if (before != last.cend()) {
+                    r = *before;
+                    r.positionAt = now;
+                }
             }
             out << r;
         }
+        for (auto it = last.begin(); it != last.end();)
+            it = std::any_of(out.cbegin(), out.cend(), [&](const Session &o) { return o.key == it.key(); }) ? std::next(it) : last.erase(it);
         return out;
     }
 
