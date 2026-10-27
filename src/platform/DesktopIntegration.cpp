@@ -419,6 +419,11 @@ void DesktopIntegration::reserve(QWindow *window, const QString &mode, bool on, 
             const int zone = ReserveModel::plan(mode, on, scale, barPx + m_panelTop, true).notchZone; // the panel's room counts as kept free
             ls->setExclusiveZone(-1); // the notch sits over everything and takes nothing (a panel would be pushed down by it)
             if (zone > 0) {
+                if (m_strip && m_stripZone != zone) { // a new height is a new surface: the compositor takes the zone from a fresh commit
+                    m_strip->hide();
+                    m_strip->deleteLater();
+                    m_strip = nullptr;
+                }
                 if (!m_strip) {
                     auto *strip = new ReserveStrip;
                     strip->QObject::setParent(this);
@@ -438,6 +443,8 @@ void DesktopIntegration::reserve(QWindow *window, const QString &mode, bool on, 
                 }
                 if (auto *sl = LayerShellQt::Window::get(m_strip))
                     sl->setExclusiveZone(zone);
+                m_stripZone = zone;
+                qCInfo(lcNotch) << "Room kept free at the top:" << zone << "px (top panel" << m_panelTop << "px)";
                 if (!m_strip->isVisible())
                     m_strip->show();
             } else if (m_strip) {
