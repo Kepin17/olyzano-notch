@@ -1608,11 +1608,11 @@ Window {
             radius: 1
             color: Qt.rgba(1, 1, 1, 0.14)
             Rectangle {
-                width: parent.width * Math.min(1, root.capPos / Math.max(1, media.lengthMs))
+                // straight to the value, never animated: a width that lags behind a capsule that is changing size would stick out of it
+                width: Math.min(parent.width, parent.width * Math.max(0, root.capPos / Math.max(1, media.lengthMs)))
                 height: parent.height
                 radius: 1
                 color: capColor.color
-                Behavior on width { NumberAnimation { duration: 900 } }
             }
         }
 
