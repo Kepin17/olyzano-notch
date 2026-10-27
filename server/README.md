@@ -24,11 +24,10 @@ Update: copy the new files, then `docker compose up -d --build`. Logs: `docker c
 
 ## For a team: members, quotas, invitations
 
-> **Status:** the relay side below works and is tested, but Notch's **Join a server** field is hidden for now, so
-> an invitation cannot be redeemed from the app yet. Team sign-in will come with single sign-on instead.
-
 By default the relay has one key (`RELAY_API_KEY`), the host's. To let others use it, give each person their
-own key with their own limits, from the command line (inside Docker prefix with
+own key with their own limits. The easiest way is in Notch itself: **Settings → Sharing**, on the server where you used
+the host key, type a username and press **Create key**; copy the key and send it to them. They paste it under
+**Join a server** (the key is a single-use invitation link, so it can be sent through chat). The same is possible from the command line (inside Docker prefix with
 `docker compose exec relay`):
 
 ```bash
@@ -83,3 +82,9 @@ behind any HTTPS reverse proxy. Set `TRUST_PROXY=1` only when a proxy sets `X-Fo
 ```bash
 python3 -m unittest discover -s tests
 ```
+
+## Managing members over HTTP (what Notch uses)
+
+Host key only (anyone else gets 403): `GET /api/v1/members`, `POST /api/v1/members {"name", "quota_mb"?, ...}` →
+`{"link"}` (an invitation), `POST /api/v1/members/NAME/invite` (a new key), `DELETE /api/v1/members/NAME` (revoke).
+`GET /api/v1/ping` says `"owner": true` for the host key.

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <functional>
+
 #include "app/NotchController.h"
 #include "app/ShareSession.h"
 
@@ -82,12 +84,21 @@ public:
     Q_INVOKABLE void testServer(const QString &id);   // answers through serverTested, and refreshes the limits shown
     Q_INVOKABLE void testAllServers();
 
+    // The host's side (only a server whose key is the host's has owner = true): make a member and get the key to give them
+    // (an invitation link), list the members, revoke one, or reissue a key. Answers come through memberLink / membersLoaded.
+    Q_INVOKABLE void createMember(const QString &serverId, const QString &username);
+    Q_INVOKABLE void reinviteMember(const QString &serverId, const QString &username);
+    Q_INVOKABLE void loadMembers(const QString &serverId);
+    Q_INVOKABLE void revokeMember(const QString &serverId, const QString &username);
+
 signals:
     void countChanged();
     void settingsChanged();
     void serversChanged();
     void serverTested(const QString &id, bool ok, const QString &message);
     void joined(bool ok, const QString &message);
+    void memberLink(const QString &serverId, const QString &username, bool ok, const QString &linkOrError);
+    void membersLoaded(const QString &serverId, const QVariantList &members);
 
 private:
     struct Server {
@@ -98,6 +109,8 @@ private:
     QString keyOf(const QString &id) const;
     bool storeKey(const QString &id, const QString &key);
     RelayAccess accessFor(const QString &id) const; // the default server for an unknown / empty id
+    void memberCall(const QString &serverId, const QByteArray &verb, const QString &path, const QJsonObject &body,
+                    std::function<void(bool ok, const QJsonObject &answer, const QString &error)> done);
     void loadServers();
     void saveServers();
     QString saveNewServer(const QString &name, const QUrl &url, const QString &key); // -> id

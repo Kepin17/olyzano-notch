@@ -1595,6 +1595,121 @@ RowLayout {
                                 }
                                 PillButton { text: "Test"; onClicked: share.testServer(srv.modelData.id) }
                             }
+
+                            // The host's part: make a key for someone, with the name they will go by.
+                            ColumnLayout {
+                                id: team
+                                visible: srv.modelData.owner === true
+                                Layout.fillWidth: true
+                                spacing: 4
+                                property var list: []
+                                property string link: ""
+                                property string note: ""
+                                property bool bad: false
+                                onVisibleChanged: if (visible) share.loadMembers(srv.modelData.id)
+                                Component.onCompleted: if (visible) share.loadMembers(srv.modelData.id)
+                                Connections {
+                                    target: share
+                                    function onMembersLoaded(id, list) { if (id === srv.modelData.id) team.list = list }
+                                    function onMemberLink(id, name, ok, text) {
+                                        if (id !== srv.modelData.id) return
+                                        team.bad = !ok
+                                        team.link = ok ? text : ""
+                                        team.note = ok ? "Key for " + name + ": send it to them. It works once, for 7 days." : text
+                                        if (ok) memberName.clear()
+                                    }
+                                }
+                                Text { text: "Members"; color: theme.text; font.pixelSize: 12; font.weight: Font.DemiBold }
+                                Repeater {
+                                    model: team.list
+                                    delegate: RowLayout {
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        spacing: 6
+                                        Text {
+                                            Layout.fillWidth: true
+                                            color: theme.textSoft
+                                            font.pixelSize: 12
+                                            elide: Text.ElideRight
+                                            text: modelData.name + (modelData.joined ? "" : " · not joined yet") + " · " + sharing.mb(modelData.used) + " of " + sharing.mb(modelData.quota)
+                                        }
+                                        PillButton { text: "New key"; onClicked: share.reinviteMember(srv.modelData.id, modelData.name) }
+                                        IconButton { iconName: "close"; Accessible.name: "Remove this member"; onClicked: share.revokeMember(srv.modelData.id, modelData.name) }
+                                    }
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+                                    TextField {
+                                        id: memberName
+                                        Layout.fillWidth: true
+                                        implicitHeight: 30
+                                        leftPadding: 12
+                                        placeholderText: "Username, e.g. alice"
+                                        placeholderTextColor: theme.placeholder
+                                        color: theme.text
+                                        selectionColor: theme.accent
+                                        font.pixelSize: 13
+                                        maximumLength: 40
+                                        background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: memberName.activeFocus ? theme.accent : theme.outline }
+                                        onAccepted: createKey.clicked()
+                                    }
+                                    PillButton {
+                                        id: createKey
+                                        text: "Create key"
+                                        iconName: "plus"
+                                        checked: true
+                                        enabled: memberName.text.trim() !== ""
+                                        onClicked: share.createMember(srv.modelData.id, memberName.text)
+                                    }
+                                }
+                                RowLayout {
+                                    visible: team.note !== ""
+                                    Layout.fillWidth: true
+                                    Caption { Layout.fillWidth: true; text: team.note; color: team.bad ? theme.danger : theme.textDim }
+                                    PillButton { visible: team.link !== ""; text: "Copy key"; iconName: "copy"; onClicked: notch.copyText(team.link) }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Someone gave you a key: paste it here and this computer joins their server under the name they chose.
+                SectionLabel { text: "Join a server" }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    TextField {
+                        id: joinField
+                        Layout.fillWidth: true
+                        implicitHeight: 30
+                        leftPadding: 12
+                        placeholderText: "Paste the key from the host (https://…/join#…)"
+                        placeholderTextColor: theme.placeholder
+                        color: theme.text
+                        selectionColor: theme.accent
+                        font.pixelSize: 13
+                        background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: joinField.activeFocus ? theme.accent : theme.outline }
+                        onAccepted: joinButton.clicked()
+                    }
+                    PillButton {
+                        id: joinButton
+                        text: "Join"
+                        checked: true
+                        enabled: joinField.text.trim() !== ""
+                        onClicked: { joinResult.text = ""; share.joinServer(joinField.text) }
+                    }
+                }
+                Caption {
+                    id: joinResult
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    Connections {
+                        target: share
+                        function onJoined(ok, message) {
+                            joinResult.text = message
+                            joinResult.color = ok ? theme.success : theme.danger
+                            if (ok) joinField.clear()
                         }
                     }
                 }

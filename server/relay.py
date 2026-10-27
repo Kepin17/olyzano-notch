@@ -16,7 +16,7 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PAGE = open(os.path.join(HERE, "page.html"), "rb").read()
@@ -340,6 +340,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/join":
             csp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'none'"
             return self.reply(200, JOIN_PAGE, "text/html; charset=utf-8", {"Content-Security-Policy": csp})
+        if path == "/api/v1/members":
+            return self.members_api("GET", path)
         if path == "/api/v1/ping":
             member = self.auth()
             if not member:
@@ -349,7 +351,7 @@ class Handler(BaseHTTPRequestHandler):
             free = max(0, min(lim["quota"] - used, c.max_total - self.store.used()))
             return self.reply(200, {"ok": True, "member": member["name"], "max_file": lim["max_file"],
                                     "max_ttl": lim["max_ttl"], "free": free,
-                                    "limits": lim, "usage": {"used": used, "active": active}})
+                                    "owner": member["id"] == OWNER, "limits": lim, "usage": {"used": used, "active": active}})
         m = re.match(r"^/api/v1/shares/([^/]+)$", path)
         if m and ID_RE.match(m.group(1)):  # progress check for the sender
             member = self.auth()
@@ -451,6 +453,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/v1/join":
             return self.join()
+        if path == "/api/v1/members" or re.match(r"^/api/v1/members/[^/]+/invite$", path):
+            return self.members_api("POST", path)
         if path != "/api/v1/shares":
             return self.reply(404, {"error": "not found"})
         member = self.auth()
@@ -522,7 +526,48 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(404, {"error": "invalid_invite", "message": "This invitation is not valid any more"})
         self.reply(200, {"name": got[0], "key": got[1]})
 
+    def members_api(self, method, path):
+        """The host (and only the host) manages members from the app: list, create (-> invitation), re-invite, revoke."""
+        member = self.auth()
+        if not member:
+            return self.reply(401, {"error": "bad key"})
+        if member["id"] != OWNER:
+            return self.reply(403, {"error": "host_only", "message": "Only the host of this server can manage members"})
+        members = self.server.members
+        try:
+            if method == "GET":
+                return self.reply(200, {"members": [
+                    {"name": m["name"], "revoked": bool(m["revoked"]), "joined": bool(m["key_hash"]),
+                     "limits": members.limits(m), "used": self.store.used(m["id"]), "active": self.store.active(m["id"])}
+                    for m in members.all()]})
+            if method == "POST" and path == "/api/v1/members":
+                try:
+                    body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", "0")), 4096)) or b"{}")
+                    name = str(body.get("name", "")).strip()
+                    lim = {k: int(body[k]) for k in ("quota_mb", "max_file_mb", "max_ttl_hours", "max_active") if body.get(k)}
+                except (ValueError, AttributeError, TypeError):
+                    return self.reply(400, {"error": "bad_request", "message": "Bad request"})
+                if members.get(name):
+                    return self.reply(409, {"error": "exists", "message": "There is already a member called %s" % name})
+                members.add(name, **lim)
+                return self.reply(201, {"name": name, "link": members.invite_link(members.invite(name))})
+            name = unquote(path.split("/")[4])
+            m = members.get(name)
+            if not m:
+                return self.reply(404, {"error": "not_found", "message": "No member called %s" % name})
+            if method == "DELETE":
+                members.revoke(name)
+                for sid, meta in self.store.shares():
+                    if meta.get("owner", OWNER) == m["id"]:
+                        self.store.delete(sid)
+                return self.reply(200, {"ok": True})
+            return self.reply(200, {"name": name, "link": members.invite_link(members.invite(name))})
+        except ValueError as e:  # a bad name, a revoked member
+            return self.reply(400, {"error": "bad_request", "message": str(e)})
+
     def do_DELETE(self):
+        if re.match(r"^/api/v1/members/[^/]+$", urlparse(self.path).path):
+            return self.members_api("DELETE", urlparse(self.path).path)
         m = re.match(r"^/api/v1/shares/([^/]+)$", urlparse(self.path).path)
         if not m or not ID_RE.match(m.group(1)):
             return self.reply(404, {"error": "not found"})

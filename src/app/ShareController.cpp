@@ -5,6 +5,7 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonArray>
+#include <QJsonObject>
 #include <QJsonDocument>
 #include <QNetworkReply>
 #include <QSaveFile>
@@ -464,6 +465,7 @@ void ShareController::testServer(const QString &id)
                 const QJsonObject lim = o.value(QStringLiteral("limits")).toObject(), use = o.value(QStringLiteral("usage")).toObject();
                 auto num = [](const QJsonValue &v) { return v.toVariant().toLongLong(); };
                 st = {{QStringLiteral("member"), o.value(QStringLiteral("member")).toString()},
+                      {QStringLiteral("owner"), o.value(QStringLiteral("owner")).toBool()},
                       // An older relay has no "limits": its max_file / max_ttl still say what it takes.
                       {QStringLiteral("maxFile"), num(lim.value(QStringLiteral("max_file"))) ? num(lim.value(QStringLiteral("max_file"))) : num(o.value(QStringLiteral("max_file")))},
                       {QStringLiteral("maxTtl"), num(lim.value(QStringLiteral("max_ttl"))) ? num(lim.value(QStringLiteral("max_ttl"))) : num(o.value(QStringLiteral("max_ttl")))},
@@ -483,4 +485,78 @@ void ShareController::testServer(const QString &id)
             emit serverTested(id, ok, message);
         }
     });
+}
+
+void ShareController::memberCall(const QString &serverId, const QByteArray &verb, const QString &path, const QJsonObject &body,
+                                 std::function<void(bool, const QJsonObject &, const QString &)> done)
+{
+    const RelayAccess relay = accessFor(serverId);
+    if (serverIndex(serverId) < 0 || !relay.valid()) {
+        done(false, {}, tr("Enter the API key first"));
+        return;
+    }
+    QNetworkRequest req = relay.request(path);
+    req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
+    req.setTransferTimeout(30000);
+    const QByteArray data = QJsonDocument(body).toJson(QJsonDocument::Compact);
+    QNetworkReply *reply = verb == "GET" ? m_nam.get(req) : verb == "DELETE" ? m_nam.deleteResource(req) : m_nam.post(req, data);
+    connect(reply, &QNetworkReply::finished, this, [reply, done] {
+        reply->deleteLater();
+        const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
+        if (reply->error() == QNetworkReply::NoError) {
+            done(true, o, {});
+            return;
+        }
+        const QString why = o.value(QStringLiteral("message")).toString();
+        const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+        done(false, o, !why.isEmpty() ? why
+                       : status == 401 ? tr("The server did not accept the API key")
+                       : status == 403 ? tr("Only the host of this server can manage members")
+                       : status == 0   ? tr("Cannot reach the server")
+                                       : tr("The server refused the request"));
+    });
+}
+
+void ShareController::createMember(const QString &serverId, const QString &username)
+{
+    const QString name = username.trimmed();
+    memberCall(serverId, "POST", QStringLiteral("/api/v1/members"), {{QStringLiteral("name"), name}},
+               [this, serverId, name](bool ok, const QJsonObject &o, const QString &error) {
+                   emit memberLink(serverId, name, ok, ok ? o.value(QStringLiteral("link")).toString() : error);
+                   if (ok)
+                       loadMembers(serverId);
+               });
+}
+
+void ShareController::reinviteMember(const QString &serverId, const QString &username)
+{
+    memberCall(serverId, "POST", QStringLiteral("/api/v1/members/") + QString::fromUtf8(QUrl::toPercentEncoding(username)) + QStringLiteral("/invite"), {},
+               [this, serverId, username](bool ok, const QJsonObject &o, const QString &error) {
+                   emit memberLink(serverId, username, ok, ok ? o.value(QStringLiteral("link")).toString() : error);
+               });
+}
+
+void ShareController::loadMembers(const QString &serverId)
+{
+    memberCall(serverId, "GET", QStringLiteral("/api/v1/members"), {}, [this, serverId](bool ok, const QJsonObject &o, const QString &) {
+        QVariantList list;
+        if (ok) {
+            for (const QJsonValue &v : o.value(QStringLiteral("members")).toArray()) {
+                const QJsonObject m = v.toObject(), lim = m.value(QStringLiteral("limits")).toObject();
+                if (m.value(QStringLiteral("revoked")).toBool())
+                    continue;
+                list.append(QVariantMap{{QStringLiteral("name"), m.value(QStringLiteral("name")).toString()},
+                                        {QStringLiteral("joined"), m.value(QStringLiteral("joined")).toBool()},
+                                        {QStringLiteral("used"), m.value(QStringLiteral("used")).toVariant().toLongLong()},
+                                        {QStringLiteral("quota"), lim.value(QStringLiteral("quota")).toVariant().toLongLong()}});
+            }
+        }
+        emit membersLoaded(serverId, list);
+    });
+}
+
+void ShareController::revokeMember(const QString &serverId, const QString &username)
+{
+    memberCall(serverId, "DELETE", QStringLiteral("/api/v1/members/") + QString::fromUtf8(QUrl::toPercentEncoding(username)), {},
+               [this, serverId](bool, const QJsonObject &, const QString &) { loadMembers(serverId); });
 }

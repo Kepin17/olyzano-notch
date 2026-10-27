@@ -157,6 +157,31 @@ class TeamTest(unittest.TestCase):
         self.assertEqual(self.call("GET", "/s/%s/meta" % theirs)[0], 200)
 
     # ---- command line -----------------------------------------------------------------------
+    def test_host_manages_members_from_the_app(self):
+        j = lambda b: json.dumps(b).encode()
+        self.assertTrue(json.loads(self.call("GET", "/api/v1/ping", key=HOST_KEY)[1])["owner"])
+        status, body = self.call("POST", "/api/v1/members", j({"name": "alice", "quota_mb": 3}), key=HOST_KEY)
+        self.assertEqual(status, 201, body)
+        link = json.loads(body)["link"]
+        self.assertTrue(link.startswith("https://share.test/join#"))
+        self.assertEqual(self.call("POST", "/api/v1/members", j({"name": "alice"}), key=HOST_KEY)[0], 409)
+        self.assertEqual(self.call("POST", "/api/v1/members", j({"name": "/x"}), key=HOST_KEY)[0], 400)
+        status, body = self.call("POST", "/api/v1/join", j({"token": link.split("#", 1)[1]}))
+        key = json.loads(body)["key"]
+        ping = json.loads(self.call("GET", "/api/v1/ping", key=key)[1])
+        self.assertFalse(ping["owner"])
+        self.assertEqual(self.call("GET", "/api/v1/members", key=key)[0], 403)
+        self.assertEqual(self.call("POST", "/api/v1/members", j({"name": "bob"}), key=key)[0], 403)
+        self.assertEqual(self.call("GET", "/api/v1/members")[0], 401)
+        listed = json.loads(self.call("GET", "/api/v1/members", key=HOST_KEY)[1])["members"]
+        self.assertEqual([(m["name"], m["joined"]) for m in listed], [("alice", True)])
+        status, body = self.call("POST", "/api/v1/members/alice/invite", key=HOST_KEY)
+        self.assertEqual(status, 200)
+        self.assertIn("/join#", json.loads(body)["link"])
+        self.assertEqual(self.call("DELETE", "/api/v1/members/alice", key=HOST_KEY)[0], 200)
+        self.assertEqual(self.call("GET", "/api/v1/ping", key=key)[0], 401)
+        self.assertEqual(self.call("DELETE", "/api/v1/members/nobody", key=HOST_KEY)[0], 404)
+
     def test_cli_lists_sets_and_kills(self):
         key, _ = self.join("kim", quota_mb=3)
         sid = self.upload(key)["id"]
