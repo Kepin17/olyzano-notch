@@ -437,7 +437,7 @@ void Activities::readMicOutputs()
             continue;
         const QJsonObject props = stream.value(QLatin1String("properties")).toObject();
         QString name = props.value(QLatin1String("application.name")).toString();
-        if (name == QLatin1String("OlyzanoKaraoke") || name == QLatin1String("OlyzanoMicLevel"))
+        if (name == QLatin1String("OlyzanoKaraoke") || name == QLatin1String("OlyzanoMicLevel") || name == QLatin1String("OlyzanoAssistant"))
             continue; // our own karaoke loop and level reader are not an app listening
         if (name.isEmpty())
             name = props.value(QLatin1String("application.process.binary")).toString();

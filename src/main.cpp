@@ -17,6 +17,7 @@
 #include "platform/Doomscroll.h"
 #include "platform/Prayer.h"
 #include "platform/Tasks.h"
+#include "platform/Assistant.h"
 #include "platform/Updates.h"
 #include "platform/Launcher.h"
 #include "platform/TrayHost.h"
@@ -224,6 +225,20 @@ int main(int argc, char *argv[])
     Tasks tasks;
     Prayer prayer;
     Updates updates;
+    Assistant assistant(&launcher, &tasks, &quick, &media, &activities, &controller);
+    // `notch --assistant-say "buka firefox"`: what the words would do (nothing is done); `--assistant-wav file.wav`: the same from a
+    // 16 kHz mono 16-bit recording, through whisper (the model must be downloaded).
+    if (const int i = app.arguments().indexOf(QStringLiteral("--assistant-say")); i >= 0 && i + 1 < app.arguments().size()) {
+        const auto in = AssistantModel::parse(app.arguments().at(i + 1));
+        printf("%s\n", qPrintable(in.kind == AssistantModel::Kind::Unknown ? QStringLiteral("not understood") : QStringLiteral("would ") + assistant.describe(in)));
+        return 0;
+    }
+    if (const int i = app.arguments().indexOf(QStringLiteral("--assistant-wav")); i >= 0 && i + 1 < app.arguments().size()) {
+        const QString text = assistant.transcribeFile(app.arguments().at(i + 1));
+        const auto in = AssistantModel::parse(text);
+        printf("heard: %s\n%s\n", qPrintable(text), qPrintable(in.kind == AssistantModel::Kind::Unknown ? QStringLiteral("not understood") : QStringLiteral("would ") + assistant.describe(in)));
+        return 0;
+    }
     if (const int i = app.arguments().indexOf(QStringLiteral("--dump-menu")); i >= 0 && i + 1 < app.arguments().size()) { // the menu of a process, for checking
         fputs(appMenu.dump(app.arguments().at(i + 1).toLongLong()).constData(), stdout);
         return 0;
@@ -335,6 +350,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("launcher"), &launcher);
     engine.rootContext()->setContextProperty(QStringLiteral("doomscroll"), &doomscroll);
     engine.rootContext()->setContextProperty(QStringLiteral("updates"), &updates);
+    engine.rootContext()->setContextProperty(QStringLiteral("assistant"), &assistant);
     engine.rootContext()->setContextProperty(QStringLiteral("tasks"), &tasks);
     engine.rootContext()->setContextProperty(QStringLiteral("prayer"), &prayer);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
