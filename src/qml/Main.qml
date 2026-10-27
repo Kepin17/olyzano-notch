@@ -88,8 +88,9 @@ Window {
     onDockedChanged: { applyGeometry(); updateMask() }
     // Wayland, while dragging: the window is the whole screen and the card moves inside it, nothing to place per step.
     // Windows and X11: the small window itself follows the pointer.
-    onWidgetCxChanged: if (geoWidget && !(dragging && desktop.layerShell)) applyGeometry()
-    onWidgetYChanged: if (geoWidget && !(dragging && desktop.layerShell)) applyGeometry()
+    property bool placingBatch: false // x and y are being set together: place the window once, when both are in
+    onWidgetCxChanged: if (geoWidget && !placingBatch && !(dragging && desktop.layerShell)) applyGeometry()
+    onWidgetYChanged: if (geoWidget && !placingBatch && !(dragging && desktop.layerShell)) applyGeometry()
     onDraggingChanged: { applyGeometry(); updateMask() }
     onWinRectChanged: updateMask()
     onGeoWidgetChanged: updateMask()
@@ -99,12 +100,11 @@ Window {
     property real dragStartCx: 0
     property real dragStartY: 0
     property point dragStartCursor
-    property double dragLastMove: 0
     function dragBegin() {
         dragStartCx = widgetCx
         dragStartY = widgetY
         dragStartCursor = desktop.cursorPos()
-        dragLastMove = 0
+        dragPending = false
         dragging = true
     }
     // (lx, ly): how far the pointer is from where it was picked up, in the dragged item's own units (Wayland knows
@@ -114,16 +114,31 @@ Window {
             dragStep(lx * k, ly * k)
             return
         }
-        const now = Date.now()
-        if (now - dragLastMove < 8) // at most about 120 moves a second
-            return
-        dragLastMove = now
-        const c = desktop.cursorPos()
-        widgetCx = dragStartCx
-        widgetY = dragStartY
-        dragStep(c.x - dragStartCursor.x, c.y - dragStartCursor.y)
+        dragPending = true // the window is moved once per frame (dragFrame), not once per pointer event
     }
+    property bool dragPending: false
+    function dragFrame() {
+        if (!dragPending)
+            return
+        dragPending = false
+        const c = desktop.cursorPos()
+        dragTo(c.x - dragStartCursor.x, c.y - dragStartCursor.y)
+    }
+    // Windows and X11: the real pointer is read, so the window cannot run away from it. Set from where the card was
+    // picked up, x and y together, so the window is placed once per move (it used to go back to the start first).
+    function dragTo(dx, dy) {
+        const size = desktop.screenSize(root)
+        const k = island.scale
+        const w = island.targetWidth * k, h = island.targetHeight * k
+        placingBatch = true
+        widgetCx = Math.max(w / 2, Math.min(size.width - w / 2, dragStartCx + dx))
+        widgetY = Math.max(0, Math.min(size.height - h, dragStartY + dy))
+        placingBatch = false
+        applyGeometry()
+    }
+    FrameAnimation { running: root.dragging && !desktop.layerShell; onTriggered: root.dragFrame() }
     function dragEnd() {
+        dragFrame() // the last pointer move may not have had its frame yet
         dragging = false
         finishDrag()
     }
@@ -186,6 +201,8 @@ Window {
         const now = Date.now()
         if (lastFrame > 0 && now - lastFrame > 24 && (Math.abs(island.width - island.targetWidth) > 0.5 || Math.abs(island.height - island.targetHeight) > 0.5))
             dbg("slow frame " + (now - lastFrame) + " ms")
+        if (dragging) // the time between frames while the card is being moved
+            dbg("dragframe " + (lastFrame > 0 ? now - lastFrame : 0))
         lastFrame = now
     }
     readonly property bool engaged: !gaming.active && (pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt" && !floating)
@@ -742,8 +759,10 @@ Window {
     // Dwell before revealing, so flinging the mouse up to a tab doesn't pop the panel.
     Timer { id: dwellTimer; interval: 160; onTriggered: root.dwelled = true }
 
-    // Everything outside the live area is click-through.
-    function updateMask() {
+    // Everything outside the live area is click-through. Opening changes the mode and both target sizes in one go: the
+    // mask is set once afterwards (on Windows each call is a synchronous SetWindowRgn that can hold up the first frame).
+    function updateMask() { Qt.callLater(applyMask) }
+    function applyMask() {
         // Gaming mode over a full-screen app: the notch stays on screen but nothing can be reached. On Wayland an empty input
         // region does it (one corner pixel stays, as an empty mask means none). Elsewhere (Windows) a mask also clips what is
         // drawn, so the mask stays the notch's own shape and the window is made click-through instead (setClickThrough).
@@ -1051,18 +1070,21 @@ Window {
                                                                           targetHeight > 0 ? height / targetHeight : 1)))
         property bool revealed: false
         Component.onCompleted: revealed = root.mode === "open"
-        onProgressChanged: if (root.mode === "open" && progress >= 0.85) revealed = true
+        readonly property real revealAt: 0.7 // share of the target size at which the content appears
+        onProgressChanged: if (root.mode === "open" && progress >= revealAt) revealed = true
+        onRevealedChanged: root.dbg("revealed=" + revealed) // --debug-hover: pointer arrives -> content shown, for timing the opening
         Connections {
             target: root
-            function onModeChanged() { island.revealed = root.mode === "open" && island.progress >= 0.85 }
+            function onModeChanged() { island.revealed = root.mode === "open" && island.progress >= island.revealAt }
         }
 
-        // Height is stiffer than width: the drop falls first, then spreads and settles.
-        // Windows redraws a layered window less smoothly than KWin does, so there the spring rings less.
-        readonly property real openDamping: Qt.platform.os === "windows" ? 0.55 : root.pillLook ? 0.6 : 0.32 // the pill settles without a bounce
-        // A stiffer spring settles a few tens of ms sooner; epsilon 0.4 ends the tail of the animation earlier (invisible at that size).
-        Behavior on height { SpringAnimation { spring: island.closing ? 7 : 5.5; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : island.openDamping; epsilon: 0.4 } }
-        Behavior on width { SpringAnimation { spring: island.closing ? 6 : 3.4; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : island.openDamping; epsilon: 0.4 } }
+        // Height is stiffer than width: the drop falls first, then spreads and settles. The same on every platform (an extra
+        // Windows-only damping did not make it faster, only less even); the floating pill settles without a bounce. Timed with
+        // --debug-hover on Windows, pointer arriving -> content shown: 424 ms with width spring 3.4 and reveal at 85 %, 324 ms
+        // with 4.8 and 70 % (160 ms of it is the dwell on the hidden edge). epsilon 0.4 ends the tail of the animation earlier
+        // (invisible at that size).
+        Behavior on height { SpringAnimation { spring: island.closing ? 7 : 5.5; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : root.pillLook ? 0.6 : 0.32; epsilon: 0.4 } }
+        Behavior on width { SpringAnimation { spring: island.closing ? 6 : 4.8; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : root.pillLook ? 0.6 : 0.3; epsilon: 0.4 } }
         onTargetWidthChanged: root.maskMoving()
         onTargetHeightChanged: root.maskMoving()
         Connections { target: activities; function onSettingsChanged() { root.maskMoving() } }
@@ -1128,11 +1150,16 @@ Window {
         }
 
         // Liquid silhouette: flat top fused to the screen edge, concave shoulders, round bottom.
-        // Widget mode: a plain rounded card with a soft shadow instead of the island's silhouette.
+        // Widget mode: a plain rounded card with no shadow. The floating pill keeps its own soft shadow.
         readonly property bool roundShape: root.geoWidget || root.pillLook
         readonly property real roundRadius: root.pillLook ? Math.min(28, Math.max(0, height) / 2) : Math.min(20, Math.max(0, height) / 2)
-        Repeater { // a soft shadow: a few faint rounded layers, wider and lower each time (no effect pass)
-            model: island.roundShape && island.height > 0.5 ? 4 : 0
+        // The edge of the capsule and the card: the system accent (Windows / KDE) if chosen in Settings, else the pill's soft
+        // outline or the look's own outline.
+        readonly property color edgeColor: root.dragOver ? root.accent
+            : activities.borderMatchesSystem ? theme.systemAccent
+            : root.pillLook ? (theme.dark ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(0, 0, 0, 0.09)) : theme.outline
+        Repeater { // the pill's soft shadow: a few faint rounded layers, wider and lower each time (no effect pass)
+            model: root.pillLook && !root.geoWidget && island.height > 0.5 ? 4 : 0
             Rectangle {
                 required property int index
                 x: -(index + 1) * 2.5
@@ -1141,7 +1168,7 @@ Window {
                 height: parent.height + (index + 1) * 3
                 radius: parent.roundRadius + (index + 1) * 2
                 color: "#000000"
-                opacity: (root.pillLook ? 0.07 : 0.08) - index * (root.pillLook ? 0.016 : 0.015)
+                opacity: 0.07 - index * 0.016
             }
         }
         Rectangle {
@@ -1150,7 +1177,7 @@ Window {
             radius: island.roundRadius
             color: root.pillLook && theme.dark ? "#0a0a0a" : theme.island
             border.width: 1
-            border.color: root.dragOver ? root.accent : root.pillLook ? (theme.dark ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(0, 0, 0, 0.09)) : theme.outline
+            border.color: island.edgeColor
         }
         Shape {
             anchors.fill: parent
@@ -1163,7 +1190,7 @@ Window {
                 readonly property real w: island.width
                 readonly property real h: Math.max(0, island.height)
                 fillColor: theme.island
-                strokeColor: root.dragOver ? root.accent : theme.outline
+                strokeColor: island.edgeColor
                 strokeWidth: 1
                 startX: 0
                 startY: 0
