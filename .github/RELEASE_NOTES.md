@@ -1,3 +1,20 @@
+## Olyzano Notch 0.13.1
+
+Linux: much less memory. Nothing else changes; the Windows installer of 0.13.0 is still the current one.
+
+- **About 20 MB less at rest** (the capsule: 154 MB to 133 MB PSS, the memory Notch really owns) from fewer malloc arenas, memory handed back after the panel closes, a smaller worker pool and no helper thread in Mesa.
+- **Low memory mode** (*Settings → General → Performance*, Linux, restart to apply): draws with Qt's software renderer instead of the graphics card, about **87 MB** at rest (down from 154 MB), and a little less processor while the panel is open. It also keeps Mesa and LLVM from loading.
+- **Settings and the share dialog are unloaded** a minute or two after they are closed (they were ~20 MB for as long as Notch ran). Your place in Settings is kept.
+- **A crash-at-exit fixed:** closing Notch while `pactl` was still running could read freed memory (found with AddressSanitizer; no other leak was found in Notch's own code).
+- `scripts/memcheck.sh` measures all this on your own machine.
+
+### Downloads
+- **Linux:** `notch_0.13.1_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.13.1_amd64.deb`, then restart Olyzano Notch.
+- **Windows:** unchanged, see the [0.13.0 release](https://github.com/Kepin17/olyzano-notch/releases/tag/v0.13.0).
+- Optional components (OCR, KDE Connect, PDF tools on Windows): see the [install page](https://kepin17.github.io/olyzano-notch/#optional).
+
+---
+
 ## Olyzano Notch 0.13.0
 
 A calendar for your tasks, a clipboard history, a System monitor in Quick Settings, a roomier Files shelf, and Settings and glass that look and read better.
