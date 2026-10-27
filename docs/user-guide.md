@@ -55,6 +55,13 @@ appear next to the originals.
   clock on the right. Click the icons for **Quick Settings** (Wi-Fi, Bluetooth, volume, microphone, brightness, power mode); click the clock for a
   calendar; click the grid button for the **app launcher** (the Windows key can open it).
 
+### Tasks, clipboard, system
+
+- **Tasks.** Pick *Tasks* in the bar at the top of the open panel: a month on the left (a dot under every day with something to do, red when it is late) and the list on the right, nearest first. Tap a day to see only that day. **New** opens a small window for a name, a deadline and a time; a line like `Buy milk fri 17:00` is understood too. The nearest deadline shows in the closed capsule, and a note comes 15 minutes before and at the deadline.
+- **Clipboard history.** Off until you turn it on (*Settings → General → Clipboard*, or the button on the *Clipboard* page), because a clipboard often holds a password. Then the text and pictures you copy are kept on this computer, newest first: click one to copy it again, pin it, or keep it in Files. Copies marked secret by password managers are skipped, and the history forgets after a day, a week or never.
+- **System in Quick Settings.** Open Quick Settings in the status bar: the top of the card shows how busy the computer is (processor with its temperature, memory, graphics card, disk, network); tap a row for details and the busiest programs. *Settings → Panel → Quick Settings* chooses which parts the card has.
+- **Make it yours.** *Settings → Appearance* has *Interface size* (small to extra large), *Corners* (sharp to round), the theme and *Glass*. On Linux, *Settings → General → Performance → Low memory mode* draws without the graphics card and needs about 90 MB instead of 130 MB; restart Notch to apply it.
+
 ## 7. Where things are stored
 
 | | Linux | Windows |
