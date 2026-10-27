@@ -34,7 +34,7 @@ RowLayout {
     readonly property var index: [
         ["about", "Updates", "update upgrade new version release check download latest github notify"], ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
         ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Sounds", "sound effects volume quiet mute"],
-        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"],
+        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["general", "Floating pill", "pill floating capsule dynamic island edge look shape"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"],
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
         ["panel", "Transparency and blur", "glass opacity bar"], ["panel", "What the bar shows", "app name date seconds battery percentage"],
         ["panel", "Quick Settings", "wifi bluetooth volume brightness power click hover"],
@@ -275,6 +275,12 @@ RowLayout {
                 from: 80; to: 130; stepSize: 5
                 value: Math.round(activities.capsuleScale * 100)
                 onMoved: activities.capsuleScale = value / 100
+            }
+            SettingToggle {
+                title: "Floating pill"
+                caption: "The capsule floats a little below the top edge as a full pill with a thin outline and a soft shadow, instead of growing out of the edge. Not used in Widget mode."
+                checked: activities.capsuleLook === "pill"
+                onToggled: activities.capsuleLook = activities.capsuleLook === "pill" ? "edge" : "pill"
             }
             SettingToggle {
                 title: "Next task in the capsule"

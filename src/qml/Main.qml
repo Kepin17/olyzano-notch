@@ -59,6 +59,10 @@ Window {
     property real widgetY: 14
     property rect winRect: Qt.rect(0, 0, 840, 620)
     property bool geoWidget: false // the window is placed by the card (not at the top centre)
+    // "Floating pill" (Settings): at the top centre the capsule hangs a little below the edge as a full pill. The card of
+    // Widget mode is already round and floating, so it keeps its own look.
+    readonly property bool pillLook: activities.capsuleLook === "pill" && !geoWidget
+    readonly property real pillGap: pillLook ? 10 : 0
     property bool dragging: false
     property string dragMask: ""
     readonly property bool docked: !widgetMode || mode === "prompt" || mode === "hidden"
@@ -768,7 +772,7 @@ Window {
             const slack = maskSettle.running ? 24 : 0
             const k = root.mode === "idle" ? activities.capsuleScale : 1
             const w = Math.max(island.width, island.targetWidth) * k + 2 * slack
-            const h = Math.max(island.height, island.targetHeight, edge.height) * k + slack
+            const h = Math.max(island.height, island.targetHeight, edge.height) * k + slack + pillGap
             desktop.setInputRegion(root, Qt.rect((width - w) / 2, 0, w, h))
         }
     }
@@ -993,13 +997,13 @@ Window {
     Item {
         id: island
         x: root.geoWidget ? Math.max(0, Math.min(root.width - width, root.widgetCx - root.winRect.x - width / 2)) : (root.width - width) / 2
-        y: root.geoWidget ? Math.max(0, Math.min(root.height - height, root.widgetY - root.winRect.y)) : 0
+        y: root.geoWidget ? Math.max(0, Math.min(root.height - height, root.widgetY - root.winRect.y)) : root.pillGap
         // Where the island is heading; width and height follow it with the springs below.
         readonly property real targetWidth: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 400
              : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
              : root.mode === "idle" ? (root.musicShown ? root.capWidth : root.infoShown ? 390 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         readonly property real targetHeight: root.mode === "open" ? Math.max(panel.implicitHeight + (root.dragOver ? 8 : 0), root.shareNeed)
-              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 56 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? 48 : 26) : 0
+              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 56 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? (root.pillLook ? 52 : 48) : (root.pillLook ? 32 : 26)) : 0
         width: targetWidth
         height: targetHeight
         focus: true
@@ -1026,7 +1030,7 @@ Window {
 
         // Height is stiffer than width: the drop falls first, then spreads and settles.
         // Windows redraws a layered window less smoothly than KWin does, so there the spring rings less.
-        readonly property real openDamping: Qt.platform.os === "windows" ? 0.55 : 0.32
+        readonly property real openDamping: Qt.platform.os === "windows" ? 0.55 : root.pillLook ? 0.6 : 0.32 // the pill settles without a bounce
         // A stiffer spring settles a few tens of ms sooner; epsilon 0.4 ends the tail of the animation earlier (invisible at that size).
         Behavior on height { SpringAnimation { spring: island.closing ? 7 : 5.5; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : island.openDamping; epsilon: 0.4 } }
         Behavior on width { SpringAnimation { spring: island.closing ? 6 : 3.4; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : island.openDamping; epsilon: 0.4 } }
@@ -1096,7 +1100,8 @@ Window {
 
         // Liquid silhouette: flat top fused to the screen edge, concave shoulders, round bottom.
         // Widget mode: a plain rounded card with a soft shadow instead of the island's silhouette.
-        readonly property bool roundShape: root.geoWidget
+        readonly property bool roundShape: root.geoWidget || root.pillLook
+        readonly property real roundRadius: root.pillLook ? Math.min(28, Math.max(0, height) / 2) : Math.min(20, Math.max(0, height) / 2)
         Repeater { // a soft shadow: a few faint rounded layers, wider and lower each time (no effect pass)
             model: island.roundShape && island.height > 0.5 ? 4 : 0
             Rectangle {
@@ -1105,18 +1110,18 @@ Window {
                 y: 3 + index * 1.5
                 width: parent.width + (index + 1) * 5
                 height: parent.height + (index + 1) * 3
-                radius: Math.min(20, Math.max(0, parent.height) / 2) + (index + 1) * 2
+                radius: parent.roundRadius + (index + 1) * 2
                 color: "#000000"
-                opacity: 0.08 - index * 0.015
+                opacity: (root.pillLook ? 0.07 : 0.08) - index * (root.pillLook ? 0.016 : 0.015)
             }
         }
         Rectangle {
             anchors.fill: parent
             visible: island.roundShape && island.height > 0.5
-            radius: Math.min(20, Math.max(0, height) / 2)
-            color: theme.island
+            radius: island.roundRadius
+            color: root.pillLook && theme.dark ? "#0a0a0a" : theme.island
             border.width: 1
-            border.color: root.dragOver ? root.accent : theme.outline
+            border.color: root.dragOver ? root.accent : root.pillLook ? (theme.dark ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(0, 0, 0, 0.09)) : theme.outline
         }
         Shape {
             anchors.fill: parent
@@ -2496,7 +2501,7 @@ Window {
     Rectangle {
         visible: activities.privacyIndicators && root.mode !== "open" && activities.cameraApps.length > 0
         x: (root.geoWidget ? island.x + island.width / 2 : root.width / 2) + Math.max(island.width, 44) / 2 + 6
-        y: root.geoWidget ? island.y + 3 : 3
+        y: root.geoWidget ? island.y + 3 : root.pillGap + 3
         width: 7; height: 7; radius: 3.5
         color: "#30d158"
     }
