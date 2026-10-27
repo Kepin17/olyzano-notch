@@ -382,7 +382,7 @@ RowLayout {
                     }
                     Caption {
                         Layout.fillWidth: true
-                        text: "Try: “open Firefox”, “search for cats on YouTube”, “volume 40”, “timer 10 minutes”, “add task buy milk tomorrow 5”, “pause the music”. Nothing that deletes or shuts down is understood."
+                        text: "Try: “open the browser”, “open YouTube”, “search channel Nadia on YouTube”, “volume 40”, “timer 10 minutes”, “add task buy milk tomorrow 5”, “pause the music”. Nothing that deletes or shuts down is understood."
                     }
                 }
             }

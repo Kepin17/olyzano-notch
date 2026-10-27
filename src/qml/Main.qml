@@ -507,7 +507,7 @@ Window {
     readonly property var live: {
         if (assistant.state !== "idle") // a voice command: listening, thinking, or what it did
             return { kind: "assistant", progress: -1, detail: "", color: assistant.state === "error" ? theme.warn : theme.accent,
-                     title: assistant.state === "listening" ? "Listening…" : assistant.state === "thinking" ? (assistant.heard !== "" ? assistant.heard : "Thinking…") : assistant.result }
+                     title: assistant.state === "listening" ? "Say: “" + assistant.hint + "”" : assistant.state === "thinking" ? (assistant.heard !== "" ? assistant.heard : "Thinking…") : assistant.result }
         if (call)
             return { kind: "call", title: call.who, detail: "Calling", progress: -1, color: theme.success }
         if (wellbeing.state === "break") {

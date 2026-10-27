@@ -38,6 +38,7 @@ class Assistant : public QObject
     Q_PROPERTY(QString searchEngine READ searchEngine WRITE setSearchEngine NOTIFY settingsChanged)
     Q_PROPERTY(QString state READ state NOTIFY stateChanged)                // idle | listening | thinking | done | error
     Q_PROPERTY(qreal level READ level NOTIFY levelChanged)                  // 0..1: how loud the voice is, for the wave
+    Q_PROPERTY(QString hint READ hint NOTIFY hintChanged)                   // an example of what to say, changing while it listens
     Q_PROPERTY(QString heard READ heard NOTIFY resultChanged)
     Q_PROPERTY(QString result READ result NOTIFY resultChanged)
     Q_PROPERTY(QString modelState READ modelState NOTIFY modelChanged)      // missing | downloading | ready
@@ -61,6 +62,8 @@ public:
     void setSearchEngine(const QString &e) { store(QStringLiteral("searchEngine"), e); }
     QString state() const { return m_state; }
     qreal level() const { return m_level; }
+    QString hint() const { return hints().at(m_hint % hints().size()); }
+    static const QStringList &hints();
     QString heard() const { return m_heard; }
     QString result() const { return m_result; }
     QString modelState() const;
@@ -85,6 +88,7 @@ signals:
     void stateChanged();
     void levelChanged();
     void resultChanged();
+    void hintChanged();
     void modelChanged();
 
 private:
@@ -114,7 +118,8 @@ private:
     QString m_state = QStringLiteral("idle");
     qreal m_level = 0;
     QString m_heard, m_result;
-    QTimer m_idleTimer;
+    QTimer m_idleTimer, m_hintTimer;
+    int m_hint = 0;
 
     std::mutex m_whisperMutex; // one recognition at a time; the model stays loaded between commands
     Whisper m_whisper;

@@ -15,7 +15,7 @@
 // Nothing that destroys anything (close, shut down, delete) is understood on purpose.
 namespace AssistantModel {
 
-enum class Kind { Unknown, OpenApp, OpenBrowser, Search, Volume, Media, Timer, Task, Note };
+enum class Kind { Unknown, OpenApp, OpenBrowser, OpenSite, Search, Volume, Media, Timer, Task, Note };
 enum class VolumeAction { Set, Up, Down, Mute, Unmute };
 enum class MediaAction { Play, Pause, Next, Previous };
 
@@ -23,6 +23,7 @@ struct Intent {
     Kind kind = Kind::Unknown;
     QString text;           // the app asked for, the search words, the task or the note
     QString engine;         // Search: google, youtube, ... ("" = the person's choice)
+    QString filter;         // Search on YouTube: "video" or "channel" ("" = anything)
     int number = -1;        // Volume: the percent (or the step), Timer: the amount (in seconds)
     VolumeAction volume = VolumeAction::Set;
     MediaAction media = MediaAction::Play;
@@ -34,7 +35,7 @@ inline QString normalize(const QString &said)
 {
     QString s = said.toLower();
     s.replace(QRegularExpression(QStringLiteral("[^\\p{L}\\p{N}:.]+")), QStringLiteral(" "));
-    s.replace(QRegularExpression(QStringLiteral("(?<![0-9])[.:]|[.:](?![0-9])")), QStringLiteral(" "));
+    s.replace(QRegularExpression(QStringLiteral("(?<![\\p{L}\\p{N}])[.:]|[.:](?![\\p{L}\\p{N}])")), QStringLiteral(" "));
     static const QSet<QString> filler{QStringLiteral("tolong"), QStringLiteral("dong"), QStringLiteral("deh"), QStringLiteral("ya"),
                                       QStringLiteral("please"), QStringLiteral("hey"), QStringLiteral("hei"), QStringLiteral("hai"),
                                       QStringLiteral("notch"), QStringLiteral("ok"), QStringLiteral("okay"), QStringLiteral("saja"),
@@ -192,6 +193,42 @@ inline QString taskText(const QString &text)
     return s.simplified();
 }
 
+inline int editDistance(const QString &a, const QString &b);
+
+// A web site by its name ("youtube", "google maps") or as a domain ("github.com"): its address, "" when it is neither.
+inline QString siteUrl(const QString &said)
+{
+    static const QHash<QString, QString> sites{
+        {QStringLiteral("youtube"), QStringLiteral("https://www.youtube.com/")}, {QStringLiteral("google"), QStringLiteral("https://www.google.com/")},
+        {QStringLiteral("gmail"), QStringLiteral("https://mail.google.com/")}, {QStringLiteral("google maps"), QStringLiteral("https://maps.google.com/")},
+        {QStringLiteral("maps"), QStringLiteral("https://maps.google.com/")}, {QStringLiteral("google drive"), QStringLiteral("https://drive.google.com/")},
+        {QStringLiteral("drive"), QStringLiteral("https://drive.google.com/")}, {QStringLiteral("github"), QStringLiteral("https://github.com/")},
+        {QStringLiteral("facebook"), QStringLiteral("https://www.facebook.com/")}, {QStringLiteral("instagram"), QStringLiteral("https://www.instagram.com/")},
+        {QStringLiteral("twitter"), QStringLiteral("https://x.com/")}, {QStringLiteral("x"), QStringLiteral("https://x.com/")},
+        {QStringLiteral("tiktok"), QStringLiteral("https://www.tiktok.com/")}, {QStringLiteral("netflix"), QStringLiteral("https://www.netflix.com/")},
+        {QStringLiteral("linkedin"), QStringLiteral("https://www.linkedin.com/")}, {QStringLiteral("reddit"), QStringLiteral("https://www.reddit.com/")},
+        {QStringLiteral("wikipedia"), QStringLiteral("https://www.wikipedia.org/")}, {QStringLiteral("tokopedia"), QStringLiteral("https://www.tokopedia.com/")},
+        {QStringLiteral("shopee"), QStringLiteral("https://shopee.co.id/")}, {QStringLiteral("bing"), QStringLiteral("https://www.bing.com/")},
+        {QStringLiteral("duckduckgo"), QStringLiteral("https://duckduckgo.com/")}, {QStringLiteral("chatgpt"), QStringLiteral("https://chatgpt.com/")}};
+    const QString q = said.trimmed().toLower();
+    if (const QString hit = sites.value(q); !hit.isEmpty())
+        return hit;
+    static const QRegularExpression domain(QStringLiteral("^[a-z0-9-]+(\\.[a-z0-9-]+)*\\.(com|id|net|org|io|co|dev|app|ai|me|tv)(/\\S*)?$"));
+    if (domain.match(q).hasMatch())
+        return QStringLiteral("https://") + q;
+    return {};
+}
+
+// Heard a little off ("brouser", "perambah"): is it the browser that was asked for?
+inline bool looksLikeBrowser(const QString &said)
+{
+    const QString q = said.trimmed().toLower().remove(u' ');
+    if (q.size() < 5)
+        return false;
+    return editDistance(q, QStringLiteral("browser")) <= 2 || editDistance(q, QStringLiteral("peramban")) <= 2 || editDistance(q, QStringLiteral("webbrowser")) <= 2
+           || q == QLatin1String("internet") || q == QLatin1String("browsernya");
+}
+
 inline Intent parse(const QString &said)
 {
     Intent in;
@@ -252,30 +289,86 @@ inline Intent parse(const QString &said)
         }
     }
 
-    // a search: "cari resep nasi goreng", "search for cats on youtube", "google weather"
-    if (first == QLatin1String("cari") || first == QLatin1String("carikan") || first == QLatin1String("search") || first == QLatin1String("google")
-        || first == QLatin1String("telusuri")) {
-        QStringList q = w.mid(1);
-        while (!q.isEmpty() && (q.first() == QLatin1String("for") || q.first() == QLatin1String("tentang") || q.first() == QLatin1String("untuk")
-                                || q.first() == QLatin1String("about")))
-            q.removeFirst();
+    // a search: "cari resep nasi goreng", "search for cats on youtube", "cari video kucing", "cari channel Nadia di youtube",
+    // "buka youtube dan cari musik", "di youtube cari kucing"; "cari youtube" alone just opens it
+    {
+        static const QStringList searchVerbs{QStringLiteral("cari"), QStringLiteral("carikan"), QStringLiteral("search"), QStringLiteral("telusuri"),
+                                             QStringLiteral("find"), QStringLiteral("google")};
         static const QStringList engines{QStringLiteral("google"), QStringLiteral("youtube"), QStringLiteral("bing"), QStringLiteral("duckduckgo"),
                                          QStringLiteral("wikipedia")};
-        if (q.size() >= 2 && (q.at(q.size() - 2) == QLatin1String("di") || q.at(q.size() - 2) == QLatin1String("in")
-                              || q.at(q.size() - 2) == QLatin1String("on") || q.at(q.size() - 2) == QLatin1String("pada"))
-            && engines.contains(q.last())) {
-            in.engine = q.last();
-            q = q.mid(0, q.size() - 2);
-        } else if (q.size() >= 3 && (q.at(q.size() - 3) == QLatin1String("di") || q.at(q.size() - 3) == QLatin1String("in") || q.at(q.size() - 3) == QLatin1String("on"))
-                   && (q.last() == QLatin1String("internet") || q.last() == QLatin1String("web"))) {
-            q = q.mid(0, q.size() - 3);
+        static const QStringList lead{QStringLiteral("buka"), QStringLiteral("open"), QStringLiteral("di"), QStringLiteral("in"), QStringLiteral("on"),
+                                      QStringLiteral("ke"), QStringLiteral("dan"), QStringLiteral("and"), QStringLiteral("lalu"), QStringLiteral("then"),
+                                      QStringLiteral("terus"), QStringLiteral("pada")};
+        const auto isPlace = [](const QString &x) { return x == QLatin1String("di") || x == QLatin1String("in") || x == QLatin1String("on") || x == QLatin1String("pada"); };
+        int vi = -1;
+        for (int i = 0; i < w.size() && vi < 0; ++i) {
+            if (!searchVerbs.contains(w.at(i)))
+                continue;
+            if (w.at(i) == QLatin1String("google") && i != 0)
+                continue; // "buka google" is a place, not a verb
+            bool prefixOk = true;
+            for (int k = 0; k < i; ++k)
+                prefixOk = prefixOk && (lead.contains(w.at(k)) || engines.contains(w.at(k)));
+            if (prefixOk)
+                vi = i;
         }
-        if (first == QLatin1String("google") && in.engine.isEmpty())
-            in.engine = QStringLiteral("google");
-        if (!q.isEmpty()) {
-            in.kind = Kind::Search;
-            in.text = q.join(u' ');
-            return in;
+        if (vi >= 0) {
+            QStringList q = w.mid(vi + 1);
+            for (int k = 0; k < vi; ++k)
+                if (engines.contains(w.at(k)))
+                    in.engine = w.at(k);
+            if (w.at(vi) == QLatin1String("google") && in.engine.isEmpty())
+                in.engine = QStringLiteral("google");
+            const auto dropLead = [&] {
+                while (!q.isEmpty() && (q.first() == QLatin1String("for") || q.first() == QLatin1String("tentang") || q.first() == QLatin1String("untuk")
+                                        || q.first() == QLatin1String("about") || q.first() == QLatin1String("dari") || q.first() == QLatin1String("from")))
+                    q.removeFirst();
+            };
+            dropLead();
+            if (q.size() >= 2 && isPlace(q.first()) && engines.contains(q.at(1))) { // "cari di youtube kucing"
+                in.engine = q.at(1);
+                q = q.mid(2);
+            } else if (!q.isEmpty() && engines.contains(q.first()) && q.first() != QLatin1String("google")) { // "cari youtube kucing"
+                in.engine = q.first();
+                q.removeFirst();
+            }
+            if (q.size() >= 2 && isPlace(q.at(q.size() - 2)) && engines.contains(q.last())) { // "... di youtube"
+                in.engine = q.last();
+                q = q.mid(0, q.size() - 2);
+            } else if (q.size() >= 3 && isPlace(q.at(q.size() - 3)) && (q.last() == QLatin1String("internet") || q.last() == QLatin1String("web"))) {
+                q = q.mid(0, q.size() - 3);
+            }
+            dropLead();
+            // "video ..." or "channel ..." means YouTube, with that kind of result
+            if (!q.isEmpty()) {
+                const QString f = q.first();
+                if (f == QLatin1String("video") || f == QLatin1String("videos") || f == QLatin1String("vidio")) {
+                    in.filter = QStringLiteral("video");
+                    q.removeFirst();
+                } else if (f == QLatin1String("channel") || f == QLatin1String("channels") || f == QLatin1String("saluran") || f == QLatin1String("kanal")) {
+                    in.filter = QStringLiteral("channel");
+                    q.removeFirst();
+                }
+                if (!in.filter.isEmpty()) {
+                    if (in.engine.isEmpty())
+                        in.engine = QStringLiteral("youtube");
+                    dropLead();
+                    if (!q.isEmpty() && (q.first() == QLatin1String("bernama") || q.first() == QLatin1String("named") || q.first() == QLatin1String("called")))
+                        q.removeFirst();
+                }
+            }
+            if (!q.isEmpty()) {
+                in.kind = Kind::Search;
+                in.text = q.join(u' ');
+                return in;
+            }
+            if (!in.engine.isEmpty()) { // "cari youtube": no words to look for, so just open it
+                in.kind = Kind::OpenSite;
+                in.text = siteUrl(in.engine);
+                in.engine.clear();
+                in.filter.clear();
+                return in;
+            }
         }
     }
 
@@ -349,10 +442,16 @@ inline Intent parse(const QString &said)
     static const QStringList openVerbs{QStringLiteral("buka"), QStringLiteral("bukakan"), QStringLiteral("open"), QStringLiteral("launch"),
                                        QStringLiteral("jalankan"), QStringLiteral("start"), QStringLiteral("run"), QStringLiteral("nyalakan")};
     if (openVerbs.contains(first) && w.size() > 1) {
-        const QString what = dropWords(rest(), {"aplikasi", "app", "application", "program", "the", "ke"});
-        if (what == QLatin1String("browser") || what == QLatin1String("peramban") || what == QLatin1String("internet") || what == QLatin1String("web browser")
-            || what == QLatin1String("web") || what == QLatin1String("browsers")) {
+        const QString what = dropWords(rest(), {"aplikasi", "app", "application", "program", "the", "ke", "situs", "website", "web", "halaman", "laman", "site"});
+        const QString plain = dropWords(rest(), {"aplikasi", "app", "application", "program", "the", "ke"});
+        if (plain == QLatin1String("browser") || plain == QLatin1String("peramban") || plain == QLatin1String("internet") || plain == QLatin1String("web browser")
+            || plain == QLatin1String("web") || plain == QLatin1String("browsers") || looksLikeBrowser(plain)) {
             in.kind = Kind::OpenBrowser;
+            return in;
+        }
+        if (const QString url = siteUrl(what); !url.isEmpty()) {
+            in.kind = Kind::OpenSite;
+            in.text = url;
             return in;
         }
         if (!what.isEmpty()) {
@@ -421,7 +520,7 @@ inline AppMatch matchApp(const QString &said, const QStringList &names)
 }
 
 // ---- the web ----
-inline QUrl searchUrl(const QString &engine, const QString &query)
+inline QUrl searchUrl(const QString &engine, const QString &query, const QString &filter = QString())
 {
     const QString e = engine.toLower();
     QString base, key = QStringLiteral("q");
@@ -433,6 +532,10 @@ inline QUrl searchUrl(const QString &engine, const QString &query)
     QUrl url(base);
     QUrlQuery q;
     q.addQueryItem(key, query);
+    if (e == QLatin1String("youtube") && filter == QLatin1String("channel"))
+        q.addQueryItem(QStringLiteral("sp"), QStringLiteral("EgIQAg==")); // YouTube's own filter: channels only
+    else if (e == QLatin1String("youtube") && filter == QLatin1String("video"))
+        q.addQueryItem(QStringLiteral("sp"), QStringLiteral("EgIQAQ==")); // videos only
     url.setQuery(q);
     return url;
 }

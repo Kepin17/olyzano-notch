@@ -53,6 +53,13 @@ QString duration(int seconds)
 
 }
 
+const QStringList &Assistant::hints()
+{
+    static const QStringList h{tr("open YouTube"), tr("search cats on YouTube"), tr("search channel Nadia"), tr("open the browser"), tr("volume 40"),
+                               tr("timer 10 minutes"), tr("pause the music"), tr("add task buy milk")};
+    return h;
+}
+
 Assistant::Assistant(Launcher *launcher, Tasks *tasks, QuickSettings *quick, MediaPlayers *media, Activities *activities,
                      NotchController *notch, QObject *parent)
     : QObject(parent), m_launcher(launcher), m_tasks(tasks), m_quick(quick), m_media(media), m_activities(activities), m_notch(notch),
@@ -61,6 +68,8 @@ Assistant::Assistant(Launcher *launcher, Tasks *tasks, QuickSettings *quick, Med
     m_idleTimer.setSingleShot(true);
     m_idleTimer.setInterval(3500);
     connect(&m_idleTimer, &QTimer::timeout, this, [this] { if (m_state == QLatin1String("done") || m_state == QLatin1String("error")) setState(QStringLiteral("idle")); });
+    m_hintTimer.setInterval(2600);
+    connect(&m_hintTimer, &QTimer::timeout, this, [this] { ++m_hint; emit hintChanged(); });
     connect(&m_mic, &MicCapture::chunk, this, &Assistant::onChunk);
     connect(&m_mic, &MicCapture::failed, this, [this](const QString &why) {
         if (m_state == QLatin1String("listening"))
@@ -152,6 +161,10 @@ void Assistant::setState(const QString &s)
         m_level = 0;
         emit levelChanged();
     }
+    if (s == QLatin1String("listening"))
+        m_hintTimer.start();
+    else
+        m_hintTimer.stop();
     if (s == QLatin1String("done") || s == QLatin1String("error"))
         m_idleTimer.start();
     else
@@ -286,7 +299,7 @@ void Assistant::act(const QString &text)
 {
     const AssistantModel::Intent in = AssistantModel::parse(text);
     if (in.kind == AssistantModel::Kind::Unknown)
-        return finish(QStringLiteral("error"), text, tr("I did not understand that."));
+        return finish(QStringLiteral("error"), text, tr("Not understood. Try: \"%1\"").arg(hints().at(m_hint % hints().size())));
     finish(QStringLiteral("done"), text, run(in));
 }
 
@@ -296,7 +309,8 @@ QString Assistant::describe(const AssistantModel::Intent &in) const
     switch (in.kind) {
     case K::OpenApp: return tr("open the app \"%1\"").arg(in.text);
     case K::OpenBrowser: return tr("open the browser");
-    case K::Search: return tr("search for \"%1\"").arg(in.text);
+    case K::OpenSite: return tr("open %1").arg(in.text);
+    case K::Search: return tr("search for \"%1\"%2%3").arg(in.text, in.engine.isEmpty() ? QString() : tr(" on %1").arg(in.engine), in.filter.isEmpty() ? QString() : tr(" (%1)").arg(in.filter));
     case K::Volume: return tr("volume (%1)").arg(in.number);
     case K::Media: return tr("music control");
     case K::Timer: return tr("set a timer for %1").arg(duration(in.number));
@@ -327,12 +341,17 @@ QString Assistant::run(const AssistantModel::Intent &in)
     case Kind::OpenBrowser: {
         QUrl home = searchUrl(searchEngine(), QString());
         home.setQuery(QString());
-        QDesktopServices::openUrl(home);
+        QDesktopServices::openUrl(home); // the browser the system has chosen, never one picked here
         return tr("Opening the browser");
     }
-    case Kind::Search:
-        QDesktopServices::openUrl(searchUrl(in.engine.isEmpty() ? searchEngine() : in.engine, in.text));
-        return tr("Searching for \"%1\"").arg(in.text);
+    case Kind::OpenSite:
+        QDesktopServices::openUrl(QUrl(in.text)); // in the browser the system has chosen
+        return tr("Opening %1").arg(QUrl(in.text).host().remove(QStringLiteral("www.")));
+    case Kind::Search: {
+        const QString engine = in.engine.isEmpty() ? searchEngine() : in.engine;
+        QDesktopServices::openUrl(searchUrl(engine, in.text, in.filter));
+        return in.engine.isEmpty() ? tr("Searching for \"%1\"").arg(in.text) : tr("Searching %1 for \"%2\"").arg(engine, in.text);
+    }
     case Kind::Volume: {
         if (!m_quick || !m_quick->audioAvailable())
             return tr("Volume control is not available here.");

@@ -2557,6 +2557,57 @@ private slots:
         QCOMPARE(parse(QString()).kind, Kind::Unknown);
     }
 
+    void assistantOpensSitesAndSearchesYoutube()
+    {
+        using namespace AssistantModel;
+        Intent i = parse(QStringLiteral("buka youtube"));
+        QCOMPARE(i.kind, Kind::OpenSite);
+        QCOMPARE(i.text, QStringLiteral("https://www.youtube.com/"));
+        i = parse(QStringLiteral("cari youtube"));            // no words to look for: open it
+        QCOMPARE(i.kind, Kind::OpenSite);
+        QCOMPARE(i.text, QStringLiteral("https://www.youtube.com/"));
+        QCOMPARE(parse(QStringLiteral("open github.com")).text, QStringLiteral("https://github.com"));
+        QCOMPARE(parse(QStringLiteral("buka situs tokopedia")).kind, Kind::OpenSite);
+        QCOMPARE(parse(QStringLiteral("buka google maps")).text, QStringLiteral("https://maps.google.com/"));
+
+        i = parse(QStringLiteral("cari video kucing lucu"));
+        QCOMPARE(i.kind, Kind::Search);
+        QCOMPARE(i.engine, QStringLiteral("youtube"));
+        QCOMPARE(i.filter, QStringLiteral("video"));
+        QCOMPARE(i.text, QStringLiteral("kucing lucu"));
+        i = parse(QStringLiteral("cari channel Nadia di youtube"));
+        QCOMPARE(i.engine, QStringLiteral("youtube"));
+        QCOMPARE(i.filter, QStringLiteral("channel"));
+        QCOMPARE(i.text, QStringLiteral("nadia"));
+        i = parse(QStringLiteral("search for channel called Fireship"));
+        QCOMPARE(i.filter, QStringLiteral("channel"));
+        QCOMPARE(i.text, QStringLiteral("fireship"));
+        i = parse(QStringLiteral("buka youtube dan cari musik santai"));
+        QCOMPARE(i.kind, Kind::Search);
+        QCOMPARE(i.engine, QStringLiteral("youtube"));
+        QCOMPARE(i.text, QStringLiteral("musik santai"));
+        i = parse(QStringLiteral("di youtube cari tutorial qt"));
+        QCOMPARE(i.engine, QStringLiteral("youtube"));
+        QCOMPARE(i.text, QStringLiteral("tutorial qt"));
+        i = parse(QStringLiteral("cari youtube kucing"));
+        QCOMPARE(i.engine, QStringLiteral("youtube"));
+        QCOMPARE(i.text, QStringLiteral("kucing"));
+        QVERIFY(QString::fromLatin1(searchUrl(QStringLiteral("youtube"), QStringLiteral("x"), QStringLiteral("channel")).toEncoded()).contains(QStringLiteral("sp=EgIQAg")));
+        QVERIFY(!QString::fromLatin1(searchUrl(QStringLiteral("youtube"), QStringLiteral("x")).toEncoded()).contains(QStringLiteral("sp=")));
+    }
+
+    void assistantTakesBrowserLookalikesForTheBrowser()
+    {
+        using namespace AssistantModel;
+        QCOMPARE(parse(QStringLiteral("buka browser")).kind, Kind::OpenBrowser);
+        QCOMPARE(parse(QStringLiteral("buka brouser")).kind, Kind::OpenBrowser);
+        QCOMPARE(parse(QStringLiteral("buka browsernya")).kind, Kind::OpenBrowser);
+        QCOMPARE(parse(QStringLiteral("open web browser")).kind, Kind::OpenBrowser);
+        QCOMPARE(parse(QStringLiteral("buka peramban")).kind, Kind::OpenBrowser);
+        QCOMPARE(parse(QStringLiteral("buka firefox")).kind, Kind::OpenApp); // a named browser is still an app
+        QCOMPARE(parse(QStringLiteral("buka brave")).kind, Kind::OpenApp);
+    }
+
     void assistantMatchesAppNames()
     {
         const QStringList apps{QStringLiteral("Firefox Web Browser"), QStringLiteral("Terminal"), QStringLiteral("Files"),
