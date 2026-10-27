@@ -22,6 +22,7 @@ Rectangle {
     readonly property color fgFaint: hasArt ? Qt.rgba(1, 1, 1, 0.5) : theme.textFaint
     property real position: 0 // ms, interpolated between D-Bus reads
     property bool scrubbing: false
+    property bool volumeOpen: false
     readonly property real shown: media.lengthMs > 0 ? Math.max(0, Math.min(media.lengthMs, position)) : Math.max(0, position) // never past the end
     // The user did something with the card: keep it open (Main stops the auto-hide).
     signal interacted()
@@ -73,7 +74,7 @@ Rectangle {
             card.sync()
         }
     }
-    onVisibleChanged: if (visible) sync()
+    onVisibleChanged: { if (visible) sync(); else volumeOpen = false }
 
     // ---- a new song: the background fades up, the cover pops, the text slides in ----
     property string lastTitle: media.title
@@ -360,10 +361,115 @@ Rectangle {
         // transport: previous, a big play / pause, next
         RowLayout {
             Layout.fillWidth: true
-            spacing: card.compact ? 8 : 14
+            spacing: card.compact ? 4 : 14
+            Item { // the volume: tap the speaker and a bar comes up (like a video player)
+                id: volumeBox
+                z: 20
+                Layout.preferredWidth: 36
+                Layout.preferredHeight: 36
+                Layout.alignment: Qt.AlignVCenter
+                Layout.minimumWidth: 36
+                RoundButton {
+                    id: speaker
+                    visible: quick.audioAvailable
+                    anchors.centerIn: parent
+                    implicitWidth: 32
+                    implicitHeight: 32
+                    Accessible.name: "Volume"
+                    onClicked: { card.volumeOpen = !card.volumeOpen; quick.updateVolume(); volumeClose.restart(); card.interacted() }
+                    background: Rectangle {
+                        radius: width / 2
+                        color: card.volumeOpen ? Qt.alpha(card.tint, 0.3) : speaker.down ? Qt.rgba(1, 1, 1, 0.22) : speaker.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                    }
+                    contentItem: Item {
+                        LineIcon {
+                            anchors.centerIn: parent
+                            glyph: quick.muted || quick.volume === 0 ? "volume-off" : "volume"
+                            sourceSize: Qt.size(16, 16)
+                            color: card.volumeOpen ? card.tint : card.fgDim
+                        }
+                    }
+                    WheelHandler { onWheel: (e) => { quick.setVolume(quick.volume + (e.angleDelta.y > 0 ? 5 : -5)); volumeClose.restart(); card.interacted() } }
+                }
+                Rectangle { // the bar that comes up above the speaker
+                    id: volumePop
+                    width: 40
+                    height: 142
+                    radius: 20
+                    x: (volumeBox.width - width) / 2
+                    y: -height - 6
+                    visible: opacity > 0
+                    opacity: card.volumeOpen ? 1 : 0
+                    scale: card.volumeOpen ? 1 : 0.9
+                    transformOrigin: Item.Bottom
+                    color: Qt.rgba(0.05, 0.05, 0.06, 0.94)
+                    border.width: 1
+                    border.color: Qt.rgba(1, 1, 1, 0.12)
+                    Behavior on opacity { NumberAnimation { duration: 140 } }
+                    Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: 9
+                        text: quick.muted ? "0" : quick.volume
+                        color: "#ffffff"
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                        font.features: { "tnum": 1 }
+                    }
+                    Item { // the track
+                        id: track
+                        x: (parent.width - width) / 2
+                        y: 28
+                        width: 20
+                        height: parent.height - 28 - 38
+                        readonly property real ratio: quick.muted ? 0 : Math.max(0, Math.min(1, quick.volume / 100))
+                        Accessible.name: "Volume"
+                        Accessible.role: Accessible.Slider
+                        Rectangle {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            width: 4
+                            height: parent.height
+                            radius: 2
+                            color: Qt.rgba(1, 1, 1, 0.22)
+                            Rectangle {
+                                anchors.bottom: parent.bottom
+                                width: parent.width
+                                height: parent.height * track.ratio
+                                radius: 2
+                                color: card.tint
+                            }
+                        }
+                        Rectangle {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            y: parent.height * (1 - track.ratio) - height / 2
+                            width: 12; height: 12; radius: 6
+                            color: "#ffffff"
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            anchors.margins: -4
+                            cursorShape: Qt.PointingHandCursor
+                            function setTo(y) { quick.setVolume(Math.round(Math.max(0, Math.min(1, 1 - (y - 4) / track.height)) * 100)) }
+                            onPressed: (m) => { setTo(m.y); volumeClose.restart() }
+                            onPositionChanged: (m) => { if (pressed) { setTo(m.y); volumeClose.restart() } }
+                            onReleased: card.interacted()
+                            onWheel: (w) => { quick.setVolume(quick.volume + (w.angleDelta.y > 0 ? 5 : -5)); volumeClose.restart(); card.interacted() }
+                        }
+                    }
+                    LineIcon { // mute
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: parent.height - height - 11
+                        glyph: quick.muted || quick.volume === 0 ? "volume-off" : "volume"
+                        sourceSize: Qt.size(15, 15)
+                        color: quick.muted ? theme.danger : "#ffffff"
+                        TapHandler { onTapped: { quick.toggleMute(); volumeClose.restart(); card.interacted() } }
+                    }
+                }
+                Timer { id: volumeClose; interval: 3500; onTriggered: card.volumeOpen = false }
+            }
             Item { Layout.fillWidth: true }
             RoundButton { // back 10 seconds
-                implicitWidth: 40
+                implicitWidth: card.compact ? 32 : 40
                 implicitHeight: 40
                 Accessible.name: "Back 10 seconds"
                 enabled: media.canSeek && media.lengthMs > 0
@@ -378,7 +484,7 @@ Rectangle {
                 }
             }
             RoundButton {
-                implicitWidth: 46
+                implicitWidth: card.compact ? 40 : 46
                 implicitHeight: 46
                 Accessible.name: "Previous"
                 enabled: media.canPrevious
@@ -387,8 +493,8 @@ Rectangle {
             }
             AbstractButton {
                 id: play
-                implicitWidth: 60
-                implicitHeight: 60
+                implicitWidth: card.compact ? 56 : 60
+                implicitHeight: card.compact ? 56 : 60
                 Accessible.name: media.playing ? "Pause" : "Play"
                 onClicked: media.playPause()
                 background: Item {
@@ -426,7 +532,7 @@ Rectangle {
                 }
             }
             RoundButton {
-                implicitWidth: 46
+                implicitWidth: card.compact ? 40 : 46
                 implicitHeight: 46
                 Accessible.name: "Next"
                 enabled: media.canNext
@@ -434,7 +540,7 @@ Rectangle {
                 contentItem: Item { Skip { anchors.centerIn: parent } }
             }
             RoundButton { // forward 10 seconds
-                implicitWidth: 40
+                implicitWidth: card.compact ? 32 : 40
                 implicitHeight: 40
                 Accessible.name: "Forward 10 seconds"
                 enabled: media.canSeek && media.lengthMs > 0
@@ -449,88 +555,40 @@ Rectangle {
                 }
             }
             Item { Layout.fillWidth: true }
-        }
-
-        // the volume of the speakers
-        RowLayout {
-            id: volumeRow
-            visible: quick.audioAvailable
-            Layout.fillWidth: true
-            spacing: 8
-            onVisibleChanged: if (visible) quick.updateVolume()
-            LineIcon {
-                glyph: quick.muted || quick.volume === 0 ? "volume-off" : "volume"
-                sourceSize: Qt.size(16, 16)
-                color: quick.muted ? theme.danger : card.fgDim
-                TapHandler { onTapped: quick.toggleMute() }
-            }
-            Item {
-                id: volBar
-                Layout.fillWidth: true
-                implicitHeight: 22
-                readonly property real ratio: Math.max(0, Math.min(1, quick.volume / 100))
-                readonly property bool active: volArea.containsMouse || volArea.pressed
-                Accessible.name: "Volume"
-                Accessible.role: Accessible.Slider
-                Rectangle {
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: parent.width
-                    height: volBar.active ? 6 : 4
-                    radius: height / 2
-                    color: card.hasArt ? Qt.rgba(1, 1, 1, 0.22) : theme.surfacePressed
-                    Behavior on height { NumberAnimation { duration: 100 } }
-                    Rectangle { width: parent.width * volBar.ratio; height: parent.height; radius: height / 2; color: card.tint; opacity: quick.muted ? 0.4 : 1 }
+            Item { // karaoke: your voice through the speakers or headphones, with the music
+                Layout.preferredWidth: 36
+                Layout.preferredHeight: 36
+                Layout.minimumWidth: 36
+                Layout.alignment: Qt.AlignVCenter
+                RoundButton {
+                    id: mic
+                    anchors.centerIn: parent
+                    visible: karaoke.supported
+                    implicitWidth: 32
+                    implicitHeight: 32
+                    Accessible.name: karaoke.active ? "Stop karaoke" : "Karaoke: sing along"
+                    onClicked: karaoke.toggle()
+                    background: Rectangle {
+                        radius: width / 2
+                        color: karaoke.active ? Qt.alpha(card.tint, 0.3) : mic.down ? Qt.rgba(1, 1, 1, 0.22) : mic.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                    }
+                    contentItem: Item {
+                        LineIcon {
+                            anchors.centerIn: parent
+                            glyph: "mic"
+                            sourceSize: Qt.size(16, 16)
+                            color: karaoke.active ? card.tint : card.fgDim
+                        }
+                    }
                 }
-                Rectangle {
-                    x: volBar.width * volBar.ratio - width / 2
-                    anchors.verticalCenter: parent.verticalCenter
-                    width: 13; height: 13; radius: 6.5
-                    color: "#ffffff"
-                    opacity: volBar.active ? 1 : 0
-                    Behavior on opacity { NumberAnimation { duration: 120 } }
-                }
-                MouseArea {
-                    id: volArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                    cursorShape: Qt.PointingHandCursor
-                    function setTo(x) { quick.setVolume(Math.round(Math.max(0, Math.min(1, x / width)) * 100)) }
-                    onPressed: (m) => setTo(m.x)
-                    onPositionChanged: (m) => { if (pressed) setTo(m.x) }
-                    onReleased: card.interacted()
-                    onWheel: (w) => { quick.setVolume(Math.max(0, Math.min(100, quick.volume + (w.angleDelta.y > 0 ? 5 : -5)))); card.interacted() }
-                }
-            }
-            Text {
-                Layout.preferredWidth: 32
-                text: quick.volume + "%"
-                color: card.fgDim
-                font.pixelSize: 11
-                font.features: { "tnum": 1 }
-                horizontalAlignment: Text.AlignRight
             }
         }
 
-        // the small things, quiet, in one row
-        RowLayout {
+        RowLayout { // the one small thing left: which player, when there are several
+            visible: media.playerCount > 1
             Layout.fillWidth: true
-            spacing: 4
             Item { Layout.fillWidth: true }
             RoundButton {
-                implicitWidth: 32
-                implicitHeight: 32
-                Accessible.name: "Open " + media.identity
-                onClicked: media.raise()
-                contentItem: Text {
-                    text: "↗"
-                    color: card.fgDim
-                    font.pixelSize: 16
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-            }
-            RoundButton {
-                visible: media.playerCount > 1 // only meaningful with several players
                 implicitWidth: 32
                 implicitHeight: 32
                 Accessible.name: "Switch player"
@@ -541,27 +599,6 @@ Rectangle {
                     font.pixelSize: 16
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
-                }
-            }
-            // Karaoke: your voice through the speakers or headphones, with the music.
-            RoundButton {
-                id: mic
-                visible: karaoke.supported
-                implicitWidth: 32
-                implicitHeight: 32
-                Accessible.name: karaoke.active ? "Stop karaoke" : "Karaoke: sing along"
-                onClicked: karaoke.toggle()
-                background: Rectangle {
-                    radius: width / 2
-                    color: karaoke.active ? Qt.alpha(card.tint, 0.3) : mic.down ? Qt.rgba(1, 1, 1, 0.22) : mic.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
-                }
-                contentItem: Item {
-                    LineIcon {
-                        anchors.centerIn: parent
-                        glyph: "mic"
-                        sourceSize: Qt.size(16, 16)
-                        color: karaoke.active ? card.tint : card.fgDim
-                    }
                 }
             }
             Item { Layout.fillWidth: true }
