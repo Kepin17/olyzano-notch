@@ -31,22 +31,30 @@ struct Intent {
 
 // Lower case, no punctuation (but kept inside "17:30" and "3.5"), one space between words, and the polite and
 // calling words taken out: "Hei Notch, tolong buka Firefox dong!" -> "buka firefox".
-inline QString normalize(const QString &said)
+inline bool isFiller(const QString &w);
+
+inline QString normalize(const QString &said, bool keepFillers = false)
 {
     QString s = said.toLower();
     s.replace(QRegularExpression(QStringLiteral("[^\\p{L}\\p{N}:.]+")), QStringLiteral(" "));
     s.replace(QRegularExpression(QStringLiteral("(?<![\\p{L}\\p{N}])[.:]|[.:](?![\\p{L}\\p{N}])")), QStringLiteral(" "));
+    QStringList out;
+    for (const QString &w : s.split(u' ', Qt::SkipEmptyParts))
+        if (keepFillers || !isFiller(w))
+            out << w;
+    return out.join(u' ');
+}
+
+// The polite and calling words that are no part of a command ("tolong", "please", "hei notch").
+inline bool isFiller(const QString &w)
+{
     static const QSet<QString> filler{QStringLiteral("tolong"), QStringLiteral("dong"), QStringLiteral("deh"), QStringLiteral("ya"),
                                       QStringLiteral("please"), QStringLiteral("hey"), QStringLiteral("hei"), QStringLiteral("hai"),
                                       QStringLiteral("notch"), QStringLiteral("ok"), QStringLiteral("okay"), QStringLiteral("saja"),
                                       QStringLiteral("aja"), QStringLiteral("kak"), QStringLiteral("bisa"), QStringLiteral("can"),
                                       QStringLiteral("you"), QStringLiteral("could"), QStringLiteral("saya"), QStringLiteral("aku"),
                                       QStringLiteral("me"), QStringLiteral("a"), QStringLiteral("the"), QStringLiteral("an")};
-    QStringList out;
-    for (const QString &w : s.split(u' ', Qt::SkipEmptyParts))
-        if (!filler.contains(w))
-            out << w;
-    return out.join(u' ');
+    return filler.contains(w);
 }
 
 // ---- numbers: digits, and Indonesian or English words ("lima belas", "twenty five") up to 999 ----
@@ -300,24 +308,29 @@ inline Intent parse(const QString &said)
                                       QStringLiteral("ke"), QStringLiteral("dan"), QStringLiteral("and"), QStringLiteral("lalu"), QStringLiteral("then"),
                                       QStringLiteral("terus"), QStringLiteral("pada")};
         const auto isPlace = [](const QString &x) { return x == QLatin1String("di") || x == QLatin1String("in") || x == QLatin1String("on") || x == QLatin1String("pada"); };
+        const QStringList wk = normalize(said, true).split(u' ', Qt::SkipEmptyParts); // every word, so the search is for what was said
         int vi = -1;
-        for (int i = 0; i < w.size() && vi < 0; ++i) {
-            if (!searchVerbs.contains(w.at(i)))
+        for (int i = 0; i < wk.size() && vi < 0; ++i) {
+            if (!searchVerbs.contains(wk.at(i)))
                 continue;
-            if (w.at(i) == QLatin1String("google") && i != 0)
+            if (wk.at(i) == QLatin1String("google") && i != 0)
                 continue; // "buka google" is a place, not a verb
             bool prefixOk = true;
             for (int k = 0; k < i; ++k)
-                prefixOk = prefixOk && (lead.contains(w.at(k)) || engines.contains(w.at(k)));
+                prefixOk = prefixOk && (lead.contains(wk.at(k)) || engines.contains(wk.at(k)) || isFiller(wk.at(k)));
             if (prefixOk)
                 vi = i;
         }
         if (vi >= 0) {
-            QStringList q = w.mid(vi + 1);
+            QStringList q = wk.mid(vi + 1);
+            while (!q.isEmpty() && isFiller(q.first()))
+                q.removeFirst();
+            while (!q.isEmpty() && isFiller(q.last()))
+                q.removeLast();
             for (int k = 0; k < vi; ++k)
-                if (engines.contains(w.at(k)))
-                    in.engine = w.at(k);
-            if (w.at(vi) == QLatin1String("google") && in.engine.isEmpty())
+                if (engines.contains(wk.at(k)))
+                    in.engine = wk.at(k);
+            if (wk.at(vi) == QLatin1String("google") && in.engine.isEmpty())
                 in.engine = QStringLiteral("google");
             const auto dropLead = [&] {
                 while (!q.isEmpty() && (q.first() == QLatin1String("for") || q.first() == QLatin1String("tentang") || q.first() == QLatin1String("untuk")
@@ -434,6 +447,28 @@ inline Intent parse(const QString &said)
         if (hasAny(w, {"putar", "play", "mainkan", "lanjut", "lanjutkan", "resume", "setel"}) && (aboutMusic || bare)) {
             in.kind = Kind::Media;
             in.media = MediaAction::Play;
+            return in;
+        }
+    }
+
+    // a question or a wish for information: the whole sentence is the search ("info vga yang murah", "harga laptop gaming",
+    // "what is a vpn"); nothing else is guessed, so talk in the room does not open the browser
+    {
+        static const QSet<QString> asks{QStringLiteral("info"), QStringLiteral("informasi"), QStringLiteral("tentang"), QStringLiteral("apa"),
+                                        QStringLiteral("siapa"), QStringLiteral("kapan"), QStringLiteral("dimana"), QStringLiteral("berapa"),
+                                        QStringLiteral("harga"), QStringLiteral("review"), QStringLiteral("tutorial"), QStringLiteral("cara"),
+                                        QStringLiteral("bagaimana"), QStringLiteral("mengapa"), QStringLiteral("kenapa"), QStringLiteral("what"),
+                                        QStringLiteral("who"), QStringLiteral("when"), QStringLiteral("where"), QStringLiteral("why"), QStringLiteral("how"),
+                                        QStringLiteral("price"), QStringLiteral("rekomendasi"), QStringLiteral("recommend"), QStringLiteral("definisi"),
+                                        QStringLiteral("artinya"), QStringLiteral("meaning"), QStringLiteral("berita"), QStringLiteral("news")};
+        QStringList all = normalize(said, true).split(u' ', Qt::SkipEmptyParts);
+        while (!all.isEmpty() && isFiller(all.first()))
+            all.removeFirst();
+        while (!all.isEmpty() && isFiller(all.last()))
+            all.removeLast();
+        if (all.size() >= 2 && asks.contains(all.first())) {
+            in.kind = Kind::Search;
+            in.text = all.join(u' ');
             return in;
         }
     }

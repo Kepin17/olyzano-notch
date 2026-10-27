@@ -2,6 +2,7 @@
 
 #include <QRegularExpression>
 #include <QThread>
+#include <vector>
 
 #ifdef NOTCH_HAVE_WHISPER
 #include "whisper.h"
@@ -63,7 +64,39 @@ QString Whisper::transcribe(const QVector<float> &samples, const QString &langua
 #ifdef NOTCH_HAVE_WHISPER
     if (!d->ctx || samples.size() < 1600) // less than 0.1 s
         return {};
-    whisper_full_params wp = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+    const int threads = qBound(1, QThread::idealThreadCount() - 1, 4);
+
+    // A quiet microphone is a poor recording for the model: bring the loudest peak to 0.9 (at most 25 times louder) and
+    // add a little silence on both sides, which the model likes.
+    float peak = 0;
+    for (const float v : samples)
+        peak = qMax(peak, qAbs(v));
+    const float gain = peak > 0.004f ? qMin(25.0f, 0.9f / peak) : 1.0f;
+    constexpr int Pad = 16000 * 4 / 10;
+    QVector<float> pcm(Pad, 0.0f);
+    pcm.reserve(samples.size() + 2 * Pad);
+    for (const float v : samples)
+        pcm.append(qBound(-1.0f, v * gain, 1.0f));
+    pcm.append(QVector<float>(Pad, 0.0f));
+
+    // "auto" here means Indonesian or English, not any of a hundred languages: a short command is often taken for Malay
+    // or something else, and the words come out wrong. Malay counts for Indonesian.
+    QByteArray lang = language.isEmpty() ? QByteArray("auto") : language.toUtf8();
+    if (lang == "auto") {
+        lang = "id";
+        if (whisper_pcm_to_mel(d->ctx, pcm.constData(), int(pcm.size()), threads) == 0) {
+            std::vector<float> probs(size_t(whisper_lang_max_id()) + 1, 0.0f);
+            if (whisper_lang_auto_detect(d->ctx, 0, threads, probs.data()) >= 0) {
+                const auto p = [&](const char *code) { const int id = whisper_lang_id(code); return id >= 0 ? probs[size_t(id)] : 0.0f; };
+                lang = p("en") > p("id") + p("ms") ? "en" : "id";
+            }
+        }
+    }
+
+    // Beam search is slower than greedy but wrong less often; the sentence is short anyway. The prompt tells the model
+    // which words to expect (names of things to open, search words), which settles the spelling.
+    whisper_full_params wp = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH);
+    wp.beam_search.beam_size = 5;
     wp.print_progress = false;
     wp.print_realtime = false;
     wp.print_special = false;
@@ -71,18 +104,27 @@ QString Whisper::transcribe(const QVector<float> &samples, const QString &langua
     wp.no_timestamps = true;
     wp.single_segment = true;
     wp.translate = false;
-    wp.n_threads = qBound(1, QThread::idealThreadCount() - 1, 4);
-    const QByteArray lang = language.isEmpty() ? QByteArray("auto") : language.toUtf8();
+    wp.no_context = true;
+    wp.suppress_blank = true;
+    wp.temperature = 0.0f;
+    wp.n_threads = threads;
     wp.language = lang.constData();
     wp.detect_language = false; // true would only detect the language and return
-    if (whisper_full(d->ctx, wp, samples.constData(), int(samples.size())) != 0)
+    const QByteArray prompt = lang == "en" ? QByteArray("Open the browser. Search for cheap graphics cards on YouTube. Set the volume to 40. Timer ten minutes. Add task buy milk.")
+                                           : QByteArray("Buka YouTube. Cari info VGA yang murah. Cari channel di YouTube. Volume empat puluh. Timer sepuluh menit. Tambah tugas beli susu.");
+    wp.initial_prompt = prompt.constData();
+    if (whisper_full(d->ctx, wp, pcm.constData(), int(pcm.size())) != 0)
         return {};
     QString text;
     for (int i = 0, n = whisper_full_n_segments(d->ctx); i < n; ++i)
         text += QString::fromUtf8(whisper_full_get_segment_text(d->ctx, i));
     // Noise comes back as "(humming)", "[BLANK_AUDIO]" or a note: that is no speech
     text.remove(QRegularExpression(QStringLiteral("\\[[^\\]]*\\]|\\([^)]*\\)|[\u266a\u266b]")));
-    return text.simplified();
+    // With nothing to say the model may repeat its own prompt: that is no speech either
+    const QString simple = text.simplified();
+    if (simple.isEmpty() || QString::fromUtf8(prompt).contains(simple, Qt::CaseInsensitive) && simple.size() > 12)
+        return {};
+    return simple;
 #else
     Q_UNUSED(samples)
     Q_UNUSED(language)

@@ -2553,7 +2553,7 @@ private slots:
         QCOMPARE(parse(QStringLiteral("matikan komputer")).kind, Kind::Unknown); // nothing destructive is understood
         QCOMPARE(parse(QStringLiteral("hapus semua berkas")).kind, Kind::Unknown);
         QCOMPARE(parse(QStringLiteral("tutup semua jendela")).kind, Kind::Unknown);
-        QCOMPARE(parse(QStringLiteral("ceritakan lelucon")).kind, Kind::Unknown);
+        QCOMPARE(parse(QStringLiteral("ceritakan lelucon")).kind, Kind::Unknown); // not a command, not a question: nothing happens
         QCOMPARE(parse(QString()).kind, Kind::Unknown);
     }
 
@@ -2606,6 +2606,24 @@ private slots:
         QCOMPARE(parse(QStringLiteral("buka peramban")).kind, Kind::OpenBrowser);
         QCOMPARE(parse(QStringLiteral("buka firefox")).kind, Kind::OpenApp); // a named browser is still an app
         QCOMPARE(parse(QStringLiteral("buka brave")).kind, Kind::OpenApp);
+    }
+
+    void assistantSearchesForWhatWasAsked()
+    {
+        using namespace AssistantModel;
+        Intent i = parse(QStringLiteral("info vga yang murah"));
+        QCOMPARE(i.kind, Kind::Search);
+        QCOMPARE(i.text, QStringLiteral("info vga yang murah"));
+        i = parse(QStringLiteral("Tolong cari harga laptop gaming yang bagus untuk kuliah dong"));
+        QCOMPARE(i.kind, Kind::Search);
+        QCOMPARE(i.text, QStringLiteral("harga laptop gaming yang bagus untuk kuliah")); // every word stays, only the politeness goes
+        i = parse(QStringLiteral("search for the best budget graphics card"));
+        QCOMPARE(i.text, QStringLiteral("the best budget graphics card"));              // "the" is part of the query
+        i = parse(QStringLiteral("what is a vpn"));
+        QCOMPARE(i.kind, Kind::Search);
+        QCOMPARE(i.text, QStringLiteral("what is a vpn"));
+        QCOMPARE(parse(QStringLiteral("harga")).kind, Kind::Unknown);                   // one word is no question
+        QCOMPARE(parse(QStringLiteral("hari ini cerah sekali")).kind, Kind::Unknown);   // talk in the room does nothing
     }
 
     void assistantMatchesAppNames()
