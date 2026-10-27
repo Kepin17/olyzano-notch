@@ -8,6 +8,13 @@
 #endif
 
 #include <QCursor>
+#include <QDateTime>
+#ifdef NOTCH_HAVE_DBUS
+#include <QDBusConnection>
+#include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
+#endif
 #include <QGuiApplication>
 #include <QPainterPath>
 #include <QRegion>
@@ -366,10 +373,41 @@ bool DesktopIntegration::canReserve() const
 #endif
 }
 
+// Plasma's top panel already holds its own room, and the notch hangs over it: the strip is only as tall as what sticks out
+// below the panel, so the windows sit right under the notch instead of a panel's height lower.
+void DesktopIntegration::askTopPanel()
+{
+#if defined(NOTCH_HAVE_DBUS) && !defined(Q_OS_WIN)
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - m_panelAsked < 20000)
+        return;
+    m_panelAsked = now;
+    QDBusMessage call = QDBusMessage::createMethodCall(QStringLiteral("org.kde.plasmashell"), QStringLiteral("/PlasmaShell"),
+                                                       QStringLiteral("org.kde.PlasmaShell"), QStringLiteral("evaluateScript"));
+    call << QStringLiteral("var h = 0; panels().forEach(function (p) { if (p.location == 'top') h = Math.max(h, p.height); }); print(h)");
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(call, 3000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *w) {
+        QDBusPendingReply<QString> reply = *w;
+        w->deleteLater();
+        if (!reply.isValid())
+            return; // not Plasma: no panel to take into account
+        const int h = qBound(0, reply.value().trimmed().toInt(), 400);
+        if (h != m_panelTop && m_lastReserve.window) {
+            m_panelTop = h;
+            const ReserveArgs a = m_lastReserve;
+            reserve(a.window, a.mode, a.on, a.scale, a.barPx);
+        }
+    });
+#endif
+}
+
 void DesktopIntegration::reserve(QWindow *window, const QString &mode, bool on, qreal scale, int barPx)
 {
     if (!window)
         return;
+    m_lastReserve = {window, mode, on, scale, barPx};
+    if (on)
+        askTopPanel();
 #ifdef Q_OS_WIN
     if (!window->isVisible()) // the native window may still be replaced while it is being set up; QML asks again once shown
         return;
@@ -378,7 +416,7 @@ void DesktopIntegration::reserve(QWindow *window, const QString &mode, bool on, 
 #ifdef NOTCH_HAVE_LAYERSHELL
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
         if (auto *ls = LayerShellQt::Window::get(window)) {
-            const int zone = ReserveModel::plan(mode, on, scale, barPx, true).notchZone;
+            const int zone = ReserveModel::plan(mode, on, scale, barPx + m_panelTop, true).notchZone; // the panel's room counts as kept free
             ls->setExclusiveZone(-1); // the notch sits over everything and takes nothing (a panel would be pushed down by it)
             if (zone > 0) {
                 if (!m_strip) {

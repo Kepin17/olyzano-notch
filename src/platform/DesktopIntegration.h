@@ -69,6 +69,10 @@ public:
 
 private:
     QList<QPointer<QWindow>> m_windows;
+    int m_panelTop = 0; // Plasma: the thickness of the top panel, which the room kept free does not need to repeat
+    qint64 m_panelAsked = 0;
+    struct ReserveArgs { QPointer<QWindow> window; QString mode; bool on = false; qreal scale = 1; int barPx = 0; } m_lastReserve;
+    void askTopPanel();
     QPointer<QWindow> m_strip; // Wayland: the sliver that holds the room kept free at the top (see DesktopIntegration::reserve)
 #ifdef Q_OS_WIN
     std::unique_ptr<WinAppBar> m_appBar;
