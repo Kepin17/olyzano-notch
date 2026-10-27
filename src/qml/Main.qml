@@ -1358,12 +1358,11 @@ Window {
                 sourceSize: Qt.size(14, 14)
                 color: liveRow.l.color
             }
-            Text {
+            LineIcon {
                 visible: !(liveRow.l.kind === "copy" || liveRow.l.kind === "call" || liveRow.l.kind === "share")
-                text: liveRow.l.kind === "timer" ? "⏱" : liveRow.l.kind === "doomscroll" ? "📱" : liveRow.l.kind === "break" ? "🧘" : liveRow.l.kind === "download" ? "↓" : "⇄"
+                glyph: liveRow.l.kind === "timer" ? "timer" : liveRow.l.kind === "doomscroll" ? "phone" : liveRow.l.kind === "break" ? "heart" : liveRow.l.kind === "download" ? "download" : "share"
+                sourceSize: Qt.size(14, 14)
                 color: liveRow.l.color
-                font.pixelSize: 13
-                font.weight: Font.Bold
             }
             Text {
                 Layout.fillWidth: true
@@ -1424,7 +1423,7 @@ Window {
                 visible: root.infoShown
                 Layout.fillWidth: true
                 Layout.leftMargin: 6
-                text: root.showPrayer ? "🕌 " + prayer.nextName + " " + prayer.nextTime + " · " + prayer.nextRemaining
+                text: root.showPrayer ? prayer.nextName + " " + prayer.nextTime + " · " + prayer.nextRemaining
                                       : "• " + tasks.nextTitle + " · " + tasks.nextRemaining
                 color: root.showPrayer ? (prayer.soon ? theme.accent : root.textSecondary)
                        : tasks.nextState === "overdue" ? theme.danger : tasks.nextState === "soon" ? theme.accent : root.textSecondary
@@ -1594,7 +1593,7 @@ Window {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
-                Text { text: doomscroll.reminding ? "📱" : "🧘"; font.pixelSize: 20 }
+                LineIcon { glyph: doomscroll.reminding ? "phone" : "heart"; sourceSize: Qt.size(22, 22); color: theme.accent }
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 1
@@ -2350,7 +2349,7 @@ Window {
                         anchors.rightMargin: 5
                         Text {
                             Layout.fillWidth: true
-                            text: "🧘  On a break · " + root.clock(root.breakLeft) + " left"
+                            text: "On a break · " + root.clock(root.breakLeft) + " left"
                             color: root.textPrimary
                             font.pixelSize: 12
                             elide: Text.ElideRight
@@ -2604,7 +2603,7 @@ Window {
                 model: sendMenu.devices
                 delegate: Action {
                     required property var modelData
-                    text: (modelData.type === "desktop" || modelData.type === "laptop" ? "💻  " : "📱  ") + modelData.name
+                    text: modelData.name
                     onTriggered: kdeconnect.send(modelData.id, modelData.name, notch.fileUrls(menu.targets))
                 }
                 onObjectAdded: (index, object) => sendMenu.insertAction(index, object)

@@ -189,7 +189,7 @@ Item {
             Text {
                 anchors.centerIn: parent
                 visible: badge.kind === "failed" || badge.kind === "expiring"
-                text: badge.kind === "failed" ? "!" : "⏳"
+                text: badge.kind === "failed" ? "!" : "·"
                 color: badge.kind === "expiring" ? "black" : "white"
                 font.pixelSize: badge.kind === "expiring" ? 9 : 10
                 font.bold: badge.kind === "failed"
@@ -270,7 +270,7 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 8
         text: tile.copying ? "Copying…" : tile.failed ? "Missing" : tile.removed ? tile.removedText
-            : tile.expiringSoon ? "⏳ " + tile.expiresText.replace(" left", "") + " · Keep" : tile.sizeText
+            : tile.expiringSoon ? tile.expiresText.replace(" left", "") + " · Keep" : tile.sizeText
         color: tile.failed ? theme.danger : tile.expiringSoon && !tile.removed ? theme.warn : theme.textDim
         // One click on "· Keep" saves a file that is about to expire.
         TapHandler {

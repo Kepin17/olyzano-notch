@@ -58,8 +58,8 @@ ColumnLayout {
             Layout.alignment: Qt.AlignHCenter
             implicitWidth: chipText.implicitWidth + 22
             implicitHeight: 24
-            radius: height / 2
-            color: running.onBreak ? Qt.alpha(theme.success, 0.16) : theme.accentSoft
+            radius: theme.radiusSm - 2
+            color: running.onBreak ? Qt.alpha(theme.success, 0.16) : Qt.alpha(theme.accent, 0.16)
             Text {
                 id: chipText
                 anchors.centerIn: parent
@@ -79,21 +79,21 @@ ColumnLayout {
                 layer.enabled: true
                 layer.samples: 4
                 ShapePath { // the track
-                    strokeColor: theme.surface
-                    strokeWidth: 10
+                    strokeColor: theme.hairline
+                    strokeWidth: 6
                     fillColor: "transparent"
                     PathAngleArc { centerX: 94; centerY: 94; radiusX: 86; radiusY: 86; startAngle: -90; sweepAngle: 360 }
                 }
                 ShapePath { // a soft glow under what is left
-                    strokeColor: Qt.alpha(running.tint, activities.timerRunning ? 0.20 : 0)
-                    strokeWidth: 18
+                    strokeColor: Qt.alpha(running.tint, activities.timerRunning ? 0.10 : 0)
+                    strokeWidth: 12
                     fillColor: "transparent"
                     capStyle: ShapePath.RoundCap
                     PathAngleArc { centerX: 94; centerY: 94; radiusX: 86; radiusY: 86; startAngle: -90; sweepAngle: 359.9 * running.shown }
                 }
                 ShapePath { // what is left
                     strokeColor: activities.timerRunning ? running.tint : theme.textDim
-                    strokeWidth: 10
+                    strokeWidth: 6
                     fillColor: "transparent"
                     capStyle: ShapePath.RoundCap
                     PathAngleArc { centerX: 94; centerY: 94; radiusX: 86; radiusY: 86; startAngle: -90; sweepAngle: 359.9 * running.shown }
