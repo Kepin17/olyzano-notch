@@ -38,6 +38,7 @@ public:
     Q_INVOKABLE QVariantList search(const QString &query, const QString &category);
     Q_INVOKABLE QVariantList pinnedApps();
     Q_INVOKABLE QVariantList recentApps(int count);
+    int uses(const QString &id) const { return m_uses.value(id); } // how often it was opened through the launcher or by voice
     Q_INVOKABLE void launch(const QString &id); // opens it (or raises a running one) and counts the use
     Q_INVOKABLE void setPinned(const QString &id, bool pinned);
 

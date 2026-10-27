@@ -325,17 +325,20 @@ QString Assistant::run(const AssistantModel::Intent &in)
     using namespace AssistantModel;
     switch (in.kind) {
     case Kind::OpenApp: {
-        const QVariantList apps = m_launcher ? m_launcher->search(QString(), QString()) : QVariantList();
-        QStringList names;
-        for (const QVariant &a : apps)
-            names << a.toMap().value(QStringLiteral("name")).toString();
-        const AppMatch m = matchApp(in.text, names);
+        const QVariantList list = m_launcher ? m_launcher->search(QString(), QString()) : QVariantList();
+        QList<AppInfo> apps;
+        for (const QVariant &a : list) {
+            const QVariantMap m = a.toMap();
+            apps << AppInfo{m.value(QStringLiteral("name")).toString(), m.value(QStringLiteral("keywords")).toString(),
+                            m_launcher->uses(m.value(QStringLiteral("id")).toString())};
+        }
+        const AppMatch m = matchApp(in.text, apps);
         if (m.index < 0 || m.score < 0.6)
             return tr("I could not find an app called \"%1\".").arg(in.text);
-        const QString name = names.at(m.index);
+        const QString name = apps.at(m.index).name;
         if (!m.sure && m.score < 0.85)
             return tr("Not sure which app: %1?").arg(name);
-        m_launcher->launch(apps.at(m.index).toMap().value(QStringLiteral("id")).toString());
+        m_launcher->launch(list.at(m.index).toMap().value(QStringLiteral("id")).toString());
         return tr("Opening %1").arg(name);
     }
     case Kind::OpenBrowser: {

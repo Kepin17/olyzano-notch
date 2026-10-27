@@ -2652,6 +2652,40 @@ private slots:
         QCOMPARE(matchApp(QString(), apps).index, -1);
     }
 
+    void assistantFindsTheAppThatWasMeant()
+    {
+        using namespace AssistantModel;
+        const QList<AppInfo> apps{
+            {QStringLiteral("Firefox Web Browser"), QStringLiteral("internet web browser"), 5}, {QStringLiteral("Konsole"), QStringLiteral("terminal command line"), 9},
+            {QStringLiteral("Dolphin"), QStringLiteral("file manager files"), 3}, {QStringLiteral("System Settings"), QStringLiteral("preferences configuration"), 1},
+            {QStringLiteral("Kate"), QStringLiteral("text editor"), 0}, {QStringLiteral("KCalc"), QStringLiteral("calculator"), 0},
+            {QStringLiteral("Visual Studio Code"), QStringLiteral("code editor development"), 12}, {QStringLiteral("LibreOffice Writer"), QStringLiteral("word processor document"), 2},
+            {QStringLiteral("VLC media player"), QStringLiteral("video player"), 1}, {QStringLiteral("Spotify"), QStringLiteral("music"), 4},
+            {QStringLiteral("Okular"), QStringLiteral("pdf viewer document viewer"), 0}, {QStringLiteral("Discord"), QStringLiteral("chat voice"), 6}};
+        const auto pick = [&](const char *said) { return matchApp(QString::fromLatin1(said), apps); };
+        QCOMPARE(pick("firefox").index, 0);
+        QCOMPARE(pick("fairfox").index, 0);
+        QCOMPARE(pick("konsole").index, 1);
+        QCOMPARE(pick("terminal").index, 1);           // by what it is
+        QCOMPARE(pick("file manager").index, 2);
+        QCOMPARE(pick("penjelajah berkas").index, 2);  // in Indonesian
+        QCOMPARE(pick("pengaturan").index, 3);
+        QCOMPARE(pick("kalkulator").index, 5);
+        QCOMPARE(pick("editor teks").index, 4);
+        QCOMPARE(pick("visual studio kode").index, 6);
+        QCOMPARE(pick("code").index, 6);                // the one that is used
+        QCOMPARE(pick("vs code").index, 6);
+        QCOMPARE(pick("writer").index, 7);
+        QCOMPARE(pick("pemutar video").index, 8);
+        QCOMPARE(pick("vlc").index, 8);
+        QCOMPARE(pick("spotify").index, 9);
+        QCOMPARE(pick("pdf").index, 10);
+        QCOMPARE(pick("disord").index, 11);
+        QVERIFY(pick("firefox").sure);
+        QVERIFY(!pick("zzzzzz").sure);
+        QVERIFY(pick("zzzzzz").score < 0.6);
+    }
+
     void assistantBuildsSearchUrls()
     {
         using namespace AssistantModel;

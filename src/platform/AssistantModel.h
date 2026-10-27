@@ -11,6 +11,7 @@
 #include <QUrl>
 #include <QUrlQuery>
 #include <algorithm>
+#include <cmath>
 
 // What was said, as a command: the words from the speech recognizer (Indonesian or English) become one Intent, and
 // a spoken app name is matched to the installed apps. No device, no recognizer, no clock, so tests can drive it.
@@ -697,44 +698,128 @@ inline int editDistance(const QString &a, const QString &b)
     return prev[m];
 }
 
-struct AppMatch { int index = -1; double score = 0; bool sure = false; };
+struct AppMatch { int index = -1; double score = 0; bool sure = false; double second = 0; };
 
-// Compares what was said with each app's name: 1 for the same name, high when one holds the other or a word of it
-// matches, else how close the spelling is ("fairfox" ~ "firefox"). `sure` when the best is good and clearly ahead.
-inline AppMatch matchApp(const QString &said, const QStringList &names)
+// An installed app as the launcher knows it.
+struct AppInfo {
+    QString name;     // "Firefox Web Browser"
+    QString keywords; // "internet web browser" (the desktop entry's keywords and generic name)
+    int uses = 0;     // how often it was opened through Notch
+};
+
+// What people say for what the apps are called (Indonesian, English, the common program names): the words an app's name or
+// keywords can hold instead.
+inline QStringList spokenAlternatives(const QString &q)
 {
-    const QString q = normalize(said).remove(u' ');
+    static const QHash<QString, QStringList> syn{
+        {QStringLiteral("kalkulator"), {QStringLiteral("calculator"), QStringLiteral("kcalc")}},
+        {QStringLiteral("pengaturan"), {QStringLiteral("settings"), QStringLiteral("system settings"), QStringLiteral("configuration")}},
+        {QStringLiteral("setelan"), {QStringLiteral("settings")}},
+        {QStringLiteral("penjelajah berkas"), {QStringLiteral("files"), QStringLiteral("file manager"), QStringLiteral("dolphin"), QStringLiteral("nautilus")}},
+        {QStringLiteral("manajer berkas"), {QStringLiteral("file manager"), QStringLiteral("files"), QStringLiteral("dolphin")}},
+        {QStringLiteral("berkas"), {QStringLiteral("files"), QStringLiteral("file manager")}},
+        {QStringLiteral("file manager"), {QStringLiteral("files"), QStringLiteral("dolphin"), QStringLiteral("nautilus"), QStringLiteral("thunar")}},
+        {QStringLiteral("explorer"), {QStringLiteral("files"), QStringLiteral("file manager"), QStringLiteral("dolphin")}},
+        {QStringLiteral("terminal"), {QStringLiteral("konsole"), QStringLiteral("terminal"), QStringLiteral("console")}},
+        {QStringLiteral("konsol"), {QStringLiteral("konsole")}},
+        {QStringLiteral("editor teks"), {QStringLiteral("text editor"), QStringLiteral("kate"), QStringLiteral("gedit")}},
+        {QStringLiteral("teks editor"), {QStringLiteral("text editor"), QStringLiteral("kate"), QStringLiteral("gedit")}},
+        {QStringLiteral("catatan"), {QStringLiteral("notes"), QStringLiteral("note")}},
+        {QStringLiteral("kalender"), {QStringLiteral("calendar")}},
+        {QStringLiteral("kamera"), {QStringLiteral("camera"), QStringLiteral("webcam")}},
+        {QStringLiteral("foto"), {QStringLiteral("photos"), QStringLiteral("gallery"), QStringLiteral("gwenview")}},
+        {QStringLiteral("galeri"), {QStringLiteral("gallery"), QStringLiteral("photos"), QStringLiteral("gwenview")}},
+        {QStringLiteral("gambar"), {QStringLiteral("image viewer"), QStringLiteral("gwenview")}},
+        {QStringLiteral("pemutar musik"), {QStringLiteral("music player"), QStringLiteral("music")}},
+        {QStringLiteral("musik"), {QStringLiteral("music player"), QStringLiteral("music")}},
+        {QStringLiteral("pemutar video"), {QStringLiteral("video player"), QStringLiteral("vlc"), QStringLiteral("media player")}},
+        {QStringLiteral("video"), {QStringLiteral("video player"), QStringLiteral("vlc"), QStringLiteral("media player")}},
+        {QStringLiteral("pdf"), {QStringLiteral("pdf viewer"), QStringLiteral("okular"), QStringLiteral("document viewer")}},
+        {QStringLiteral("dokumen"), {QStringLiteral("document"), QStringLiteral("writer"), QStringLiteral("word processor")}},
+        {QStringLiteral("spreadsheet"), {QStringLiteral("calc"), QStringLiteral("spreadsheet")}},
+        {QStringLiteral("lembar kerja"), {QStringLiteral("calc"), QStringLiteral("spreadsheet")}},
+        {QStringLiteral("presentasi"), {QStringLiteral("impress"), QStringLiteral("presentation")}},
+        {QStringLiteral("monitor sistem"), {QStringLiteral("system monitor"), QStringLiteral("task manager")}},
+        {QStringLiteral("manajer tugas"), {QStringLiteral("system monitor"), QStringLiteral("task manager")}},
+        {QStringLiteral("task manager"), {QStringLiteral("system monitor")}},
+        {QStringLiteral("unduhan"), {QStringLiteral("downloads"), QStringLiteral("download")}},
+        {QStringLiteral("toko aplikasi"), {QStringLiteral("discover"), QStringLiteral("software"), QStringLiteral("store")}},
+        {QStringLiteral("pesan"), {QStringLiteral("messages"), QStringLiteral("messaging")}},
+        {QStringLiteral("surel"), {QStringLiteral("email"), QStringLiteral("mail")}},
+        {QStringLiteral("email"), {QStringLiteral("mail"), QStringLiteral("thunderbird"), QStringLiteral("kmail")}},
+        {QStringLiteral("coding"), {QStringLiteral("code"), QStringLiteral("editor")}},
+        {QStringLiteral("vs code"), {QStringLiteral("visual studio code"), QStringLiteral("code")}},
+        {QStringLiteral("vscode"), {QStringLiteral("visual studio code"), QStringLiteral("code")}}};
+    QStringList out{q};
+    out << syn.value(q);
+    return out;
+}
+
+// Which app was meant. The spoken name is compared, with its spelling and its sound (AssistantText::closeness), with every
+// app's name and keywords, also through what people call things (spokenAlternatives); the apps opened most through Notch get
+// a little extra, so "code" is the editor you use and not the first one that has the word. `sure` when the best is good and
+// clearly ahead of the second.
+inline AppMatch matchApp(const QString &said, const QList<AppInfo> &apps)
+{
+    const QString spoken = normalize(said);
     AppMatch best;
     double second = 0;
-    if (q.isEmpty())
+    if (spoken.isEmpty())
         return best;
-    for (int i = 0; i < names.size(); ++i) {
-        const QString full = names.at(i).toLower();
-        const QString name = full.simplified().remove(QRegularExpression(QStringLiteral("[^\\p{L}\\p{N} ]"))).remove(u' ');
+    const QStringList alternatives = spokenAlternatives(spoken);
+    const auto strip = [](const QString &x) { return x.toLower().simplified().remove(QRegularExpression(QStringLiteral("[^\\p{L}\\p{N} ]"))); };
+    for (int i = 0; i < apps.size(); ++i) {
+        const QString name = strip(apps.at(i).name);
         if (name.isEmpty())
             continue;
-        double s;
-        if (name == q)
-            s = 1.0;
-        else if (name.startsWith(q) || q.startsWith(name))
-            s = 0.92;
-        else if (name.contains(q) && q.size() >= 3)
-            s = 0.85;
-        else {
-            s = 1.0 - double(editDistance(q, name)) / double(std::max(q.size(), name.size()));
-            for (const QString &word : full.split(QRegularExpression(QStringLiteral("[^\\p{L}\\p{N}]+")), Qt::SkipEmptyParts))
-                if (word.size() >= 3)
-                    s = std::max(s, 0.95 * (1.0 - double(editDistance(q, word)) / double(std::max<qsizetype>(q.size(), word.size()))));
+        const QString flat = QString(name).remove(u' ');
+        const QStringList nameWords = name.split(u' ', Qt::SkipEmptyParts);
+        const QStringList keyWords = strip(apps.at(i).keywords).split(u' ', Qt::SkipEmptyParts);
+        double s = 0;
+        for (int a = 0; a < alternatives.size(); ++a) {
+            const QString alt = strip(alternatives.at(a));
+            const QString altFlat = QString(alt).remove(u' ');
+            if (altFlat.isEmpty())
+                continue;
+            const double penalty = a == 0 ? 1.0 : 0.97; // what was said beats what it may stand for
+            double t;
+            if (flat == altFlat)
+                t = 1.0;
+            else if (flat.startsWith(altFlat) || altFlat.startsWith(flat))
+                t = 0.92;
+            else if (flat.contains(altFlat) && altFlat.size() >= 3)
+                t = 0.88;
+            else
+                t = AssistantText::closeness(altFlat, flat);
+            // one word of the name ("writer" in "LibreOffice Writer"), or of the keywords ("calculator", "file manager")
+            for (const QString &word : nameWords)
+                if (word.size() >= 3 && altFlat.size() >= 3)
+                    t = std::max(t, 0.95 * (word == altFlat ? 1.0 : AssistantText::closeness(altFlat, word)));
+            for (const QString &word : keyWords)
+                if (word.size() >= 3 && altFlat.size() >= 3)
+                    t = std::max(t, 0.9 * (word == altFlat ? 1.0 : AssistantText::closeness(altFlat, word)));
+            s = std::max(s, t * penalty);
         }
+        s += std::min(0.1, 0.03 * std::log2(1.0 + apps.at(i).uses)); // the ones that are used win a tie
         if (s > best.score) {
             second = best.score;
-            best = {i, s, false};
+            best = {i, s, false, 0};
         } else if (s > second) {
             second = s;
         }
     }
-    best.sure = best.index >= 0 && best.score >= 0.7 && best.score - second >= 0.08;
+    best.second = second;
+    best.sure = best.index >= 0 && best.score >= 0.7 && (best.score - second >= 0.08 || best.score >= 0.97);
     return best;
+}
+
+// The same with names only (no keywords, no usage).
+inline AppMatch matchApp(const QString &said, const QStringList &names)
+{
+    QList<AppInfo> apps;
+    for (const QString &n : names)
+        apps << AppInfo{n, QString(), 0};
+    return matchApp(said, apps);
 }
 
 // ---- the web ----
