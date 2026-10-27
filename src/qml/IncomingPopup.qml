@@ -40,7 +40,7 @@ Popup {
         }
     }
 
-    background: Rectangle { radius: theme.radiusLg; color: theme.surface; border.color: theme.outline }
+    background: Rectangle { radius: theme.radiusLg; color: theme.card; border.color: theme.hairline }
 
     contentItem: ColumnLayout {
         spacing: 10

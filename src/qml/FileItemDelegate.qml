@@ -52,9 +52,9 @@ Item {
         Behavior on opacity { NumberAnimation { duration: 120 } }
         background: Rectangle {
             radius: 11
-            color: cb.down ? theme.textFaint : cb.hovered ? theme.textFaint : theme.surfacePressed
-            border.color: theme.island
-            border.width: 1.5
+            color: cb.down ? theme.pressFill : cb.hovered ? theme.hoverFill : theme.card
+            border.color: theme.hairline
+            border.width: 1
         }
         contentItem: Item {
             LineIcon { anchors.centerIn: parent; glyph: cb.glyph; sourceSize: Qt.size(12, 12); color: theme.text }
@@ -63,12 +63,10 @@ Item {
 
     Rectangle { // the card: a quiet fill at rest, lifted on hover, ringed when selected
         anchors.fill: parent
-        anchors.topMargin: hover.hovered && !tile.selected ? -1 : 0
-        anchors.bottomMargin: hover.hovered && !tile.selected ? 1 : 0
-        radius: theme.radiusMd + 2
-        color: tile.selected ? theme.accentFaint : hover.hovered ? theme.surfaceHover : theme.surface
-        border.width: tile.selected ? 1.5 : theme.washi ? 1 : hover.hovered ? 1 : 0
-        border.color: tile.selected ? theme.accent : theme.washi ? theme.outline : theme.accentSoft
+        radius: theme.radiusMd
+        color: tile.selected ? Qt.alpha(theme.accent, 0.12) : hover.hovered ? theme.hoverFill : "transparent"
+        border.width: 1
+        border.color: tile.selected ? Qt.alpha(theme.accent, 0.55) : theme.washi ? theme.outline : theme.hairline
         Behavior on color { ColorAnimation { duration: 120 } }
         Behavior on anchors.topMargin { NumberAnimation { duration: 120 } }
         Behavior on anchors.bottomMargin { NumberAnimation { duration: 120 } }
@@ -92,12 +90,10 @@ Item {
         y: 10
         width: 64
         height: 64
-        radius: theme.radiusLg - 2
+        radius: theme.radiusMd
         color: theme.surface
-        border.width: tile.selected ? 2 : theme.washi ? 1 : 0
-        border.color: tile.selected ? theme.accent : theme.outline
-        scale: hover.hovered && !tile.copying ? 1.05 : 1
-        Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
+        border.width: 1
+        border.color: tile.selected ? Qt.alpha(theme.accent, 0.55) : theme.washi ? theme.outline : theme.hairline
 
         Image {
             id: icon
@@ -288,7 +284,7 @@ Item {
         delay: 650
         text: tile.name + "\n" + tile.sizeText + " · added " + tile.addedText + "\n" + tile.expiresText
               + (tile.sourcePath ? "\nFrom " + tile.sourcePath : "")
-        background: Rectangle { color: theme.surface; radius: 10; border.color: theme.surfaceHover }
+        background: Rectangle { color: theme.card; radius: theme.radiusSm + 2; border.color: theme.hairline }
         contentItem: Text {
             text: tip.text
             color: theme.text
