@@ -30,6 +30,7 @@ class Theme : public QObject
     Q_PROPERTY(QString displayFont READ displayFont NOTIFY changed) // headings; "" = system font
     Q_PROPERTY(bool dark READ dark NOTIFY changed)
     Q_PROPERTY(QColor accent READ accent NOTIFY changed)
+    Q_PROPERTY(QColor systemAccent READ systemAccent NOTIFY changed) // the desktop's own accent (Windows / KDE), whatever look is chosen
     Q_PROPERTY(QColor accentSoft READ accentSoft NOTIFY changed)   // tinted fills (active buttons)
     Q_PROPERTY(QColor accentFaint READ accentFaint NOTIFY changed) // very light tints (selection, drop)
     Q_PROPERTY(QColor island READ island NOTIFY changed)
@@ -58,6 +59,7 @@ public:
     bool washi() const { return m_style == QLatin1String("washi"); }
     bool dark() const;
     QColor accent() const;
+    QColor systemAccent() const { return m_accent; }
     QColor success() const { return role(&Palette::success); }
     QColor danger() const { return role(&Palette::danger); }
     QColor warn() const { return role(&Palette::warn); }

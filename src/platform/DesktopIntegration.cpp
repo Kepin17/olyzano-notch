@@ -24,8 +24,10 @@ static void centerOnScreen(QWindow *window)
 {
     if (!window->screen())
         return;
+    // x keeps clear of a side taskbar; y is the real top of the screen. With "keep windows clear of the capsule" the work
+    // area starts below the reserved strip, and the capsule has to stay in that strip, not be pushed down with it.
     const QRect g = window->screen()->availableGeometry();
-    window->setPosition(g.x() + (g.width() - window->width()) / 2, g.y());
+    window->setPosition(g.x() + (g.width() - window->width()) / 2, window->screen()->geometry().y());
 }
 
 void DesktopIntegration::attach(QWindow *window)
@@ -296,7 +298,11 @@ QRectF DesktopIntegration::placeWidget(QWindow *window, int kind, qreal cx, qrea
         }
     }
 #endif
-    window->setGeometry(g.x() + qRound(r.x()), g.y() + qRound(r.y()), qRound(r.width()), qRound(r.height()));
+    const QRect target(g.x() + qRound(r.x()), g.y() + qRound(r.y()), qRound(r.width()), qRound(r.height()));
+    if (window->size() == target.size())
+        window->setPosition(target.topLeft()); // dragging only moves the card: no resize of a translucent window per step
+    else
+        window->setGeometry(target);
     return r;
 }
 

@@ -59,6 +59,7 @@ class Activities : public QObject
     Q_PROPERTY(QString eqStyle READ eqStyle WRITE setEqStyle NOTIFY settingsChanged)
     Q_PROPERTY(qreal capsuleScale READ capsuleScale WRITE setCapsuleScale NOTIFY settingsChanged)
     Q_PROPERTY(bool reserveSpace READ reserveSpace WRITE setReserveSpace NOTIFY settingsChanged) // keep other windows clear of the capsule
+    Q_PROPERTY(bool borderMatchesSystem READ borderMatchesSystem WRITE setBorderMatchesSystem NOTIFY settingsChanged) // capsule / card edge in the system accent
     Q_PROPERTY(bool taskInCapsule READ taskInCapsule WRITE setTaskInCapsule NOTIFY settingsChanged) // the next task in the idle capsule
     // Settings
     Q_PROPERTY(bool showDownloads READ showDownloads WRITE setShowDownloads NOTIFY settingsChanged)
@@ -125,6 +126,8 @@ public:
     void setCapsuleScale(qreal scale) { store(QStringLiteral("capsuleScale"), qRound(qBound(0.8, scale, 1.3) * 100) / 100.0); }
     bool reserveSpace() const { return m_settings.value(QStringLiteral("reserveSpace"), false).toBool(); }
     void setReserveSpace(bool on) { store(QStringLiteral("reserveSpace"), on); }
+    bool borderMatchesSystem() const { return m_settings.value(QStringLiteral("borderMatchesSystem"), false).toBool(); }
+    void setBorderMatchesSystem(bool on) { store(QStringLiteral("borderMatchesSystem"), on); }
     bool taskInCapsule() const { return m_settings.value(QStringLiteral("taskInCapsule"), true).toBool(); }
     void setTaskInCapsule(bool on) { store(QStringLiteral("taskInCapsule"), on); }
     QString capsuleMode() const;

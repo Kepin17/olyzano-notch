@@ -11,7 +11,7 @@
 // a small one while the card floats, a big one while its panel is open (the panel grows from the card's spot).
 namespace WidgetModel {
 
-constexpr qreal FloatW = 720, FloatH = 170; // room for the widest capsule (a sung line, at the largest size) and its shadow
+constexpr qreal FloatW = 720, FloatH = 170; // room for the widest capsule (a sung line, at the largest size)
 constexpr qreal OpenW = 840, OpenH = 620;   // the open panel (the widest page is 780)
 constexpr qreal SnapPx = 12;                // a card this close to an edge or the middle line sticks to it
 constexpr qreal EdgeGap = 8;                // where it sticks: this far from the screen edge
