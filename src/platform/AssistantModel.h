@@ -1,5 +1,7 @@
 #pragma once
 
+#include "platform/AssistantText.h"
+
 #include <QHash>
 #include <QList>
 #include <QRegularExpression>
@@ -27,11 +29,21 @@ struct Intent {
     int number = -1;        // Volume: the percent (or the step), Timer: the amount (in seconds)
     VolumeAction volume = VolumeAction::Set;
     MediaAction media = MediaAction::Play;
+    double score = 1.0;     // 1: the words were understood as said; lower: command words had to be put right first
 };
 
 // Lower case, no punctuation (but kept inside "17:30" and "3.5"), one space between words, and the polite and
 // calling words taken out: "Hei Notch, tolong buka Firefox dong!" -> "buka firefox".
 inline bool isFiller(const QString &w);
+
+// Of the filler words, the ones that are only politeness: kept inside a search ("the best ..."), dropped from its ends.
+inline bool isPolite(const QString &w)
+{
+    static const QSet<QString> polite{QStringLiteral("tolong"), QStringLiteral("dong"), QStringLiteral("deh"), QStringLiteral("ya"), QStringLiteral("please"),
+                                      QStringLiteral("hey"), QStringLiteral("hei"), QStringLiteral("hai"), QStringLiteral("notch"), QStringLiteral("ok"),
+                                      QStringLiteral("okay"), QStringLiteral("saja"), QStringLiteral("aja"), QStringLiteral("kak")};
+    return polite.contains(w);
+}
 
 inline QString normalize(const QString &said, bool keepFillers = false)
 {
@@ -188,23 +200,63 @@ inline QString dropWords(QString text, std::initializer_list<const char *> words
     return kept.join(u' ');
 }
 
-// An Indonesian time in a task ("besok jam 5", "jam 17") as the English words the task reader (TasksModel) knows.
+// An Indonesian (or English) time in a task as the words the task reader (TasksModel::parseQuick) knows: "besok jam 5 sore" ->
+// "tomorrow 17:00", "nanti malam" -> "today 20:00", "senin jam 9" -> "mon 9:00", "lusa" -> "in 2 days".
 inline QString taskText(const QString &text)
 {
     QString s = text;
-    s.replace(QRegularExpression(QStringLiteral("\\bhari ini\\b")), QStringLiteral("today"));
-    s.replace(QRegularExpression(QStringLiteral("\\bbesok\\b")), QStringLiteral("tomorrow"));
-    s.replace(QRegularExpression(QStringLiteral("\\b(?:jam|pukul)\\s+(\\d{1,2})(?:[:.](\\d{2}))?\\s*(pagi|siang|sore|malam)?")),
-              QStringLiteral("\\1:\\2"));
-    // "tomorrow 5:" -> "tomorrow 5:00"; "sore" / "malam" hours after noon are not guessed: say 17
-    s.replace(QRegularExpression(QStringLiteral("(\\d{1,2}):(?!\\d)")), QStringLiteral("\\1:00"));
+    const auto sw = [&s](const char *re, const char *to) { s.replace(QRegularExpression(QString::fromLatin1(re)), QString::fromLatin1(to)); };
+    sw("\\bhari ini\\b", "today");
+    sw("\\bbesok\\b", "tomorrow");
+    sw("\\blusa\\b", "in 2 days");
+    sw("\\bsenin\\b", "mon");
+    sw("\\bselasa\\b", "tue");
+    sw("\\brabu\\b", "wed");
+    sw("\\bkamis\\b", "thu");
+    sw("\\bjum'?at\\b|\\bjumat\\b", "fri");
+    sw("\\bsabtu\\b", "sat");
+    sw("\\bminggu\\b(?!\\s+(?:depan|ini|lalu))", "sun");
+    // "jam 5 sore", "pukul 17.30", "at 5 pm": the hour on a 24 hour clock
+    static const QRegularExpression at(QStringLiteral("\\b(?:jam|pukul|at)\\s+(\\d{1,2})(?:[:.](\\d{2}))?\\s*(pagi|siang|sore|malam|am|pm)?\\b"));
+    QString out;
+    qsizetype last = 0;
+    bool timed = false;
+    for (auto it = at.globalMatch(s); it.hasNext();) {
+        const auto m = it.next();
+        int h = m.captured(1).toInt();
+        const QString part = m.captured(3);
+        if (part == QLatin1String("pagi") || part == QLatin1String("am"))
+            h = h == 12 ? 0 : h;
+        else if (part == QLatin1String("siang"))
+            h = h < 11 ? h + 12 : h;
+        else if (part == QLatin1String("sore") || part == QLatin1String("pm"))
+            h = h < 12 ? h + 12 : h;
+        else if (part == QLatin1String("malam"))
+            h = h == 12 ? 0 : h >= 6 && h < 12 ? h + 12 : h;
+        if (h < 24) {
+            out += s.mid(last, m.capturedStart() - last) + QString::number(h) + u':' + (m.captured(2).isEmpty() ? QStringLiteral("00") : m.captured(2));
+            last = m.capturedEnd();
+            timed = true;
+        }
+    }
+    s = out + s.mid(last);
+    if (!timed) { // a part of the day without an hour
+        sw("\\b(tomorrow|besok)\\s+pagi\\b", "tomorrow 9:00");
+        sw("\\b(tomorrow|besok)\\s+siang\\b", "tomorrow 12:00");
+        sw("\\b(tomorrow|besok)\\s+sore\\b", "tomorrow 17:00");
+        sw("\\b(tomorrow|besok)\\s+malam\\b", "tomorrow 20:00");
+        sw("\\b(?:nanti\\s+)?malam(?:\\s+ini)?\\b", "today 20:00");
+        sw("\\b(?:nanti\\s+)?sore(?:\\s+ini)?\\b", "today 17:00");
+        sw("\\bsiang(?:\\s+ini)?\\b", "today 12:00");
+        sw("\\bpagi(?:\\s+ini)?\\b", "today 9:00");
+    }
     return s.simplified();
 }
 
 inline int editDistance(const QString &a, const QString &b);
 
 // A web site by its name ("youtube", "google maps") or as a domain ("github.com"): its address, "" when it is neither.
-inline QString siteUrl(const QString &said)
+inline const QHash<QString, QString> &siteTable()
 {
     static const QHash<QString, QString> sites{
         {QStringLiteral("youtube"), QStringLiteral("https://www.youtube.com/")}, {QStringLiteral("google"), QStringLiteral("https://www.google.com/")},
@@ -218,12 +270,40 @@ inline QString siteUrl(const QString &said)
         {QStringLiteral("wikipedia"), QStringLiteral("https://www.wikipedia.org/")}, {QStringLiteral("tokopedia"), QStringLiteral("https://www.tokopedia.com/")},
         {QStringLiteral("shopee"), QStringLiteral("https://shopee.co.id/")}, {QStringLiteral("bing"), QStringLiteral("https://www.bing.com/")},
         {QStringLiteral("duckduckgo"), QStringLiteral("https://duckduckgo.com/")}, {QStringLiteral("chatgpt"), QStringLiteral("https://chatgpt.com/")}};
+    return sites;
+}
+
+inline QString siteUrl(const QString &said)
+{
     const QString q = said.trimmed().toLower();
-    if (const QString hit = sites.value(q); !hit.isEmpty())
+    if (const QString hit = siteTable().value(q); !hit.isEmpty())
         return hit;
     static const QRegularExpression domain(QStringLiteral("^[a-z0-9-]+(\\.[a-z0-9-]+)*\\.(com|id|net|org|io|co|dev|app|ai|me|tv)(/\\S*)?$"));
     if (domain.match(q).hasMatch())
         return QStringLiteral("https://") + q;
+    return {};
+}
+
+// The same, for a site name heard a little off ("youtueb", "google masp"): the whole phrase, or its last one or two words
+// ("situ tokopedia"). Strict, so a real app name is not taken for a site.
+inline QString siteUrlHeard(const QString &said)
+{
+    if (const QString exact = siteUrl(said); !exact.isEmpty())
+        return exact;
+    const QStringList words = said.trimmed().toLower().split(u' ', Qt::SkipEmptyParts);
+    QStringList names;
+    const auto keys = siteTable().keys();
+    for (const QString &k : keys)
+        names << k;
+    for (int take = std::min<int>(2, int(words.size())); take >= 1; --take) {
+        const QString phrase = words.mid(words.size() - take).join(u' ');
+        if (phrase.size() < 4)
+            continue;
+        double sc = 0;
+        const QString near = AssistantText::nearest(phrase, names, &sc, take == 1 ? 0.84 : 0.9);
+        if (!near.isEmpty())
+            return siteTable().value(near);
+    }
     return {};
 }
 
@@ -237,7 +317,7 @@ inline bool looksLikeBrowser(const QString &said)
            || q == QLatin1String("internet") || q == QLatin1String("browsernya");
 }
 
-inline Intent parse(const QString &said)
+inline Intent parseExact(const QString &said)
 {
     Intent in;
     const QString clean = normalize(said);
@@ -247,27 +327,57 @@ inline Intent parse(const QString &said)
     const QString first = w.first();
     const auto rest = [&](int from = 1) { return joinFrom(w, from); };
 
-    // a timer: "timer 10 menit", "atur timer lima menit untuk teh", "set timer for ten minutes", "half an hour"
+    // a timer: "timer 10 menit", "atur timer lima menit untuk teh", "set timer for ten minutes", "setengah jam",
+    // "satu setengah jam", "seperempat jam", "1.5 jam"
     if (hasAny(w, {"timer", "pengatur", "alarm"})) {
-        int at = 0, used = 0;
-        int amount = findNumber(w, 0, &at, &used);
-        int unitAt = at >= 0 ? at + used : -1;
-        if (amount < 0 && (hasAny(w, {"setengah", "half"}) && hasAny(w, {"jam", "hour"}))) {
-            amount = 30;
-            in.number = amount * 60;
-        } else if (amount >= 0 && unitAt < w.size()) {
-            const QString u = w.at(unitAt);
-            const int mult = (u == QLatin1String("detik") || u.startsWith(QLatin1String("sec"))) ? 1
-                           : (u == QLatin1String("menit") || u.startsWith(QLatin1String("min"))) ? 60
-                           : (u == QLatin1String("jam") || u.startsWith(QLatin1String("hour")) || u == QLatin1String("hr")) ? 3600 : 0;
-            if (mult > 0)
-                in.number = amount * mult;
+        const auto unitSeconds = [](const QString &u) {
+            return (u == QLatin1String("detik") || u.startsWith(QLatin1String("sec"))) ? 1
+                 : (u == QLatin1String("menit") || u.startsWith(QLatin1String("min"))) ? 60
+                 : (u == QLatin1String("jam") || u.startsWith(QLatin1String("hour")) || u == QLatin1String("hr")) ? 3600 : 0;
+        };
+        double seconds = 0;
+        int numberAtWord = -1;
+        for (int i = 0; i < w.size() && seconds <= 0; ++i) {
+            bool dec = false;
+            const double d = w.at(i).contains(u'.') ? w.at(i).toDouble(&dec) : 0.0;
+            int used = 0;
+            const double n = dec ? d : double(numberAt(w, i, &used));
+            const int after = i + (dec ? 1 : std::max(used, 1));
+            if (!dec && used == 0) {
+                // no number: "setengah jam", "seperempat jam", "half an hour"
+                const QString x = w.at(i);
+                const bool half = x == QLatin1String("setengah") || x == QLatin1String("half") || x == QLatin1String("separuh");
+                const bool quarter = x == QLatin1String("seperempat") || x == QLatin1String("quarter");
+                if ((half || quarter) && after < w.size()) {
+                    const int u = unitSeconds(w.at(after));
+                    if (u > 0)
+                        seconds = u * (half ? 0.5 : 0.25);
+                }
+                continue;
+            }
+            if (n < 0 || after > w.size())
+                continue;
+            numberAtWord = i;
+            double more = 0; // "satu setengah jam": and a half
+            int unitAt = after;
+            if (unitAt + 1 < w.size() && (w.at(unitAt) == QLatin1String("setengah") || w.at(unitAt) == QLatin1String("half"))) {
+                more = 0.5;
+                ++unitAt;
+            }
+            if (unitAt < w.size()) {
+                const int u = unitSeconds(w.at(unitAt));
+                if (u > 0)
+                    seconds = (n + more) * u;
+            }
         }
-        if (in.number > 0) {
+        if (seconds > 0) {
             in.kind = Kind::Timer;
+            in.number = int(seconds + 0.5);
             const int lab = std::max(w.indexOf(QStringLiteral("untuk")), w.indexOf(QStringLiteral("for")));
+            int at = 0, used = 0;
             if (lab >= 0 && lab + 1 < w.size() && findNumber(w, lab + 1, &at, &used) < 0)
                 in.text = rest(lab + 1);
+            Q_UNUSED(numberAtWord)
             return in;
         }
     }
@@ -323,9 +433,9 @@ inline Intent parse(const QString &said)
         }
         if (vi >= 0) {
             QStringList q = wk.mid(vi + 1);
-            while (!q.isEmpty() && isFiller(q.first()))
+            while (!q.isEmpty() && isPolite(q.first()))
                 q.removeFirst();
-            while (!q.isEmpty() && isFiller(q.last()))
+            while (!q.isEmpty() && isPolite(q.last()))
                 q.removeLast();
             for (int k = 0; k < vi; ++k)
                 if (engines.contains(wk.at(k)))
@@ -338,15 +448,22 @@ inline Intent parse(const QString &said)
                     q.removeFirst();
             };
             dropLead();
-            if (q.size() >= 2 && isPlace(q.first()) && engines.contains(q.at(1))) { // "cari di youtube kucing"
-                in.engine = q.at(1);
+            // a search engine heard a little off ("youutube") is still that engine
+            const auto engineOf = [&](const QString &x) {
+                if (engines.contains(x))
+                    return x;
+                double sc = 0;
+                return x.size() >= 5 ? AssistantText::nearest(x, engines, &sc, 0.84) : QString();
+            };
+            if (q.size() >= 2 && isPlace(q.first()) && !engineOf(q.at(1)).isEmpty()) { // "cari di youtube kucing"
+                in.engine = engineOf(q.at(1));
                 q = q.mid(2);
-            } else if (!q.isEmpty() && engines.contains(q.first()) && q.first() != QLatin1String("google")) { // "cari youtube kucing"
-                in.engine = q.first();
+            } else if (!q.isEmpty() && !engineOf(q.first()).isEmpty() && engineOf(q.first()) != QLatin1String("google")) { // "cari youtube kucing"
+                in.engine = engineOf(q.first());
                 q.removeFirst();
             }
-            if (q.size() >= 2 && isPlace(q.at(q.size() - 2)) && engines.contains(q.last())) { // "... di youtube"
-                in.engine = q.last();
+            if (q.size() >= 2 && isPlace(q.at(q.size() - 2)) && !engineOf(q.last()).isEmpty()) { // "... di youtube"
+                in.engine = engineOf(q.last());
                 q = q.mid(0, q.size() - 2);
             } else if (q.size() >= 3 && isPlace(q.at(q.size() - 3)) && (q.last() == QLatin1String("internet") || q.last() == QLatin1String("web"))) {
                 q = q.mid(0, q.size() - 3);
@@ -354,7 +471,11 @@ inline Intent parse(const QString &said)
             dropLead();
             // "video ..." or "channel ..." means YouTube, with that kind of result
             if (!q.isEmpty()) {
-                const QString f = q.first();
+                static const QStringList kinds{QStringLiteral("video"), QStringLiteral("videos"), QStringLiteral("vidio"), QStringLiteral("channel"),
+                                               QStringLiteral("channels"), QStringLiteral("saluran"), QStringLiteral("kanal")};
+                double fsc = 0;
+                const QString near = q.first().size() >= 5 ? AssistantText::nearest(q.first(), kinds, &fsc, 0.84) : QString(); // "viddeo", "khannel"
+                const QString f = near.isEmpty() ? q.first() : near;
                 if (f == QLatin1String("video") || f == QLatin1String("videos") || f == QLatin1String("vidio")) {
                     in.filter = QStringLiteral("video");
                     q.removeFirst();
@@ -403,6 +524,18 @@ inline Intent parse(const QString &said)
             in.kind = Kind::Volume;
             in.volume = VolumeAction::Set;
             in.number = n;
+            return in;
+        }
+        if (hasAny(w, {"penuh", "maksimal", "maksimum", "full", "max", "maximum", "tertinggi"})) {
+            in.kind = Kind::Volume;
+            in.volume = VolumeAction::Set;
+            in.number = 100;
+            return in;
+        }
+        if (hasAny(w, {"setengah", "half", "separuh"}) && n < 0) {
+            in.kind = Kind::Volume;
+            in.volume = VolumeAction::Set;
+            in.number = 50;
             return in;
         }
         if (hasAny(w, {"naik", "naikkan", "up", "increase", "raise", "louder", "keras", "kerasin", "besarkan", "tambah"})) {
@@ -464,7 +597,7 @@ inline Intent parse(const QString &said)
         QStringList all = normalize(said, true).split(u' ', Qt::SkipEmptyParts);
         while (!all.isEmpty() && isFiller(all.first()))
             all.removeFirst();
-        while (!all.isEmpty() && isFiller(all.last()))
+        while (!all.isEmpty() && isPolite(all.last()))
             all.removeLast();
         if (all.size() >= 2 && asks.contains(all.first())) {
             in.kind = Kind::Search;
@@ -484,7 +617,7 @@ inline Intent parse(const QString &said)
             in.kind = Kind::OpenBrowser;
             return in;
         }
-        if (const QString url = siteUrl(what); !url.isEmpty()) {
+        if (const QString url = siteUrlHeard(what); !url.isEmpty()) {
             in.kind = Kind::OpenSite;
             in.text = url;
             return in;
@@ -493,6 +626,56 @@ inline Intent parse(const QString &said)
             in.kind = Kind::OpenApp;
             in.text = what;
             return in;
+        }
+    }
+    return in;
+}
+
+// What was said, as a command. A sentence that is not understood as it stands is tried again with its garbled command words put
+// right ("buku youtub" -> "buka youtube"): the first word towards the verbs, later long words towards video, channel, menit, ...
+inline bool sameIntent(const Intent &a, const Intent &b)
+{
+    return a.kind == b.kind && a.text == b.text && a.number == b.number && a.volume == b.volume && a.media == b.media && a.engine == b.engine
+           && a.filter == b.filter;
+}
+
+inline Intent parse(const QString &said)
+{
+    Intent in = parseExact(said);
+    const QString heard = normalize(said, true);
+    QStringList words = heard.split(u' ', Qt::SkipEmptyParts);
+    if (words.isEmpty())
+        return in;
+    int firstAt = 0;
+    while (firstAt + 1 < words.size() && isPolite(words.at(firstAt)))
+        ++firstAt;
+    // A first word that is a verb as it stands is trusted: only the marker words after it (video, menit, down, twenty ...) are put
+    // right, never the words of a search. Any other first word may be a verb heard a little off.
+    const bool strong = AssistantText::verbs().contains(words.at(firstAt));
+    const AssistantText::Repair fix = AssistantText::repair(heard, !strong);
+    if (fix.changed && fix.score >= 0.86) {
+        const Intent again = parseExact(fix.text);
+        // a different reading counts when the action differs, not when only the words of a search do
+        const bool differs = in.kind != again.kind || in.volume != again.volume || in.media != again.media || in.number != again.number
+                             || in.engine != again.engine || in.filter != again.filter;
+        if (again.kind != Kind::Unknown && (in.kind == Kind::Unknown || differs)) {
+            Intent out = again;
+            out.score = fix.score;
+            return out;
+        }
+    }
+    if (in.kind != Kind::Unknown)
+        return in;
+    // The first word may have been one of several verbs ("bua": buka or buat): the sentence says which makes sense.
+    if (!strong && words.size() >= 2) {
+        QStringList repaired = fix.text.split(u' ', Qt::SkipEmptyParts);
+        for (const QString &verb : AssistantText::ranked(words.first(), AssistantText::verbs())) {
+            repaired[0] = verb;
+            Intent again = parseExact(repaired.join(u' '));
+            if (again.kind != Kind::Unknown) {
+                again.score = 0.85;
+                return again;
+            }
         }
     }
     return in;
