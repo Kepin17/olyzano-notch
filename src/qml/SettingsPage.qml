@@ -337,7 +337,6 @@ RowLayout {
                             onClicked: assistant.downloadModel()
                         }
                         PillButton { visible: assistant.modelState === "downloading"; text: "Cancel"; onClicked: assistant.cancelDownload() }
-                        PillButton { visible: assistant.modelState === "ready"; text: "Remove the model"; iconName: "trash"; onClicked: assistant.removeModel() }
                     }
                     Rectangle {
                         visible: assistant.modelState === "downloading"

@@ -85,7 +85,7 @@ qt_add_executable(notch
     src/platform/AppDock.h src/platform/AppDock.cpp src/platform/DockModel.h
     src/platform/Activities.h src/platform/Activities.cpp
     src/platform/Assistant.h src/platform/Assistant.cpp src/platform/MicCapture.h src/platform/MicCapture.cpp
-    src/platform/AssistantModel.h src/platform/UtteranceModel.h src/platform/Whisper.h
+    src/platform/AssistantModel.h src/platform/UtteranceModel.h src/platform/Whisper.h src/platform/Whisper.cpp
     src/platform/Wellbeing.h src/platform/Wellbeing.cpp src/platform/WellbeingModel.h
     src/platform/Sounds.h src/platform/Sounds.cpp src/platform/SoundsModel.h
     src/platform/Karaoke.h src/platform/Karaoke.cpp src/platform/KaraokeModel.h
@@ -263,7 +263,6 @@ if(NOTCH_VOICE)
         endif()
         FetchContent_Declare(whisper GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git GIT_TAG v1.9.5 GIT_SHALLOW ON)
         FetchContent_MakeAvailable(whisper)
-        target_sources(notch PRIVATE src/platform/Whisper.cpp)
         target_link_libraries(notch PRIVATE whisper)
         target_compile_definitions(notch PRIVATE NOTCH_HAVE_WHISPER)
         message(STATUS "whisper.cpp: the offline voice assistant is built in")

@@ -233,6 +233,13 @@ int main(int argc, char *argv[])
         printf("%s\n", qPrintable(in.kind == AssistantModel::Kind::Unknown ? QStringLiteral("not understood") : QStringLiteral("would ") + assistant.describe(in)));
         return 0;
     }
+    if (app.arguments().contains(QStringLiteral("--assistant-listen"))) { // listens once through the microphone and prints what happens
+        QObject::connect(&assistant, &Assistant::stateChanged, &app, [&] { printf("state: %s  %s\n", qPrintable(assistant.state()), qPrintable(assistant.result())); fflush(stdout); if (assistant.state() == QLatin1String("done") || assistant.state() == QLatin1String("error")) { printf("heard: %s\n", qPrintable(assistant.heard())); app.quit(); } });
+        assistant.setEnabled(true);
+        QTimer::singleShot(0, &assistant, &Assistant::start);
+        QTimer::singleShot(30000, &app, &QCoreApplication::quit);
+        return app.exec();
+    }
     if (const int i = app.arguments().indexOf(QStringLiteral("--assistant-wav")); i >= 0 && i + 1 < app.arguments().size()) {
         const QString text = assistant.transcribeFile(app.arguments().at(i + 1));
         const auto in = AssistantModel::parse(text);

@@ -1,5 +1,6 @@
 #include "Whisper.h"
 
+#include <QRegularExpression>
 #include <QThread>
 
 #ifdef NOTCH_HAVE_WHISPER
@@ -79,6 +80,8 @@ QString Whisper::transcribe(const QVector<float> &samples, const QString &langua
     QString text;
     for (int i = 0, n = whisper_full_n_segments(d->ctx); i < n; ++i)
         text += QString::fromUtf8(whisper_full_get_segment_text(d->ctx, i));
+    // Noise comes back as "(humming)", "[BLANK_AUDIO]" or a note: that is no speech
+    text.remove(QRegularExpression(QStringLiteral("\\[[^\\]]*\\]|\\([^)]*\\)|[\u266a\u266b]")));
     return text.simplified();
 #else
     Q_UNUSED(samples)
