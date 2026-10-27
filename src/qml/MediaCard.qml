@@ -22,6 +22,7 @@ Rectangle {
     readonly property color fgFaint: hasArt ? Qt.rgba(1, 1, 1, 0.5) : theme.textFaint
     property real position: 0 // ms, interpolated between D-Bus reads
     property bool scrubbing: false
+    readonly property real shown: media.lengthMs > 0 ? Math.max(0, Math.min(media.lengthMs, position)) : Math.max(0, position) // never past the end
     // The user did something with the card: keep it open (Main stops the auto-hide).
     signal interacted()
 
@@ -45,8 +46,9 @@ Rectangle {
         interval: 250
         repeat: true
         running: card.visible && media.playing && !card.scrubbing
-        onTriggered: card.position = Math.min(media.lengthMs, card.position + 250)
+        onTriggered: card.position = media.lengthMs > 0 ? Math.min(media.lengthMs, card.position + 250) : card.position + 250
     }
+    Timer { id: settle; interval: 800; onTriggered: card.sync() }
     Timer {
         interval: 3000
         repeat: true
@@ -57,12 +59,18 @@ Rectangle {
     Connections {
         target: media
         function onChanged() {
-            card.sync()
             if (media.title !== card.lastTitle || media.artUrl !== card.lastArt) {
+                const newSong = media.title !== card.lastTitle
                 card.lastTitle = media.title
                 card.lastArt = media.artUrl
                 change.restart()
+                if (newSong) { // the player still reports the old song's position for a moment: start at 0 and ask again
+                    if (!card.scrubbing) card.position = 0
+                    settle.restart()
+                    return
+                }
             }
+            card.sync()
         }
     }
     onVisibleChanged: if (visible) sync()
@@ -289,7 +297,7 @@ Rectangle {
                 id: bar
                 Layout.fillWidth: true
                 implicitHeight: 18
-                readonly property real ratio: media.lengthMs > 0 ? Math.min(1, card.position / media.lengthMs) : 0
+                readonly property real ratio: media.lengthMs > 0 ? card.shown / media.lengthMs : 0
                 readonly property bool active: seekArea.containsMouse || card.scrubbing
                 Rectangle {
                     anchors.verticalCenter: parent.verticalCenter
@@ -334,14 +342,14 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
                 Text {
-                    text: card.fmt(card.position)
+                    text: card.fmt(card.shown)
                     color: card.fgDim
                     font.pixelSize: 11
                     font.features: { "tnum": 1 }
                 }
                 Item { Layout.fillWidth: true }
                 Text {
-                    text: "-" + card.fmt(media.lengthMs - card.position)
+                    text: "-" + card.fmt(media.lengthMs - card.shown)
                     color: card.fgDim
                     font.pixelSize: 11
                     font.features: { "tnum": 1 }

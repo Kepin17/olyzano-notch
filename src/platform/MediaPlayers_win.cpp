@@ -314,6 +314,17 @@ void MediaPlayers::sessionsRead(const QList<Session> &sessions)
         if (s.status == QLatin1String("Playing") && p.s.status != s.status && s.key != m_manual)
             m_manual.clear(); // a player that starts playing takes over from a manual pick
         p.s = s;
+        // A new song: apps often report the old song's position until they publish the new one. Count from 0 at the
+        // change until a timeline newer than the change arrives.
+        const QString track = s.title + u'\x1f' + s.artist;
+        if (track != p.track) {
+            p.trackAt = p.track.isEmpty() ? 0 : QDateTime::currentMSecsSinceEpoch();
+            p.track = track;
+        }
+        if (p.trackAt > 0 && p.s.positionAt < p.trackAt) {
+            p.s.positionMs = 0;
+            p.s.positionAt = p.trackAt;
+        }
         players.insert(s.key, p);
     }
     m_players = players;
