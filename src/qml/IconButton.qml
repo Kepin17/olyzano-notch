@@ -19,7 +19,7 @@ AbstractButton {
             anchors.centerIn: parent
             visible: ib.iconName !== ""
             glyph: ib.iconName
-            color: ib.checked ? theme.accent : theme.text
+            color: ib.checked ? theme.accentText : theme.text
         }
         Text {
             anchors.fill: parent

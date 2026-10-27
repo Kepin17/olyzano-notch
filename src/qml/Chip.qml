@@ -17,7 +17,7 @@ AbstractButton {
     implicitWidth: chipRow.implicitWidth + 24
     // The active chip is tinted (soft accent fill, accent text and outline), the way Washi's vermilion outline is.
     readonly property bool filled: false
-    readonly property color ink: chip.active ? theme.accent : theme.text
+    readonly property color ink: chip.active ? theme.accentText : theme.text
     background: Rectangle {
         radius: theme.washi ? theme.chipRadius : theme.radiusSm
         color: chip.dropHover ? theme.accentFaint : chip.active ? Qt.alpha(theme.accent, 0.16) : chip.hovered ? theme.hoverFill : "transparent"

@@ -262,6 +262,7 @@ Right-click → **Tools…** (or **Tools** while selecting). New files appear ne
 - **Theme:** eight looks, each in Dark, Light or Follow system: **Classic** (follows your KDE accent colour),
   **Washi 和紙** (sumi ink / washi paper, a vermilion accent, serif headings), **Frost**, **Ocean**, **Forest**, **Sunset**,
   **Lavender** and **Mocha**. Pick one from the swatches in *Settings → Appearance*.
+- **Glass** (*Settings → Appearance*): the notch and the cards on it turn translucent, with a strength slider. On KDE Plasma the desktop blurs what is behind them; where there is no blur they stay mostly solid so the text stays readable (the Windows acrylic blur is not used yet).
 - Settings are grouped in tabs: **General · Files · Dock · Wellbeing · Sharing · Appearance**.
 - **Keep files for** 1–30 days (shortening it removes older files right away), the storage folder (changeable while the
   shelf is empty), alerts, start at login, automatic screenshots and downloads, sharing servers.

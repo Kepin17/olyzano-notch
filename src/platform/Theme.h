@@ -32,6 +32,7 @@ class Theme : public QObject
     Q_PROPERTY(QString displayFont READ displayFont NOTIFY changed) // headings; "" = system font
     Q_PROPERTY(bool dark READ dark NOTIFY changed)
     Q_PROPERTY(bool glass READ glass NOTIFY changed) // Settings -> Appearance -> Glass: the island and its surfaces are see-through
+    Q_PROPERTY(QColor accentText READ accentText NOTIFY changed) // the accent as text on its own light tint: darker on a light theme
     Q_PROPERTY(QColor hoverFill READ hoverFill NOTIFY changed) // a quiet fill under the pointer
     Q_PROPERTY(QColor pressFill READ pressFill NOTIFY changed)
     Q_PROPERTY(QColor hairline READ hairline NOTIFY changed) // the 1 px edge of everything: white 8 % on dark, black 8 % on light
@@ -89,6 +90,7 @@ public:
     bool glass() const { return m_glass; }
     // Glass on: opacity of the island and of the surfaces on it (GlassModel.h); the blur behind is the system's, when there is one.
     void setGlass(bool on, int strength, bool blur);
+    QColor accentText() const { return dark() ? accent() : accent().darker(165); }
     QColor hoverFill() const { return withAlpha(dark() ? QColor(255, 255, 255) : QColor(0, 0, 0), dark() ? 0.07 : 0.06); }
     QColor pressFill() const { return withAlpha(dark() ? QColor(255, 255, 255) : QColor(0, 0, 0), dark() ? 0.12 : 0.10); }
     QColor hairline() const { return withAlpha(dark() ? QColor(255, 255, 255) : QColor(0, 0, 0), 0.08); }

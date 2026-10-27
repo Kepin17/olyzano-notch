@@ -38,7 +38,7 @@ AbstractButton {
                 id: pbLabel
                 visible: !pb.iconOnly
                 text: pb.text
-                color: pb.checked ? theme.accent : theme.text
+                color: pb.checked ? theme.accentText : theme.text
                 font.pixelSize: 12
                 font.weight: pb.checked ? Font.DemiBold : Font.Medium
             }
