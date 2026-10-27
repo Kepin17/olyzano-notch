@@ -18,6 +18,7 @@
 #include "platform/MediaNames.h"
 #include "platform/DbusMenuModel.h"
 #include "platform/GamingModel.h"
+#include "platform/AssistantCorpus.h"
 #include "platform/AssistantModel.h"
 #include "platform/GlassModel.h"
 #include "platform/UtteranceModel.h"
@@ -2624,6 +2625,15 @@ private slots:
         QCOMPARE(i.text, QStringLiteral("what is a vpn"));
         QCOMPARE(parse(QStringLiteral("harga")).kind, Kind::Unknown);                   // one word is no question
         QCOMPARE(parse(QStringLiteral("hari ini cerah sekali")).kind, Kind::Unknown);   // talk in the room does nothing
+    }
+
+    void assistantAccuracyOnTheCorpus()
+    {
+        const auto clean = AssistantCorpus::evaluate(0);
+        const auto noisy = AssistantCorpus::evaluate(25, 8);
+        qInfo("assistant corpus: as written %d/%d, garbled %d/%d", clean.right, clean.total, noisy.right, noisy.total);
+        QVERIFY2(clean.right >= clean.total * 90 / 100, qPrintable(clean.wrong.join(u'\n')));
+        QVERIFY2(noisy.right >= noisy.total * 50 / 100, qPrintable(noisy.wrong.mid(0, 10).join(u'\n')));
     }
 
     void assistantMatchesAppNames()

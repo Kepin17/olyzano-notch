@@ -18,6 +18,7 @@
 #include "platform/Prayer.h"
 #include "platform/Tasks.h"
 #include "platform/Assistant.h"
+#include "platform/AssistantCorpus.h"
 #include "platform/Updates.h"
 #include "platform/Launcher.h"
 #include "platform/TrayHost.h"
@@ -239,6 +240,21 @@ int main(int argc, char *argv[])
         QTimer::singleShot(0, &assistant, &Assistant::start);
         QTimer::singleShot(30000, &app, &QCoreApplication::quit);
         return app.exec();
+    }
+    // `notch --assistant-eval [percent] [rounds]`: how many of the sample sentences are understood as written, and with `percent` of
+    // their long words garbled the way a recognizer garbles them (default 25 %, 8 rounds); the sentences that fail are listed.
+    if (const int i = app.arguments().indexOf(QStringLiteral("--assistant-eval")); i >= 0) {
+        const int percent = i + 1 < app.arguments().size() ? app.arguments().at(i + 1).toInt() : 25;
+        const int rounds = i + 2 < app.arguments().size() ? app.arguments().at(i + 2).toInt() : 8;
+        const auto clean = AssistantCorpus::evaluate(0);
+        const auto noisy = AssistantCorpus::evaluate(percent, rounds);
+        printf("as written: %d / %d (%.1f %%)\n", clean.right, clean.total, 100.0 * clean.right / qMax(1, clean.total));
+        for (const QString &w : clean.wrong)
+            printf("  %s\n", qPrintable(w));
+        printf("%d %% garbled: %d / %d (%.1f %%)\n", percent, noisy.right, noisy.total, 100.0 * noisy.right / qMax(1, noisy.total));
+        for (int k = 0; k < noisy.wrong.size() && k < 25; ++k)
+            printf("  %s\n", qPrintable(noisy.wrong.at(k)));
+        return 0;
     }
     if (const int i = app.arguments().indexOf(QStringLiteral("--assistant-wav")); i >= 0 && i + 1 < app.arguments().size()) {
         const QString text = assistant.transcribeFile(app.arguments().at(i + 1));
