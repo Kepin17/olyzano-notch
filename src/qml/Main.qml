@@ -854,7 +854,24 @@ Window {
     }
     Timer { id: maskSettle; interval: 350; onTriggered: { root.updateMask(); root.updateBlur() } }
     onVisibleChanged: { updateMask(); applyReserve() }
-    onModeChanged: { applyGeometry(); updateMask(); updateBlur() }
+    onModeChanged: { applyGeometry(); updateMask(); updateBlur(); if (mode === "idle" || mode === "hidden") trimTimer.restart() }
+    // A little after the panel has closed, freed memory goes back to the system.
+    Timer { id: trimTimer; interval: 15000; onTriggered: memtune.trim() }
+    // Settings and the share dialog are built when first wanted; a minute or two after they are closed they go again (they are
+    // some 20 MB), and are built anew the next time.
+    property string settingsCategory: "general" // which Settings section was open, kept while the page is unloaded
+    Timer {
+        interval: 60000
+        repeat: true
+        running: settingsLoader.active || shareLoader.active
+        onTriggered: {
+            if (settingsLoader.active && root.page !== "settings" && !(settingsLoader.item && settingsLoader.item.overlayOpen))
+                settingsLoader.active = false
+            if (shareLoader.active && !(shareLoader.item && shareLoader.item.visible))
+                shareLoader.active = false
+            trimTimer.restart()
+        }
+    }
     Connections {
         target: gaming
         function onChanged() {

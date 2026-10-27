@@ -77,6 +77,7 @@ class Activities : public QObject
 
 public:
     explicit Activities(QObject *parent = nullptr);
+    ~Activities() override;
 
     QString timerKind() const { return m_kind; }
     bool timerRunning() const { return m_running; }

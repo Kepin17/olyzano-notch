@@ -10,7 +10,8 @@ RowLayout {
     // Its menu / folder dialog are open: Notch keeps the whole window clickable meanwhile.
     property bool keysOpen: false // the member-keys window
     readonly property bool overlayOpen: ruleMenu.visible || folderDialog.visible || keysOpen
-    property string category: "general" // the section shown; kept while Notch runs
+    property string category: shell.settingsCategory // the section shown; kept by Main while Notch runs (this page may be unloaded)
+    onCategoryChanged: shell.settingsCategory = category
     property string query: ""
     visible: shell.page === "settings"
     Layout.fillWidth: true
@@ -36,7 +37,7 @@ RowLayout {
     // What a search can find: section, setting, words that also describe it.
     readonly property var index: [
         ["about", "Updates", "update upgrade new version release check download latest github notify"], ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
-        ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Clipboard history", "clipboard copy paste history remember klipper"], ["general", "Sounds", "sound effects volume quiet mute"],
+        ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Low memory mode", "memory ram performance software renderer gpu graphics lower usage"], ["general", "Clipboard history", "clipboard copy paste history remember klipper"], ["general", "Sounds", "sound effects volume quiet mute"],
         ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Voice assistant", "voice assistant commands speech microphone whisper offline say listen"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["appearance", "Capsule shape", "capsule shape notch pill rounded dynamic island edge look widget"],["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"], ["appearance", "Glass", "glass glassmorphism translucent transparent blur frosted see-through"], ["appearance", "Border matches my system accent", "border outline edge accent windows color capsule widget"], ["appearance", "Animations and transitions", "animation animations transition motion reduce disable off smooth instant bounce spring"],
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
         ["panel", "Transparency and blur", "glass opacity bar"], ["panel", "What the bar shows", "app name date seconds battery percentage"],
@@ -364,6 +365,25 @@ RowLayout {
                         text: "Try: “open the browser”, “open YouTube”, “search channel Nadia on YouTube”, “volume 40”, “timer 10 minutes”, “add task buy milk tomorrow 5”, “pause the music”. Nothing that deletes or shuts down is understood."
                     }
                 }
+            }
+
+            SettingCard {
+                title: "Performance"
+                visible: memtune.available
+                SettingToggle {
+                    title: "Low memory mode"
+                    caption: "Draws with Qt's software renderer instead of the graphics card: Notch then needs roughly 50 MB less memory, but uses a little more processor while the panel moves. Takes effect after a restart."
+                    checked: memtune.lowMemory
+                    onToggled: memtune.lowMemory = !memtune.lowMemory
+                }
+                RowLayout {
+                    visible: memtune.lowMemory !== memtune.running
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Caption { Layout.fillWidth: true; text: memtune.lowMemory ? "Restart Notch to switch to low memory mode." : "Restart Notch to go back to the graphics card." }
+                    PillButton { text: "Restart now"; iconName: "undo"; checked: true; onClicked: memtune.restart() }
+                }
+                Caption { visible: memtune.running && memtune.lowMemory; Layout.fillWidth: true; text: "Low memory mode is on." }
             }
 
             SettingCard {

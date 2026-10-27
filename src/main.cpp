@@ -27,6 +27,7 @@
 #include "platform/QuickSettings.h"
 #include "platform/SystemStats.h"
 #include "platform/ClipboardHistory.h"
+#include "platform/MemoryTuner.h"
 #include "platform/Lyrics.h"
 #include "platform/MediaPlayers.h"
 #include "platform/SystemEvents.h"
@@ -155,6 +156,7 @@ public:
 
 int main(int argc, char *argv[])
 {
+    MemoryTuner::applyEarly(); // few malloc arenas, and the software renderer if Low memory mode is on
     QQuickWindow::setDefaultAlphaBuffer(true);
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("notch"));
@@ -223,6 +225,7 @@ int main(int argc, char *argv[])
     QuickSettings quick;
     SystemStats sysstats;
     ClipboardHistory clipboardHistory;
+    MemoryTuner memtune;
     QObject::connect(&clipboardHistory, &ClipboardHistory::keepRequested, &controller, [&](const QString &name, const QString &mime, const QByteArray &bytes) {
         controller.keepBytes(name, mime, bytes, QObject::tr("Clipboard"));
     });
@@ -373,6 +376,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("activities"), &activities);
     engine.rootContext()->setContextProperty(QStringLiteral("sysstats"), &sysstats);
     engine.rootContext()->setContextProperty(QStringLiteral("clipboardHistory"), &clipboardHistory);
+    engine.rootContext()->setContextProperty(QStringLiteral("memtune"), &memtune);
     engine.rootContext()->setContextProperty(QStringLiteral("wellbeing"), &wellbeing);
     engine.rootContext()->setContextProperty(QStringLiteral("sounds"), &sounds);
     engine.rootContext()->setContextProperty(QStringLiteral("lyrics"), &lyrics);
