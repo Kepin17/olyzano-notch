@@ -16,7 +16,7 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PAGE = open(os.path.join(HERE, "page.html"), "rb").read()
@@ -43,6 +43,7 @@ ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
 NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,39}$")
 PIN_MAX_FAILS, PIN_LOCK_SECONDS = 5, 600
 INVITE_DAYS = 7
+MAX_MEMBER_QUOTA_MB = 5120  # the most space the app can give one member
 MB = 1024 * 1024
 OWNER = 0  # the built-in member behind RELAY_API_KEY: the host, unlimited by member quotas
 
@@ -51,8 +52,8 @@ class Config:
     def __init__(self, env=os.environ):
         self.api_key = env.get("RELAY_API_KEY", "")
         self.data_dir = env.get("DATA_DIR", "/data")
-        self.max_file = int(float(env.get("MAX_FILE_MB", "500")) * 1024 * 1024)
-        self.max_total = int(float(env.get("MAX_TOTAL_MB", "2000")) * 1024 * 1024)
+        self.max_file = int(float(env.get("MAX_FILE_MB", "5120")) * 1024 * 1024)
+        self.max_total = int(float(env.get("MAX_TOTAL_MB", "20480")) * 1024 * 1024)
         self.max_ttl = int(float(env.get("MAX_TTL_HOURS", "24")) * 3600)
         self.trust_proxy = env.get("TRUST_PROXY", "0") == "1"
         self.host = env.get("BIND", "0.0.0.0")
@@ -80,6 +81,10 @@ class Members:
             c.execute("""CREATE TABLE IF NOT EXISTS invites(
                 token_hash TEXT PRIMARY KEY, member_id INTEGER NOT NULL, expires_at INTEGER NOT NULL,
                 used INTEGER NOT NULL DEFAULT 0)""")
+            have = {r["name"] for r in c.execute("PRAGMA table_info(members)")}
+            for col in ("access_hours", "expires_at"):  # added later: how long a member's access lasts (empty = no end)
+                if col not in have:
+                    c.execute("ALTER TABLE members ADD COLUMN %s INTEGER" % col)
         self.fails = {}  # ip -> (count, locked_until) for /join
         self.lock = threading.Lock()
 
@@ -96,7 +101,8 @@ class Members:
         if not key:
             return None
         with self.db() as c:
-            row = c.execute("SELECT * FROM members WHERE key_hash = ? AND revoked = 0", (sha(key),)).fetchone()
+            row = c.execute("SELECT * FROM members WHERE key_hash = ? AND revoked = 0 AND (expires_at IS NULL OR expires_at > ?)",
+                            (sha(key), int(time.time()))).fetchone()
         return dict(row) if row else None
 
     def get(self, name):
@@ -107,6 +113,13 @@ class Members:
     def all(self):
         with self.db() as c:
             return [dict(r) for r in c.execute("SELECT * FROM members ORDER BY id")]
+
+    def page(self, offset, limit):
+        """Active members, newest first, `limit` of them from `offset`; and how many there are in all."""
+        with self.db() as c:
+            rows = c.execute("SELECT * FROM members WHERE revoked = 0 ORDER BY id DESC LIMIT ? OFFSET ?", (limit, offset)).fetchall()
+            total = c.execute("SELECT COUNT(*) FROM members WHERE revoked = 0").fetchone()[0]
+        return [dict(r) for r in rows], total
 
     def limits(self, m):
         """What this member may do: their own limits, never above the server's."""
@@ -124,10 +137,10 @@ class Members:
             raise ValueError("a name is 1-40 letters, digits, space . _ -")
         with self.db() as c:
             try:
-                cur = c.execute("INSERT INTO members(name, created, quota_mb, max_file_mb, max_ttl_hours, max_active)"
-                                " VALUES(?,?,?,?,?,?)", (name, int(time.time()), limits.get("quota_mb"),
-                                                         limits.get("max_file_mb"), limits.get("max_ttl_hours"),
-                                                         limits.get("max_active")))
+                cur = c.execute("INSERT INTO members(name, created, quota_mb, max_file_mb, max_ttl_hours, max_active, access_hours)"
+                                " VALUES(?,?,?,?,?,?,?)", (name, int(time.time()), limits.get("quota_mb"),
+                                                           limits.get("max_file_mb"), limits.get("max_ttl_hours"),
+                                                           limits.get("max_active"), limits.get("access_hours")))
             except sqlite3.IntegrityError:
                 raise ValueError("there is already a member called %r" % name)
             return cur.lastrowid
@@ -171,7 +184,10 @@ class Members:
                 return None
             key = secrets.token_hex(32)
             c.execute("UPDATE invites SET used = 1 WHERE token_hash = ?", (row["token_hash"],))
-            c.execute("UPDATE members SET key_hash = ? WHERE id = ?", (sha(key), row["member_id"]))
+            hours = c.execute("SELECT access_hours FROM members WHERE id = ?", (row["member_id"],)).fetchone()[0]
+            # the access period starts when they join (a new key starts it again); no hours = no end
+            c.execute("UPDATE members SET key_hash = ?, expires_at = ? WHERE id = ?",
+                      (sha(key), int(time.time()) + hours * 3600 if hours else None, row["member_id"]))
         return row["name"], key
 
     def invite_link(self, token):
@@ -340,6 +356,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/join":
             csp = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; frame-ancestors 'none'"
             return self.reply(200, JOIN_PAGE, "text/html; charset=utf-8", {"Content-Security-Policy": csp})
+        if path == "/api/v1/members":
+            return self.members_api("GET", path)
         if path == "/api/v1/ping":
             member = self.auth()
             if not member:
@@ -349,7 +367,7 @@ class Handler(BaseHTTPRequestHandler):
             free = max(0, min(lim["quota"] - used, c.max_total - self.store.used()))
             return self.reply(200, {"ok": True, "member": member["name"], "max_file": lim["max_file"],
                                     "max_ttl": lim["max_ttl"], "free": free,
-                                    "limits": lim, "usage": {"used": used, "active": active}})
+                                    "owner": member["id"] == OWNER, "limits": lim, "usage": {"used": used, "active": active}})
         m = re.match(r"^/api/v1/shares/([^/]+)$", path)
         if m and ID_RE.match(m.group(1)):  # progress check for the sender
             member = self.auth()
@@ -451,6 +469,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         if path == "/api/v1/join":
             return self.join()
+        if path == "/api/v1/members" or re.match(r"^/api/v1/members/[^/]+/invite$", path):
+            return self.members_api("POST", path)
         if path != "/api/v1/shares":
             return self.reply(404, {"error": "not found"})
         member = self.auth()
@@ -522,7 +542,58 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(404, {"error": "invalid_invite", "message": "This invitation is not valid any more"})
         self.reply(200, {"name": got[0], "key": got[1]})
 
+    def members_api(self, method, path):
+        """The host (and only the host) manages members from the app: list, create (-> invitation), re-invite, revoke."""
+        member = self.auth()
+        if not member:
+            return self.reply(401, {"error": "bad key"})
+        if member["id"] != OWNER:
+            return self.reply(403, {"error": "host_only", "message": "Only the host of this server can manage members"})
+        members = self.server.members
+        try:
+            if method == "GET":  # ?offset=&limit= (the app loads more as the list is scrolled)
+                q = parse_qs(urlparse(self.path).query)
+                try:
+                    offset = max(0, int(q.get("offset", ["0"])[0]))
+                    limit = max(1, min(100, int(q.get("limit", ["20"])[0])))
+                except ValueError:
+                    offset, limit = 0, 20
+                page, total = members.page(offset, limit)
+                return self.reply(200, {"total": total, "offset": offset, "members": [
+                    {"name": m["name"], "revoked": bool(m["revoked"]), "joined": bool(m["key_hash"]),
+                     "expires_at": m.get("expires_at") or 0, "access_hours": m.get("access_hours") or 0,
+                     "limits": members.limits(m), "used": self.store.used(m["id"]), "active": self.store.active(m["id"])}
+                    for m in page]})
+            if method == "POST" and path == "/api/v1/members":
+                try:
+                    body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", "0")), 4096)) or b"{}")
+                    name = str(body.get("name", "")).strip()
+                    lim = {k: int(body[k]) for k in ("quota_mb", "max_file_mb", "max_ttl_hours", "max_active", "access_hours") if body.get(k)}
+                except (ValueError, AttributeError, TypeError):
+                    return self.reply(400, {"error": "bad_request", "message": "Bad request"})
+                if members.get(name):
+                    return self.reply(409, {"error": "exists", "message": "There is already a member called %s" % name})
+                if lim.get("quota_mb", 0) > MAX_MEMBER_QUOTA_MB:  # one member never takes more than this
+                    lim["quota_mb"] = MAX_MEMBER_QUOTA_MB
+                members.add(name, **lim)
+                return self.reply(201, {"name": name, "link": members.invite_link(members.invite(name))})
+            name = unquote(path.split("/")[4])
+            m = members.get(name)
+            if not m:
+                return self.reply(404, {"error": "not_found", "message": "No member called %s" % name})
+            if method == "DELETE":
+                members.revoke(name)
+                for sid, meta in self.store.shares():
+                    if meta.get("owner", OWNER) == m["id"]:
+                        self.store.delete(sid)
+                return self.reply(200, {"ok": True})
+            return self.reply(200, {"name": name, "link": members.invite_link(members.invite(name))})
+        except ValueError as e:  # a bad name, a revoked member
+            return self.reply(400, {"error": "bad_request", "message": str(e)})
+
     def do_DELETE(self):
+        if re.match(r"^/api/v1/members/[^/]+$", urlparse(self.path).path):
+            return self.members_api("DELETE", urlparse(self.path).path)
         m = re.match(r"^/api/v1/shares/([^/]+)$", urlparse(self.path).path)
         if not m or not ID_RE.match(m.group(1)):
             return self.reply(404, {"error": "not found"})
@@ -560,6 +631,7 @@ def cli(cfg, argv):
         sp.add_argument("--max-file-mb", type=int, help="largest single upload")
         sp.add_argument("--max-ttl-hours", type=int, help="longest a link may live")
         sp.add_argument("--max-active", type=int, help="shares at the same time")
+        sp.add_argument("--access-hours", type=int, help="how long their access lasts after they join (default: no end)")
     mem = sub.add_parser("members", help="manage members").add_subparsers(dest="action", required=True)
     add = mem.add_parser("add", help="add a member and print their invitation")
     add.add_argument("name"); limits(add)
@@ -580,7 +652,7 @@ def cli(cfg, argv):
 
     members, store = Members(cfg), Store(cfg)
     names = {OWNER: "owner"} | {m["id"]: m["name"] for m in members.all()}
-    pick = lambda a: {k: getattr(a, k) for k in ("quota_mb", "max_file_mb", "max_ttl_hours", "max_active")}
+    pick = lambda a: {k: getattr(a, k) for k in ("quota_mb", "max_file_mb", "max_ttl_hours", "max_active", "access_hours")}
     try:
         if args.cmd == "members" and args.action == "add":
             members.add(args.name, **pick(args))

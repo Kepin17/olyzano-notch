@@ -8,7 +8,8 @@ RowLayout {
     id: settingsScroll
     required property var shell
     // Its menu / folder dialog are open: Notch keeps the whole window clickable meanwhile.
-    readonly property bool overlayOpen: ruleMenu.visible || folderDialog.visible
+    property bool keysOpen: false // the member-keys window
+    readonly property bool overlayOpen: ruleMenu.visible || folderDialog.visible || keysOpen
     property string category: "general" // the section shown; kept while Notch runs
     property string query: ""
     visible: shell.page === "settings"
@@ -172,74 +173,57 @@ RowLayout {
             spacing: 16
 
             SettingCard {
-                title: "Notch"
-            SettingToggle {
-                title: "Start at login"
-                checked: notch.autostart
-                onToggled: notch.autostart = !notch.autostart
-            }
-
-            SettingToggle {
-                title: "Dynamic island"
-                caption: "A small black capsule stays at the top and shows what is going on: the song playing, the app using the microphone"
-                    + (Qt.platform.os === "windows" || Qt.platform.os === "linux" ? ", a Discord call," : "") + " and notifications from this computer."
-                checked: activities.capsuleMode !== "hidden"
-                onToggled: activities.capsuleMode = activities.capsuleMode === "hidden" ? "capsule" : "hidden"
-            }
-
-            SettingToggle {
-                visible: Qt.platform.os === "windows" || Qt.platform.os === "linux"
-                title: "Discord muted / deafened"
-                caption: !activities.discordAvailable ? "This build has no Discord app, so the island can only show that you are in a Discord call."
-                    : activities.discordRpc ? (activities.discordStatus !== "" ? activities.discordStatus : "Starting")
-                    : "While you are in a Discord call, show a slashed microphone when you are muted and slashed headphones when you are deafened. Discord asks you to approve Olyzano Notch once; nothing else is read."
-                enabled: activities.discordAvailable
-                checked: activities.discordRpc
-                onToggled: activities.discordRpc = !activities.discordRpc
-            }
-
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 6
-                Text {
-                    text: "How the notch sits on the screen"
-                    color: theme.text
-                    font.pixelSize: 13
-                    font.weight: Font.Medium
+                title: "Startup & behaviour"
+                SettingToggle {
+                    title: "Start at login"
+                    checked: notch.autostart
+                    onToggled: notch.autostart = !notch.autostart
                 }
-                Flow { // wraps: with "Widget · Beta" and "Reset position" the row is wider than the page
+                SettingToggle {
+                    title: "Keep away from full-screen apps and games"
+                    caption: "While an app or game fills the screen, Olyzano Notch and the dock cannot be reached, so a stray click never lands in them."
+                    checked: gaming.enabled
+                    onToggled: gaming.enabled = !gaming.enabled
+                }
+            }
+
+            // One choice for how the notch sits; only the options that belong to it appear below.
+            SettingCard {
+                title: "Notch"
+                Segmented {
                     Layout.fillWidth: true
-                    spacing: 6
-                    Repeater {
-                        model: [["hidden", "Hidden"], ["capsule", "Capsule"], ["widget", "Widget · Beta"], ["open", "Always open"]]
-                        PillButton {
-                            required property var modelData
-                            text: modelData[1]
-                            checked: activities.capsuleMode === modelData[0]
-                            onClicked: activities.capsuleMode = modelData[0]
-                        }
-                    }
-                    PillButton { visible: activities.capsuleMode === "widget"; text: "Reset position"; iconName: "undo"; onClicked: activities.resetWidgetPos() }
+                    model: [["hidden", "Hidden"], ["capsule", "Capsule"], ["widget", "Widget · Beta"], ["open", "Always open"]]
+                    value: activities.capsuleMode
+                    onPicked: (v) => activities.capsuleMode = v
                 }
                 Caption {
                     Layout.fillWidth: true
-                    text: activities.capsuleMode === "capsule" ? "A small black capsule stays at the top, like a Dynamic Island. Point at it to open Olyzano Notch."
-                        : activities.capsuleMode === "widget" ? "Beta: a floating card you can drag anywhere. Click it to open Olyzano Notch beside it; pointing at the top edge opens nothing. It may still have rough edges."
+                    text: activities.capsuleMode === "capsule" ? "A small capsule stays at the top, like a Dynamic Island. Point at it to open."
+                        : activities.capsuleMode === "widget" ? "Beta: a floating card you can drag anywhere. Click it to open the panel beside it."
                         : activities.capsuleMode === "open" ? "The panel stays open at the top of the screen."
-                        : "Only a thin line shows at the top edge. Rest the pointer there to open Olyzano Notch."
+                        : "Only a thin line shows at the top edge. Rest the pointer there to open."
                 }
+                PillButton { visible: activities.capsuleMode === "widget"; text: "Reset position"; iconName: "undo"; onClicked: activities.resetWidgetPos() }
+            DockSlider {
+                visible: activities.capsuleMode === "capsule" || activities.capsuleMode === "widget"
+                title: "Capsule size"
+                valueText: Math.round(activities.capsuleScale * 100) + "%"
+                from: 80; to: 130; stepSize: 5
+                value: Math.round(activities.capsuleScale * 100)
+                onMoved: activities.capsuleScale = value / 100
             }
-
             SettingToggle {
                 visible: desktop.canReserve && activities.capsuleMode === "capsule"
                 title: "Keep other windows clear of the capsule"
-                caption: "Maximised windows start below the capsule, like under a taskbar, instead of behind it. A strip as tall as the capsule is kept free along the top"
-                         + (topbar.enabled && topbar.reserve ? " (the status bar already keeps room, so only the difference is added)." : ".")
-                         + " On Windows and KDE Plasma (Wayland)."
+                caption: "Maximised windows start below the capsule, like under a taskbar. Windows and KDE Plasma (Wayland)."
                 checked: activities.reserveSpace
                 onToggled: activities.reserveSpace = !activities.reserveSpace
             }
+            }
 
+            SettingCard {
+                title: "On the capsule"
+                visible: activities.capsuleMode !== "hidden"
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 6
@@ -269,29 +253,22 @@ RowLayout {
                     }
                 }
             }
-            DockSlider {
-                title: "Capsule size"
-                valueText: Math.round(activities.capsuleScale * 100) + "%"
-                from: 80; to: 130; stepSize: 5
-                value: Math.round(activities.capsuleScale * 100)
-                onMoved: activities.capsuleScale = value / 100
-            }
             SettingToggle {
                 title: "Next task in the capsule"
                 caption: "While nothing is playing and no timer runs, the capsule shows your next task and how long is left."
                 checked: activities.taskInCapsule
                 onToggled: activities.taskInCapsule = !activities.taskInCapsule
             }
+            SettingToggle {
+                visible: Qt.platform.os === "windows" || Qt.platform.os === "linux"
+                title: "Discord muted / deafened"
+                caption: !activities.discordAvailable ? "This build has no Discord app, so the island can only show that you are in a Discord call."
+                    : activities.discordRpc ? (activities.discordStatus !== "" ? activities.discordStatus : "Starting")
+                    : "While you are in a Discord call, show a slashed microphone when you are muted and slashed headphones when you are deafened. Discord asks you to approve Olyzano Notch once; nothing else is read."
+                enabled: activities.discordAvailable
+                checked: activities.discordRpc
+                onToggled: activities.discordRpc = !activities.discordRpc
             }
-
-            SettingCard {
-                title: "Gaming mode"
-                SettingToggle {
-                    title: "Keep away from full-screen apps and games"
-                    caption: "While an app or game that fills the screen (full screen or maximised) is in front, Olyzano Notch and the dock cannot be reached at all (no pointer, no clicks, nothing opens), and sounds and reminders stay quiet. Minimise it or make its window smaller and they work again."
-                    checked: gaming.enabled
-                    onToggled: gaming.enabled = !gaming.enabled
-                }
             }
 
             SettingCard {
@@ -349,30 +326,18 @@ RowLayout {
                             : "The model is a file downloaded once (from Hugging Face). Nothing else is ever sent."
                     }
                     SectionLabel { text: "Language"; Layout.topMargin: 4 }
-                    Row {
-                        spacing: 6
-                        Repeater {
-                            model: [["auto", "Automatic"], ["id", "Indonesia"], ["en", "English"]]
-                            PillButton {
-                                required property var modelData
-                                text: modelData[1]
-                                checked: assistant.language === modelData[0]
-                                onClicked: assistant.language = modelData[0]
-                            }
-                        }
+                    Segmented {
+                        Layout.fillWidth: true
+                        model: [["auto", "Automatic"], ["id", "Indonesia"], ["en", "English"]]
+                        value: assistant.language
+                        onPicked: (v) => assistant.language = v
                     }
                     SectionLabel { text: "Search with"; Layout.topMargin: 4 }
-                    Row {
-                        spacing: 6
-                        Repeater {
-                            model: [["duckduckgo", "DuckDuckGo"], ["google", "Google"], ["bing", "Bing"], ["youtube", "YouTube"]]
-                            PillButton {
-                                required property var modelData
-                                text: modelData[1]
-                                checked: assistant.searchEngine === modelData[0]
-                                onClicked: assistant.searchEngine = modelData[0]
-                            }
-                        }
+                    Segmented {
+                        Layout.fillWidth: true
+                        model: [["duckduckgo", "DuckDuckGo"], ["google", "Google"], ["bing", "Bing"], ["youtube", "YouTube"]]
+                        value: assistant.searchEngine
+                        onPicked: (v) => assistant.searchEngine = v
                     }
                     Caption {
                         Layout.fillWidth: true
@@ -1532,12 +1497,21 @@ RowLayout {
                 Layout.fillWidth: true
                 spacing: 8
                 property bool manual: false
+                function expired(m) { return m.expiresAt > 0 && m.expiresAt * 1000 < Date.now() }
+                function access(m) { // what the host should know about a member's access
+                    if (!m.joined) return "Waiting to join" + (m.accessHours > 0 ? " · " + sharing.hours(m.accessHours) + " once joined" : "")
+                    if (m.expiresAt <= 0) return "Joined · no end"
+                    if (expired(m)) return "Access ended"
+                    const left = Math.ceil((m.expiresAt * 1000 - Date.now()) / 3600000)
+                    return "Joined · " + (left >= 48 ? Math.ceil(left / 24) + " days left" : left + " h left")
+                }
+                function hours(h) { return h % 24 === 0 ? (h / 24) + (h === 24 ? " day" : " days") : h + " h" }
                 function mb(bytes) { return bytes >= 10 * 1048576 ? Math.round(bytes / 1048576) + " MB" : (bytes / 1048576).toFixed(1) + " MB" }
 
                 SectionLabel { text: "Sharing servers" }
                 Caption {
                     Layout.fillWidth: true
-                    text: "Share via QR can upload to a server you or your team run, encrypted on this computer first. Anyone can be the host: ask them for the address and key, or set one up with server/README.md."
+                    text: "Share via QR can use a server you or your team run. Files are encrypted on this computer first. Ask the host for a key, or set one up with server/README.md."
                 }
                 Caption { Layout.fillWidth: true; visible: share.servers.length === 0; text: "No server yet." }
 
@@ -1546,49 +1520,355 @@ RowLayout {
                     delegate: Rectangle {
                         id: srv
                         required property var modelData
+                        readonly property color tone: !modelData.tested ? theme.textDim : modelData.ok ? theme.success : theme.danger
                         Layout.fillWidth: true
-                        implicitHeight: srvBody.implicitHeight + 16
-                        radius: theme.radiusMd
+                        implicitHeight: srvBody.implicitHeight + 28
+                        radius: theme.radiusMd + 2
                         color: theme.card
                         border.width: 1
-                        border.color: modelData.isDefault ? theme.accent : theme.outline
+                        border.color: theme.hairline
 
                         ColumnLayout {
                             id: srvBody
-                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
-                            spacing: 4
+                            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14 }
+                            spacing: 12
                             RowLayout {
                                 Layout.fillWidth: true
-                                spacing: 6
+                                spacing: 10
+                                Rectangle {
+                                    Layout.preferredWidth: 36
+                                    Layout.preferredHeight: 36
+                                    radius: 10
+                                    color: Qt.alpha(theme.accent, 0.14)
+                                    LineIcon { anchors.centerIn: parent; glyph: "server"; sourceSize: Qt.size(18, 18); color: theme.accentText }
+                                }
                                 ColumnLayout {
                                     Layout.fillWidth: true
-                                    spacing: 0
-                                    Text { Layout.fillWidth: true; text: srv.modelData.name; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium; elide: Text.ElideRight }
-                                    Text { Layout.fillWidth: true; text: srv.modelData.url; color: theme.textDim; font.pixelSize: 11; elide: Text.ElideMiddle }
+                                    Layout.minimumWidth: 0
+                                    spacing: 1
+                                    RowLayout {
+                                        spacing: 6
+                                        Text { Layout.fillWidth: true; text: srv.modelData.name; color: theme.text; font.pixelSize: 14; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                                        Text { visible: srv.modelData.isDefault && share.servers.length > 1; text: "Default"; color: theme.accentText; font.pixelSize: 11 }
+                                    }
+                                    Text { Layout.fillWidth: true; text: srv.modelData.url.replace(/^https?:\/\//, ""); color: theme.textDim; font.pixelSize: 11; elide: Text.ElideMiddle }
                                 }
-                                PillButton {
-                                    text: srv.modelData.isDefault ? "Default" : "Make default"
-                                    checked: srv.modelData.isDefault
-                                    visible: share.servers.length > 1
-                                    onClicked: share.defaultServerId = srv.modelData.id
+                                Rectangle { // how the last test went
+                                    implicitWidth: statusRow.implicitWidth + 16
+                                    implicitHeight: 22
+                                    radius: 11
+                                    color: Qt.alpha(srv.tone, 0.12)
+                                    Row {
+                                        id: statusRow
+                                        anchors.centerIn: parent
+                                        spacing: 5
+                                        Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 6; height: 6; radius: 3; color: srv.tone }
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            font.pixelSize: 11
+                                            color: srv.tone
+                                            text: !srv.modelData.tested ? "Checking…" : !srv.modelData.ok ? "Problem" : srv.modelData.owner ? "Host" : "Connected"
+                                        }
+                                    }
                                 }
-                                IconButton { iconName: "close"; Accessible.name: "Remove this server"; onClicked: share.removeServer(srv.modelData.id) }
+                                IconButton {
+                                    iconName: "undo"
+                                    Accessible.name: "Test connection"
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 400
+                                    ToolTip.text: "Test connection"
+                                    onClicked: share.testServer(srv.modelData.id)
+                                }
+                                IconButton {
+                                    iconName: "trash"
+                                    Accessible.name: "Remove this server"
+                                    ToolTip.visible: hovered
+                                    ToolTip.delay: 400
+                                    ToolTip.text: "Remove this server"
+                                    onClicked: share.removeServer(srv.modelData.id)
+                                }
                             }
-                            RowLayout {
+                            // Space used on the server, as a thin bar
+                            ColumnLayout {
+                                visible: srv.modelData.ok === true
                                 Layout.fillWidth: true
-                                Text {
+                                spacing: 6
+                                Rectangle {
+                                    visible: srv.modelData.quota > 0
                                     Layout.fillWidth: true
-                                    wrapMode: Text.Wrap
-                                    font.pixelSize: 11
-                                    color: !srv.modelData.tested ? theme.textDim : srv.modelData.ok ? theme.success : theme.danger
-                                    text: !srv.modelData.tested ? "Checking…"
-                                          : !srv.modelData.ok ? srv.modelData.message
-                                          : srv.modelData.message + " · " + sharing.mb(srv.modelData.used) + (srv.modelData.quota ? " of " + sharing.mb(srv.modelData.quota) : "")
-                                            + (srv.modelData.maxActive ? " · " + srv.modelData.active + " of " + srv.modelData.maxActive + " shares" : "")
-                                            + " · files up to " + sharing.mb(srv.modelData.maxFile)
+                                    implicitHeight: 4
+                                    radius: 2
+                                    color: theme.well
+                                    Rectangle {
+                                        width: parent.width * Math.min(1, srv.modelData.used / Math.max(1, srv.modelData.quota))
+                                        height: parent.height
+                                        radius: 2
+                                        color: srv.modelData.used > srv.modelData.quota * 0.9 ? theme.danger : theme.accent
+                                    }
                                 }
-                                PillButton { text: "Test"; onClicked: share.testServer(srv.modelData.id) }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Text {
+                                        Layout.fillWidth: true
+                                        color: theme.textDim
+                                        font.pixelSize: 11
+                                        wrapMode: Text.Wrap
+                                        text: sharing.mb(srv.modelData.used) + (srv.modelData.quota ? " of " + sharing.mb(srv.modelData.quota) : "") + " used"
+                                              + (srv.modelData.maxActive ? " · " + srv.modelData.active + " of " + srv.modelData.maxActive + " shares" : "")
+                                              + " · files up to " + sharing.mb(srv.modelData.maxFile)
+                                    }
+                                    PillButton {
+                                        visible: share.servers.length > 1 && !srv.modelData.isDefault
+                                        text: "Make default"
+                                        onClicked: share.defaultServerId = srv.modelData.id
+                                    }
+                                }
                             }
+                            Text {
+                                visible: srv.modelData.tested && !srv.modelData.ok
+                                Layout.fillWidth: true
+                                text: srv.modelData.message
+                                color: theme.danger
+                                font.pixelSize: 12
+                                wrapMode: Text.Wrap
+                            }
+                            Rectangle { visible: srv.modelData.owner === true; Layout.fillWidth: true; implicitHeight: 1; color: theme.hairline }
+
+                            // The host's part: members and their keys, all in one window.
+                            ColumnLayout {
+                                id: team
+                                visible: srv.modelData.owner === true
+                                Layout.fillWidth: true
+                                spacing: 4
+                                property var list: []
+                                property var links: ({})  // member name -> the key made in this session (a key is shown once)
+                                property int space: 1024  // MB of server space for the new member (5 GB at most)
+                                property int hours: 720   // how long a new member's access lasts after they join; 0 = never ends
+                                property string note: ""
+                                property int total: 0
+                                property bool loading: false
+                                onVisibleChanged: if (visible) share.loadMembers(srv.modelData.id)
+                                Component.onCompleted: if (visible) share.loadMembers(srv.modelData.id)
+                                Connections {
+                                    target: share
+                                    function onMembersLoaded(id, list, offset, total) { // pages arrive newest first; the next one is asked for when the list is scrolled to its end
+                                        if (id !== srv.modelData.id) return
+                                        team.list = offset === 0 ? list : team.list.concat(list)
+                                        team.total = total
+                                        team.loading = false
+                                    }
+                                    function onMemberLink(id, name, ok, text) {
+                                        if (id !== srv.modelData.id) return
+                                        if (!ok) { team.note = text; return }
+                                        const l = Object.assign({}, team.links)
+                                        l[name] = text
+                                        team.links = l
+                                        notch.copyText(text) // the newest key is already on the clipboard
+                                        memberName.clear()
+                                        if (!keysPopup.opened) keysPopup.open()
+                                    }
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: 4
+                                    spacing: 6
+                                    Text { text: "Members"; color: theme.text; font.pixelSize: 12; font.weight: Font.DemiBold }
+                                    Text { visible: team.total > 0; text: team.total; color: theme.textDim; font.pixelSize: 11 }
+                                    Item { Layout.fillWidth: true }
+                                    PillButton { text: team.total > 0 ? "Manage" : "Add member"; iconName: team.total > 0 ? "" : "plus"; checked: true; onClicked: keysPopup.open() }
+                                }
+
+                                Popup {
+                                    id: keysPopup
+                                    parent: settingsScroll // inside the panel, not across the whole screen
+                                    x: (settingsScroll.width - width) / 2
+                                    y: Math.max(0, (settingsScroll.height - height) / 2)
+                                    modal: true
+                                    dim: false
+                                    focus: true
+                                    padding: 16
+                                    width: Math.min(440, settingsScroll.width - 24)
+                                    onOpened: { settingsScroll.keysOpen = true; memberName.forceActiveFocus() }
+                                    onClosed: { settingsScroll.keysOpen = false; team.note = "" }
+                                    Overlay.modal: Item {} // no dark layer behind it
+                                    background: Rectangle { radius: 16; color: theme.surface; border.color: theme.outline }
+                                    contentItem: ColumnLayout {
+                                        spacing: 10
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            SectionLabel { Layout.fillWidth: true; text: "Members of " + srv.modelData.name }
+                                            IconButton { iconName: "close"; Accessible.name: "Close"; onClicked: keysPopup.close() }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 6
+                                            TextField {
+                                                id: memberName
+                                                Layout.fillWidth: true
+                                                Layout.minimumWidth: 0
+                                                implicitHeight: 30
+                                                leftPadding: 12
+                                                placeholderText: "New username, e.g. alice"
+                                                placeholderTextColor: theme.placeholder
+                                                color: theme.text
+                                                selectionColor: theme.accent
+                                                font.pixelSize: 13
+                                                maximumLength: 40
+                                                background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: memberName.activeFocus ? theme.accent : theme.outline }
+                                                onAccepted: createKey.clicked()
+                                                Keys.onEscapePressed: keysPopup.close()
+                                            }
+                                            PillButton {
+                                                id: createKey
+                                                text: "Create key"
+                                                iconName: "plus"
+                                                checked: true
+                                                enabled: memberName.text.trim() !== ""
+                                                onClicked: { team.note = ""; share.createMember(srv.modelData.id, memberName.text, team.hours, team.space) }
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 8
+                                            Caption { Layout.preferredWidth: 48; text: "Space" }
+                                            Segmented {
+                                                Layout.fillWidth: true
+                                                model: [[512, "500 MB"], [1024, "1 GB"], [2048, "2 GB"], [5120, "5 GB"]]
+                                                value: team.space
+                                                onPicked: (v) => team.space = v
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 8
+                                            Caption { Layout.preferredWidth: 48; text: "Access" }
+                                            Segmented {
+                                                Layout.fillWidth: true
+                                                model: [[24, "1 day"], [168, "7 days"], [720, "30 days"], [0, "No end"]]
+                                                value: team.hours
+                                                onPicked: (v) => team.hours = v
+                                            }
+                                        }
+                                        Caption { Layout.fillWidth: true; text: "Access lasts that long after they join. Send each key to its person: it works once, for 7 days." }
+                                        Text { visible: team.note !== ""; Layout.fillWidth: true; text: team.note; color: theme.danger; font.pixelSize: 12; wrapMode: Text.Wrap }
+                                        ListView {
+                                            Layout.fillWidth: true
+                                            Layout.preferredHeight: Math.min(contentHeight, 5 * 44) // five rows, then it scrolls
+                                            visible: team.list.length > 0
+                                            clip: true
+                                            spacing: 0
+                                            boundsBehavior: Flickable.StopAtBounds
+                                            ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+                                            // near the end: fetch the next page by itself, no button
+                                            onContentYChanged: if (!team.loading && team.list.length < team.total && contentY + height > contentHeight - 88) {
+                                                team.loading = true
+                                                share.loadMembers(srv.modelData.id, team.list.length)
+                                            }
+                                            model: team.list
+                                            delegate: Item {
+                                                id: row
+                                                required property var modelData
+                                                property bool copied: false
+                                                readonly property string key: team.links[modelData.name] || ""
+                                                readonly property bool ended: modelData.joined && sharing.expired(modelData)
+                                                width: ListView.view.width
+                                                height: 44
+                                                Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 1; color: theme.hairline }
+                                                RowLayout {
+                                                    anchors.fill: parent
+                                                    spacing: 10
+                                                    Rectangle { // joined / waiting / ended
+                                                        Layout.preferredWidth: 7
+                                                        Layout.preferredHeight: 7
+                                                        radius: 4
+                                                        color: row.ended ? theme.danger : row.modelData.joined ? theme.success : theme.textFaint
+                                                    }
+                                                    ColumnLayout {
+                                                        Layout.fillWidth: true
+                                                        Layout.minimumWidth: 0
+                                                        spacing: 0
+                                                        Text { Layout.fillWidth: true; text: row.modelData.name; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium; elide: Text.ElideRight }
+                                                        Text {
+                                                            Layout.fillWidth: true
+                                                            color: theme.textDim
+                                                            font.pixelSize: 11
+                                                            elide: Text.ElideRight
+                                                            text: sharing.access(row.modelData) + " · " + sharing.mb(row.modelData.used) + " / " + sharing.mb(row.modelData.quota)
+                                                        }
+                                                    }
+                                                    IconButton {
+                                                        visible: row.key !== ""
+                                                        iconName: row.copied ? "check" : "copy"
+                                                        checked: row.copied
+                                                        Accessible.name: "Copy key"
+                                                        ToolTip.visible: hovered
+                                                        ToolTip.delay: 400
+                                                        ToolTip.text: row.copied ? "Copied" : "Copy key"
+                                                        onClicked: { notch.copyText(row.key); row.copied = true }
+                                                    }
+                                                    IconButton {
+                                                        iconName: "undo"
+                                                        Accessible.name: "New key"
+                                                        ToolTip.visible: hovered
+                                                        ToolTip.delay: 400
+                                                        ToolTip.text: "New key (the old one stops working)"
+                                                        onClicked: { row.copied = false; share.reinviteMember(srv.modelData.id, row.modelData.name) }
+                                                    }
+                                                    IconButton {
+                                                        iconName: "trash"
+                                                        Accessible.name: "Revoke " + row.modelData.name
+                                                        ToolTip.visible: hovered
+                                                        ToolTip.delay: 400
+                                                        ToolTip.text: "Revoke access"
+                                                        onClicked: share.revokeMember(srv.modelData.id, row.modelData.name)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Someone gave you a key: paste it here and this computer joins their server under the name they chose.
+                SectionLabel { text: "Join a server" }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    TextField {
+                        id: joinField
+                        Layout.fillWidth: true
+                        implicitHeight: 30
+                        leftPadding: 12
+                        placeholderText: "Paste the key from the host (https://…/join#…)"
+                        placeholderTextColor: theme.placeholder
+                        color: theme.text
+                        selectionColor: theme.accent
+                        font.pixelSize: 13
+                        background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: joinField.activeFocus ? theme.accent : theme.outline }
+                        onAccepted: joinButton.clicked()
+                    }
+                    PillButton {
+                        id: joinButton
+                        text: "Join"
+                        checked: true
+                        enabled: joinField.text.trim() !== ""
+                        onClicked: { joinResult.text = ""; share.joinServer(joinField.text) }
+                    }
+                }
+                Caption {
+                    id: joinResult
+                    Layout.fillWidth: true
+                    visible: text !== ""
+                    Connections {
+                        target: share
+                        function onJoined(ok, message) {
+                            joinResult.text = message
+                            joinResult.color = ok ? theme.success : theme.danger
+                            if (ok) joinField.clear()
                         }
                     }
                 }
