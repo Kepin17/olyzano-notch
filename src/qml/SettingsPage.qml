@@ -37,7 +37,7 @@ RowLayout {
     readonly property var index: [
         ["about", "Updates", "update upgrade new version release check download latest github notify"], ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
         ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Clipboard history", "clipboard copy paste history remember klipper"], ["general", "Sounds", "sound effects volume quiet mute"],
-        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Voice assistant", "voice assistant commands speech microphone whisper offline say listen"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["general", "Floating pill", "pill floating capsule dynamic island edge look shape"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"], ["appearance", "Interface size", "text size scale zoom bigger smaller density compact comfortable large small font"], ["appearance", "Corners", "round sharp radius corner shape rounded"], ["appearance", "Glass", "glass glassmorphism translucent transparent blur frosted see-through"], ["appearance", "Border matches my system accent", "border outline edge accent windows color capsule widget"], ["appearance", "Animations and transitions", "animation animations transition motion reduce disable off smooth instant bounce spring"],
+        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Voice assistant", "voice assistant commands speech microphone whisper offline say listen"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["appearance", "Capsule shape", "capsule shape notch pill rounded dynamic island edge look widget"],["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"], ["appearance", "Glass", "glass glassmorphism translucent transparent blur frosted see-through"], ["appearance", "Border matches my system accent", "border outline edge accent windows color capsule widget"], ["appearance", "Animations and transitions", "animation animations transition motion reduce disable off smooth instant bounce spring"],
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
         ["panel", "Transparency and blur", "glass opacity bar"], ["panel", "What the bar shows", "app name date seconds battery percentage"],
         ["panel", "Quick Settings", "wifi bluetooth volume brightness power click hover system cpu ram memory gpu disk network monitor usage"],
@@ -224,13 +224,6 @@ RowLayout {
                         : "Only a thin line shows at the top edge. Rest the pointer there to open."
                 }
                 PillButton { visible: activities.capsuleMode === "widget"; text: "Reset position"; iconName: "undo"; onClicked: activities.resetWidgetPos() }
-            SettingToggle {
-                visible: activities.capsuleMode === "capsule"
-                title: "Floating pill"
-                caption: "Floats a little below the top edge as a full pill, instead of growing out of it."
-                checked: activities.capsuleLook === "pill"
-                onToggled: activities.capsuleLook = activities.capsuleLook === "pill" ? "edge" : "pill"
-            }
             DockSlider {
                 visible: activities.capsuleMode === "capsule" || activities.capsuleMode === "widget"
                 title: "Capsule size"
@@ -2095,6 +2088,27 @@ RowLayout {
                             onClicked: notch.themeMode = modelData[0]
                         }
                     }
+                }
+                SectionLabel { text: "Capsule shape"; Layout.topMargin: 6 }
+                Row {
+                    spacing: 6
+                    enabled: activities.capsuleMode === "capsule"
+                    opacity: enabled ? 1 : 0.5
+                    Repeater {
+                        model: [["edge", "Notch"], ["pill", "Pill"]]
+                        PillButton {
+                            required property var modelData
+                            text: modelData[1]
+                            checked: activities.capsuleLook === modelData[0]
+                            onClicked: activities.capsuleLook = modelData[0]
+                        }
+                    }
+                }
+                Caption {
+                    Layout.fillWidth: true
+                    text: activities.capsuleMode !== "capsule" ? "Used in Capsule mode (Settings → General). The Widget card keeps its own look."
+                        : activities.capsuleLook === "pill" ? "A fully rounded capsule on the top edge, the same size and place as the notch, so the windows below it are not in its way."
+                        : "The capsule grows out of the top edge like a notch, with curved shoulders."
                 }
                 SettingToggle {
                     Layout.topMargin: 6

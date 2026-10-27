@@ -825,11 +825,6 @@ private slots:
         QCOMPARE(heightFor(1.3), 62);
         QCOMPARE(heightFor(0.8), 38);
         QCOMPARE(heightFor(9), 62); // the scale is clamped like the setting
-        QCOMPARE(heightFor(1.0, true), 64);  // the floating pill hangs below the edge: gap 10 + its height 52 + a little air
-        QVERIFY(heightFor(1.0, true) > heightFor(1.0));
-        QVERIFY(heightFor(0.8, true) < heightFor(1.3, true));
-        QCOMPARE(plan(QStringLiteral("capsule"), true, 1.0, 0, true, true).notchZone, 64);
-        QCOMPARE(plan(QStringLiteral("capsule"), true, 1.0, 30, true, true).notchZone, 34); // the panel's room still counts
         // off, or any mode but the capsule: nothing is kept
         QCOMPARE(plan("capsule", false, 1, 0, true).notchZone, 0);
         for (const char *mode : {"hidden", "widget", "open"}) {
