@@ -443,6 +443,66 @@ Rectangle {
             Item { Layout.fillWidth: true }
         }
 
+        // the volume of the speakers
+        RowLayout {
+            id: volumeRow
+            visible: quick.audioAvailable
+            Layout.fillWidth: true
+            spacing: 8
+            onVisibleChanged: if (visible) quick.updateVolume()
+            LineIcon {
+                glyph: quick.muted || quick.volume === 0 ? "volume-off" : "volume"
+                sourceSize: Qt.size(16, 16)
+                color: quick.muted ? theme.danger : card.fgDim
+                TapHandler { onTapped: quick.toggleMute() }
+            }
+            Item {
+                id: volBar
+                Layout.fillWidth: true
+                implicitHeight: 22
+                readonly property real ratio: Math.max(0, Math.min(1, quick.volume / 100))
+                readonly property bool active: volArea.containsMouse || volArea.pressed
+                Accessible.name: "Volume"
+                Accessible.role: Accessible.Slider
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width
+                    height: volBar.active ? 6 : 4
+                    radius: height / 2
+                    color: card.hasArt ? Qt.rgba(1, 1, 1, 0.22) : theme.surfacePressed
+                    Behavior on height { NumberAnimation { duration: 100 } }
+                    Rectangle { width: parent.width * volBar.ratio; height: parent.height; radius: height / 2; color: card.tint; opacity: quick.muted ? 0.4 : 1 }
+                }
+                Rectangle {
+                    x: volBar.width * volBar.ratio - width / 2
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 13; height: 13; radius: 6.5
+                    color: "#ffffff"
+                    opacity: volBar.active ? 1 : 0
+                    Behavior on opacity { NumberAnimation { duration: 120 } }
+                }
+                MouseArea {
+                    id: volArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    function setTo(x) { quick.setVolume(Math.round(Math.max(0, Math.min(1, x / width)) * 100)) }
+                    onPressed: (m) => setTo(m.x)
+                    onPositionChanged: (m) => { if (pressed) setTo(m.x) }
+                    onReleased: card.interacted()
+                    onWheel: (w) => { quick.setVolume(Math.max(0, Math.min(100, quick.volume + (w.angleDelta.y > 0 ? 5 : -5)))); card.interacted() }
+                }
+            }
+            Text {
+                Layout.preferredWidth: 32
+                text: quick.volume + "%"
+                color: card.fgDim
+                font.pixelSize: 11
+                font.features: { "tnum": 1 }
+                horizontalAlignment: Text.AlignRight
+            }
+        }
+
         // the small things, quiet, in one row
         RowLayout {
             Layout.fillWidth: true

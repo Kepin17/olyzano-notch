@@ -8,6 +8,10 @@
 #include <QProcess>
 #include <QStandardPaths>
 
+#ifdef Q_OS_WIN
+#include "platform/WinVolume.h"
+#endif
+
 #ifdef NOTCH_HAVE_DBUS
 #include <QDBusArgument>
 #include <QDBusConnection>
@@ -86,7 +90,11 @@ QuickSettings::QuickSettings(QObject *parent)
         sys.connect(service, QString(), Props, QStringLiteral("PropertiesChanged"), this, SLOT(onProps(QString, QVariantMap, QStringList)));
     QDBusConnection::sessionBus().connect(Power, PowerPath, PowerIface, QStringLiteral("brightnessChanged"), this, SLOT(onBrightness(int)));
 #endif
+#ifdef Q_OS_WIN
+    m_audio = WinVolume::speakers() >= 0; // the volume of the default speakers; no sink list, no microphone here
+#else
     m_audio = !QStandardPaths::findExecutable(QStringLiteral("pactl")).isEmpty();
+#endif
     refresh();
     listenAudio();
     m_poll.start();
@@ -126,6 +134,15 @@ static QByteArray pactlOut(const QStringList &args)
 
 void QuickSettings::readAudio()
 {
+#ifdef Q_OS_WIN
+    const int v = WinVolume::speakers();
+    m_audio = v >= 0;
+    if (m_audio) {
+        m_volume = v;
+        m_muted = WinVolume::muted();
+    }
+    return;
+#endif
     if (!m_audio)
         return;
     const QString def = QString::fromUtf8(pactlOut({QStringLiteral("get-default-sink")})).trimmed();
@@ -160,6 +177,9 @@ void QuickSettings::readAudio()
 
 void QuickSettings::listenAudio()
 {
+#ifdef Q_OS_WIN
+    return; // read again after a change and on the poll
+#endif
     if (!m_audio)
         return;
     connect(&m_subscribe, &QProcess::readyReadStandardOutput, this, [this] {
@@ -171,10 +191,25 @@ void QuickSettings::listenAudio()
     m_subscribe.start(QStringLiteral("pactl"), {QStringLiteral("subscribe")});
 }
 
+void QuickSettings::updateVolume()
+{
+#ifdef Q_OS_WIN
+    readAudio();
+    emit changed();
+#endif
+}
+
 void QuickSettings::setVolume(int percent)
 {
     percent = qBound(0, percent, 100);
     m_volume = percent;
+#ifdef Q_OS_WIN
+    WinVolume::setSpeakers(percent);
+    if (percent > 0)
+        m_muted = false;
+    emit changed();
+    return;
+#endif
     QProcess::startDetached(QStringLiteral("pactl"), {QStringLiteral("set-sink-volume"), QStringLiteral("@DEFAULT_SINK@"), QStringLiteral("%1%").arg(percent)});
     emit changed();
 }
@@ -182,6 +217,11 @@ void QuickSettings::setVolume(int percent)
 void QuickSettings::toggleMute()
 {
     m_muted = !m_muted;
+#ifdef Q_OS_WIN
+    WinVolume::setMuted(m_muted);
+    emit changed();
+    return;
+#endif
     QProcess::startDetached(QStringLiteral("pactl"), {QStringLiteral("set-sink-mute"), QStringLiteral("@DEFAULT_SINK@"), QStringLiteral("toggle")});
     emit changed();
 }

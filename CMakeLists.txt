@@ -107,6 +107,7 @@ if(WIN32)
     target_compile_definitions(notch PRIVATE NOTCH_HAVE_KDECONNECT)
     target_sources(notch PRIVATE src/platform/WinPrivacy.h src/platform/WinPrivacy.cpp src/platform/ColorPicker_win.cpp
                                  src/platform/WinAudioSessions.h src/platform/WinAudioSessions.cpp
+                                 src/platform/WinVolume.h src/platform/WinVolume.cpp
                                  src/platform/WinBluetooth.h src/platform/WinBluetooth.cpp
                                  src/platform/WinAppBar.h src/platform/WinAppBar.cpp
                                  src/platform/MediaPlayers_win.cpp src/platform/MediaNames.h src/platform/AudioLevels_win.cpp
