@@ -18,6 +18,9 @@
 #include "platform/MediaNames.h"
 #include "platform/DbusMenuModel.h"
 #include "platform/GamingModel.h"
+#include "platform/AssistantModel.h"
+#include "platform/GlassModel.h"
+#include "platform/UtteranceModel.h"
 #include "platform/KaraokeModel.h"
 #include "platform/CalendarModel.h"
 #include "platform/DoomscrollModel.h"
@@ -2449,6 +2452,193 @@ private slots:
         for (int i = 0; i < 8; ++i)
             seen += eyes.tick(n += 5000, 5000, 1000, false) == E::EyeBreak;
         QCOMPARE(seen, 2);
+    }
+
+    void assistantNormalizesWhatWasSaid()
+    {
+        QCOMPARE(AssistantModel::normalize(QStringLiteral("Hei Notch, tolong buka Firefox dong!")), QStringLiteral("buka firefox"));
+        QCOMPARE(AssistantModel::normalize(QStringLiteral("Can you open the browser, please?")), QStringLiteral("open browser"));
+        QCOMPARE(AssistantModel::normalize(QStringLiteral("Besok jam 17:30.")), QStringLiteral("besok jam 17:30"));
+        QCOMPARE(AssistantModel::normalize(QString()), QString());
+    }
+
+    void assistantReadsNumbers()
+    {
+        const auto n = [](const char *text) {
+            int used = 0;
+            return AssistantModel::numberAt(QString::fromLatin1(text).split(u' '), 0, &used);
+        };
+        QCOMPARE(n("15"), 15);
+        QCOMPARE(n("lima"), 5);
+        QCOMPARE(n("lima belas"), 15);
+        QCOMPARE(n("dua puluh"), 20);
+        QCOMPARE(n("dua puluh lima"), 25);
+        QCOMPARE(n("seratus"), 100);
+        QCOMPARE(n("dua ratus lima puluh"), 250);
+        QCOMPARE(n("fifteen"), 15);
+        QCOMPARE(n("twenty five"), 25);
+        QCOMPARE(n("sepuluh"), 10);
+        QCOMPARE(n("halo"), -1);
+    }
+
+    void assistantUnderstandsCommands()
+    {
+        using namespace AssistantModel;
+        Intent i = parse(QStringLiteral("Buka Firefox"));
+        QCOMPARE(i.kind, Kind::OpenApp);
+        QCOMPARE(i.text, QStringLiteral("firefox"));
+        i = parse(QStringLiteral("tolong jalankan aplikasi terminal"));
+        QCOMPARE(i.kind, Kind::OpenApp);
+        QCOMPARE(i.text, QStringLiteral("terminal"));
+        QCOMPARE(parse(QStringLiteral("open the browser")).kind, Kind::OpenBrowser);
+        QCOMPARE(parse(QStringLiteral("buka browser")).kind, Kind::OpenBrowser);
+
+        i = parse(QStringLiteral("cari resep nasi goreng"));
+        QCOMPARE(i.kind, Kind::Search);
+        QCOMPARE(i.text, QStringLiteral("resep nasi goreng"));
+        i = parse(QStringLiteral("search for cute cats on YouTube"));
+        QCOMPARE(i.kind, Kind::Search);
+        QCOMPARE(i.text, QStringLiteral("cute cats"));
+        QCOMPARE(i.engine, QStringLiteral("youtube"));
+        QCOMPARE(parse(QStringLiteral("google weather jakarta")).engine, QStringLiteral("google"));
+
+        i = parse(QStringLiteral("volume 50"));
+        QCOMPARE(i.kind, Kind::Volume);
+        QCOMPARE(i.volume, VolumeAction::Set);
+        QCOMPARE(i.number, 50);
+        i = parse(QStringLiteral("set the volume to thirty"));
+        QCOMPARE(i.volume, VolumeAction::Set);
+        QCOMPARE(i.number, 30);
+        i = parse(QStringLiteral("naikkan volume ke 80"));
+        QCOMPARE(i.volume, VolumeAction::Set);
+        QCOMPARE(i.number, 80);
+        i = parse(QStringLiteral("naikkan volume"));
+        QCOMPARE(i.volume, VolumeAction::Up);
+        QCOMPARE(i.number, 10);
+        i = parse(QStringLiteral("turunkan volume dua puluh"));
+        QCOMPARE(i.volume, VolumeAction::Down);
+        QCOMPARE(i.number, 20);
+        QCOMPARE(parse(QStringLiteral("mute")).volume, VolumeAction::Mute);
+        QCOMPARE(parse(QStringLiteral("bisukan suara")).volume, VolumeAction::Mute);
+        QCOMPARE(parse(QStringLiteral("hidupkan suara")).volume, VolumeAction::Unmute);
+
+        QCOMPARE(parse(QStringLiteral("putar musik")).media, MediaAction::Play);
+        QCOMPARE(parse(QStringLiteral("jeda")).media, MediaAction::Pause);
+        QCOMPARE(parse(QStringLiteral("pause the music")).media, MediaAction::Pause);
+        QCOMPARE(parse(QStringLiteral("lagu berikutnya")).media, MediaAction::Next);
+        QCOMPARE(parse(QStringLiteral("putar lagu sebelumnya")).media, MediaAction::Previous);
+        QCOMPARE(parse(QStringLiteral("skip")).media, MediaAction::Next);
+
+        i = parse(QStringLiteral("timer 10 menit"));
+        QCOMPARE(i.kind, Kind::Timer);
+        QCOMPARE(i.number, 600);
+        i = parse(QStringLiteral("atur timer lima menit untuk teh"));
+        QCOMPARE(i.number, 300);
+        QCOMPARE(i.text, QStringLiteral("teh"));
+        i = parse(QStringLiteral("set a timer for ten minutes"));
+        QCOMPARE(i.number, 600);
+        QCOMPARE(parse(QStringLiteral("timer setengah jam")).number, 1800);
+        QCOMPARE(parse(QStringLiteral("timer 30 detik")).number, 30);
+        QCOMPARE(parse(QStringLiteral("timer dua jam")).number, 7200);
+
+        i = parse(QStringLiteral("tambah tugas beli susu besok jam 5"));
+        QCOMPARE(i.kind, Kind::Task);
+        QCOMPARE(i.text, QStringLiteral("beli susu tomorrow 5:00"));
+        i = parse(QStringLiteral("add task call mom"));
+        QCOMPARE(i.text, QStringLiteral("call mom"));
+        i = parse(QStringLiteral("catat ide untuk presentasi"));
+        QCOMPARE(i.kind, Kind::Note);
+        QCOMPARE(i.text, QStringLiteral("ide untuk presentasi"));
+
+        QCOMPARE(parse(QStringLiteral("matikan komputer")).kind, Kind::Unknown); // nothing destructive is understood
+        QCOMPARE(parse(QStringLiteral("hapus semua berkas")).kind, Kind::Unknown);
+        QCOMPARE(parse(QStringLiteral("tutup semua jendela")).kind, Kind::Unknown);
+        QCOMPARE(parse(QStringLiteral("ceritakan lelucon")).kind, Kind::Unknown);
+        QCOMPARE(parse(QString()).kind, Kind::Unknown);
+    }
+
+    void assistantMatchesAppNames()
+    {
+        const QStringList apps{QStringLiteral("Firefox Web Browser"), QStringLiteral("Terminal"), QStringLiteral("Files"),
+                               QStringLiteral("Visual Studio Code"), QStringLiteral("LibreOffice Writer"), QStringLiteral("Calculator")};
+        using namespace AssistantModel;
+        QCOMPARE(matchApp(QStringLiteral("firefox"), apps).index, 0);
+        QVERIFY(matchApp(QStringLiteral("firefox"), apps).sure);
+        QCOMPARE(matchApp(QStringLiteral("fairfox"), apps).index, 0); // heard a little off
+        QCOMPARE(matchApp(QStringLiteral("terminal"), apps).index, 1);
+        QCOMPARE(matchApp(QStringLiteral("visual studio code"), apps).index, 3);
+        QCOMPARE(matchApp(QStringLiteral("code"), apps).index, 3);
+        QCOMPARE(matchApp(QStringLiteral("writer"), apps).index, 4);
+        QVERIFY(!matchApp(QStringLiteral("zzzzzz"), apps).sure);
+        QCOMPARE(matchApp(QString(), apps).index, -1);
+    }
+
+    void assistantBuildsSearchUrls()
+    {
+        using namespace AssistantModel;
+        QCOMPARE(QString::fromLatin1(searchUrl(QStringLiteral("google"), QStringLiteral("cute cats")).toEncoded()), QStringLiteral("https://www.google.com/search?q=cute%20cats"));
+        QVERIFY(QString::fromLatin1(searchUrl(QString(), QStringLiteral("a&b")).toEncoded()).contains(QStringLiteral("a%26b"))); // the & is part of the words
+        QVERIFY(searchUrl(QString(), QStringLiteral("a&b")).toString().contains(QStringLiteral("duckduckgo.com")));
+        QVERIFY(searchUrl(QStringLiteral("youtube"), QStringLiteral("x")).toString().contains(QStringLiteral("search_query=x")));
+    }
+
+    void utteranceEndsWhenTheSpeakerIsQuiet()
+    {
+        using namespace UtteranceModel;
+        Tracker t;
+        t.reset(0);
+        qint64 now = 0;
+        const auto feed = [&](double rms, int chunks) {
+            for (int i = 0; i < chunks; ++i) { now += 60; t.update(rms, now); }
+        };
+        feed(200, 10);                           // a quiet room
+        QCOMPARE(t.state(), State::Waiting);
+        feed(6000, 15);                          // a voice, 0.9 s
+        QCOMPARE(t.state(), State::Speaking);
+        feed(200, 5);                            // a short pause between words does not end it
+        QCOMPARE(t.state(), State::Speaking);
+        feed(6000, 10);
+        feed(200, 30);                           // quiet for good
+        QCOMPARE(t.state(), State::Ended);
+    }
+
+    void utteranceIgnoresAClickAndGivesUp()
+    {
+        using namespace UtteranceModel;
+        Tracker t;
+        t.reset(0);
+        qint64 now = 0;
+        const auto feed = [&](double rms, int chunks) {
+            for (int i = 0; i < chunks; ++i) { now += 60; t.update(rms, now); }
+        };
+        feed(200, 10);
+        feed(9000, 1);                           // one loud chunk: a click
+        feed(200, 25);
+        QVERIFY(t.state() != State::Ended);      // not a command
+        feed(200, 120);                          // nobody says anything
+        QCOMPARE(t.state(), State::NoSpeech);
+
+        Tracker longTalk;
+        longTalk.reset(0);
+        now = 0;
+        for (int i = 0; i < 400; ++i) { now += 60; longTalk.update(i < 5 ? 200 : 6000, now); }
+        QCOMPARE(longTalk.state(), State::Ended); // 12 s at most
+    }
+
+    void glassStaysReadable()
+    {
+        QCOMPARE(GlassModel::islandAlpha(0, true), 0.96);
+        QCOMPARE(GlassModel::islandAlpha(100, true), GlassModel::IslandMinBlur);
+        QCOMPARE(GlassModel::islandAlpha(100, false), GlassModel::IslandMinPlain); // no blur behind: stays mostly solid
+        QVERIFY(GlassModel::islandAlpha(100, false) > GlassModel::islandAlpha(100, true));
+        QCOMPARE(GlassModel::surfaceAlpha(0, false), 1.0);
+        QCOMPARE(GlassModel::surfaceAlpha(100, false), GlassModel::SurfaceMinPlain);
+        for (int p = 0; p < 100; p += 10) { // thinner as the strength goes up, never out of range
+            QVERIFY(GlassModel::islandAlpha(p + 10, true) <= GlassModel::islandAlpha(p, true));
+            QVERIFY(GlassModel::surfaceAlpha(p + 10, false) <= GlassModel::surfaceAlpha(p, false));
+        }
+        QCOMPARE(GlassModel::islandAlpha(500, true), GlassModel::IslandMinBlur);
+        QCOMPARE(GlassModel::islandAlpha(-5, true), 0.96);
     }
 
     void dockMovesPinned()

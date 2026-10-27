@@ -96,6 +96,7 @@ public:
 
     Q_INVOKABLE void refresh(); // when the card opens
     Q_INVOKABLE void setVolume(int percent);
+    Q_INVOKABLE void updateVolume(); // Windows: look again (no event tells us); Linux hears pactl and ignores it
     Q_INVOKABLE void toggleMute();
     Q_INVOKABLE void setSink(const QString &name);
     Q_INVOKABLE void setInputVolume(int percent);

@@ -109,6 +109,17 @@ void Theme::setStyle(const QString &style)
     emit changed();
 }
 
+void Theme::setGlass(bool on, int strength, bool blur)
+{
+    strength = qBound(0, strength, 100);
+    if (on == m_glass && strength == m_glassStrength && blur == m_blur)
+        return;
+    m_glass = on;
+    m_glassStrength = strength;
+    m_blur = blur;
+    emit changed();
+}
+
 bool Theme::dark() const
 {
     if (m_mode == QLatin1String("light"))

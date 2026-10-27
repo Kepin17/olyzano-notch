@@ -6,20 +6,20 @@ import QtQuick.Layouts
 AbstractButton {
     id: ib
     property string iconName
-    implicitWidth: 26
-    implicitHeight: 26
+    implicitWidth: 28
+    implicitHeight: 28
     background: Rectangle {
-        radius: theme.washi ? theme.chipRadius : 13
-        color: ib.checked ? theme.accentSoft : ib.down ? theme.surfacePressed : ib.hovered ? theme.surfaceHover : theme.surface
-        border.width: theme.washi ? 1 : 0
-        border.color: ib.checked ? theme.accent : theme.outline
+        radius: theme.washi ? theme.chipRadius : theme.radiusSm
+        color: ib.checked ? Qt.alpha(theme.accent, 0.16) : ib.down ? theme.pressFill : ib.hovered ? theme.hoverFill : "transparent"
+        border.width: 1
+        border.color: ib.checked ? Qt.alpha(theme.accent, 0.45) : theme.washi ? theme.outline : theme.hairline
     }
     contentItem: Item {
         LineIcon {
             anchors.centerIn: parent
             visible: ib.iconName !== ""
             glyph: ib.iconName
-            color: ib.checked && theme.washi ? theme.accent : theme.text
+            color: ib.checked ? theme.accentText : theme.text
         }
         Text {
             anchors.fill: parent

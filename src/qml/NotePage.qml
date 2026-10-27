@@ -59,9 +59,9 @@ ColumnLayout {
             font.pixelSize: 12
             background: Rectangle {
                 radius: theme.radiusMd
-                color: theme.surface
+                color: theme.well
                 border.width: 1
-                border.color: noteNameField.activeFocus ? shell.accent : "transparent"
+                border.color: noteNameField.activeFocus ? shell.accent : theme.hairline
             }
             onTextChanged: shell.noteName = text
             Keys.onPressed: (e) => {
@@ -108,7 +108,7 @@ ColumnLayout {
         radius: theme.radiusMd
         color: theme.well
         border.width: 1
-        border.color: noteEditor.activeFocus ? theme.accentSoft : theme.surface
+        border.color: noteEditor.activeFocus ? Qt.alpha(theme.accent, 0.55) : theme.hairline
         ScrollView {
             id: noteScroll
             anchors.fill: parent

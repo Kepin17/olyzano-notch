@@ -76,6 +76,8 @@ private:
     struct Player {
         Session s;
         qint64 lastActive = 0;
+        QString track;       // title + artist of the last read
+        qint64 trackAt = 0;  // when it changed (ms since the epoch); 0: seen from the start
     };
     const Session *current() const;
     void select();

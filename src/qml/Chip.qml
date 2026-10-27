@@ -13,16 +13,16 @@ AbstractButton {
     readonly property bool dropHover: chipDrop.containsDrag
     signal menuRequested()
     signal dropDone()
-    implicitHeight: 30
+    implicitHeight: 28
     implicitWidth: chipRow.implicitWidth + 24
     // The active chip is tinted (soft accent fill, accent text and outline), the way Washi's vermilion outline is.
     readonly property bool filled: false
-    readonly property color ink: chip.active ? theme.accent : theme.text
+    readonly property color ink: chip.active ? theme.accentText : theme.text
     background: Rectangle {
-        radius: theme.chipRadius
-        color: chip.dropHover ? theme.accentFaint : chip.active ? theme.accentSoft : chip.hovered ? theme.surfaceHover : theme.surface
-        border.width: chip.dropHover || chip.active ? 1 : theme.washi ? 1 : 0
-        border.color: chip.dropHover || chip.active ? theme.accent : theme.outline
+        radius: theme.washi ? theme.chipRadius : theme.radiusSm
+        color: chip.dropHover ? theme.accentFaint : chip.active ? Qt.alpha(theme.accent, 0.16) : chip.hovered ? theme.hoverFill : "transparent"
+        border.width: 1
+        border.color: chip.dropHover ? theme.accent : chip.active ? Qt.alpha(theme.accent, 0.45) : theme.washi ? theme.outline : theme.hairline
         Behavior on color { ColorAnimation { duration: 120 } }
     }
     contentItem: Item {
@@ -50,8 +50,8 @@ AbstractButton {
                 anchors.verticalCenter: parent.verticalCenter
                 width: Math.max(18, countText.implicitWidth + 10)
                 height: 16
-                radius: 8
-                color: chip.active ? Qt.alpha(theme.accent, 0.22) : theme.surfacePressed
+                radius: 4
+                color: chip.active ? Qt.alpha(theme.accent, 0.22) : theme.hoverFill
                 Text {
                     id: countText
                     anchors.centerIn: parent

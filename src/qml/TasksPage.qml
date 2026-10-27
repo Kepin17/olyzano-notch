@@ -82,9 +82,9 @@ ColumnLayout {
             font.pixelSize: 12
             background: Rectangle {
                 radius: theme.radiusMd
-                color: theme.surface
+                color: theme.well
                 border.width: 1
-                border.color: field.activeFocus ? shell.accent : "transparent"
+                border.color: field.activeFocus ? shell.accent : theme.hairline
             }
             onAccepted: page.add()
             Keys.onEscapePressed: shell.page = "shelf"

@@ -26,7 +26,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates cmake ninja-build g++ dpkg-dev file \
-            libssl-dev qt6-base-dev qt6-base-private-dev qt6-declarative-dev \
+            git libssl-dev qt6-base-dev qt6-base-private-dev qt6-declarative-dev \
             liblayershellqtinterface-dev libkf6windowsystem-dev libkf6idletime-dev \
             libqt6sql6-sqlite qt6-image-formats-plugins libdbus-1-dev pkg-config # the tests open a database and write WebP
 

@@ -72,7 +72,7 @@ ColumnLayout {
         radius: theme.radiusLg
         color: page.current !== "" ? page.current : "transparent"
         border.width: 1
-        border.color: theme.outline
+        border.color: theme.hairline
         readonly property color ink: page.current !== "" ? colorPicker.readableOn(page.current) : "white"
         HoverHandler { id: heroHover }
         TapHandler { onTapped: page.copy(page.current) }
@@ -135,7 +135,7 @@ ColumnLayout {
                 radius: theme.radiusMd
                 color: modelData
                 border.width: swHover.hovered ? 2 : 1
-                border.color: swHover.hovered ? theme.text : theme.outline
+                border.color: swHover.hovered ? theme.text : theme.hairline
                 scale: swHover.hovered ? 1.06 : 1
                 Behavior on scale { NumberAnimation { duration: 120 } }
                 HoverHandler { id: swHover }

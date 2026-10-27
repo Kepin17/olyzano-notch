@@ -4,23 +4,25 @@ import QtQuick.Layouts
 
 AbstractButton {
     id: tg
-    implicitWidth: 42
-    implicitHeight: 24
+    implicitWidth: 40
+    implicitHeight: 22
     padding: 0
     background: Rectangle {
-        radius: 12
-        color: tg.checked ? theme.success : theme.surfacePressed
+        radius: 11
+        color: tg.checked ? theme.accent : theme.pressFill
+        border.width: tg.checked ? 0 : 1
+        border.color: theme.hairline
         Behavior on color { ColorAnimation { duration: 150 } }
     }
     contentItem: Item {
         Rectangle {
-            y: 2
-            x: tg.checked ? parent.width - width - 2 : 2
-            width: 20
-            height: 20
-            radius: 10
-            color: "white"
-            Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutBack } }
+            y: 3
+            x: tg.checked ? parent.width - width - 3 : 3
+            width: 16
+            height: 16
+            radius: 8
+            color: tg.checked ? theme.onColor(theme.accent) : theme.textSoft
+            Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
         }
     }
 }

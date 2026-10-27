@@ -59,6 +59,10 @@ Window {
     property real widgetY: 14
     property rect winRect: Qt.rect(0, 0, 840, 620)
     property bool geoWidget: false // the window is placed by the card (not at the top centre)
+    // "Floating pill" (Settings): at the top centre the capsule hangs a little below the edge as a full pill. The card of
+    // Widget mode is already round and floating, so it keeps its own look.
+    readonly property bool pillLook: activities.capsuleLook === "pill" && !geoWidget
+    readonly property real pillGap: pillLook ? 10 : 0
     property bool dragging: false
     property string dragMask: ""
     readonly property bool docked: !widgetMode || mode === "prompt" || mode === "hidden"
@@ -518,6 +522,9 @@ Window {
     readonly property bool sharingNow: shareSessions > 0
     // {kind, title, detail, progress (0-1, -1 none), color}
     readonly property var live: {
+        if (assistant.state !== "idle") // a voice command: listening, thinking, or what it did
+            return { kind: "assistant", progress: -1, detail: "", color: assistant.state === "error" ? theme.warn : theme.accent,
+                     title: assistant.state === "listening" ? "Listening…" : assistant.state === "thinking" ? (assistant.heard !== "" ? assistant.heard : "Thinking…") : assistant.result }
         if (call)
             return { kind: "call", title: call.who, detail: "Calling", progress: -1, color: theme.success }
         if (wellbeing.state === "break") {
@@ -787,17 +794,43 @@ Window {
             const slack = maskSettle.running ? 24 : 0
             const k = root.mode === "idle" ? activities.capsuleScale : 1
             const w = Math.max(island.width, island.targetWidth) * k + 2 * slack
-            const h = Math.max(island.height, island.targetHeight, edge.height) * k + slack
+            const h = Math.max(island.height, island.targetHeight, edge.height) * k + slack + pillGap
             desktop.setInputRegion(root, Qt.rect((width - w) / 2, 0, w, h))
         }
     }
+    // Glass: the desktop blurs what is behind the island (KWin; nothing where it cannot) while the island is see-through.
+    property bool blurOn: false // the desktop has been asked to blur behind this window
+    function updateBlur() {
+        if (!activities.glass || !desktop.canBlur || island.height < 4 || mode === "hidden") {
+            if (blurOn) { // only undo what was asked: with Glass off the window is never touched
+                blurOn = false
+                desktop.setBlurRegion(root, Qt.rect(0, 0, 0, 0), 0)
+            }
+            return
+        }
+        blurOn = true
+        // The island as it is now (not where it is going), so the blur never shows past its edge; the edge look's concave
+        // shoulders are left out.
+        const k = floating || mode === "idle" ? activities.capsuleScale : 1
+        const inset = island.roundShape ? 0 : island.shoulder * k
+        const w = island.width * k - 2 * inset, h = island.height * k
+        desktop.setBlurRegion(root, Qt.rect(island.x + (island.width * (1 - k)) / 2 + inset, island.y, w, h), island.roundShape ? island.roundRadius : Math.min(24, h / 2))
+    }
+    // While the island springs to its size the blur follows it, a few times a second at most.
+    Timer { id: blurFollow; interval: 40; onTriggered: root.updateBlur() }
+    Connections {
+        target: island
+        function onWidthChanged() { if (activities.glass && !blurFollow.running) blurFollow.start() }
+        function onHeightChanged() { if (activities.glass && !blurFollow.running) blurFollow.start() }
+    }
+    Connections { target: activities; function onSettingsChanged() { root.updateBlur() } }
     function maskMoving() {
         maskSettle.restart()
         updateMask()
     }
-    Timer { id: maskSettle; interval: 350; onTriggered: root.updateMask() }
+    Timer { id: maskSettle; interval: 350; onTriggered: { root.updateMask(); root.updateBlur() } }
     onVisibleChanged: { updateMask(); applyReserve() }
-    onModeChanged: { applyGeometry(); updateMask() }
+    onModeChanged: { applyGeometry(); updateMask(); updateBlur() }
     Connections {
         target: gaming
         function onChanged() {
@@ -1012,13 +1045,13 @@ Window {
     Item {
         id: island
         x: root.geoWidget ? Math.max(0, Math.min(root.width - width, root.widgetCx - root.winRect.x - width / 2)) : (root.width - width) / 2
-        y: root.geoWidget ? Math.max(0, Math.min(root.height - height, root.widgetY - root.winRect.y)) : 0
+        y: root.geoWidget ? Math.max(0, Math.min(root.height - height, root.widgetY - root.winRect.y)) : root.pillGap
         // Where the island is heading; width and height follow it with the springs below.
         readonly property real targetWidth: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 400
              : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
              : root.mode === "idle" ? (root.musicShown ? root.capWidth : root.infoShown ? 390 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         readonly property real targetHeight: root.mode === "open" ? Math.max(panel.implicitHeight + (root.dragOver ? 8 : 0), root.shareNeed)
-              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 56 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? 48 : 26) : 0
+              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 56 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? (root.pillLook ? 52 : 48) : (root.pillLook ? 32 : 26)) : 0
         width: targetWidth
         height: targetHeight
         focus: true
@@ -1046,11 +1079,12 @@ Window {
         }
 
         // Height is stiffer than width: the drop falls first, then spreads and settles. The same on every platform (an extra
-        // Windows-only damping did not make it faster, only less even). Timed with --debug-hover on Windows, pointer arriving ->
-        // content shown: 424 ms with width spring 3.4 and reveal at 85 %, 324 ms with 4.8 and 70 % (160 ms of it is the dwell
-        // on the hidden edge). epsilon 0.4 ends the tail of the animation earlier (invisible at that size).
-        Behavior on height { SpringAnimation { spring: island.closing ? 7 : 5.5; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : 0.32; epsilon: 0.4 } }
-        Behavior on width { SpringAnimation { spring: island.closing ? 6 : 4.8; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : 0.3; epsilon: 0.4 } }
+        // Windows-only damping did not make it faster, only less even); the floating pill settles without a bounce. Timed with
+        // --debug-hover on Windows, pointer arriving -> content shown: 424 ms with width spring 3.4 and reveal at 85 %, 324 ms
+        // with 4.8 and 70 % (160 ms of it is the dwell on the hidden edge). epsilon 0.4 ends the tail of the animation earlier
+        // (invisible at that size).
+        Behavior on height { SpringAnimation { spring: island.closing ? 7 : 5.5; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : root.pillLook ? 0.6 : 0.32; epsilon: 0.4 } }
+        Behavior on width { SpringAnimation { spring: island.closing ? 6 : 4.8; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : root.pillLook ? 0.6 : 0.3; epsilon: 0.4 } }
         onTargetWidthChanged: root.maskMoving()
         onTargetHeightChanged: root.maskMoving()
         Connections { target: activities; function onSettingsChanged() { root.maskMoving() } }
@@ -1116,15 +1150,32 @@ Window {
         }
 
         // Liquid silhouette: flat top fused to the screen edge, concave shoulders, round bottom.
-        // Widget mode: a plain rounded card (no shadow) instead of the island's silhouette.
-        readonly property bool roundShape: root.geoWidget
-        // The edge of the capsule and the card: the look's outline, or the system accent (Windows / KDE) if chosen in Settings.
-        readonly property color edgeColor: root.dragOver ? root.accent : activities.borderMatchesSystem ? theme.systemAccent : theme.outline
+        // Widget mode: a plain rounded card with no shadow. The floating pill keeps its own soft shadow.
+        readonly property bool roundShape: root.geoWidget || root.pillLook
+        readonly property real roundRadius: root.pillLook ? Math.min(28, Math.max(0, height) / 2) : Math.min(20, Math.max(0, height) / 2)
+        // The edge of the capsule and the card: the system accent (Windows / KDE) if chosen in Settings, else the pill's soft
+        // outline or the look's own outline.
+        readonly property color edgeColor: root.dragOver ? root.accent
+            : activities.borderMatchesSystem ? theme.systemAccent
+            : root.pillLook ? (theme.dark ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(0, 0, 0, 0.09)) : theme.outline
+        Repeater { // the pill's soft shadow: a few faint rounded layers, wider and lower each time (no effect pass)
+            model: root.pillLook && !root.geoWidget && island.height > 0.5 ? 4 : 0
+            Rectangle {
+                required property int index
+                x: -(index + 1) * 2.5
+                y: 3 + index * 1.5
+                width: parent.width + (index + 1) * 5
+                height: parent.height + (index + 1) * 3
+                radius: parent.roundRadius + (index + 1) * 2
+                color: "#000000"
+                opacity: 0.07 - index * 0.016
+            }
+        }
         Rectangle {
             anchors.fill: parent
             visible: island.roundShape && island.height > 0.5
-            radius: Math.min(20, Math.max(0, height) / 2)
-            color: theme.island
+            radius: island.roundRadius
+            color: root.pillLook && theme.dark ? "#0a0a0a" : theme.island
             border.width: 1
             border.color: island.edgeColor
         }
@@ -1354,12 +1405,28 @@ Window {
                 sourceSize: Qt.size(14, 14)
                 color: liveRow.l.color
             }
-            Text {
+            LineIcon {
                 visible: !(liveRow.l.kind === "copy" || liveRow.l.kind === "call" || liveRow.l.kind === "share")
-                text: liveRow.l.kind === "timer" ? "⏱" : liveRow.l.kind === "doomscroll" ? "📱" : liveRow.l.kind === "break" ? "🧘" : liveRow.l.kind === "download" ? "↓" : "⇄"
+                glyph: liveRow.l.kind === "assistant" ? (assistant.state === "error" ? "mic-off" : "mic") : liveRow.l.kind === "timer" ? "timer" : liveRow.l.kind === "doomscroll" ? "phone" : liveRow.l.kind === "break" ? "heart" : liveRow.l.kind === "download" ? "download" : "share"
+                sourceSize: Qt.size(14, 14)
                 color: liveRow.l.color
-                font.pixelSize: 13
-                font.weight: Font.Bold
+            }
+            Row { // the voice, while listening
+                visible: liveRow.l.kind === "assistant" && assistant.state === "listening"
+                height: 16
+                spacing: 2
+                Repeater {
+                    model: 4
+                    Rectangle {
+                        required property int index
+                        y: (parent.height - height) / 2
+                        width: 3
+                        radius: 1.5
+                        height: 4 + 12 * Math.min(1, assistant.level * (0.7 + 0.25 * index))
+                        color: liveRow.l.color
+                        Behavior on height { NumberAnimation { duration: 70 } }
+                    }
+                }
             }
             Text {
                 Layout.fillWidth: true
@@ -1420,7 +1487,7 @@ Window {
                 visible: root.infoShown
                 Layout.fillWidth: true
                 Layout.leftMargin: 6
-                text: root.showPrayer ? "🕌 " + prayer.nextName + " " + prayer.nextTime + " · " + prayer.nextRemaining
+                text: root.showPrayer ? prayer.nextName + " " + prayer.nextTime + " · " + prayer.nextRemaining
                                       : "• " + tasks.nextTitle + " · " + tasks.nextRemaining
                 color: root.showPrayer ? (prayer.soon ? theme.accent : root.textSecondary)
                        : tasks.nextState === "overdue" ? theme.danger : tasks.nextState === "soon" ? theme.accent : root.textSecondary
@@ -1590,7 +1657,7 @@ Window {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
-                Text { text: doomscroll.reminding ? "📱" : "🧘"; font.pixelSize: 20 }
+                LineIcon { glyph: doomscroll.reminding ? "phone" : "heart"; sourceSize: Qt.size(22, 22); color: theme.accent }
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 1
@@ -1838,6 +1905,16 @@ Window {
                             onEntered: (drag) => { drag.accepted = drag.source && drag.source.draggedIds !== undefined }
                             onDropped: (d) => root.removeWithConfirm(d.source.draggedIds)
                         }
+                    }
+                    IconButton {
+                        visible: assistant.available && assistant.enabled && assistant.modelState === "ready" && !root.selecting
+                        iconName: "mic"
+                        checked: assistant.state === "listening" || assistant.state === "thinking"
+                        Accessible.name: "Voice command"
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 500
+                        ToolTip.text: "Say a command: open an app, search, volume, timer…"
+                        onClicked: assistant.start()
                     }
                     IconButton {
                         visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color") && !root.selecting
@@ -2346,7 +2423,7 @@ Window {
                         anchors.rightMargin: 5
                         Text {
                             Layout.fillWidth: true
-                            text: "🧘  On a break · " + root.clock(root.breakLeft) + " left"
+                            text: "On a break · " + root.clock(root.breakLeft) + " left"
                             color: root.textPrimary
                             font.pixelSize: 12
                             elide: Text.ElideRight
@@ -2506,7 +2583,7 @@ Window {
     Rectangle {
         visible: activities.privacyIndicators && root.mode !== "open" && activities.cameraApps.length > 0
         x: (root.geoWidget ? island.x + island.width / 2 : root.width / 2) + Math.max(island.width, 44) / 2 + 6
-        y: root.geoWidget ? island.y + 3 : 3
+        y: root.geoWidget ? island.y + 3 : root.pillGap + 3
         width: 7; height: 7; radius: 3.5
         color: "#30d158"
     }
@@ -2600,7 +2677,7 @@ Window {
                 model: sendMenu.devices
                 delegate: Action {
                     required property var modelData
-                    text: (modelData.type === "desktop" || modelData.type === "laptop" ? "💻  " : "📱  ") + modelData.name
+                    text: modelData.name
                     onTriggered: kdeconnect.send(modelData.id, modelData.name, notch.fileUrls(menu.targets))
                 }
                 onObjectAdded: (index, object) => sendMenu.insertAction(index, object)

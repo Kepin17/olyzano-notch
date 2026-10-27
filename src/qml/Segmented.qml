@@ -14,10 +14,10 @@ Item {
 
     Rectangle {
         anchors.fill: parent
-        radius: theme.washi ? theme.chipRadius : height / 2
+        radius: theme.washi ? theme.chipRadius : theme.radiusSm + 2
         color: theme.well
-        border.width: theme.washi ? 1 : 0
-        border.color: theme.outline
+        border.width: 1
+        border.color: theme.washi ? theme.outline : theme.hairline
     }
     Rectangle { // the highlight
         readonly property real cell: (seg.width - 6) / Math.max(1, seg.model.length)
@@ -25,8 +25,10 @@ Item {
         y: 3
         width: cell
         height: seg.height - 6
-        radius: theme.washi ? Math.max(2, theme.chipRadius - 2) : height / 2
-        color: theme.accent
+        radius: theme.washi ? Math.max(2, theme.chipRadius - 2) : theme.radiusSm
+        color: Qt.alpha(theme.accent, 0.18)
+        border.width: 1
+        border.color: Qt.alpha(theme.accent, 0.45)
         Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
     }
     Row {
@@ -43,7 +45,7 @@ Item {
                 onClicked: { seg.value = modelData[0]; seg.picked(modelData[0]) }
                 contentItem: Text {
                     text: modelData[1]
-                    color: index === seg.index ? theme.onColor(theme.accent) : hovered ? theme.text : theme.textSoft
+                    color: index === seg.index ? theme.accentText : hovered ? theme.text : theme.textSoft
                     font.pixelSize: 12
                     font.weight: index === seg.index ? Font.DemiBold : Font.Medium
                     horizontalAlignment: Text.AlignHCenter

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(notch VERSION 0.12.3 LANGUAGES CXX)
+project(notch VERSION 0.12.4 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -84,6 +84,8 @@ qt_add_executable(notch
     src/platform/ColorPicker.h
     src/platform/AppDock.h src/platform/AppDock.cpp src/platform/DockModel.h
     src/platform/Activities.h src/platform/Activities.cpp
+    src/platform/Assistant.h src/platform/Assistant.cpp src/platform/MicCapture.h src/platform/MicCapture.cpp
+    src/platform/AssistantModel.h src/platform/UtteranceModel.h src/platform/Whisper.h src/platform/Whisper.cpp
     src/platform/Wellbeing.h src/platform/Wellbeing.cpp src/platform/WellbeingModel.h
     src/platform/Sounds.h src/platform/Sounds.cpp src/platform/SoundsModel.h
     src/platform/Karaoke.h src/platform/Karaoke.cpp src/platform/KaraokeModel.h
@@ -107,6 +109,7 @@ if(WIN32)
     target_compile_definitions(notch PRIVATE NOTCH_HAVE_KDECONNECT)
     target_sources(notch PRIVATE src/platform/WinPrivacy.h src/platform/WinPrivacy.cpp src/platform/ColorPicker_win.cpp
                                  src/platform/WinAudioSessions.h src/platform/WinAudioSessions.cpp
+                                 src/platform/WinVolume.h src/platform/WinVolume.cpp src/platform/MicCapture_win.cpp
                                  src/platform/WinBluetooth.h src/platform/WinBluetooth.cpp
                                  src/platform/WinAppBar.h src/platform/WinAppBar.cpp
                                  src/platform/MediaPlayers_win.cpp src/platform/MediaNames.h src/platform/AudioLevels_win.cpp
@@ -222,6 +225,50 @@ if(LayerShellQt_FOUND)
     message(STATUS "LayerShellQt found: Wayland layer-shell placement enabled")
 else()
     message(WARNING "LayerShellQt not found: on Wayland the pill cannot be pinned to the top edge")
+endif()
+
+# Offline voice assistant: whisper.cpp (MIT) turns speech into text on this computer; the model is downloaded on request
+# from Settings. Built from source at a pinned tag, CPU only, for any x86-64 with AVX2 (2013 and newer). Without network
+# or git the assistant is simply left out (the program says so in Settings).
+option(NOTCH_VOICE "Offline voice assistant (whisper.cpp)" ON)
+if(NOTCH_VOICE)
+    include(FetchContent)
+    find_package(Git QUIET)
+    set(_whisper_ok OFF)
+    if(DEFINED FETCHCONTENT_SOURCE_DIR_WHISPER)
+        set(_whisper_ok ON)
+    elseif(GIT_FOUND)
+        execute_process(COMMAND ${GIT_EXECUTABLE} ls-remote --exit-code https://github.com/ggml-org/whisper.cpp.git v1.9.5
+                        RESULT_VARIABLE _whisper_reach OUTPUT_QUIET ERROR_QUIET TIMEOUT 20)
+        if(_whisper_reach EQUAL 0)
+            set(_whisper_ok ON)
+        endif()
+    endif()
+    if(_whisper_ok)
+        set(BUILD_SHARED_LIBS OFF)
+        set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(WHISPER_BUILD_SERVER OFF CACHE BOOL "" FORCE)
+        set(WHISPER_SDL2 OFF CACHE BOOL "" FORCE)
+        set(GGML_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+        set(GGML_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+        set(GGML_NATIVE OFF CACHE BOOL "" FORCE)
+        set(GGML_OPENMP OFF CACHE BOOL "" FORCE)
+        set(GGML_CCACHE OFF CACHE BOOL "" FORCE)
+        if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+            set(GGML_AVX ON CACHE BOOL "" FORCE)
+            set(GGML_AVX2 ON CACHE BOOL "" FORCE)
+            set(GGML_FMA ON CACHE BOOL "" FORCE)
+            set(GGML_F16C ON CACHE BOOL "" FORCE)
+        endif()
+        FetchContent_Declare(whisper GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git GIT_TAG v1.9.5 GIT_SHALLOW ON)
+        FetchContent_MakeAvailable(whisper)
+        target_link_libraries(notch PRIVATE whisper)
+        target_compile_definitions(notch PRIVATE NOTCH_HAVE_WHISPER)
+        message(STATUS "whisper.cpp: the offline voice assistant is built in")
+    else()
+        message(STATUS "whisper.cpp could not be fetched (no git or no network): building without the voice assistant")
+    endif()
 endif()
 
 include(GNUInstallDirs)

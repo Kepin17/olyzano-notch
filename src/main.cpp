@@ -17,6 +17,7 @@
 #include "platform/Doomscroll.h"
 #include "platform/Prayer.h"
 #include "platform/Tasks.h"
+#include "platform/Assistant.h"
 #include "platform/Updates.h"
 #include "platform/Launcher.h"
 #include "platform/TrayHost.h"
@@ -224,6 +225,27 @@ int main(int argc, char *argv[])
     Tasks tasks;
     Prayer prayer;
     Updates updates;
+    Assistant assistant(&launcher, &tasks, &quick, &media, &activities, &controller);
+    // `notch --assistant-say "buka firefox"`: what the words would do (nothing is done); `--assistant-wav file.wav`: the same from a
+    // 16 kHz mono 16-bit recording, through whisper (the model must be downloaded).
+    if (const int i = app.arguments().indexOf(QStringLiteral("--assistant-say")); i >= 0 && i + 1 < app.arguments().size()) {
+        const auto in = AssistantModel::parse(app.arguments().at(i + 1));
+        printf("%s\n", qPrintable(in.kind == AssistantModel::Kind::Unknown ? QStringLiteral("not understood") : QStringLiteral("would ") + assistant.describe(in)));
+        return 0;
+    }
+    if (app.arguments().contains(QStringLiteral("--assistant-listen"))) { // listens once through the microphone and prints what happens
+        QObject::connect(&assistant, &Assistant::stateChanged, &app, [&] { printf("state: %s  %s\n", qPrintable(assistant.state()), qPrintable(assistant.result())); fflush(stdout); if (assistant.state() == QLatin1String("done") || assistant.state() == QLatin1String("error")) { printf("heard: %s\n", qPrintable(assistant.heard())); app.quit(); } });
+        assistant.setEnabled(true);
+        QTimer::singleShot(0, &assistant, &Assistant::start);
+        QTimer::singleShot(30000, &app, &QCoreApplication::quit);
+        return app.exec();
+    }
+    if (const int i = app.arguments().indexOf(QStringLiteral("--assistant-wav")); i >= 0 && i + 1 < app.arguments().size()) {
+        const QString text = assistant.transcribeFile(app.arguments().at(i + 1));
+        const auto in = AssistantModel::parse(text);
+        printf("heard: %s\n%s\n", qPrintable(text), qPrintable(in.kind == AssistantModel::Kind::Unknown ? QStringLiteral("not understood") : QStringLiteral("would ") + assistant.describe(in)));
+        return 0;
+    }
     if (const int i = app.arguments().indexOf(QStringLiteral("--dump-menu")); i >= 0 && i + 1 < app.arguments().size()) { // the menu of a process, for checking
         fputs(appMenu.dump(app.arguments().at(i + 1).toLongLong()).constData(), stdout);
         return 0;
@@ -297,6 +319,9 @@ int main(int argc, char *argv[])
         else if (kind == QLatin1String("lowbattery"))
             sounds.play(QStringLiteral("warning"));
     });
+    const auto applyGlass = [&] { theme.setGlass(activities.glass(), activities.glassStrength(), desktop.canBlur()); };
+    applyGlass();
+    QObject::connect(&activities, &Activities::settingsChanged, &theme, applyGlass);
     theme.setMode(controller.themeMode());
     theme.setStyle(controller.uiStyle());
     QObject::connect(&controller, &NotchController::uiStyleChanged, &theme, [&] { theme.setStyle(controller.uiStyle()); });
@@ -332,6 +357,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("launcher"), &launcher);
     engine.rootContext()->setContextProperty(QStringLiteral("doomscroll"), &doomscroll);
     engine.rootContext()->setContextProperty(QStringLiteral("updates"), &updates);
+    engine.rootContext()->setContextProperty(QStringLiteral("assistant"), &assistant);
     engine.rootContext()->setContextProperty(QStringLiteral("tasks"), &tasks);
     engine.rootContext()->setContextProperty(QStringLiteral("prayer"), &prayer);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
@@ -462,7 +488,7 @@ int main(int argc, char *argv[])
     // `notch --shot-page file.png <timer|color|shelf|tasks|capsule>`: the open panel on that page, the same way.
     if (const int i = app.arguments().indexOf(QStringLiteral("--shot-page")); i >= 0 && i + 2 < app.arguments().size()) {
         const QString path = app.arguments().at(i + 1), page = app.arguments().at(i + 2);
-        QTimer::singleShot(1200, &app, [&windows, &app, &activities, &doomscroll, path, page] {
+        QTimer::singleShot(1200, &app, [&windows, &app, &activities, &doomscroll, &assistant, path, page] {
             QQuickWindow *w = windows.isEmpty() ? nullptr : windows.constBegin().value();
             if (!w)
                 return app.quit();
@@ -472,6 +498,12 @@ int main(int argc, char *argv[])
             }
             if (page == QLatin1String("timer-run")) // a 25 minute timer running, to see the ring
                 activities.startTimer(25 * 60, QStringLiteral("Tea"));
+            if (page.startsWith(QLatin1String("assistant-"))) { // the voice assistant in the capsule: assistant-listening | -thinking | -done | -error
+                const QString st = page.mid(10);
+                assistant.debugShow(st, 0.55, st == QLatin1String("thinking") || st == QLatin1String("done") ? QStringLiteral("buka firefox") : QString(),
+                                    st == QLatin1String("done") ? QStringLiteral("Opening Firefox") : st == QLatin1String("error") ? QStringLiteral("I did not understand that.") : QString());
+                return QTimer::singleShot(900, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+            }
             if (page.startsWith(QLatin1String("toast-"))) { // one notification, for a picture
                 QMetaObject::invokeMethod(w, "debugToast", Q_ARG(QVariant, page.mid(6)), Q_ARG(QVariant, qEnvironmentVariable("NOTCH_DEBUG_ART")));
                 return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 1800, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
