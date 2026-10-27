@@ -59,11 +59,12 @@ bool Whisper::load(const QString &modelPath)
 #endif
 }
 
-QString Whisper::transcribe(const QVector<float> &samples, const QString &language)
+Whisper::Transcript Whisper::hear(const QVector<float> &samples, const QString &language, const QString &vocabulary)
 {
+    Transcript out;
 #ifdef NOTCH_HAVE_WHISPER
     if (!d->ctx || samples.size() < 1600) // less than 0.1 s
-        return {};
+        return out;
     const int threads = qBound(1, QThread::idealThreadCount() - 1, 4);
 
     // A quiet microphone is a poor recording for the model: bring the loudest peak to 0.9 (at most 25 times louder) and
@@ -107,27 +108,51 @@ QString Whisper::transcribe(const QVector<float> &samples, const QString &langua
     wp.no_context = true;
     wp.suppress_blank = true;
     wp.temperature = 0.0f;
+    wp.temperature_inc = 0.0f; // no retries with more randomness: a command is short and a retry costs seconds
+    wp.max_tokens = 64;
     wp.n_threads = threads;
     wp.language = lang.constData();
     wp.detect_language = false; // true would only detect the language and return
-    const QByteArray prompt = lang == "en" ? QByteArray("Open the browser. Search for cheap graphics cards on YouTube. Set the volume to 40. Timer ten minutes. Add task buy milk.")
-                                           : QByteArray("Buka YouTube. Cari info VGA yang murah. Cari channel di YouTube. Volume empat puluh. Timer sepuluh menit. Tambah tugas beli susu.");
+    QByteArray prompt = lang == "en" ? QByteArray("Open the browser. Search for cheap graphics cards on YouTube. Set the volume to 40. Timer ten minutes. Add task buy milk.")
+                                     : QByteArray("Buka YouTube. Cari info VGA yang murah. Cari channel di YouTube. Volume empat puluh. Timer sepuluh menit. Tambah tugas beli susu.");
+    if (!vocabulary.isEmpty())
+        prompt += (lang == "en" ? " Apps: " : " Aplikasi: ") + vocabulary.left(260).toUtf8() + ".";
     wp.initial_prompt = prompt.constData();
     if (whisper_full(d->ctx, wp, pcm.constData(), int(pcm.size())) != 0)
-        return {};
+        return out;
     QString text;
-    for (int i = 0, n = whisper_full_n_segments(d->ctx); i < n; ++i)
+    double sum = 0;
+    int counted = 0;
+    const whisper_token eot = whisper_token_eot(d->ctx);
+    for (int i = 0, n = whisper_full_n_segments(d->ctx); i < n; ++i) {
         text += QString::fromUtf8(whisper_full_get_segment_text(d->ctx, i));
+        for (int t = 0, nt = whisper_full_n_tokens(d->ctx, i); t < nt; ++t) {
+            const whisper_token_data td = whisper_full_get_token_data(d->ctx, i, t);
+            if (td.id >= eot) // the special tokens (timestamps, language) are not words
+                continue;
+            sum += td.p;
+            ++counted;
+            if (td.p < 0.45) {
+                const QString piece = QString::fromUtf8(whisper_full_get_token_text(d->ctx, i, t)).trimmed();
+                if (!piece.isEmpty())
+                    out.doubtful << piece;
+            }
+        }
+    }
+    out.confidence = counted > 0 ? sum / counted : 0.0;
+    out.language = QString::fromLatin1(lang);
     // Noise comes back as "(humming)", "[BLANK_AUDIO]" or a note: that is no speech
     text.remove(QRegularExpression(QStringLiteral("\\[[^\\]]*\\]|\\([^)]*\\)|[\u266a\u266b]")));
     // With nothing to say the model may repeat its own prompt: that is no speech either
     const QString simple = text.simplified();
-    if (simple.isEmpty() || QString::fromUtf8(prompt).contains(simple, Qt::CaseInsensitive) && simple.size() > 12)
-        return {};
-    return simple;
+    if (simple.isEmpty() || (QString::fromUtf8(prompt).contains(simple, Qt::CaseInsensitive) && simple.size() > 12))
+        return Transcript{};
+    out.text = simple;
+    return out;
 #else
     Q_UNUSED(samples)
     Q_UNUSED(language)
-    return {};
+    Q_UNUSED(vocabulary)
+    return out;
 #endif
 }

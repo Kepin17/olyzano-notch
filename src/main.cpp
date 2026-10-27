@@ -259,7 +259,7 @@ int main(int argc, char *argv[])
     if (const int i = app.arguments().indexOf(QStringLiteral("--assistant-wav")); i >= 0 && i + 1 < app.arguments().size()) {
         const QString text = assistant.transcribeFile(app.arguments().at(i + 1));
         const auto in = AssistantModel::parse(text);
-        printf("heard: %s\n%s\n", qPrintable(text), qPrintable(in.kind == AssistantModel::Kind::Unknown ? QStringLiteral("not understood") : QStringLiteral("would ") + assistant.describe(in)));
+        printf("heard: %s  (sure %.0f %%)\n%s\n", qPrintable(text), 100.0 * assistant.lastConfidence(), qPrintable(in.kind == AssistantModel::Kind::Unknown ? QStringLiteral("not understood") : QStringLiteral("would ") + assistant.describe(in)));
         return 0;
     }
     if (const int i = app.arguments().indexOf(QStringLiteral("--dump-menu")); i >= 0 && i + 1 < app.arguments().size()) { // the menu of a process, for checking

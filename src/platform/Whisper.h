@@ -18,8 +18,17 @@ public:
     bool load(const QString &modelPath); // false when the file is no model
     bool loaded() const;
     void unload();
-    // language: "auto", "id", "en", ...; "" when nothing was recognised or the model is not loaded.
-    QString transcribe(const QVector<float> &samples, const QString &language);
+    // What was heard, and how sure the model was: the mean probability of the words (0..1), and the pieces it doubted.
+    struct Transcript {
+        QString text;
+        double confidence = 0;
+        QStringList doubtful;
+        QString language;
+    };
+    // language: "auto" (Indonesian or English), "id", "en"; `vocabulary`: names that may come up (apps, sites), which settle the spelling.
+    // An empty text: nothing was recognised or the model is not loaded.
+    Transcript hear(const QVector<float> &samples, const QString &language, const QString &vocabulary = QString());
+    QString transcribe(const QVector<float> &samples, const QString &language) { return hear(samples, language).text; }
 
 private:
     struct Impl;

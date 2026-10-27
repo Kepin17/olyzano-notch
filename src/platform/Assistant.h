@@ -80,6 +80,7 @@ public:
     Q_INVOKABLE void removeModel();
     // For `notch --assistant-wav` and tests: speech in a 16 kHz mono 16-bit WAV file, to text.
     QString transcribeFile(const QString &wavPath);
+    double lastConfidence() const { return m_confidence; }
     QString describe(const AssistantModel::Intent &in) const; // what the command would do, in words (no action)
     static QString modelPath(const QString &model);
 
@@ -97,7 +98,8 @@ private:
     void finish(const QString &state, const QString &heard, const QString &result);
     void onChunk(const QByteArray &s16le);
     void listenEnded(bool speech);
-    void act(const QString &text);
+    void act(const QString &text, double confidence = 1.0);
+    QString vocabulary() const; // names that may come up (installed apps, the sites), for the recognizer
     QString run(const AssistantModel::Intent &in);
     void checkModel();
     void downloadChunk();
@@ -124,7 +126,8 @@ private:
     std::mutex m_whisperMutex; // one recognition at a time; the model stays loaded between commands
     Whisper m_whisper;
     QString m_loadedModel;
-    QFutureWatcher<QString> m_watcher;
+    QFutureWatcher<Whisper::Transcript> m_watcher;
+    double m_confidence = 1.0; // of the last thing heard
 
     QNetworkAccessManager m_net;
     QNetworkReply *m_reply = nullptr;

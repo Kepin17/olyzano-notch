@@ -75,14 +75,14 @@ Assistant::Assistant(Launcher *launcher, Tasks *tasks, QuickSettings *quick, Med
         if (m_state == QLatin1String("listening"))
             finish(QStringLiteral("error"), QString(), why);
     });
-    connect(&m_watcher, &QFutureWatcher<QString>::finished, this, [this] {
-        const QString text = m_watcher.result();
+    connect(&m_watcher, &QFutureWatcher<Whisper::Transcript>::finished, this, [this] {
+        const Whisper::Transcript t = m_watcher.result();
         if (m_state != QLatin1String("thinking"))
             return; // cancelled meanwhile
-        if (text.isEmpty())
+        if (t.text.isEmpty())
             finish(QStringLiteral("error"), QString(), tr("I could not make out the words."));
         else
-            act(text);
+            act(t.text, t.confidence);
     });
     checkModel();
 }
@@ -239,17 +239,17 @@ void Assistant::onChunk(const QByteArray &s16le)
     setState(QStringLiteral("thinking"));
     m_result = tr("Thinking…");
     emit resultChanged();
-    const QString model = this->model(), lang = language(), path = modelPath(model);
+    const QString model = this->model(), lang = language(), path = modelPath(model), vocab = vocabulary();
     QVector<float> pcm = std::move(m_pcm);
     m_pcm.clear();
-    m_watcher.setFuture(QtConcurrent::run([this, pcm, model, lang, path]() -> QString {
+    m_watcher.setFuture(QtConcurrent::run([this, pcm, model, lang, path, vocab]() -> Whisper::Transcript {
         std::lock_guard<std::mutex> lock(m_whisperMutex);
         if (m_loadedModel != model || !m_whisper.loaded()) {
             if (!m_whisper.load(path))
                 return {};
             m_loadedModel = model;
         }
-        return m_whisper.transcribe(pcm, lang);
+        return m_whisper.hear(pcm, lang, vocab);
     }));
 }
 
@@ -272,7 +272,9 @@ QString Assistant::transcribeFile(const QString &wavPath)
     if (!m_whisper.loaded() && !m_whisper.load(modelPath(model())))
         return {};
     m_loadedModel = model();
-    return m_whisper.transcribe(samples, language());
+    const Whisper::Transcript t = m_whisper.hear(samples, language(), vocabulary());
+    m_confidence = t.confidence;
+    return t.text;
 }
 
 void Assistant::debugShow(const QString &state, qreal level, const QString &heard, const QString &result)
@@ -295,8 +297,31 @@ void Assistant::say(const QString &text)
     act(text);
 }
 
-void Assistant::act(const QString &text)
+// The names the recognizer should expect: the apps (the ones used most first) and the best-known sites, so a name is spelled the
+// way it is written on the screen.
+QString Assistant::vocabulary() const
 {
+    QStringList names;
+    if (m_launcher) {
+        struct Named { QString name; int uses; };
+        QList<Named> apps;
+        for (const QVariant &a : m_launcher->search(QString(), QString())) {
+            const QVariantMap m = a.toMap();
+            const QString n = m.value(QStringLiteral("name")).toString();
+            if (!n.isEmpty() && n.size() <= 28)
+                apps << Named{n, m_launcher->uses(m.value(QStringLiteral("id")).toString())};
+        }
+        std::stable_sort(apps.begin(), apps.end(), [](const Named &a, const Named &b) { return a.uses > b.uses; });
+        for (int i = 0; i < apps.size() && i < 24; ++i)
+            names << apps.at(i).name;
+    }
+    names << QStringLiteral("YouTube") << QStringLiteral("Google") << QStringLiteral("GitHub") << QStringLiteral("Gmail");
+    return names.join(QStringLiteral(", "));
+}
+
+void Assistant::act(const QString &text, double confidence)
+{
+    m_confidence = confidence;
     const AssistantModel::Intent in = AssistantModel::parse(text);
     if (in.kind == AssistantModel::Kind::Unknown)
         return finish(QStringLiteral("error"), text, tr("Not understood. Try: \"%1\"").arg(hints().at(m_hint % hints().size())));
