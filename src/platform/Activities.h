@@ -58,6 +58,8 @@ class Activities : public QObject
     // The spectrum beside the song: "bars" | "thin" | "dots" | "wave" | "pulse" | "off"; the capsule's size, 0.8 to 1.3.
     Q_PROPERTY(QString eqStyle READ eqStyle WRITE setEqStyle NOTIFY settingsChanged)
     Q_PROPERTY(qreal capsuleScale READ capsuleScale WRITE setCapsuleScale NOTIFY settingsChanged)
+    Q_PROPERTY(bool glass READ glass WRITE setGlass NOTIFY settingsChanged)           // see-through island and surfaces (Theme.h)
+    Q_PROPERTY(int glassStrength READ glassStrength WRITE setGlassStrength NOTIFY settingsChanged) // 0-100
     Q_PROPERTY(QString capsuleLook READ capsuleLook WRITE setCapsuleLook NOTIFY settingsChanged) // "edge" (fused to the top edge) or "pill" (a floating capsule)
     Q_PROPERTY(bool reserveSpace READ reserveSpace WRITE setReserveSpace NOTIFY settingsChanged) // keep other windows clear of the capsule
     Q_PROPERTY(bool taskInCapsule READ taskInCapsule WRITE setTaskInCapsule NOTIFY settingsChanged) // the next task in the idle capsule
@@ -123,6 +125,10 @@ public:
     QString eqStyle() const;
     void setEqStyle(const QString &style);
     qreal capsuleScale() const { return qBound(0.8, m_settings.value(QStringLiteral("capsuleScale"), 1.0).toDouble(), 1.3); }
+    bool glass() const { return m_settings.value(QStringLiteral("glass"), false).toBool(); }
+    void setGlass(bool on) { store(QStringLiteral("glass"), on); }
+    int glassStrength() const { return qBound(0, m_settings.value(QStringLiteral("glassStrength"), 60).toInt(), 100); }
+    void setGlassStrength(int percent) { store(QStringLiteral("glassStrength"), qBound(0, percent, 100)); }
     QString capsuleLook() const { return m_settings.value(QStringLiteral("capsuleLook")).toString() == QLatin1String("pill") ? QStringLiteral("pill") : QStringLiteral("edge"); }
     void setCapsuleLook(const QString &look) { store(QStringLiteral("capsuleLook"), look == QLatin1String("pill") ? QStringLiteral("pill") : QStringLiteral("edge")); }
     void setCapsuleScale(qreal scale) { store(QStringLiteral("capsuleScale"), qRound(qBound(0.8, scale, 1.3) * 100) / 100.0); }

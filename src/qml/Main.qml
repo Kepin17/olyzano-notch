@@ -776,13 +776,22 @@ Window {
             desktop.setInputRegion(root, Qt.rect((width - w) / 2, 0, w, h))
         }
     }
+    // Glass: the desktop blurs what is behind the island (KWin; nothing where it cannot) while the island is see-through.
+    function updateBlur() {
+        if (!activities.glass || !desktop.canBlur || island.height < 4 || mode === "hidden")
+            return desktop.setBlurRegion(root, Qt.rect(0, 0, 0, 0), 0)
+        const k = floating || mode === "idle" ? activities.capsuleScale : 1
+        const w = island.width * k, h = island.height * k
+        desktop.setBlurRegion(root, Qt.rect(island.x + (island.width - w) / 2, island.y, w, h), island.roundShape ? island.roundRadius : Math.min(24, h / 2))
+    }
+    Connections { target: activities; function onSettingsChanged() { root.updateBlur() } }
     function maskMoving() {
         maskSettle.restart()
         updateMask()
     }
-    Timer { id: maskSettle; interval: 350; onTriggered: root.updateMask() }
+    Timer { id: maskSettle; interval: 350; onTriggered: { root.updateMask(); root.updateBlur() } }
     onVisibleChanged: { updateMask(); applyReserve() }
-    onModeChanged: { applyGeometry(); updateMask() }
+    onModeChanged: { applyGeometry(); updateMask(); updateBlur() }
     Connections {
         target: gaming
         function onChanged() {

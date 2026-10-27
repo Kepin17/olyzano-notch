@@ -297,6 +297,9 @@ int main(int argc, char *argv[])
         else if (kind == QLatin1String("lowbattery"))
             sounds.play(QStringLiteral("warning"));
     });
+    const auto applyGlass = [&] { theme.setGlass(activities.glass(), activities.glassStrength(), desktop.canBlur()); };
+    applyGlass();
+    QObject::connect(&activities, &Activities::settingsChanged, &theme, applyGlass);
     theme.setMode(controller.themeMode());
     theme.setStyle(controller.uiStyle());
     QObject::connect(&controller, &NotchController::uiStyleChanged, &theme, [&] { theme.setStyle(controller.uiStyle()); });

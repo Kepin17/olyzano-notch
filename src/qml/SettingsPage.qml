@@ -34,7 +34,7 @@ RowLayout {
     readonly property var index: [
         ["about", "Updates", "update upgrade new version release check download latest github notify"], ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
         ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Sounds", "sound effects volume quiet mute"],
-        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["general", "Floating pill", "pill floating capsule dynamic island edge look shape"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"],
+        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["general", "Floating pill", "pill floating capsule dynamic island edge look shape"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"], ["appearance", "Glass", "glass glassmorphism translucent transparent blur frosted see-through"],
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
         ["panel", "Transparency and blur", "glass opacity bar"], ["panel", "What the bar shows", "app name date seconds battery percentage"],
         ["panel", "Quick Settings", "wifi bluetooth volume brightness power click hover"],
@@ -1665,6 +1665,24 @@ RowLayout {
                             onClicked: notch.themeMode = modelData[0]
                         }
                     }
+                }
+            }
+            SettingCard {
+                title: "Glass"
+                SettingToggle {
+                    title: "See-through notch"
+                    caption: desktop.canBlur ? "The notch and the cards on it turn translucent, and what is behind them is blurred by the desktop."
+                                             : "The notch and the cards on it turn translucent. This desktop has no blur to offer, so they stay mostly solid to keep the text readable."
+                    checked: activities.glass
+                    onToggled: activities.glass = !activities.glass
+                }
+                DockSlider {
+                    visible: activities.glass
+                    title: "Strength"
+                    valueText: activities.glassStrength + "%"
+                    from: 0; to: 100; stepSize: 5
+                    value: activities.glassStrength
+                    onMoved: activities.glassStrength = value
                 }
             }
         }

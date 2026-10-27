@@ -18,6 +18,7 @@
 #include "platform/MediaNames.h"
 #include "platform/DbusMenuModel.h"
 #include "platform/GamingModel.h"
+#include "platform/GlassModel.h"
 #include "platform/KaraokeModel.h"
 #include "platform/CalendarModel.h"
 #include "platform/DoomscrollModel.h"
@@ -2449,6 +2450,22 @@ private slots:
         for (int i = 0; i < 8; ++i)
             seen += eyes.tick(n += 5000, 5000, 1000, false) == E::EyeBreak;
         QCOMPARE(seen, 2);
+    }
+
+    void glassStaysReadable()
+    {
+        QCOMPARE(GlassModel::islandAlpha(0, true), 0.96);
+        QCOMPARE(GlassModel::islandAlpha(100, true), GlassModel::IslandMinBlur);
+        QCOMPARE(GlassModel::islandAlpha(100, false), GlassModel::IslandMinPlain); // no blur behind: stays mostly solid
+        QVERIFY(GlassModel::islandAlpha(100, false) > GlassModel::islandAlpha(100, true));
+        QCOMPARE(GlassModel::surfaceAlpha(0, false), 1.0);
+        QCOMPARE(GlassModel::surfaceAlpha(100, false), GlassModel::SurfaceMinPlain);
+        for (int p = 0; p < 100; p += 10) { // thinner as the strength goes up, never out of range
+            QVERIFY(GlassModel::islandAlpha(p + 10, true) <= GlassModel::islandAlpha(p, true));
+            QVERIFY(GlassModel::surfaceAlpha(p + 10, false) <= GlassModel::surfaceAlpha(p, false));
+        }
+        QCOMPARE(GlassModel::islandAlpha(500, true), GlassModel::IslandMinBlur);
+        QCOMPARE(GlassModel::islandAlpha(-5, true), 0.96);
     }
 
     void dockMovesPinned()
