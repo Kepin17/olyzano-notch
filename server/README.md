@@ -85,6 +85,6 @@ python3 -m unittest discover -s tests
 
 ## Managing members over HTTP (what Notch uses)
 
-Host key only (anyone else gets 403): `GET /api/v1/members`, `POST /api/v1/members {"name", "quota_mb"?, ...}` →
+Host key only (anyone else gets 403): `GET /api/v1/members`, `POST /api/v1/members {"name", "access_hours"?, "quota_mb"?, ...}` (`access_hours`: how long their access lasts after they join, none = no end) →
 `{"link"}` (an invitation), `POST /api/v1/members/NAME/invite` (a new key), `DELETE /api/v1/members/NAME` (revoke).
 `GET /api/v1/ping` says `"owner": true` for the host key.

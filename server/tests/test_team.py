@@ -175,12 +175,40 @@ class TeamTest(unittest.TestCase):
         self.assertEqual(self.call("GET", "/api/v1/members")[0], 401)
         listed = json.loads(self.call("GET", "/api/v1/members", key=HOST_KEY)[1])["members"]
         self.assertEqual([(m["name"], m["joined"]) for m in listed], [("alice", True)])
+        for i in range(4):
+            self.call("POST", "/api/v1/members", j({"name": "m%d" % i}), key=HOST_KEY)
+        page = json.loads(self.call("GET", "/api/v1/members?offset=1&limit=2", key=HOST_KEY)[1])
+        self.assertEqual((page["total"], page["offset"], [m["name"] for m in page["members"]]), (5, 1, ["m2", "m1"]))  # newest first
         status, body = self.call("POST", "/api/v1/members/alice/invite", key=HOST_KEY)
         self.assertEqual(status, 200)
         self.assertIn("/join#", json.loads(body)["link"])
         self.assertEqual(self.call("DELETE", "/api/v1/members/alice", key=HOST_KEY)[0], 200)
         self.assertEqual(self.call("GET", "/api/v1/ping", key=key)[0], 401)
         self.assertEqual(self.call("DELETE", "/api/v1/members/nobody", key=HOST_KEY)[0], 404)
+
+    def test_access_can_end_by_itself_and_be_revoked(self):
+        j = lambda b: json.dumps(b).encode()
+        status, body = self.call("POST", "/api/v1/members", j({"name": "temp", "access_hours": 1}), key=HOST_KEY)
+        key = json.loads(self.call("POST", "/api/v1/join", j({"token": json.loads(body)["link"].split("#", 1)[1]}))[1])["key"]
+        self.assertEqual(self.call("GET", "/api/v1/ping", key=key)[0], 200)
+        listed = json.loads(self.call("GET", "/api/v1/members", key=HOST_KEY)[1])["members"][0]
+        self.assertEqual(listed["access_hours"], 1)
+        self.assertGreater(listed["expires_at"], time.time())
+        with self.srv.members.db() as c:  # the hour is over
+            c.execute("UPDATE members SET expires_at = ? WHERE name = 'temp'", (int(time.time()) - 1,))
+        self.assertEqual(self.call("GET", "/api/v1/ping", key=key)[0], 401)
+        body = self.call("POST", "/api/v1/members", j({"name": "forever"}), key=HOST_KEY)[1]
+        key2 = json.loads(self.call("POST", "/api/v1/join", j({"token": json.loads(body)["link"].split("#", 1)[1]}))[1])["key"]
+        self.assertEqual(self.call("GET", "/api/v1/ping", key=key2)[0], 200)
+        self.assertEqual(self.call("DELETE", "/api/v1/members/forever", key=HOST_KEY)[0], 200)
+        self.assertEqual(self.call("GET", "/api/v1/ping", key=key2)[0], 401)
+
+    def test_member_space_is_set_at_creation_and_capped_at_5gb(self):
+        j = lambda b: json.dumps(b).encode()
+        for name, asked, got in (("small", 512, 512 * MB), ("huge", 99999, 5120 * MB)):
+            self.call("POST", "/api/v1/members", j({"name": name, "quota_mb": asked}), key=HOST_KEY)
+            listed = {m["name"]: m for m in json.loads(self.call("GET", "/api/v1/members", key=HOST_KEY)[1])["members"]}
+            self.assertEqual(listed[name]["limits"]["quota"], min(got, self.cfg.max_total))
 
     def test_cli_lists_sets_and_kills(self):
         key, _ = self.join("kim", quota_mb=3)

@@ -86,9 +86,9 @@ public:
 
     // The host's side (only a server whose key is the host's has owner = true): make a member and get the key to give them
     // (an invitation link), list the members, revoke one, or reissue a key. Answers come through memberLink / membersLoaded.
-    Q_INVOKABLE void createMember(const QString &serverId, const QString &username);
+    Q_INVOKABLE void createMember(const QString &serverId, const QString &username, int accessHours = 0, int quotaMb = 0); // 0 = access never ends / the server's own limit
     Q_INVOKABLE void reinviteMember(const QString &serverId, const QString &username);
-    Q_INVOKABLE void loadMembers(const QString &serverId);
+    Q_INVOKABLE void loadMembers(const QString &serverId, int offset = 0, int limit = 20); // a page, newest first
     Q_INVOKABLE void revokeMember(const QString &serverId, const QString &username);
 
 signals:
@@ -98,7 +98,7 @@ signals:
     void serverTested(const QString &id, bool ok, const QString &message);
     void joined(bool ok, const QString &message);
     void memberLink(const QString &serverId, const QString &username, bool ok, const QString &linkOrError);
-    void membersLoaded(const QString &serverId, const QVariantList &members);
+    void membersLoaded(const QString &serverId, const QVariantList &members, int offset, int total);
 
 private:
     struct Server {

@@ -495,7 +495,12 @@ void ShareController::memberCall(const QString &serverId, const QByteArray &verb
         done(false, {}, tr("Enter the API key first"));
         return;
     }
-    QNetworkRequest req = relay.request(path);
+    QNetworkRequest req = relay.request(path.section(u'?', 0, 0)); // setPath would escape a "?"
+    if (path.contains(u'?')) {
+        QUrl url = req.url();
+        url.setQuery(path.section(u'?', 1));
+        req.setUrl(url);
+    }
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     req.setTransferTimeout(30000);
     const QByteArray data = QJsonDocument(body).toJson(QJsonDocument::Compact);
@@ -517,10 +522,10 @@ void ShareController::memberCall(const QString &serverId, const QByteArray &verb
     });
 }
 
-void ShareController::createMember(const QString &serverId, const QString &username)
+void ShareController::createMember(const QString &serverId, const QString &username, int accessHours, int quotaMb)
 {
     const QString name = username.trimmed();
-    memberCall(serverId, "POST", QStringLiteral("/api/v1/members"), {{QStringLiteral("name"), name}},
+    memberCall(serverId, "POST", QStringLiteral("/api/v1/members"), {{QStringLiteral("name"), name}, {QStringLiteral("access_hours"), accessHours}, {QStringLiteral("quota_mb"), quotaMb}},
                [this, serverId, name](bool ok, const QJsonObject &o, const QString &error) {
                    emit memberLink(serverId, name, ok, ok ? o.value(QStringLiteral("link")).toString() : error);
                    if (ok)
@@ -536,9 +541,10 @@ void ShareController::reinviteMember(const QString &serverId, const QString &use
                });
 }
 
-void ShareController::loadMembers(const QString &serverId)
+void ShareController::loadMembers(const QString &serverId, int offset, int limit)
 {
-    memberCall(serverId, "GET", QStringLiteral("/api/v1/members"), {}, [this, serverId](bool ok, const QJsonObject &o, const QString &) {
+    const QString path = QStringLiteral("/api/v1/members?offset=%1&limit=%2").arg(offset).arg(limit);
+    memberCall(serverId, "GET", path, {}, [this, serverId, offset](bool ok, const QJsonObject &o, const QString &) {
         QVariantList list;
         if (ok) {
             for (const QJsonValue &v : o.value(QStringLiteral("members")).toArray()) {
@@ -547,11 +553,13 @@ void ShareController::loadMembers(const QString &serverId)
                     continue;
                 list.append(QVariantMap{{QStringLiteral("name"), m.value(QStringLiteral("name")).toString()},
                                         {QStringLiteral("joined"), m.value(QStringLiteral("joined")).toBool()},
+                                        {QStringLiteral("expiresAt"), m.value(QStringLiteral("expires_at")).toVariant().toLongLong()},
+                                        {QStringLiteral("accessHours"), m.value(QStringLiteral("access_hours")).toInt()},
                                         {QStringLiteral("used"), m.value(QStringLiteral("used")).toVariant().toLongLong()},
                                         {QStringLiteral("quota"), lim.value(QStringLiteral("quota")).toVariant().toLongLong()}});
             }
         }
-        emit membersLoaded(serverId, list);
+        emit membersLoaded(serverId, list, offset, o.value(QStringLiteral("total")).toInt(int(list.size())));
     });
 }
 
