@@ -1954,14 +1954,14 @@ Window {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.preferredWidth: 1
-                        Layout.minimumHeight: 290
+                        Layout.minimumHeight: 206
                     }
                     LyricsPanel {
                         visible: lyrics.enabled
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         Layout.preferredWidth: 1
-                        Layout.minimumHeight: 290
+                        Layout.minimumHeight: 206
                     }
                 }
 

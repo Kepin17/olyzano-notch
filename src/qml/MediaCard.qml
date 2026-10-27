@@ -12,7 +12,7 @@ Rectangle {
     radius: theme.radiusLg
     color: theme.card
     clip: true
-    implicitHeight: content.implicitHeight + 32
+    implicitHeight: content.implicitHeight + 20
 
     readonly property bool hasArt: art.status === Image.Ready
     readonly property bool compact: width < 400
@@ -189,17 +189,19 @@ Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.verticalCenter: parent.verticalCenter // centred when the card is taller than its content
-        anchors.margins: 16
-        spacing: 10
+        anchors.margins: 10
+        anchors.leftMargin: 16
+        anchors.rightMargin: 16
+        spacing: 6
 
         RowLayout {
             Layout.fillWidth: true
-            spacing: 14
+            spacing: 12
 
             Item { // the cover
                 id: coverBox
-                Layout.preferredWidth: card.compact ? 76 : 96
-                Layout.preferredHeight: card.compact ? 76 : 96
+                Layout.preferredWidth: card.compact ? 60 : 72
+                Layout.preferredHeight: card.compact ? 60 : 72
                 scale: card.pop
                 Rectangle { // a soft shadow under it
                     x: 0; y: 5; width: parent.width; height: parent.height
@@ -297,7 +299,7 @@ Rectangle {
             Item {
                 id: bar
                 Layout.fillWidth: true
-                implicitHeight: 18
+                implicitHeight: 14
                 readonly property real ratio: media.lengthMs > 0 ? card.shown / media.lengthMs : 0
                 readonly property bool active: seekArea.containsMouse || card.scrubbing
                 Rectangle {
@@ -361,20 +363,20 @@ Rectangle {
         // transport: previous, a big play / pause, next
         RowLayout {
             Layout.fillWidth: true
-            spacing: card.compact ? 4 : 14
+            spacing: card.compact ? 4 : 10
             Item { // the volume: tap the speaker and a bar comes up (like a video player)
                 id: volumeBox
                 z: 20
-                Layout.preferredWidth: 36
-                Layout.preferredHeight: 36
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
                 Layout.alignment: Qt.AlignVCenter
-                Layout.minimumWidth: 36
+                Layout.minimumWidth: 32
                 RoundButton {
                     id: speaker
                     visible: quick.audioAvailable
                     anchors.centerIn: parent
-                    implicitWidth: 32
-                    implicitHeight: 32
+                    implicitWidth: 30
+                    implicitHeight: 30
                     Accessible.name: "Volume"
                     onClicked: { card.volumeOpen = !card.volumeOpen; quick.updateVolume(); volumeClose.restart(); card.interacted() }
                     background: Rectangle {
@@ -469,8 +471,8 @@ Rectangle {
             }
             Item { Layout.fillWidth: true }
             RoundButton { // back 10 seconds
-                implicitWidth: card.compact ? 32 : 40
-                implicitHeight: 40
+                implicitWidth: card.compact ? 28 : 34
+                implicitHeight: 34
                 Accessible.name: "Back 10 seconds"
                 enabled: media.canSeek && media.lengthMs > 0
                 onClicked: card.jump(-10000)
@@ -484,8 +486,8 @@ Rectangle {
                 }
             }
             RoundButton {
-                implicitWidth: card.compact ? 40 : 46
-                implicitHeight: 46
+                implicitWidth: card.compact ? 34 : 40
+                implicitHeight: card.compact ? 34 : 40
                 Accessible.name: "Previous"
                 enabled: media.canPrevious
                 onClicked: media.previous()
@@ -493,8 +495,8 @@ Rectangle {
             }
             AbstractButton {
                 id: play
-                implicitWidth: card.compact ? 56 : 60
-                implicitHeight: card.compact ? 56 : 60
+                implicitWidth: card.compact ? 44 : 50
+                implicitHeight: card.compact ? 44 : 50
                 Accessible.name: media.playing ? "Pause" : "Play"
                 onClicked: media.playPause()
                 background: Item {
@@ -518,30 +520,30 @@ Rectangle {
                         anchors.centerIn: parent
                         spacing: 6
                         visible: media.playing
-                        Rectangle { width: 6; height: 22; radius: 2; color: "#16161a" }
-                        Rectangle { width: 6; height: 22; radius: 2; color: "#16161a" }
+                        Rectangle { width: 5; height: 18; radius: 2; color: "#16161a" }
+                        Rectangle { width: 5; height: 18; radius: 2; color: "#16161a" }
                     }
                     Triangle {
                         anchors.centerIn: parent
                         anchors.horizontalCenterOffset: 2
                         visible: !media.playing
-                        width: 20
-                        height: 22
+                        width: 16
+                        height: 18
                         color: "#16161a"
                     }
                 }
             }
             RoundButton {
-                implicitWidth: card.compact ? 40 : 46
-                implicitHeight: 46
+                implicitWidth: card.compact ? 34 : 40
+                implicitHeight: card.compact ? 34 : 40
                 Accessible.name: "Next"
                 enabled: media.canNext
                 onClicked: media.next()
                 contentItem: Item { Skip { anchors.centerIn: parent } }
             }
             RoundButton { // forward 10 seconds
-                implicitWidth: card.compact ? 32 : 40
-                implicitHeight: 40
+                implicitWidth: card.compact ? 28 : 34
+                implicitHeight: 34
                 Accessible.name: "Forward 10 seconds"
                 enabled: media.canSeek && media.lengthMs > 0
                 onClicked: card.jump(10000)
@@ -556,16 +558,16 @@ Rectangle {
             }
             Item { Layout.fillWidth: true }
             Item { // karaoke: your voice through the speakers or headphones, with the music
-                Layout.preferredWidth: 36
-                Layout.preferredHeight: 36
-                Layout.minimumWidth: 36
+                Layout.preferredWidth: 32
+                Layout.preferredHeight: 32
+                Layout.minimumWidth: 32
                 Layout.alignment: Qt.AlignVCenter
                 RoundButton {
                     id: mic
                     anchors.centerIn: parent
                     visible: karaoke.supported
-                    implicitWidth: 32
-                    implicitHeight: 32
+                    implicitWidth: 30
+                    implicitHeight: 30
                     Accessible.name: karaoke.active ? "Stop karaoke" : "Karaoke: sing along"
                     onClicked: karaoke.toggle()
                     background: Rectangle {
