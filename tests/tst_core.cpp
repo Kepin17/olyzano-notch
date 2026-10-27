@@ -21,6 +21,8 @@
 #include "platform/AssistantCorpus.h"
 #include "platform/AssistantModel.h"
 #include "platform/GlassModel.h"
+#include "platform/SystemStatsModel.h"
+#include "platform/ClipboardHistoryModel.h"
 #include "platform/UtteranceModel.h"
 #include "platform/KaraokeModel.h"
 #include "platform/CalendarModel.h"
@@ -234,6 +236,91 @@ class TestCore : public QObject
     QString path(const FileItem &item) { return FileService::storedPath(m_files, item.storedName); }
 
 private slots:
+    void clipboardHistoryModel()
+    {
+        using namespace ClipboardHistoryModel;
+        QList<Entry> list;
+        const QDateTime t0 = QDateTime(QDate(2026, 10, 27), QTime(12, 0), Qt::UTC);
+        const auto text = [&](const QString &s, int minutes) {
+            Entry e;
+            e.id = s;
+            e.text = s;
+            e.hash = s.toUtf8();
+            e.time = t0.addSecs(minutes * 60);
+            return e;
+        };
+        QVERIFY(add(list, text(QStringLiteral("one"), 0), 3));
+        QVERIFY(add(list, text(QStringLiteral("two"), 1), 3));
+        QCOMPARE(list.first().text, QStringLiteral("two")); // newest first
+        QVERIFY(add(list, text(QStringLiteral("one"), 2), 3)); // the same again moves up, not twice
+        QCOMPARE(list.size(), 2);
+        QCOMPARE(list.first().text, QStringLiteral("one"));
+        QVERIFY(!add(list, text(QStringLiteral("  "), 3), 2)); // blank
+        QVERIFY(!add(list, text(QStringLiteral("big"), 3), MaxTextBytes + 1));
+        Entry img;
+        img.id = QStringLiteral("i");
+        img.image = true;
+        img.hash = "img";
+        img.time = t0;
+        QVERIFY(!add(list, img, MaxImageBytes + 1));
+        QVERIFY(add(list, img, 100));
+        QVERIFY(!matches(list.first(), QStringLiteral("x"))); // an image has no text to find
+        QVERIFY(matches(list.at(1), QStringLiteral("ONE")));
+        QVERIFY(matches(list.at(1), QString()));
+
+        list[2].pinned = true; // "two"
+        const QList<Entry> gone = expire(list, 24, t0.addDays(2));
+        QVERIFY(!gone.isEmpty());
+        QCOMPARE(list.size(), 1); // only the pinned one is left
+        QCOMPARE(list.first().text, QStringLiteral("two"));
+        QVERIFY(expire(list, 0, t0.addDays(900)).isEmpty()); // 0 = forever
+
+        QList<Entry> many;
+        for (int i = 0; i < MaxEntries + 10; ++i)
+            QVERIFY(add(many, text(QString::number(i), i), 4));
+        QCOMPARE(many.size(), MaxEntries);
+        QCOMPARE(many.first().text, QString::number(MaxEntries + 9));
+        QCOMPARE(preview(QStringLiteral("a\n  b\t c")), QStringLiteral("a b c"));
+        QVERIFY(preview(QString(500, u'x')).endsWith(QChar(0x2026)));
+        QVERIFY(isSecret("secret\n") && !isSecret(""));
+    }
+
+    void systemStatsParsers()
+    {
+        using namespace SystemStatsModel;
+        const CpuTimes a = parseCpu("cpu  100 0 100 800 0 0 0 0 0 0\ncpu0 1 1 1 1\n");
+        const CpuTimes b = parseCpu("cpu  200 0 200 1600 0 0 0 0 50 0\n");
+        QVERIFY(a.ok && b.ok);
+        QCOMPARE(a.total, quint64(1000));
+        QCOMPARE(cpuPercent(a, b), 20.0); // 400 of 2000 ticks busy (guest columns are not counted twice)
+        QCOMPARE(cpuPercent(b, b), 0.0);
+        QVERIFY(!parseCpu("garbage").ok);
+
+        const Memory m = parseMeminfo("MemTotal:       16000000 kB\nMemFree: 1 kB\nMemAvailable:    4000000 kB\nSwapTotal: 2000 kB\nSwapFree: 500 kB\n");
+        QCOMPARE(m.total, qint64(16000000) * 1024);
+        QCOMPARE(m.used(), qint64(12000000) * 1024);
+        QCOMPARE(m.swapUsed(), qint64(1500) * 1024);
+
+        const Traffic n = parseNetDev("Inter-|   Receive\n face |bytes\n    lo: 999 1 0 0 0 0 0 0 999 1 0 0 0 0 0 0\n"
+                                      "wlan0: 1000 5 0 0 0 0 0 0 400 3 0 0 0 0 0 0\ndocker0: 77 1 0 0 0 0 0 0 77 1 0 0 0 0 0 0\n"
+                                      "enp3s0: 500 5 0 0 0 0 0 0 100 3 0 0 0 0 0 0\n");
+        QCOMPARE(n.in, quint64(1500));
+        QCOMPARE(n.out, quint64(500));
+
+        QVERIFY(isPhysicalDisk(QStringLiteral("nvme0n1")) && isPhysicalDisk(QStringLiteral("sda")) && isPhysicalDisk(QStringLiteral("mmcblk0")));
+        QVERIFY(!isPhysicalDisk(QStringLiteral("nvme0n1p2")) && !isPhysicalDisk(QStringLiteral("sda1")) && !isPhysicalDisk(QStringLiteral("loop0")));
+        const Traffic d = parseDiskstats("   8  0 sda 10 0 100 5 20 0 200 7 0 0 0\n   8  1 sda1 10 0 100 5 20 0 200 7 0 0 0\n 259 0 nvme0n1 1 0 8 1 2 0 16 1 0 0 0\n   7 0 loop0 1 0 8 1 2 0 16 1 0 0 0\n");
+        QCOMPARE(d.in, quint64((100 + 8) * 512));
+        QCOMPARE(d.out, quint64((200 + 16) * 512));
+
+        QCOMPARE(ratePerSecond(1000, 3000, 2000), 1000.0);
+        QCOMPARE(ratePerSecond(5000, 100, 1000), 0.0); // a counter that restarted
+        QCOMPARE(ratePerSecond(0, 100, 0), 0.0);
+        QCOMPARE(formatBytes(512), QStringLiteral("512 B"));
+        QCOMPARE(formatBytes(1536), QStringLiteral("1.50 KB"));
+        QCOMPARE(formatRate(25 * 1024 * 1024), QStringLiteral("25.0 MB/s"));
+    }
+
     void init()
     {
         QVERIFY(m_tmp.isValid());
@@ -738,6 +825,11 @@ private slots:
         QCOMPARE(heightFor(1.3), 62);
         QCOMPARE(heightFor(0.8), 38);
         QCOMPARE(heightFor(9), 62); // the scale is clamped like the setting
+        QCOMPARE(heightFor(1.0, true), 64);  // the floating pill hangs below the edge: gap 10 + its height 52 + a little air
+        QVERIFY(heightFor(1.0, true) > heightFor(1.0));
+        QVERIFY(heightFor(0.8, true) < heightFor(1.3, true));
+        QCOMPARE(plan(QStringLiteral("capsule"), true, 1.0, 0, true, true).notchZone, 64);
+        QCOMPARE(plan(QStringLiteral("capsule"), true, 1.0, 30, true, true).notchZone, 34); // the panel's room still counts
         // off, or any mode but the capsule: nothing is kept
         QCOMPARE(plan("capsule", false, 1, 0, true).notchZone, 0);
         for (const char *mode : {"hidden", "widget", "open"}) {
@@ -2758,6 +2850,17 @@ private slots:
             QVERIFY(GlassModel::surfaceAlpha(p + 10, false) <= GlassModel::surfaceAlpha(p, false));
         }
         QCOMPARE(GlassModel::islandAlpha(500, true), GlassModel::IslandMinBlur);
+        for (bool dark : {true, false}) { // the glass look only grows with strength and stays gentle
+            for (int p = 0; p < 100; p += 10) {
+                QVERIFY(GlassModel::sheenTop(p + 10, dark) >= GlassModel::sheenTop(p, dark));
+                QVERIFY(GlassModel::rimTop(p + 10, dark) >= GlassModel::rimTop(p, dark));
+            }
+            QVERIFY(GlassModel::sheenTop(100, dark) <= 0.4);
+            QVERIFY(GlassModel::rimTop(100, dark) <= 0.9);
+        }
+        QCOMPARE(GlassModel::lift(0, true), 0.0);
+        QVERIFY(GlassModel::lift(100, true) > 0.0 && GlassModel::lift(100, true) <= 0.06);
+        QCOMPARE(GlassModel::lift(100, false), 0.0);
         QCOMPARE(GlassModel::islandAlpha(-5, true), 0.96);
     }
 

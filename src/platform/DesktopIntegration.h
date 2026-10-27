@@ -43,7 +43,7 @@ public:
     bool canReserve() const;
     // Keep a strip free at the top for the notch's capsule (ReserveModel decides how much): `mode` is the capsule mode,
     // `barPx` what the status bar already keeps free. Call again whenever any of them changes.
-    Q_INVOKABLE void reserve(QWindow *window, const QString &mode, bool on, qreal scale, int barPx);
+    Q_INVOKABLE void reserve(QWindow *window, const QString &mode, bool on, qreal scale, int barPx, bool pill = false);
     DesktopIntegration();
     ~DesktopIntegration() override;
 
@@ -72,7 +72,7 @@ private:
     int m_panelTop = 0; // Plasma: the thickness of the top panel, which the room kept free does not need to repeat
     qint64 m_panelAsked = 0;
     int m_stripZone = 0;
-    struct ReserveArgs { QPointer<QWindow> window; QString mode; bool on = false; qreal scale = 1; int barPx = 0; } m_lastReserve;
+    struct ReserveArgs { QPointer<QWindow> window; QString mode; bool on = false; qreal scale = 1; int barPx = 0; bool pill = false; } m_lastReserve;
     void askTopPanel();
     QPointer<QWindow> m_strip; // Wayland: the sliver that holds the room kept free at the top (see DesktopIntegration::reserve)
 #ifdef Q_OS_WIN

@@ -2,6 +2,7 @@
 
 #include <QLocale>
 #include <QObject>
+#include <QStringList>
 #include <QSettings>
 
 // The status bar's settings, as `panel` in QML: a glass strip along the top edge with the app in front, the clock and
@@ -28,6 +29,7 @@ class PanelBar : public QObject
     Q_PROPERTY(bool showTray READ showTray WRITE setShowTray NOTIFY changed)   // the apps in the background, left of the status icons
     Q_PROPERTY(bool showDate READ showDate WRITE setShowDate NOTIFY changed)
     Q_PROPERTY(bool showSeconds READ showSeconds WRITE setShowSeconds NOTIFY changed)
+    Q_PROPERTY(QStringList qsHidden READ qsHidden NOTIFY changed) // parts of Quick Settings that are switched off: wifi bt eth volume mic brightness power system
     Q_PROPERTY(bool showBattery READ showBattery WRITE setShowBattery NOTIFY changed)
     Q_PROPERTY(int height READ height CONSTANT) // the strip, in pixels
 
@@ -72,6 +74,16 @@ public:
     void setShowDate(bool on) { store("showDate", on); }
     bool showSeconds() const { return flag("showSeconds", false); }
     void setShowSeconds(bool on) { store("showSeconds", on); }
+    QStringList qsHidden() const { return m_settings.value(QStringLiteral("qsHidden")).toStringList(); }
+    Q_INVOKABLE void setQsShown(const QString &name, bool shown)
+    {
+        QStringList list = qsHidden();
+        if (shown)
+            list.removeAll(name);
+        else if (!list.contains(name))
+            list.append(name);
+        store("qsHidden", list);
+    }
     bool showBattery() const { return flag("showBattery", true); }
     void setShowBattery(bool on) { store("showBattery", on); }
     int height() const { return 36; }

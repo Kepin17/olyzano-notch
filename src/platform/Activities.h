@@ -58,6 +58,9 @@ class Activities : public QObject
     // The spectrum beside the song: "bars" | "thin" | "dots" | "wave" | "pulse" | "off"; the capsule's size, 0.8 to 1.3.
     Q_PROPERTY(QString eqStyle READ eqStyle WRITE setEqStyle NOTIFY settingsChanged)
     Q_PROPERTY(qreal capsuleScale READ capsuleScale WRITE setCapsuleScale NOTIFY settingsChanged)
+    // Appearance: the open panel's size (0.9 to 1.25, text and spacing together) and how round the corners are ("sharp" | "normal" | "round").
+    Q_PROPERTY(qreal uiScale READ uiScale WRITE setUiScale NOTIFY settingsChanged)
+    Q_PROPERTY(QString cornerStyle READ cornerStyle WRITE setCornerStyle NOTIFY settingsChanged)
     Q_PROPERTY(bool glass READ glass WRITE setGlass NOTIFY settingsChanged)           // see-through island and surfaces (Theme.h)
     Q_PROPERTY(int glassStrength READ glassStrength WRITE setGlassStrength NOTIFY settingsChanged) // 0-100
     Q_PROPERTY(QString capsuleLook READ capsuleLook WRITE setCapsuleLook NOTIFY settingsChanged) // "edge" (fused to the top edge) or "pill" (a floating capsule)
@@ -127,6 +130,16 @@ public:
     QString eqStyle() const;
     void setEqStyle(const QString &style);
     qreal capsuleScale() const { return qBound(0.8, m_settings.value(QStringLiteral("capsuleScale"), 1.0).toDouble(), 1.3); }
+    qreal uiScale() const { return qBound(0.9, m_settings.value(QStringLiteral("uiScale"), 1.0).toDouble(), 1.25); }
+    void setUiScale(qreal scale) { store(QStringLiteral("uiScale"), qRound(qBound(0.9, scale, 1.25) * 100) / 100.0); }
+    QString cornerStyle() const
+    {
+        const QString v = m_settings.value(QStringLiteral("cornerStyle")).toString();
+        return v == QLatin1String("sharp") || v == QLatin1String("round") ? v : QStringLiteral("normal");
+    }
+    void setCornerStyle(const QString &style) { store(QStringLiteral("cornerStyle"), style == QLatin1String("sharp") || style == QLatin1String("round") ? style : QStringLiteral("normal")); }
+    // What the corner style multiplies every radius by.
+    qreal cornerScale() const { const QString v = cornerStyle(); return v == QLatin1String("sharp") ? 0.4 : v == QLatin1String("round") ? 1.6 : 1.0; }
     bool glass() const { return m_settings.value(QStringLiteral("glass"), false).toBool(); }
     void setGlass(bool on) { store(QStringLiteral("glass"), on); }
     int glassStrength() const { return qBound(0, m_settings.value(QStringLiteral("glassStrength"), 60).toInt(), 100); }

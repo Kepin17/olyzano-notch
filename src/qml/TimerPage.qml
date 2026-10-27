@@ -214,6 +214,7 @@ ColumnLayout {
                         anchors.fill: parent
                         spacing: 0
                         AbstractButton {
+                            HoverHandler { cursorShape: Qt.PointingHandCursor }
                             Layout.preferredWidth: 38; Layout.fillHeight: true
                             autoRepeat: true
                             autoRepeatDelay: 350; autoRepeatInterval: 70
@@ -230,6 +231,7 @@ ColumnLayout {
                             horizontalAlignment: Text.AlignHCenter
                         }
                         AbstractButton {
+                            HoverHandler { cursorShape: Qt.PointingHandCursor }
                             Layout.preferredWidth: 38; Layout.fillHeight: true
                             autoRepeat: true
                             autoRepeatDelay: 350; autoRepeatInterval: 70

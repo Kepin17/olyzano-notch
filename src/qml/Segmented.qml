@@ -38,6 +38,7 @@ Item {
         Repeater {
             model: seg.model
             AbstractButton {
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
                 required property var modelData
                 required property int index
                 width: parent.width / seg.model.length

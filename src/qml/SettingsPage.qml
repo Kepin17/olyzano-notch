@@ -20,25 +20,27 @@ RowLayout {
     spacing: 14
 
     // id, name, icon, what it is for
+    // id, name, icon, what it is for, and the heading that starts a group in the list. In the order a new user reaches for them:
+    // the basics first, then what is on the screen, then what is kept and shared, then you.
     readonly property var sections: [
-        ["general", "General", "gear", "Start-up, how the notch sits on the screen, gaming mode and sounds."],
-        ["appearance", "Appearance", "palette", "Themes and light or dark."],
-        ["panel", "Panel", "panel", "A glass status bar along the top, with Quick Settings."],
-        ["alerts", "Alerts & activities", "notifications", "What the notch shows you: chargers, downloads, calls, the microphone and more."],
-        ["files", "Files", "folder", "How long files stay, where they go and what is added by itself."],
-        ["dock", "Dock", "dock", "The app dock at the edge of the screen."],
-        ["sharing", "Sharing & Nearby", "share", "Servers for Share via QR, and the name other computers see."],
-        ["wellbeing", "Wellbeing", "heart", "Break and eye reminders."],
-        ["about", "About", "info", "Version, author, links and support."]
+        ["general", "General", "gear", "Start-up, how the notch sits on the screen, gaming mode and sounds.", "Basics"],
+        ["appearance", "Appearance", "palette", "Themes, size, corners and light or dark.", ""],
+        ["panel", "Panel", "panel", "A glass status bar along the top, with Quick Settings.", "On the screen"],
+        ["dock", "Dock", "dock", "The app dock at the edge of the screen.", ""],
+        ["alerts", "Alerts & activities", "notifications", "What the notch shows you: chargers, downloads, calls, the microphone and more.", ""],
+        ["files", "Files", "folder", "How long files stay, where they go and what is added by itself.", "Files & sharing"],
+        ["sharing", "Sharing & Nearby", "share", "Servers for Share via QR, and the name other computers see.", ""],
+        ["wellbeing", "Wellbeing", "heart", "Break and eye reminders.", "You"],
+        ["about", "About", "info", "Version, author, links and support.", ""]
     ]
     // What a search can find: section, setting, words that also describe it.
     readonly property var index: [
         ["about", "Updates", "update upgrade new version release check download latest github notify"], ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
-        ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Sounds", "sound effects volume quiet mute"],
-        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Voice assistant", "voice assistant commands speech microphone whisper offline say listen"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["general", "Floating pill", "pill floating capsule dynamic island edge look shape"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"], ["appearance", "Glass", "glass glassmorphism translucent transparent blur frosted see-through"], ["appearance", "Border matches my system accent", "border outline edge accent windows color capsule widget"], ["appearance", "Animations and transitions", "animation animations transition motion reduce disable off smooth instant bounce spring"],
+        ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Clipboard history", "clipboard copy paste history remember klipper"], ["general", "Sounds", "sound effects volume quiet mute"],
+        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Voice assistant", "voice assistant commands speech microphone whisper offline say listen"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["general", "Floating pill", "pill floating capsule dynamic island edge look shape"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"], ["appearance", "Interface size", "text size scale zoom bigger smaller density compact comfortable large small font"], ["appearance", "Corners", "round sharp radius corner shape rounded"], ["appearance", "Glass", "glass glassmorphism translucent transparent blur frosted see-through"], ["appearance", "Border matches my system accent", "border outline edge accent windows color capsule widget"], ["appearance", "Animations and transitions", "animation animations transition motion reduce disable off smooth instant bounce spring"],
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
         ["panel", "Transparency and blur", "glass opacity bar"], ["panel", "What the bar shows", "app name date seconds battery percentage"],
-        ["panel", "Quick Settings", "wifi bluetooth volume brightness power click hover"],
+        ["panel", "Quick Settings", "wifi bluetooth volume brightness power click hover system cpu ram memory gpu disk network monitor usage"],
         ["alerts", "Prayer times", "prayer salat sholat solat adzan azan fajr subuh dhuhr zuhur asr ashar maghrib isha isya mosque muslim reminder city kemenag"], ["alerts", "Charger & Bluetooth alerts", "battery plug device connect low"], ["alerts", "Clock when idle", "time clock capsule"],
         ["alerts", "Downloads in the notch", "download browser progress"], ["alerts", "Phone calls & notifications", "kde connect phone"],
         ["alerts", "Microphone & camera indicators", "privacy dot mic camera"], ["alerts", "Notifications from this computer", "desktop apps slack"],
@@ -84,12 +86,28 @@ RowLayout {
         // the sections ...
         Repeater {
             model: settingsScroll.query === "" ? settingsScroll.sections : []
-            delegate: AbstractButton {
+            delegate: ColumnLayout {
+              id: group
+              required property var modelData
+              Layout.fillWidth: true
+              spacing: 0
+              Text { // the heading that starts a group
+                visible: group.modelData[4] !== ""
+                Layout.topMargin: group.modelData[0] === "general" ? 0 : 4
+                Layout.leftMargin: 6
+                text: group.modelData[4].toUpperCase()
+                color: theme.textFaint
+                font.pixelSize: 10
+                font.weight: Font.DemiBold
+                font.letterSpacing: 1
+              }
+              AbstractButton {
+                  HoverHandler { cursorShape: Qt.PointingHandCursor }
                 id: side
-                required property var modelData
+                property var modelData: group.modelData
                 readonly property bool on: settingsScroll.category === modelData[0]
                 Layout.fillWidth: true
-                implicitHeight: 34
+                implicitHeight: 32
                 onClicked: settingsScroll.category = modelData[0]
                 background: Rectangle { radius: theme.radiusSm + 2; color: side.on ? theme.accentSoft : side.hovered ? theme.surfaceHover : "transparent" }
                 contentItem: RowLayout {
@@ -112,11 +130,13 @@ RowLayout {
                     }
                 }
             }
+            }
         }
         // ... or what the search found
         Repeater {
             model: settingsScroll.results
             delegate: AbstractButton {
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
                 id: hit
                 required property var modelData
                 Layout.fillWidth: true
@@ -350,6 +370,30 @@ RowLayout {
                         Layout.fillWidth: true
                         text: "Try: “open the browser”, “open YouTube”, “search channel Nadia on YouTube”, “volume 40”, “timer 10 minutes”, “add task buy milk tomorrow 5”, “pause the music”. Nothing that deletes or shuts down is understood."
                     }
+                }
+            }
+
+            SettingCard {
+                title: "Clipboard"
+                SettingToggle {
+                    title: "Remember what I copy"
+                    caption: "Keeps the text and pictures you copy on this computer, so you can copy them again from the Clipboard page. Anything you copy is kept, so a password could be too. Off by default."
+                    checked: clipboardHistory.enabled
+                    onToggled: clipboardHistory.enabled = !clipboardHistory.enabled
+                }
+                ColumnLayout {
+                    visible: clipboardHistory.enabled
+                    Layout.fillWidth: true
+                    spacing: 6
+                    SectionLabel { text: "Forget after" }
+                    Segmented {
+                        Layout.fillWidth: true
+                        model: [[24, "1 day"], [168, "7 days"], [0, "Never"]]
+                        value: clipboardHistory.maxAgeHours
+                        onPicked: (v) => clipboardHistory.maxAgeHours = v
+                    }
+                    Caption { Layout.fillWidth: true; text: "Pinned items never expire. At most 50 items; text up to 20 KB and pictures up to 5 MB." }
+                    PillButton { text: "Clear history"; iconName: "trash"; enabled: clipboardHistory.total > 0; onClicked: clipboardHistory.clear() }
                 }
             }
 
@@ -1039,9 +1083,26 @@ RowLayout {
                     PillButton { text: "On click"; checked: topbar.openOn === "click"; onClicked: topbar.openOn = "click" }
                     PillButton { text: "On hover"; checked: topbar.openOn === "hover"; onClicked: topbar.openOn = "hover" }
                 }
+                SectionLabel { text: "What it shows"; Layout.topMargin: 4 }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Repeater {
+                        model: [["system", "System", "CPU, RAM, graphics, disk and network"], ["wifi", "Wi-Fi", ""], ["bt", "Bluetooth", ""], ["eth", "Ethernet", ""],
+                                ["volume", "Volume", ""], ["mic", "Microphone", ""], ["brightness", "Brightness", ""], ["power", "Power", ""]]
+                        PillButton {
+                            required property var modelData
+                            text: modelData[1]
+                            checked: topbar.qsHidden.indexOf(modelData[0]) < 0
+                            onClicked: topbar.setQsShown(modelData[0], topbar.qsHidden.indexOf(modelData[0]) >= 0)
+                            ToolTip.visible: hovered && modelData[2] !== ""
+                            ToolTip.text: modelData[2]
+                        }
+                    }
+                }
                 Caption {
                     Layout.fillWidth: true
-                    text: "Wi-Fi, Bluetooth, volume, brightness and power, from the icons on the right of the bar."
+                    text: "Choose which parts the card has. System shows how busy the computer is (processor, memory, graphics, disk, network); tap a row for details. A part your computer does not have is left out anyway."
                 }
             }
 
@@ -1699,7 +1760,7 @@ RowLayout {
                                     onOpened: { settingsScroll.keysOpen = true; memberName.forceActiveFocus() }
                                     onClosed: { settingsScroll.keysOpen = false; team.note = "" }
                                     Overlay.modal: Item {} // no dark layer behind it
-                                    background: Rectangle { radius: 16; color: theme.surface; border.color: theme.outline }
+                                    background: Rectangle { radius: 16; color: Qt.rgba(theme.surface.r, theme.surface.g, theme.surface.b, 1); border.color: theme.outline }
                                     contentItem: ColumnLayout {
                                         spacing: 10
                                         RowLayout {
@@ -1964,6 +2025,7 @@ RowLayout {
                     Repeater {
                         model: theme.styles
                         AbstractButton {
+                            HoverHandler { cursorShape: Qt.PointingHandCursor }
                             id: styleCard
                             required property var modelData
                             readonly property bool current: notch.uiStyle === modelData.id
@@ -2050,6 +2112,26 @@ RowLayout {
                 }
             }
             SettingCard {
+                title: "Size & shape"
+                SectionLabel { text: "Interface size" }
+                Segmented {
+                    Layout.fillWidth: true
+                    model: [[0.9, "Small"], [1.0, "Normal"], [1.12, "Large"], [1.25, "Extra large"]]
+                    value: activities.uiScale
+                    onPicked: (v) => activities.uiScale = v
+                }
+                Caption { Layout.fillWidth: true; text: "Scales the open panel as a whole: text, icons and spacing together. Use Large on a high-resolution screen, Small where space is tight." }
+                SectionLabel { text: "Corners"; Layout.topMargin: 4 }
+                Segmented {
+                    Layout.fillWidth: true
+                    model: [["sharp", "Sharp"], ["normal", "Normal"], ["round", "Round"]]
+                    value: activities.cornerStyle
+                    onPicked: (v) => activities.cornerStyle = v
+                }
+                Caption { Layout.fillWidth: true; text: "How round cards, buttons and the capsule are." }
+            }
+
+            SettingCard {
                 title: "Glass"
                 SettingToggle {
                     title: "See-through notch"
@@ -2109,6 +2191,7 @@ RowLayout {
         color: theme.card
         border.width: 1
         border.color: theme.outline
+        GlassLayer { anchors.fill: parent; radius: theme.radiusMd }
         ColumnLayout {
             id: cardBody
             anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }

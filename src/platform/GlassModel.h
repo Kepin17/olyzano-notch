@@ -28,4 +28,17 @@ inline double surfaceAlpha(int percent, bool blur)
     return 1.0 - (1.0 - lo) * strengthOf(percent);
 }
 
+
+// The look of the glass itself (see GlassLayer.qml), a blend of three: macOS's bright rim along the top edge, HyperOS's calm
+// soft gradient, One UI's lifted, lighter frost. All grow with the strength; the light styles need more to show on white.
+
+// Opacity of the white sheen at the top of a surface; it fades to nothing by the middle.
+inline double sheenTop(int percent, bool dark) { return dark ? 0.03 + 0.10 * strengthOf(percent) : 0.12 + 0.28 * strengthOf(percent); }
+
+// Opacity of the bright rim over the top edge and corners (it fades out down the sides).
+inline double rimTop(int percent, bool dark) { return dark ? 0.12 + 0.20 * strengthOf(percent) : 0.55 + 0.30 * strengthOf(percent); }
+
+// How far the island's colour is lifted towards white so a see-through island is frosted, not muddy (dark looks only).
+inline double lift(int percent, bool dark) { return dark ? 0.05 * strengthOf(percent) : 0.0; }
+
 }

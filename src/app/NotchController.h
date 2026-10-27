@@ -169,6 +169,7 @@ public:
     Q_INVOKABLE void deleteForever(const QStringList &ids);
     Q_INVOKABLE void emptyRecentlyRemoved();
     Q_INVOKABLE void pasteClipboard(const QString &categoryId = {});
+    void keepBytes(const QString &name, const QString &mimeType, const QByteArray &bytes, const QString &source); // into the category being viewed
     // Text dropped on Notch (no file): saved as a note named after its first line.
     Q_INVOKABLE void addTextNote(const QString &text, const QString &categoryId = {});
     Q_INVOKABLE void copyFiles(const QStringList &ids);

@@ -22,7 +22,7 @@ Window {
     readonly property bool lyricsSplit: page === "music" && lyrics.enabled && media.active
     // The panel is as wide as its page needs, and never narrower than the row of section buttons (Files, Music, Timer, Tasks,
     // Color, Sharing, Lyrics, Note, Add): with every button there, it grows (up to the window) instead of cutting them off.
-    readonly property int panelWidth: Math.max(lyricsSplit ? 780 : page === "settings" ? 720 : openWidth,
+    readonly property int panelWidth: Math.max(lyricsSplit ? 780 : page === "settings" ? 720 : page === "tasks" ? 620 : openWidth,
                                                Math.min(width - 20, Math.max(actionBar.visible ? Math.ceil(actionBar.implicitWidth) + 44 : 0,
                                                                               Math.ceil(headerRow.implicitWidth) + 36)))
 
@@ -46,7 +46,7 @@ Window {
 
     // ---- Room at the top: other windows keep clear of the capsule (Settings → General) ----
     readonly property int barReservePx: topbar.enabled && topbar.behavior === "always" && topbar.reserve ? topbar.height : 0
-    function applyReserve() { desktop.reserve(root, capsuleMode, activities.reserveSpace, activities.capsuleScale, barReservePx) }
+    function applyReserve() { desktop.reserve(root, capsuleMode, activities.reserveSpace, activities.capsuleScale, barReservePx, pillLook) }
     Connections { target: activities; function onSettingsChanged() { root.applyReserve() } }
     Connections { target: topbar; function onChanged() { root.applyReserve() } }
 
@@ -62,6 +62,10 @@ Window {
     // "Floating pill" (Settings): at the top centre the capsule hangs a little below the edge as a full pill. The card of
     // Widget mode is already round and floating, so it keeps its own look.
     readonly property bool pillLook: activities.capsuleLook === "pill" && !geoWidget
+    // How big the island is drawn: the capsule by its size setting, the open panel by "Interface size" (and never wider than the
+    // screen when enlarged).
+    readonly property real uiK: activities.uiScale > 1 ? Math.min(activities.uiScale, Math.max(1, (width - 20) / Math.max(1, panelWidth))) : activities.uiScale
+    readonly property real islandK: mode === "idle" || floating ? activities.capsuleScale : mode === "open" ? uiK : 1
     readonly property real pillGap: pillLook ? 10 : 0
     property bool dragging: false
     property string dragMask: ""
@@ -186,7 +190,7 @@ Window {
                                     || toolsMenu.visible || extractPopup.visible || (settingsLoader.item !== null && settingsLoader.item.overlayOpen)
                                     || quickLookCard.visible || vaultPopup.visible || confirmDelete.visible
                                     || (shareLoader.item !== null && shareLoader.item.visible) || incomingPopup.visible
-                                    || sortMenu.visible || removedMenu.visible
+                                    || sortMenu.visible || removedMenu.visible || tasksPage.modalOpen
                                     || removedChipMenu.visible
     readonly property bool dragOver: dragLive && (edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver)
     // Once it has started to open it stays open a moment, so a hover that blinks while the panel grows under a
@@ -794,7 +798,7 @@ Window {
                 // Where the card is and where it is going (a panel opening at the bottom grows upward, so its top moves): the
                 // mask covers both, with a margin, and stays inside the window.
                 const slack = maskSettle.running ? 24 : 6
-                const k = floating || mode === "idle" ? activities.capsuleScale : 1
+                const k = root.islandK
                 const w = Math.min(width, Math.max(island.width, island.targetWidth) * k + 2 * slack)
                 const goalTop = Math.max(0, Math.min(height - island.targetHeight * k - 2, widgetY - winRect.y))
                 const top = Math.max(0, Math.min(island.y, goalTop) - slack)
@@ -809,7 +813,7 @@ Window {
             // frame is what made opening lag on Windows. A little slack while it moves, so the spring's overshoot
             // is not clipped; maskSettle tightens it once the island has come to rest.
             const slack = maskSettle.running ? 24 : 0
-            const k = root.mode === "idle" ? activities.capsuleScale : 1
+            const k = root.mode === "idle" || root.mode === "open" ? root.islandK : 1
             const w = Math.max(island.width, island.targetWidth) * k + 2 * slack
             const h = Math.max(island.height, island.targetHeight, edge.height) * k + slack + pillGap
             desktop.setInputRegion(root, Qt.rect((width - w) / 2, 0, w, h))
@@ -828,17 +832,20 @@ Window {
         blurOn = true
         // The island as it is now (not where it is going), so the blur never shows past its edge; the edge look's concave
         // shoulders are left out.
-        const k = floating || mode === "idle" ? activities.capsuleScale : 1
+        const k = root.islandK
         const inset = island.roundShape ? 0 : island.shoulder * k
         const w = island.width * k - 2 * inset, h = island.height * k
         desktop.setBlurRegion(root, Qt.rect(island.x + (island.width * (1 - k)) / 2 + inset, island.y, w, h), island.roundShape ? island.roundRadius : Math.min(24, h / 2))
     }
     // While the island springs to its size the blur follows it, a few times a second at most.
     Timer { id: blurFollow; interval: 40; onTriggered: root.updateBlur() }
+    // ...and once more when it has stopped, so the blur is never left at an in-between size (a bigger rectangle than the island,
+    // seen after changing page) when the last change fell while blurFollow was still counting.
+    Timer { id: blurSettle; interval: 120; onTriggered: root.updateBlur() }
     Connections {
         target: island
-        function onWidthChanged() { if (activities.glass && !blurFollow.running) blurFollow.start() }
-        function onHeightChanged() { if (activities.glass && !blurFollow.running) blurFollow.start() }
+        function onWidthChanged() { if (activities.glass) { if (!blurFollow.running) blurFollow.start(); blurSettle.restart() } }
+        function onHeightChanged() { if (activities.glass) { if (!blurFollow.running) blurFollow.start(); blurSettle.restart() } }
     }
     Connections { target: activities; function onSettingsChanged() { root.updateBlur() } }
     function maskMoving() {
@@ -1075,12 +1082,12 @@ Window {
         height: targetHeight
         focus: true
         // The capsule's size is the person's choice (Settings); everything in it scales together, glued to the top edge.
-        scale: root.mode === "idle" || root.floating ? activities.capsuleScale : 1
+        scale: root.islandK
         transformOrigin: Item.Top
         Behavior on scale { enabled: activities.animations; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
         readonly property real shoulder: Math.min(10, Math.max(0, height) / 3)
-        readonly property real corner: Math.min(24, Math.max(0, height - shoulder))
+        readonly property real corner: Math.min(24 * theme.cornerScale, Math.max(0, height - shoulder))
         readonly property bool closing: root.mode === "hidden"
         // How far the background is from its target size. The open panel's content appears only once the
         // background is nearly full (revealed), so it is never seen outside it; moving to another page of the
@@ -1169,16 +1176,16 @@ Window {
         }
 
         // Liquid silhouette: flat top fused to the screen edge, concave shoulders, round bottom.
-        // Widget mode: a plain rounded card with no shadow. The floating pill keeps its own soft shadow.
+        // Widget mode: a plain rounded card with no shadow. The floating pill has none either.
         readonly property bool roundShape: root.geoWidget || root.pillLook
-        readonly property real roundRadius: root.pillLook ? Math.min(28, Math.max(0, height) / 2) : Math.min(20, Math.max(0, height) / 2)
+        readonly property real roundRadius: root.pillLook ? Math.min(28 * theme.cornerScale, Math.max(0, height) / 2) : Math.min(20 * theme.cornerScale, Math.max(0, height) / 2)
         // The edge of the capsule and the card: the system accent (Windows / KDE) if chosen in Settings, else the pill's soft
         // outline or the look's own outline.
         readonly property color edgeColor: root.dragOver ? root.accent
             : activities.borderMatchesSystem ? theme.systemAccent
             : root.pillLook ? (theme.dark ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(0, 0, 0, 0.09)) : theme.outline
         Repeater { // the pill's soft shadow: a few faint rounded layers, wider and lower each time (no effect pass)
-            model: root.pillLook && !root.geoWidget && island.height > 0.5 ? 4 : 0
+            model: 0 // no soft shadow behind the pill: only its outline
             Rectangle {
                 required property int index
                 x: -(index + 1) * 2.5
@@ -1194,9 +1201,14 @@ Window {
             anchors.fill: parent
             visible: island.roundShape && island.height > 0.5
             radius: island.roundRadius
-            color: root.pillLook && theme.dark ? "#0a0a0a" : theme.island
+            color: root.pillLook && theme.dark && !theme.glass ? "#0a0a0a" : theme.island
             border.width: 1
             border.color: island.edgeColor
+        }
+        GlassLayer {
+            anchors.fill: parent
+            visible: theme.glass && island.roundShape && island.height > 0.5
+            radius: island.roundRadius
         }
         Shape {
             anchors.fill: parent
@@ -1211,6 +1223,25 @@ Window {
                 fillColor: theme.island
                 strokeColor: island.edgeColor
                 strokeWidth: 1
+                startX: 0
+                startY: 0
+                PathQuad { x: sp.s; y: sp.s; controlX: sp.s; controlY: 0 }
+                PathLine { x: sp.s; y: sp.h - sp.r }
+                PathQuad { x: sp.s + sp.r; y: sp.h; controlX: sp.s; controlY: sp.h }
+                PathLine { x: sp.w - sp.s - sp.r; y: sp.h }
+                PathQuad { x: sp.w - sp.s; y: sp.h - sp.r; controlX: sp.w - sp.s; controlY: sp.h }
+                PathLine { x: sp.w - sp.s; y: sp.s }
+                PathQuad { x: sp.w; y: 0; controlX: sp.w - sp.s; controlY: 0 }
+                PathLine { x: 0; y: 0 }
+            }
+            ShapePath { // Glass: the same silhouette with the sheen falling from the top
+                id: sheenPath
+                fillGradient: LinearGradient {
+                    x1: 0; y1: 0; x2: 0; y2: Math.max(1, sp.h)
+                    GradientStop { position: 0; color: Qt.rgba(1, 1, 1, theme.glassSheen) }
+                    GradientStop { position: 0.55; color: Qt.rgba(1, 1, 1, 0) }
+                }
+                strokeColor: "transparent"
                 startX: 0
                 startY: 0
                 PathQuad { x: sp.s; y: sp.s; controlX: sp.s; controlY: 0 }
@@ -1755,7 +1786,7 @@ Window {
                         text: root.selecting ? root.selection.length + " selected"
                             : root.page === "settings" ? "Settings" : root.page === "preview" ? root.preview.name
                             : root.page === "note" ? (root.noteId !== "" ? "Edit note" : "New note")
-                            : root.page === "timer" ? "Timer" : root.page === "tasks" ? "Tasks" : root.page === "music" ? "Now playing" : root.page === "color" ? "Color picker" : "Olyzano Notch"
+                            : root.page === "timer" ? "Timer" : root.page === "tasks" ? "Tasks" : root.page === "music" ? "Now playing" : root.page === "color" ? "Color picker" : root.page === "clipboard" ? "Clipboard" : "Olyzano Notch"
                         color: root.textPrimary
                         font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
                         font.pixelSize: 15
@@ -1936,7 +1967,7 @@ Window {
                         onClicked: assistant.start()
                     }
                     IconButton {
-                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color") && !root.selecting
+                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard") && !root.selecting
                         iconName: "gamepad"
                         checked: gaming.enabled
                         Accessible.name: gaming.enabled ? "Gaming mode is on: turn it off" : "Gaming mode: keep away from full-screen games"
@@ -1947,7 +1978,7 @@ Window {
                         }
                     }
                     IconButton {
-                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color") && !root.selecting
+                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard") && !root.selecting
                         iconName: "gear"
                         Accessible.name: "Settings"
                         onClicked: root.page = "settings"
@@ -1964,7 +1995,7 @@ Window {
                 // What to look at: one section at a time. Dropping files is an action too (Add).
                 ActionBar {
                     id: actionBar
-                    visible: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color")
+                    visible: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard")
                     Layout.fillWidth: true
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
@@ -2173,6 +2204,11 @@ Window {
                     }
                 }
 
+                // ---- Clipboard: what was copied lately ----
+                ClipboardPage {
+                    shell: root
+                }
+
                 // ---- Color: pick one from the screen, and the ones picked before ----
                 ColorPage {
                     shell: root
@@ -2270,22 +2306,28 @@ Window {
                     font.pixelSize: 13
                 }
 
-                ListView {
+                // The files, as many rows as there are: the grid grows to three rows, then scrolls up and down.
+                GridView {
                     id: list
                     visible: root.page === "shelf" && count > 0
                     Layout.fillWidth: true
                     Layout.leftMargin: 6
                     Layout.rightMargin: 6
-                    Layout.preferredHeight: 144
-                    orientation: ListView.Horizontal
-                    spacing: 4
+                    readonly property int maxRows: 3
+                    Layout.preferredHeight: Math.max(144, Math.min(contentHeight, maxRows * cellHeight))
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
                     model: notch.items
                     property var selectedIds: root.selection
-                    // Tiles share the row exactly: as many whole tiles (≥ 96 px) as fit, never a cut-off one.
-                    readonly property int tilesPerRow: Math.max(1, Math.floor((width + spacing) / (96 + spacing)))
-                    readonly property real tileWidth: (width - (tilesPerRow - 1) * spacing) / tilesPerRow
+                    // Tiles share the row exactly: as many whole tiles (>= 96 px) as fit, never a cut-off one.
+                    readonly property real gap: 4
+                    // The row is always this much narrower than the grid (room for the scrollbar, shown or not), so the cells
+                    // add up to less than the width and GridView never fits one column fewer than meant (which left a gap).
+                    readonly property real usable: Math.max(96, width - 10)
+                    readonly property int tilesPerRow: Math.max(1, Math.floor((usable + gap) / (96 + gap)))
+                    cellWidth: usable / tilesPerRow
+                    readonly property real tileWidth: cellWidth - gap
+                    cellHeight: 140
                     property string hoveredId: ""
                     function quickLook(id) { quickLookCard.show(id) }
                     function endQuickLook() { quickLookCard.hide() }
@@ -2299,17 +2341,23 @@ Window {
                     function dragIds(id) { return root.selection.indexOf(id) >= 0 ? root.selection : [id] }
                     // Flick-dragging would fight the tiles' drag-out, so scrolling is wheel/touchpad + scrollbar.
                     interactive: false
-                    WheelScroller { id: tileScroller; flickable: list; step: list.tileWidth + list.spacing }
-                    ScrollBar.horizontal: ScrollBar {
+                    WheelHandler {
+                        target: null
+                        acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                        onWheel: (e) => {
+                            const d = e.pixelDelta.y !== 0 ? e.pixelDelta.y : e.angleDelta.y / 120 * list.cellHeight / 2
+                            list.contentY = Math.max(list.originY, Math.min(Math.max(list.originY, list.originY + list.contentHeight - list.height), list.contentY - d))
+                        }
+                    }
+                    ScrollBar.vertical: ScrollBar {
                         id: tileBar
-                        onPressedChanged: if (!pressed) tileScroller.snap() // land on a whole tile
-                        policy: list.contentWidth > list.width ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                        policy: list.contentHeight > list.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
                         padding: 2
                         contentItem: Rectangle {
-                            implicitHeight: tileBar.hovered || tileBar.pressed ? 8 : 5
-                            radius: height / 2
-                            color: tileBar.pressed ? theme.textDim : tileBar.hovered ? theme.textFaint : theme.textFaint
-                            Behavior on implicitHeight { enabled: activities.animations; NumberAnimation { duration: 120 } }
+                            implicitWidth: tileBar.hovered || tileBar.pressed ? 8 : 5
+                            radius: width / 2
+                            color: tileBar.pressed ? theme.textDim : theme.textFaint
+                            Behavior on implicitWidth { enabled: activities.animations; NumberAnimation { duration: 120 } }
                         }
                         background: null
                     }
@@ -2337,7 +2385,7 @@ Window {
                         NumberAnimation { property: "opacity"; to: 0; duration: 180 }
                     }
                     displaced: Transition {
-                        NumberAnimation { properties: "x"; duration: 280; easing.type: Easing.OutCubic }
+                        NumberAnimation { properties: "x,y"; duration: 280; easing.type: Easing.OutCubic }
                     }
                 }
 
@@ -2424,6 +2472,7 @@ Window {
                 }
 
                 TasksPage {
+                    id: tasksPage
                     shell: root
                 }
 

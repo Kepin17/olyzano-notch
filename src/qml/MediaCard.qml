@@ -177,6 +177,7 @@ Rectangle {
     }
 
     component RoundButton: AbstractButton {
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
         id: rb
         implicitWidth: 40
         implicitHeight: 40
@@ -503,6 +504,7 @@ Rectangle {
                 contentItem: Item { Skip { anchors.centerIn: parent; back: true } }
             }
             AbstractButton {
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
                 id: play
                 implicitWidth: card.compact ? 44 : 50
                 implicitHeight: card.compact ? 44 : 50

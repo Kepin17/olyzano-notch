@@ -25,6 +25,8 @@
 #include "platform/Karaoke.h"
 #include "platform/PanelBar.h"
 #include "platform/QuickSettings.h"
+#include "platform/SystemStats.h"
+#include "platform/ClipboardHistory.h"
 #include "platform/Lyrics.h"
 #include "platform/MediaPlayers.h"
 #include "platform/SystemEvents.h"
@@ -219,6 +221,11 @@ int main(int argc, char *argv[])
     GamingMode gaming;
     PanelBar panelBar;
     QuickSettings quick;
+    SystemStats sysstats;
+    ClipboardHistory clipboardHistory;
+    QObject::connect(&clipboardHistory, &ClipboardHistory::keepRequested, &controller, [&](const QString &name, const QString &mime, const QByteArray &bytes) {
+        controller.keepBytes(name, mime, bytes, QObject::tr("Clipboard"));
+    });
     AppMenu appMenu;
     TrayHost trayHost;
     Launcher launcher(&dock);
@@ -335,7 +342,10 @@ int main(int argc, char *argv[])
         else if (kind == QLatin1String("lowbattery"))
             sounds.play(QStringLiteral("warning"));
     });
-    const auto applyGlass = [&] { theme.setGlass(activities.glass(), activities.glassStrength(), desktop.canBlur()); };
+    const auto applyGlass = [&] {
+        theme.setGlass(activities.glass(), activities.glassStrength(), desktop.canBlur());
+        theme.setCorners(activities.cornerScale());
+    };
     applyGlass();
     QObject::connect(&activities, &Activities::settingsChanged, &theme, applyGlass);
     theme.setMode(controller.themeMode());
@@ -361,6 +371,8 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("colorPicker"), &colorPicker);
     engine.rootContext()->setContextProperty(QStringLiteral("dock"), &dock);
     engine.rootContext()->setContextProperty(QStringLiteral("activities"), &activities);
+    engine.rootContext()->setContextProperty(QStringLiteral("sysstats"), &sysstats);
+    engine.rootContext()->setContextProperty(QStringLiteral("clipboardHistory"), &clipboardHistory);
     engine.rootContext()->setContextProperty(QStringLiteral("wellbeing"), &wellbeing);
     engine.rootContext()->setContextProperty(QStringLiteral("sounds"), &sounds);
     engine.rootContext()->setContextProperty(QStringLiteral("lyrics"), &lyrics);

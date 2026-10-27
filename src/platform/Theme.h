@@ -31,6 +31,9 @@ class Theme : public QObject
     Q_PROPERTY(int radiusLg READ radiusLg NOTIFY changed) // popups, panels
     Q_PROPERTY(QString displayFont READ displayFont NOTIFY changed) // headings; "" = system font
     Q_PROPERTY(bool dark READ dark NOTIFY changed)
+    Q_PROPERTY(double cornerScale READ cornerScale NOTIFY changed)
+    Q_PROPERTY(double glassSheen READ glassSheen NOTIFY changed) // the glass look (GlassModel.h): top sheen and rim opacity, 0 when Glass is off
+    Q_PROPERTY(double glassRim READ glassRim NOTIFY changed)
     Q_PROPERTY(bool glass READ glass NOTIFY changed) // Settings -> Appearance -> Glass: the island and its surfaces are see-through
     Q_PROPERTY(QColor accentText READ accentText NOTIFY changed) // the accent as text on its own light tint: darker on a light theme
     Q_PROPERTY(QColor hoverFill READ hoverFill NOTIFY changed) // a quiet fill under the pointer
@@ -72,7 +75,10 @@ public:
     QColor warn() const { return role(&Palette::warn); }
     QColor info() const { return role(&Palette::info); }
     QColor media() const { return role(&Palette::media); }
-    int chipRadius() const { return washi() ? 6 : 13; }
+    int chipRadius() const { return corner(washi() ? 6 : 13); }
+    // Corner style (Settings -> Appearance): every radius below is multiplied by this (0.4 sharp, 1, 1.6 round).
+    void setCorners(double scale) { scale = qBound(0.2, scale, 2.0); if (!qFuzzyCompare(scale, m_corner)) { m_corner = scale; emit changed(); } }
+    double cornerScale() const { return m_corner; }
     // Text on a filled background: white or near-black, whichever reads better (white on a light blue accent
     // is hard to read; WCAG contrast ratio decides).
     Q_INVOKABLE QColor onColor(const QColor &background) const
@@ -83,20 +89,22 @@ public:
         const double black = (l + 0.05) / (0.006 + 0.05); // #111113
         return white >= black ? QColor(QStringLiteral("#ffffff")) : QColor(QStringLiteral("#111113"));
     }
-    int radiusSm() const { return washi() ? 4 : 8; }
-    int radiusMd() const { return washi() ? 6 : 12; }
-    int radiusLg() const { return washi() ? 8 : 18; }
+    int radiusSm() const { return corner(washi() ? 4 : 8); }
+    int radiusMd() const { return corner(washi() ? 6 : 12); }
+    int radiusLg() const { return corner(washi() ? 8 : 18); }
     QString displayFont() const { return washi() ? QStringLiteral("Noto Serif CJK JP") : QString(); }
     QColor accentSoft() const { return withAlpha(accent(), dark() ? 0.30 : 0.18); }
     QColor accentFaint() const { return withAlpha(accent(), 0.10); }
     bool glass() const { return m_glass; }
+    double glassSheen() const { return m_glass ? GlassModel::sheenTop(m_glassStrength, dark()) : 0.0; }
+    double glassRim() const { return m_glass ? GlassModel::rimTop(m_glassStrength, dark()) : 0.0; }
     // Glass on: opacity of the island and of the surfaces on it (GlassModel.h); the blur behind is the system's, when there is one.
     void setGlass(bool on, int strength, bool blur);
     QColor accentText() const { return dark() ? accent() : accent().darker(165); }
     QColor hoverFill() const { return withAlpha(dark() ? QColor(255, 255, 255) : QColor(0, 0, 0), dark() ? 0.07 : 0.06); }
     QColor pressFill() const { return withAlpha(dark() ? QColor(255, 255, 255) : QColor(0, 0, 0), dark() ? 0.12 : 0.10); }
     QColor hairline() const { return withAlpha(dark() ? QColor(255, 255, 255) : QColor(0, 0, 0), 0.08); }
-    QColor island() const { return m_glass ? withAlpha(role(&Palette::island), GlassModel::islandAlpha(m_glassStrength, m_blur)) : role(&Palette::island); }
+    QColor island() const { return m_glass ? withAlpha(lifted(role(&Palette::island)), GlassModel::islandAlpha(m_glassStrength, m_blur)) : role(&Palette::island); }
     QColor text() const { return role(&Palette::text); }
     QColor textSoft() const { return role(&Palette::textSoft); }
     QColor textDim() const { return role(&Palette::textDim); }
@@ -135,12 +143,19 @@ private:
         c.setAlphaF(alpha);
         return c;
     }
+    int corner(int base) const { return qMax(1, qRound(base * m_corner)); }
     void readAccent();
-    QColor onIsland(QColor c) const { return m_glass ? withAlpha(c, GlassModel::surfaceAlpha(m_glassStrength, m_blur)) : c; }
+    QColor onIsland(QColor c) const { return m_glass ? withAlpha(lifted(c), GlassModel::surfaceAlpha(m_glassStrength, m_blur)) : c; }
+    QColor lifted(QColor c) const
+    {
+        const double l = GlassModel::lift(m_glassStrength, dark());
+        return QColor::fromRgbF(c.redF() + (1 - c.redF()) * l, c.greenF() + (1 - c.greenF()) * l, c.blueF() + (1 - c.blueF()) * l, c.alphaF());
+    }
 
     QString m_mode = QStringLiteral("dark");
     QString m_style = QStringLiteral("classic");
     QColor m_accent;
     bool m_glass = false, m_blur = false;
+    double m_corner = 1.0;
     int m_glassStrength = 60;
 };

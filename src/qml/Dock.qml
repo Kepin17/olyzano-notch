@@ -525,6 +525,7 @@ Window {
                         }
 
                         MouseArea {
+                            HoverHandler { cursorShape: Qt.PointingHandCursor }
                             id: tap
                             property point pressAt
                             property bool moved: false
@@ -643,6 +644,7 @@ Window {
                     }
                 }
                 MouseArea {
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
                     id: trashArea
                     anchors.fill: parent
                     hoverEnabled: true // only the trash's own label; the dock's hover zone is separate
@@ -758,6 +760,7 @@ Window {
                         elide: Text.ElideRight
                     }
                     MouseArea {
+                        HoverHandler { cursorShape: Qt.PointingHandCursor }
                         id: rowArea
                         anchors.fill: parent
                         hoverEnabled: true
@@ -864,6 +867,7 @@ Window {
                             wrapMode: Text.WrapAnywhere
                         }
                         MouseArea {
+                            HoverHandler { cursorShape: Qt.PointingHandCursor }
                             id: entryArea
                             anchors.fill: parent
                             hoverEnabled: true

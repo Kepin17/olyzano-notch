@@ -401,28 +401,28 @@ void DesktopIntegration::askTopPanel()
         if (h != m_panelTop && m_lastReserve.window) {
             m_panelTop = h;
             const ReserveArgs a = m_lastReserve;
-            reserve(a.window, a.mode, a.on, a.scale, a.barPx);
+            reserve(a.window, a.mode, a.on, a.scale, a.barPx, a.pill);
         }
     });
 #endif
 }
 
-void DesktopIntegration::reserve(QWindow *window, const QString &mode, bool on, qreal scale, int barPx)
+void DesktopIntegration::reserve(QWindow *window, const QString &mode, bool on, qreal scale, int barPx, bool pill)
 {
     if (!window)
         return;
-    m_lastReserve = {window, mode, on, scale, barPx};
+    m_lastReserve = {window, mode, on, scale, barPx, pill};
     if (on)
         askTopPanel();
 #ifdef Q_OS_WIN
     if (!window->isVisible()) // the native window may still be replaced while it is being set up; QML asks again once shown
         return;
-    m_appBar->set(window, ReserveModel::plan(mode, on, scale, barPx, false).appBar);
+    m_appBar->set(window, ReserveModel::plan(mode, on, scale, barPx, false, pill).appBar);
 #else
 #ifdef NOTCH_HAVE_LAYERSHELL
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
         if (auto *ls = LayerShellQt::Window::get(window)) {
-            const int zone = ReserveModel::plan(mode, on, scale, barPx + m_panelTop, true).notchZone; // the panel's room counts as kept free
+            const int zone = ReserveModel::plan(mode, on, scale, barPx + m_panelTop, true, pill).notchZone; // the panel's room counts as kept free
             ls->setExclusiveZone(-1); // the notch sits over everything and takes nothing (a panel would be pushed down by it)
             if (zone > 0) {
                 if (m_strip && m_stripZone != zone) { // a new height is a new surface: the compositor takes the zone from a fresh commit

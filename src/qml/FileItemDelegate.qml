@@ -30,7 +30,7 @@ Item {
     signal selectRequested(int index, string id, string mode)
 
     // The ListView owns the selection (selectedIds) and decides what a drag carries (dragIds).
-    readonly property var view: ListView.view
+    readonly property var view: ListView.view ? ListView.view : GridView.view
     readonly property bool selected: view ? view.selectedIds.indexOf(itemId) >= 0 : false
     readonly property bool renaming: view ? view.renamingId === itemId : false
     property var draggedIds: []
@@ -44,6 +44,7 @@ Item {
     height: 136
 
     component CircleButton: AbstractButton {
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
         id: cb
         implicitWidth: 22
         implicitHeight: 22

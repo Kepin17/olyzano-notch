@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 // Text button; `iconName` adds a line icon before the text.
 AbstractButton {
+    HoverHandler { cursorShape: Qt.PointingHandCursor }
     id: pb
     property string iconName
     property bool iconOnly: false // just the icon (tooltip and screen readers keep the text), when there is no room for words

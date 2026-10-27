@@ -118,6 +118,7 @@ Window {
 
         // far left: the app launcher
         AbstractButton {
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
             id: launchButton
             visible: topbar.launcher
             x: 8
@@ -431,6 +432,7 @@ Window {
         }
         Rectangle { visible: ti.modelData.status === "NeedsAttention"; x: 15; y: 3; width: 6; height: 6; radius: 3; color: theme.danger }
         MouseArea {
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
             anchors.fill: parent
             acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
             onClicked: mouse => {
@@ -442,6 +444,7 @@ Window {
         }
     }
     component TrayButton: AbstractButton {
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
         implicitWidth: 20; implicitHeight: 24
         contentItem: Item { LineIcon { anchors.centerIn: parent; glyph: "chevron"; sourceSize: Qt.size(13, 13); color: theme.textDim; rotation: -90 } }
     }

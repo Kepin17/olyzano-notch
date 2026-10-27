@@ -91,7 +91,7 @@ qt_add_executable(notch
     src/platform/Karaoke.h src/platform/Karaoke.cpp src/platform/KaraokeModel.h
     src/platform/GamingMode.h src/platform/GamingMode.cpp src/platform/GamingModel.h
     src/platform/PanelBar.h src/platform/PanelBar.cpp
-    src/platform/QuickSettings.h src/platform/QuickSettings.cpp src/platform/PanelModel.h
+    src/platform/QuickSettings.h src/platform/QuickSettings.cpp src/platform/SystemStats.h src/platform/SystemStats.cpp src/platform/ClipboardHistory.h src/platform/ClipboardHistory.cpp src/platform/PanelModel.h
     src/platform/AppMenu.h src/platform/AppMenu.cpp src/platform/DbusMenuModel.h src/platform/CalendarModel.h src/platform/Prayer.h src/platform/Prayer.cpp src/platform/PrayerModel.h src/platform/Cities.h src/platform/Tasks.h src/platform/Tasks.cpp src/platform/TasksModel.h src/platform/Updates.h src/platform/Updates.cpp src/platform/UpdateModel.h src/platform/Doomscroll.h src/platform/Doomscroll.cpp src/platform/DoomscrollModel.h src/platform/Launcher.h src/platform/Launcher.cpp src/platform/LauncherModel.h src/platform/ColorFormat.h src/platform/TrayHost.h src/platform/TrayHost.cpp
     src/platform/DesktopNotifications.h src/platform/DesktopNotifications.cpp src/platform/NotificationFilter.h
 )
@@ -168,7 +168,7 @@ qt_add_qml_module(notch
         src/qml/PillButton.qml src/qml/IconButton.qml src/qml/Toggle.qml src/qml/PulseDot.qml
         src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkSeparator.qml
         src/qml/SettingToggle.qml src/qml/Chip.qml src/qml/WheelScroller.qml
-        src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml src/qml/ActionBar.qml src/qml/Bar.qml src/qml/Segmented.qml src/qml/Launcher.qml src/qml/SignalIcon.qml src/qml/CircleAction.qml src/qml/ColorPage.qml src/qml/AppMenuPopup.qml src/qml/CalendarCard.qml src/qml/QuickSettings.qml src/qml/LyricsPanel.qml
+        src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml src/qml/ActionBar.qml src/qml/Bar.qml src/qml/Segmented.qml src/qml/GlassLayer.qml src/qml/Launcher.qml src/qml/SignalIcon.qml src/qml/CircleAction.qml src/qml/ColorPage.qml src/qml/AppMenuPopup.qml src/qml/CalendarCard.qml src/qml/QuickSettings.qml src/qml/ClipboardPage.qml src/qml/LyricsPanel.qml
         src/qml/Dock.qml src/qml/TimerPage.qml src/qml/TasksPage.qml src/qml/ArtColor.qml src/qml/MarqueeText.qml src/qml/CoverArt.qml src/qml/DiscordBadge.qml
     RESOURCES
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg

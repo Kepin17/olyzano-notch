@@ -645,6 +645,11 @@ void NotchController::pasteClipboard(const QString &categoryId)
     setError(tr("The clipboard has nothing Olyzano Notch can keep."));
 }
 
+void NotchController::keepBytes(const QString &name, const QString &mimeType, const QByteArray &bytes, const QString &source)
+{
+    addBytes(name, mimeType, bytes, source, m_categoryFilter);
+}
+
 void NotchController::addTextNote(const QString &text, const QString &categoryId)
 {
     if (text.trimmed().isEmpty())
