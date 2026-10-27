@@ -1,10 +1,10 @@
 ## Olyzano Notch 0.12.4
 
-A cleaner Share page and dialog, a floating pill look, a volume bar, and the web app on a phone.
+A cleaner Share page and dialog, a pill capsule shape, a volume bar, and the web app on a phone.
 
 - **Share via QR is one dialog with two steps.** Pick the options, press Share, and the same dialog shows the QR code on the left and the link (with Copy) on the right. Only the panel behind it is dimmed, and nothing stacks on anything.
 - **A cleaner Share page for the receiver.** Flat and neutral (light and dark), a table of files with a toolbar, and a PIN typed into one box per digit that opens by itself. The boxes wrap on a narrow phone, and the keyboard no longer covers the fields.
-- **Floating pill (Settings → General).** The capsule can hang a little below the top edge as a full pill with a thin outline and a soft shadow, instead of growing out of the edge. Off by default.
+- **Capsule shape (Settings → Appearance).** Choose the **Notch** (default) or a fully rounded **Pill**. The pill sits on the very top edge with the notch's size and no shadow, so *Keep other windows clear of the capsule* leaves the same room for both and maximised windows never touch it.
 - **Volume bar in the music player.** Drag, use the wheel, or click the speaker to mute. On Windows it controls the default speakers.
 - **Music fixes.** The progress bar never passes its end and restarts at 0 on a new song; on Windows the player no longer flickers between tracks or when an app is busy.
 - **The notch is no longer cut off** when the Sharing button appears: the panel is as wide as its buttons need.

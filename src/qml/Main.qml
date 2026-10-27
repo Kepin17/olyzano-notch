@@ -59,10 +59,10 @@ Window {
     property real widgetY: 14
     property rect winRect: Qt.rect(0, 0, 840, 620)
     property bool geoWidget: false // the window is placed by the card (not at the top centre)
-    // "Floating pill" (Settings): at the top centre the capsule hangs a little below the edge as a full pill. The card of
-    // Widget mode is already round and floating, so it keeps its own look.
+    // "Pill" capsule shape (Settings -> Appearance): the capsule is a fully rounded pill instead of the notch with concave
+    // shoulders. It sits exactly where the notch does (on the top edge, same size), so the strip kept free for it and the
+    // windows below are the same for both. The card of Widget mode is already round and floating, so it keeps its own look.
     readonly property bool pillLook: activities.capsuleLook === "pill" && !geoWidget
-    readonly property real pillGap: pillLook ? 10 : 0
     property bool dragging: false
     property string dragMask: ""
     readonly property bool docked: !widgetMode || mode === "prompt" || mode === "hidden"
@@ -811,7 +811,7 @@ Window {
             const slack = maskSettle.running ? 24 : 0
             const k = root.mode === "idle" ? activities.capsuleScale : 1
             const w = Math.max(island.width, island.targetWidth) * k + 2 * slack
-            const h = Math.max(island.height, island.targetHeight, edge.height) * k + slack + pillGap
+            const h = Math.max(island.height, island.targetHeight, edge.height) * k + slack
             desktop.setInputRegion(root, Qt.rect((width - w) / 2, 0, w, h))
         }
     }
@@ -1064,13 +1064,13 @@ Window {
         // Widget mode: inside the window by its drawn (scaled) size with a 2 px margin (WidgetModel::WinMargin), so the edge line is
         // never cut off at the bottom or the sides, and a growing panel at the bottom grows upward from the bottom edge.
         x: root.geoWidget ? Math.max(width * scale / 2, Math.min(root.width - width * scale / 2 - 2, root.widgetCx - root.winRect.x)) - width / 2 : (root.width - width) / 2
-        y: root.geoWidget ? Math.max(0, Math.min(root.height - height * scale - 2, root.widgetY - root.winRect.y)) : root.pillGap
+        y: root.geoWidget ? Math.max(0, Math.min(root.height - height * scale - 2, root.widgetY - root.winRect.y)) : 0
         // Where the island is heading; width and height follow it with the springs below.
         readonly property real targetWidth: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 400
              : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
              : root.mode === "idle" ? (root.musicShown ? root.capWidth : root.infoShown ? 390 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         readonly property real targetHeight: root.mode === "open" ? Math.max(panel.implicitHeight + (root.dragOver ? 8 : 0), root.shareNeed)
-              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 56 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? (root.pillLook ? 52 : 48) : (root.pillLook ? 32 : 26)) : 0
+              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 56 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? 48 : 26) : 0
         width: targetWidth
         height: targetHeight
         focus: true
@@ -1169,7 +1169,7 @@ Window {
         }
 
         // Liquid silhouette: flat top fused to the screen edge, concave shoulders, round bottom.
-        // Widget mode: a plain rounded card with no shadow. The floating pill keeps its own soft shadow.
+        // The pill and the Widget card are plain rounded shapes, with no shadow; the notch is the silhouette below.
         readonly property bool roundShape: root.geoWidget || root.pillLook
         readonly property real roundRadius: root.pillLook ? Math.min(28, Math.max(0, height) / 2) : Math.min(20, Math.max(0, height) / 2)
         // The edge of the capsule and the card: the system accent (Windows / KDE) if chosen in Settings, else the pill's soft
@@ -1177,19 +1177,6 @@ Window {
         readonly property color edgeColor: root.dragOver ? root.accent
             : activities.borderMatchesSystem ? theme.systemAccent
             : root.pillLook ? (theme.dark ? Qt.rgba(1, 1, 1, 0.09) : Qt.rgba(0, 0, 0, 0.09)) : theme.outline
-        Repeater { // the pill's soft shadow: a few faint rounded layers, wider and lower each time (no effect pass)
-            model: root.pillLook && !root.geoWidget && island.height > 0.5 ? 4 : 0
-            Rectangle {
-                required property int index
-                x: -(index + 1) * 2.5
-                y: 3 + index * 1.5
-                width: parent.width + (index + 1) * 5
-                height: parent.height + (index + 1) * 3
-                radius: parent.roundRadius + (index + 1) * 2
-                color: "#000000"
-                opacity: 0.07 - index * 0.016
-            }
-        }
         Rectangle {
             anchors.fill: parent
             visible: island.roundShape && island.height > 0.5
@@ -2602,7 +2589,7 @@ Window {
     Rectangle {
         visible: activities.privacyIndicators && root.mode !== "open" && activities.cameraApps.length > 0
         x: (root.geoWidget ? island.x + island.width / 2 : root.width / 2) + Math.max(island.width, 44) / 2 + 6
-        y: root.geoWidget ? island.y + 3 : root.pillGap + 3
+        y: root.geoWidget ? island.y + 3 : 3
         width: 7; height: 7; radius: 3.5
         color: "#30d158"
     }
