@@ -11,6 +11,8 @@
 #include <QGuiApplication>
 #include <QPainterPath>
 #include <QRegion>
+#include <QPainter>
+#include <QRasterWindow>
 #include <QScreen>
 
 #ifdef NOTCH_HAVE_LAYERSHELL
@@ -18,6 +20,32 @@
 #endif
 #ifdef NOTCH_HAVE_KWINDOWSYSTEM
 #include <KWindowEffects>
+#endif
+
+#ifdef NOTCH_HAVE_LAYERSHELL
+// A transparent sliver in the Background layer that holds the exclusive zone of "keep other windows clear of the capsule".
+// The notch itself is in the Overlay layer, and the compositor arranges the Overlay layer first: a zone claimed there would
+// push Plasma's panel (a Top-layer surface) down. A zone in the Background layer is arranged last: the panel stays on the
+// screen edge and only the windows are kept below the strip.
+class ReserveStrip : public QRasterWindow
+{
+public:
+    ReserveStrip()
+    {
+        QSurfaceFormat f;
+        f.setAlphaBufferSize(8);
+        setFormat(f);
+        setFlag(Qt::WindowTransparentForInput);
+        resize(1, 1);
+    }
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        p.setCompositionMode(QPainter::CompositionMode_Source);
+        p.fillRect(QRect(QPoint(0, 0), size()), Qt::transparent);
+    }
+};
 #endif
 
 static void centerOnScreen(QWindow *window)
@@ -351,7 +379,32 @@ void DesktopIntegration::reserve(QWindow *window, const QString &mode, bool on, 
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
         if (auto *ls = LayerShellQt::Window::get(window)) {
             const int zone = ReserveModel::plan(mode, on, scale, barPx, true).notchZone;
-            ls->setExclusiveZone(zone > 0 ? zone : -1); // -1: sit over everything, take nothing
+            ls->setExclusiveZone(-1); // the notch sits over everything and takes nothing (a panel would be pushed down by it)
+            if (zone > 0) {
+                if (!m_strip) {
+                    auto *strip = new ReserveStrip;
+                    strip->QObject::setParent(this);
+                    m_strip = strip;
+                    if (auto *sl = LayerShellQt::Window::get(strip)) {
+                        sl->setScope(QStringLiteral("notch-reserve"));
+#ifdef NOTCH_LAYERSHELL_SET_SCREEN
+                        sl->setScreen(window->screen());
+#endif
+                        sl->setLayer(LayerShellQt::Window::LayerBackground);
+                        sl->setAnchors(LayerShellQt::Window::Anchors(LayerShellQt::Window::AnchorTop | LayerShellQt::Window::AnchorLeft
+                                                                       | LayerShellQt::Window::AnchorRight));
+                        sl->setKeyboardInteractivity(LayerShellQt::Window::KeyboardInteractivityNone);
+                        sl->setMargins(QMargins());
+                    }
+                    strip->setGeometry(0, 0, window->screen()->geometry().width(), 1);
+                }
+                if (auto *sl = LayerShellQt::Window::get(m_strip))
+                    sl->setExclusiveZone(zone);
+                if (!m_strip->isVisible())
+                    m_strip->show();
+            } else if (m_strip) {
+                m_strip->hide(); // nothing to keep clear: the surface goes, and with it the zone
+            }
         }
     }
 #endif

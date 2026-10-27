@@ -69,6 +69,7 @@ public:
 
 private:
     QList<QPointer<QWindow>> m_windows;
+    QPointer<QWindow> m_strip; // Wayland: the sliver that holds the room kept free at the top (see DesktopIntegration::reserve)
 #ifdef Q_OS_WIN
     std::unique_ptr<WinAppBar> m_appBar;
 #endif
