@@ -63,6 +63,7 @@ class Activities : public QObject
     Q_PROPERTY(QString capsuleLook READ capsuleLook WRITE setCapsuleLook NOTIFY settingsChanged) // "edge" (fused to the top edge) or "pill" (a floating capsule)
     Q_PROPERTY(bool reserveSpace READ reserveSpace WRITE setReserveSpace NOTIFY settingsChanged) // keep other windows clear of the capsule
     Q_PROPERTY(bool borderMatchesSystem READ borderMatchesSystem WRITE setBorderMatchesSystem NOTIFY settingsChanged) // capsule / card edge in the system accent
+    Q_PROPERTY(bool animations READ animations WRITE setAnimations NOTIFY settingsChanged) // transitions and movement on or off (Settings → Appearance)
     Q_PROPERTY(bool taskInCapsule READ taskInCapsule WRITE setTaskInCapsule NOTIFY settingsChanged) // the next task in the idle capsule
     // Settings
     Q_PROPERTY(bool showDownloads READ showDownloads WRITE setShowDownloads NOTIFY settingsChanged)
@@ -137,6 +138,8 @@ public:
     void setReserveSpace(bool on) { store(QStringLiteral("reserveSpace"), on); }
     bool borderMatchesSystem() const { return m_settings.value(QStringLiteral("borderMatchesSystem"), false).toBool(); }
     void setBorderMatchesSystem(bool on) { store(QStringLiteral("borderMatchesSystem"), on); }
+    bool animations() const { return m_settings.value(QStringLiteral("animations"), true).toBool(); }
+    void setAnimations(bool on) { store(QStringLiteral("animations"), on); }
     bool taskInCapsule() const { return m_settings.value(QStringLiteral("taskInCapsule"), true).toBool(); }
     void setTaskInCapsule(bool on) { store(QStringLiteral("taskInCapsule"), on); }
     QString capsuleMode() const;

@@ -98,7 +98,7 @@ ColumnLayout {
             anchors { right: parent.right; rightMargin: 16; verticalCenter: parent.verticalCenter }
             spacing: 6
             opacity: heroHover.hovered || page.copied === page.current ? 1 : 0.55
-            Behavior on opacity { NumberAnimation { duration: 120 } }
+            Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 120 } }
             LineIcon {
                 glyph: page.copied === page.current ? "check" : "copy"
                 sourceSize: Qt.size(20, 20)
@@ -137,7 +137,7 @@ ColumnLayout {
                 border.width: swHover.hovered ? 2 : 1
                 border.color: swHover.hovered ? theme.text : theme.hairline
                 scale: swHover.hovered ? 1.06 : 1
-                Behavior on scale { NumberAnimation { duration: 120 } }
+                Behavior on scale { enabled: activities.animations; NumberAnimation { duration: 120 } }
                 HoverHandler { id: swHover }
                 ToolTip.visible: swHover.hovered
                 ToolTip.delay: 300

@@ -85,7 +85,7 @@ qt_add_executable(notch
     src/platform/AppDock.h src/platform/AppDock.cpp src/platform/DockModel.h
     src/platform/Activities.h src/platform/Activities.cpp
     src/platform/Assistant.h src/platform/Assistant.cpp src/platform/MicCapture.h src/platform/MicCapture.cpp
-    src/platform/AssistantModel.h src/platform/AssistantCorpus.h src/platform/UtteranceModel.h src/platform/Whisper.h src/platform/Whisper.cpp
+    src/platform/AssistantModel.h src/platform/AssistantCorpus.h src/platform/UtteranceModel.h src/platform/WhisperEngine.h src/platform/WhisperEngine.cpp
     src/platform/Wellbeing.h src/platform/Wellbeing.cpp src/platform/WellbeingModel.h
     src/platform/Sounds.h src/platform/Sounds.cpp src/platform/SoundsModel.h
     src/platform/Karaoke.h src/platform/Karaoke.cpp src/platform/KaraokeModel.h
@@ -245,7 +245,10 @@ if(NOTCH_VOICE)
         endif()
     endif()
     if(_whisper_ok)
-        set(BUILD_SHARED_LIBS OFF)
+        # Static, in the program itself: on Windows whisper.cpp otherwise builds whisper.dll, ggml*.dll and parakeet.dll, and a
+        # copy of notch.exe without them dies at start (STATUS_DLL_NOT_FOUND).
+        set(BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+        set(GGML_BACKEND_DL OFF CACHE BOOL "" FORCE)
         set(WHISPER_BUILD_TESTS OFF CACHE BOOL "" FORCE)
         set(WHISPER_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
         set(WHISPER_BUILD_SERVER OFF CACHE BOOL "" FORCE)

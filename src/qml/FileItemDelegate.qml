@@ -49,7 +49,7 @@ Item {
         implicitHeight: 22
         property string glyph
         opacity: hover.hovered ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 120 } }
+        Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 120 } }
         background: Rectangle {
             radius: 11
             color: cb.down ? theme.pressFill : cb.hovered ? theme.hoverFill : theme.card
@@ -67,9 +67,9 @@ Item {
         color: tile.selected ? Qt.alpha(theme.accent, 0.12) : hover.hovered ? theme.hoverFill : "transparent"
         border.width: 1
         border.color: tile.selected ? Qt.alpha(theme.accent, 0.55) : theme.washi ? theme.outline : theme.hairline
-        Behavior on color { ColorAnimation { duration: 120 } }
-        Behavior on anchors.topMargin { NumberAnimation { duration: 120 } }
-        Behavior on anchors.bottomMargin { NumberAnimation { duration: 120 } }
+        Behavior on color { enabled: activities.animations; ColorAnimation { duration: 120 } }
+        Behavior on anchors.topMargin { enabled: activities.animations; NumberAnimation { duration: 120 } }
+        Behavior on anchors.bottomMargin { enabled: activities.animations; NumberAnimation { duration: 120 } }
     }
     HoverHandler {
         id: hover

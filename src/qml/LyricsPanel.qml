@@ -47,8 +47,8 @@ Rectangle {
                 opacity: row.current ? 1 : Math.max(0.25, 0.65 - row.distance * 0.15)
                 font.pixelSize: karaoke.active ? (row.current ? 25 : 18) : (row.current ? 19 : 15) // bigger to sing from
                 font.weight: row.current ? Font.Bold : Font.Medium
-                Behavior on opacity { NumberAnimation { duration: 200 } }
-                Behavior on font.pixelSize { NumberAnimation { duration: 200 } }
+                Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 200 } }
+                Behavior on font.pixelSize { enabled: activities.animations; NumberAnimation { duration: 200 } }
             }
             MouseArea {
                 anchors.fill: parent

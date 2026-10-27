@@ -87,7 +87,7 @@ Item {
                 color: eq.color
                 height: eq.live ? Math.max(width, lv * eq.maxHeight) : width
                 // The levels are already smoothed on a 33 ms tick; this bridges two ticks so a bar never jumps.
-                Behavior on height { NumberAnimation { duration: 70 } }
+                Behavior on height { enabled: activities.animations; NumberAnimation { duration: 70 } }
             }
         }
     }
@@ -110,8 +110,8 @@ Item {
                     width: d; height: d; radius: d / 2
                     color: eq.color
                     opacity: eq.live ? 0.55 + 0.45 * eq.level(dot.index) : 0.6
-                    Behavior on width { NumberAnimation { duration: 70 } }
-                    Behavior on opacity { NumberAnimation { duration: 70 } }
+                    Behavior on width { enabled: activities.animations; NumberAnimation { duration: 70 } }
+                    Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 70 } }
                 }
             }
         }
@@ -145,7 +145,7 @@ Item {
         width: d; height: d; radius: d / 2
         color: eq.color
         opacity: eq.live ? 0.6 + 0.4 * Math.min(1, eq.avg) : 0.6
-        Behavior on width { NumberAnimation { duration: 80 } }
-        Behavior on opacity { NumberAnimation { duration: 80 } }
+        Behavior on width { enabled: activities.animations; NumberAnimation { duration: 80 } }
+        Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 80 } }
     }
 }

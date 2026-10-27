@@ -108,7 +108,7 @@ Window {
         width: root.width
         height: root.stripH
         color: theme.dark ? Qt.rgba(0.07, 0.07, 0.08, topbar.opacity) : Qt.rgba(1, 1, 1, topbar.opacity)
-        Behavior on y { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+        Behavior on y { enabled: activities.animations; NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
         Rectangle { // the glass edge
             anchors { left: parent.left; right: parent.right; bottom: parent.bottom }
             height: 1
@@ -338,7 +338,7 @@ Window {
         radius: theme.radiusLg
         visible: opacity > 0
         opacity: root.kdeOpen && root.shown ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 130 } }
+        Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 130 } }
         color: theme.dark ? Qt.rgba(0.09, 0.09, 0.10, Math.min(1, topbar.opacity + 0.25)) : Qt.rgba(1, 1, 1, Math.min(1, topbar.opacity + 0.25))
         border.width: 1
         border.color: theme.dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.12)

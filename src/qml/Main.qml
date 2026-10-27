@@ -77,7 +77,9 @@ Window {
     }
     function applyGeometry() {
         if (widgetMode && !docked) {
-            winRect = desktop.placeWidget(root, dragging && desktop.layerShell ? 2 : mode === "open" ? 1 : 0, widgetCx, widgetY)
+            // The card's window: elsewhere than Wayland it is the big one always. Switching from the small window to the big
+            // one when the panel opens moves the window's top up (at the bottom of the screen) and the panel jumped there.
+            winRect = desktop.placeWidget(root, dragging && desktop.layerShell ? 2 : (mode === "open" || !desktop.layerShell) ? 1 : 0, widgetCx, widgetY)
             geoWidget = true
         } else if (geoWidget) {
             geoWidget = false
@@ -296,11 +298,19 @@ Window {
         if (toastShowing && shownToast && shownToast.kind === toast.kind && shownToast.title === toast.title) {
             shownToast = toast // the same news again: no roll
         } else if (toastShowing) {
-            toastChange.restart()
+            if (activities.animations) {
+                toastChange.restart()
+            } else {
+                shownToast = toast
+                toastRoll = 0
+            }
         } else {
             shownToast = toast
             toastShowing = true
-            toastIn.restart()
+            if (activities.animations)
+                toastIn.restart()
+            else
+                toastRoll = 0
         }
     }
     NumberAnimation { id: toastIn; target: root; property: "toastRoll"; from: -1; to: 0; duration: 320; easing.type: Easing.OutCubic }
@@ -430,14 +440,16 @@ Window {
     onCapSubChanged: if (!capSwitching && media.active) shownSub = capSub
     readonly property url artNow: media.artUrl
     onArtNowChanged: if (!capSwitching && media.active) shownArt = artNow
-    property string capLastKey: media.title + "|" + media.artUrl
+    // The song the capsule shows. A plain value on purpose: written as a binding it was already the new key when the handler below
+    // compared it, so the roll never started. Title and artist only: the cover arrives a moment later and just swaps in.
+    property string capLastKey: ""
     SequentialAnimation {
         id: capChange
         ScriptAction { script: root.capSwitching = true }
         NumberAnimation { target: root; property: "capRoll"; to: 1; duration: 150; easing.type: Easing.InQuad }
         ScriptAction { script: { root.shownTitle = root.capTitle; root.shownSub = root.capSub; root.shownArt = root.artNow; root.capRoll = -1 } }
         NumberAnimation { target: root; property: "capRoll"; to: 0; duration: 300; easing.type: Easing.OutCubic }
-        ScriptAction { script: root.capSwitching = false }
+        ScriptAction { script: { root.capSwitching = false; root.shownArt = root.artNow } } // a cover that came during the roll
     }
     Timer { id: pauseTimer; interval: 5000; onTriggered: root.musicStale = true }
     Timer {
@@ -464,10 +476,11 @@ Window {
                 pauseTimer.restart()
             }
             root.capPos = media.positionMs()
-            const key = media.title + "|" + media.artUrl
+            const key = media.title + "|" + media.artist
             if (media.active && key !== root.capLastKey) {
+                const firstSong = root.capLastKey === ""
                 root.capLastKey = key
-                if (root.mode === "idle" && root.musicShown)
+                if (!firstSong && activities.animations && root.mode === "idle" && root.musicShown)
                     capChange.restart()
                 else {
                     root.shownTitle = root.capTitle; root.shownSub = root.capSub; root.shownArt = root.artNow
@@ -778,12 +791,16 @@ Window {
                 }
             } else {
                 dragMask = ""
-                const slack = maskSettle.running ? 24 : 0
-                const k = floating ? activities.capsuleScale : 1
+                // Where the card is and where it is going (a panel opening at the bottom grows upward, so its top moves): the
+                // mask covers both, with a margin, and stays inside the window.
+                const slack = maskSettle.running ? 24 : 6
+                const k = floating || mode === "idle" ? activities.capsuleScale : 1
                 const w = Math.min(width, Math.max(island.width, island.targetWidth) * k + 2 * slack)
-                const h = Math.min(height - island.y, Math.max(island.height, island.targetHeight) * k + slack)
+                const goalTop = Math.max(0, Math.min(height - island.targetHeight * k - 2, widgetY - winRect.y))
+                const top = Math.max(0, Math.min(island.y, goalTop) - slack)
+                const bottom = Math.min(height, Math.max(island.y + island.height * k, goalTop + island.targetHeight * k) + slack)
                 const mid = Math.max(w / 2, Math.min(width - w / 2, widgetCx - winRect.x))
-                desktop.setInputRegion(root, Qt.rect(mid - w / 2, island.y, w, h))
+                desktop.setInputRegion(root, Qt.rect(mid - w / 2, top, w, bottom - top))
             }
         } else if (mode === "hidden" || (mode === "idle" && capsuleMode !== "capsule")) // the idle clock is see-through for clicks; the top edge opens Notch (the capsule itself can be pointed at)
             desktop.setInputRegion(root, Qt.rect(edge.x, 0, edge.width, edge.height))
@@ -1044,8 +1061,10 @@ Window {
 
     Item {
         id: island
-        x: root.geoWidget ? Math.max(0, Math.min(root.width - width, root.widgetCx - root.winRect.x - width / 2)) : (root.width - width) / 2
-        y: root.geoWidget ? Math.max(0, Math.min(root.height - height, root.widgetY - root.winRect.y)) : root.pillGap
+        // Widget mode: inside the window by its drawn (scaled) size with a 2 px margin (WidgetModel::WinMargin), so the edge line is
+        // never cut off at the bottom or the sides, and a growing panel at the bottom grows upward from the bottom edge.
+        x: root.geoWidget ? Math.max(width * scale / 2, Math.min(root.width - width * scale / 2 - 2, root.widgetCx - root.winRect.x)) - width / 2 : (root.width - width) / 2
+        y: root.geoWidget ? Math.max(0, Math.min(root.height - height * scale - 2, root.widgetY - root.winRect.y)) : root.pillGap
         // Where the island is heading; width and height follow it with the springs below.
         readonly property real targetWidth: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 400
              : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
@@ -1058,7 +1077,7 @@ Window {
         // The capsule's size is the person's choice (Settings); everything in it scales together, glued to the top edge.
         scale: root.mode === "idle" || root.floating ? activities.capsuleScale : 1
         transformOrigin: Item.Top
-        Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        Behavior on scale { enabled: activities.animations; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
         readonly property real shoulder: Math.min(10, Math.max(0, height) / 3)
         readonly property real corner: Math.min(24, Math.max(0, height - shoulder))
@@ -1083,8 +1102,8 @@ Window {
         // --debug-hover on Windows, pointer arriving -> content shown: 424 ms with width spring 3.4 and reveal at 85 %, 324 ms
         // with 4.8 and 70 % (160 ms of it is the dwell on the hidden edge). epsilon 0.4 ends the tail of the animation earlier
         // (invisible at that size).
-        Behavior on height { SpringAnimation { spring: island.closing ? 7 : 5.5; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : root.pillLook ? 0.6 : 0.32; epsilon: 0.4 } }
-        Behavior on width { SpringAnimation { spring: island.closing ? 6 : 4.8; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : root.pillLook ? 0.6 : 0.3; epsilon: 0.4 } }
+        Behavior on height { enabled: activities.animations; SpringAnimation { spring: island.closing ? 7 : 5.5; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : root.pillLook ? 0.6 : 0.32; epsilon: 0.4 } }
+        Behavior on width { enabled: activities.animations; SpringAnimation { spring: island.closing ? 6 : 4.8; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : root.pillLook ? 0.6 : 0.3; epsilon: 0.4 } }
         onTargetWidthChanged: root.maskMoving()
         onTargetHeightChanged: root.maskMoving()
         Connections { target: activities; function onSettingsChanged() { root.maskMoving() } }
@@ -1212,7 +1231,7 @@ Window {
             anchors.fill: parent
             opacity: root.mode === "toast" && island.height > 30 ? 1 : 0
             visible: opacity > 0
-            Behavior on opacity { NumberAnimation { duration: 180 } }
+            Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 180 } }
             readonly property var t: root.shownToast || ({ kind: "", title: "", detail: "", icon: "", art: "", level: -1 })
             readonly property bool isPower: t.kind === "charging" || t.kind === "battery"
                                             || (t.kind === "lowbattery" && t.icon === "battery-low")
@@ -1262,7 +1281,7 @@ Window {
                             color: toastRow.t.kind === "charging" ? theme.success : toastRow.t.level <= 20 ? theme.danger : theme.text
                             // Starts empty each time the toast appears and fills to the level.
                             width: toastRow.visible ? Math.max(2, (shell.width - 4) * Math.max(0, toastRow.t.level) / 100) : 0
-                            Behavior on width { NumberAnimation { duration: 700; easing.type: Easing.OutCubic } }
+                            Behavior on width { enabled: activities.animations; NumberAnimation { duration: 700; easing.type: Easing.OutCubic } }
                         }
                     }
                     Rectangle { x: 28; y: 4; width: 2; height: 6; radius: 1; color: theme.textDim }
@@ -1275,7 +1294,7 @@ Window {
                         style: Text.Outline
                         styleColor: "black"
                         SequentialAnimation on scale {
-                            running: toastRow.visible && toastRow.t.kind === "charging"
+                            running: toastRow.visible && toastRow.t.kind === "charging" && activities.animations
                             loops: Animation.Infinite
                             NumberAnimation { to: 1.25; duration: 450; easing.type: Easing.OutQuad }
                             NumberAnimation { to: 1; duration: 450; easing.type: Easing.InQuad }
@@ -1394,7 +1413,7 @@ Window {
             spacing: 8
             opacity: root.mode === "peek" && island.height > 24 ? 1 : 0
             visible: opacity > 0
-            Behavior on opacity { NumberAnimation { duration: 160 } }
+            Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 160 } }
             PulseDot {
                 visible: liveRow.l.kind === "copy" || liveRow.l.kind === "call"
                 color: liveRow.l.color
@@ -1424,7 +1443,7 @@ Window {
                         radius: 1.5
                         height: 4 + 12 * Math.min(1, assistant.level * (0.7 + 0.25 * index))
                         color: liveRow.l.color
-                        Behavior on height { NumberAnimation { duration: 70 } }
+                        Behavior on height { enabled: activities.animations; NumberAnimation { duration: 70 } }
                     }
                 }
             }
@@ -1451,7 +1470,7 @@ Window {
         Rectangle {
             id: liveTrack
             property real shown: Math.max(0, Math.min(1, liveRow.l.progress))
-            Behavior on shown { NumberAnimation { duration: 400 } }
+            Behavior on shown { enabled: activities.animations; NumberAnimation { duration: 400 } }
             visible: root.mode === "peek" && island.height > 24 && liveRow.l.progress >= 0
             x: island.shoulder + 18
             y: island.height - 6
@@ -1476,7 +1495,7 @@ Window {
             spacing: 8
             opacity: root.mode === "idle" && !root.musicShown && island.height > 20 ? 1 : 0
             visible: opacity > 0
-            Behavior on opacity { NumberAnimation { duration: 160 } }
+            Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 160 } }
             Text {
                 text: Qt.formatTime(root.idleNow, Qt.locale().timeFormat(Locale.ShortFormat))
                 color: root.textPrimary
@@ -1503,7 +1522,7 @@ Window {
                 sourceSize: Qt.size(13, 13)
                 color: activities.micMuted === 1 ? theme.danger : activities.micSpeaking ? theme.success : activities.micApps.length > 0 ? theme.warn : root.textSecondary
                 scale: activities.micSpeaking ? 1.25 : 1
-                Behavior on scale { NumberAnimation { duration: 120 } }
+                Behavior on scale { enabled: activities.animations; NumberAnimation { duration: 120 } }
             }
             LineIcon { // a camera is on
                 visible: activities.privacyIndicators && activities.cameraApps.length > 0
@@ -1553,7 +1572,7 @@ Window {
             spacing: 10
             opacity: root.mode === "idle" && root.musicShown && island.height > 20 ? 1 : 0
             visible: opacity > 0
-            Behavior on opacity { NumberAnimation { duration: 160 } }
+            Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 160 } }
             CoverArt {
                 Layout.preferredWidth: 30
                 Layout.preferredHeight: 30
@@ -1619,7 +1638,7 @@ Window {
                 sourceSize: Qt.size(15, 15)
                 color: activities.micSpeaking ? theme.success : theme.warn
                 scale: activities.micSpeaking ? 1.25 : 1
-                Behavior on scale { NumberAnimation { duration: 120 } }
+                Behavior on scale { enabled: activities.animations; NumberAnimation { duration: 120 } }
             }
         }
         Rectangle { // how far into the song: a thin line along the bottom edge
@@ -1653,7 +1672,7 @@ Window {
             spacing: 8
             opacity: root.mode === "prompt" && island.height > 70 ? 1 : 0
             visible: opacity > 0
-            Behavior on opacity { NumberAnimation { duration: 180 } }
+            Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 180 } }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
@@ -1698,7 +1717,7 @@ Window {
             clip: true
             opacity: root.mode === "open" && island.revealed ? 1 : 0
             visible: opacity > 0
-            Behavior on opacity { NumberAnimation { duration: root.mode === "open" ? 140 : 90; easing.type: Easing.OutCubic } }
+            Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: root.mode === "open" ? 140 : 90; easing.type: Easing.OutCubic } }
 
             ColumnLayout {
                 id: panel
@@ -1772,7 +1791,7 @@ Window {
                         id: search
                         visible: root.page === "shelf" && notch.count > 0 && !root.selecting
                         Layout.preferredWidth: activeFocus || text !== "" ? 180 : 110
-                        Behavior on Layout.preferredWidth { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                        Behavior on Layout.preferredWidth { enabled: activities.animations; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                         implicitHeight: 26
                         leftPadding: 12
                         rightPadding: 12
@@ -2219,7 +2238,7 @@ Window {
                             sourceSize: Qt.size(24, 24)
                             color: root.dragOver ? root.accent : root.textSecondary
                             scale: root.dragOver ? 1.15 : 1
-                            Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutBack } }
+                            Behavior on scale { enabled: activities.animations; NumberAnimation { duration: 140; easing.type: Easing.OutBack } }
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
@@ -2290,7 +2309,7 @@ Window {
                             implicitHeight: tileBar.hovered || tileBar.pressed ? 8 : 5
                             radius: height / 2
                             color: tileBar.pressed ? theme.textDim : tileBar.hovered ? theme.textFaint : theme.textFaint
-                            Behavior on implicitHeight { NumberAnimation { duration: 120 } }
+                            Behavior on implicitHeight { enabled: activities.animations; NumberAnimation { duration: 120 } }
                         }
                         background: null
                     }
@@ -2600,7 +2619,7 @@ Window {
         border.width: 0.5
         border.color: notch.errorMessage !== "" ? "transparent" : Qt.rgba(1, 1, 1, 0.22)
         opacity: root.mode !== "hidden" ? 0 : edgeHover.hovered ? 1 : 0.9
-        Behavior on opacity { NumberAnimation { duration: 200 } }
+        Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 200 } }
     }
 
     // The only live area while hidden: a thin strip on the top edge.
@@ -2748,8 +2767,8 @@ Window {
         border.color: theme.outline
         scale: visible ? 1 : 0.92
         opacity: visible ? 1 : 0
-        Behavior on scale { SpringAnimation { spring: 5; damping: 0.4 } }
-        Behavior on opacity { NumberAnimation { duration: 120 } }
+        Behavior on scale { enabled: activities.animations; SpringAnimation { spring: 5; damping: 0.4 } }
+        Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 120 } }
 
         ColumnLayout {
             anchors.fill: parent

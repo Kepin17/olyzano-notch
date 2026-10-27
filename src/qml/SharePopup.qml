@@ -64,7 +64,7 @@ Popup {
             radius: 22
             color: Qt.rgba(0, 0, 0, 0.5)
         }
-        Behavior on opacity { NumberAnimation { duration: 120 } }
+        Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 120 } }
     }
     padding: 16
     focus: true

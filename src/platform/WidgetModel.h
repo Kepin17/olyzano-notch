@@ -31,10 +31,13 @@ inline QRectF windowRect(int kind, qreal cx, qreal y, const QSizeF &screen)
     return QRectF(clampTo(cx - w / 2, 0, screen.width() - w), clampTo(y, 0, screen.height() - h), w, h);
 }
 
-// Where the card (itemW x itemH) is drawn inside its window, so it does not move on the screen when the window
-// changes size.
-inline qreal islandX(const QRectF &win, qreal cx, qreal itemW) { return clampTo(cx - win.x() - itemW / 2, 0, win.width() - itemW); }
-inline qreal islandY(const QRectF &win, qreal y, qreal itemH) { return clampTo(y - win.y(), 0, win.height() - itemH); }
+constexpr qreal WinMargin = 2; // the card stays this far inside its window, so its 1 px edge is never cut off
+
+// Where the card (itemW x itemH, as drawn: scaled) is drawn inside its window, so it does not move on the screen when the
+// window changes size. A panel that grows at the bottom of the screen keeps its bottom edge and grows upward. (Main.qml
+// does the same sums with the live size.)
+inline qreal islandX(const QRectF &win, qreal cx, qreal itemW) { return clampTo(cx - win.x() - itemW / 2, 0, win.width() - itemW - WinMargin); }
+inline qreal islandY(const QRectF &win, qreal y, qreal itemH) { return clampTo(y - win.y(), 0, win.height() - itemH - WinMargin); }
 
 // An anchor that keeps the card (itemW x itemH) on the screen.
 inline QPointF clampAnchor(qreal cx, qreal y, qreal itemW, qreal itemH, const QSizeF &screen)

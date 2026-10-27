@@ -29,7 +29,7 @@ Item {
         color: Qt.alpha(theme.accent, 0.18)
         border.width: 1
         border.color: Qt.alpha(theme.accent, 0.45)
-        Behavior on x { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+        Behavior on x { enabled: activities.animations; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
     }
     Row {
         x: 3; y: 3

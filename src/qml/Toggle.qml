@@ -12,7 +12,7 @@ AbstractButton {
         color: tg.checked ? theme.accent : theme.pressFill
         border.width: tg.checked ? 0 : 1
         border.color: theme.hairline
-        Behavior on color { ColorAnimation { duration: 150 } }
+        Behavior on color { enabled: activities.animations; ColorAnimation { duration: 150 } }
     }
     contentItem: Item {
         Rectangle {
@@ -22,7 +22,7 @@ AbstractButton {
             height: 16
             radius: 8
             color: tg.checked ? theme.onColor(theme.accent) : theme.textSoft
-            Behavior on x { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+            Behavior on x { enabled: activities.animations; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
         }
     }
 }

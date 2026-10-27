@@ -21,7 +21,7 @@ Item {
         color: badge.call === "talking" ? theme.success : "transparent"
         border.width: 1.6
         border.color: theme.success
-        Behavior on color { ColorAnimation { duration: 90 } }
+        Behavior on color { enabled: activities.animations; ColorAnimation { duration: 90 } }
     }
 
     LineIcon {

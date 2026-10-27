@@ -75,6 +75,8 @@ jobs:
           Copy-Item build\notch.exe deploy\
           windeployqt --release --qmldir src\qml --compiler-runtime deploy\notch.exe
           Copy-Item "$env:VCPKG_INSTALLATION_ROOT\installed\x64-windows\bin\libcrypto-3-x64.dll" deploy\
+          # whisper.cpp is linked statically (CMakeLists.txt); if it ever builds libraries again, ship them beside notch.exe
+          if (Test-Path build\bin) { Copy-Item build\bin\*.dll deploy\ -ErrorAction SilentlyContinue }
           Get-ChildItem deploy | Select-Object -First 40 | Format-Table Name, Length
 
       - name: Portable zip

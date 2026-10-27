@@ -24,12 +24,12 @@ Item {
         wrapMode: Text.NoWrap
         elide: Text.ElideNone
         x: 0
-        onTextChanged: { x = 0; fadeIn.restart() }
+        onTextChanged: { x = 0; if (activities.animations) fadeIn.restart() }
     }
     NumberAnimation { id: fadeIn; target: label; property: "opacity"; from: 0.15; to: 1; duration: 180 }
 
     SequentialAnimation {
-        running: m.running && m.visible && m.overflow > 1
+        running: m.running && m.visible && m.overflow > 1 && activities.animations // off: the long line is cut with its fade instead of gliding
         loops: Animation.Infinite
         onRunningChanged: if (!running) label.x = 0
         PauseAnimation { duration: 1600 }

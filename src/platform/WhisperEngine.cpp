@@ -1,4 +1,4 @@
-#include "Whisper.h"
+#include "WhisperEngine.h" // not Whisper.h: on Windows (case-insensitive) "whisper.h" below would find it instead of the library's
 
 #include <QRegularExpression>
 #include <QThread>

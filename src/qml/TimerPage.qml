@@ -188,7 +188,7 @@ ColumnLayout {
                         color: presetTap.pressed ? theme.surfacePressed : presetHover.hovered ? theme.surfaceHover : theme.surface
                         border.width: theme.washi || presetHover.hovered ? 1 : 0
                         border.color: presetHover.hovered ? theme.accent : theme.outline
-                        Behavior on color { ColorAnimation { duration: 120 } }
+                        Behavior on color { enabled: activities.animations; ColorAnimation { duration: 120 } }
                         HoverHandler { id: presetHover }
                         TapHandler { id: presetTap; onTapped: activities.startTimer(preset.modelData * 60, "") }
                         Column {

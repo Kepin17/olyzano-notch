@@ -3,7 +3,7 @@
 #include "platform/AssistantModel.h"
 #include "platform/MicCapture.h"
 #include "platform/UtteranceModel.h"
-#include "platform/Whisper.h"
+#include "platform/WhisperEngine.h"
 
 #include <QCryptographicHash>
 #include <QElapsedTimer>

@@ -611,7 +611,14 @@ private slots:
         QCOMPARE(islandX(open, 100, 400), 0.0);              // would stick out on the left: pushed in
         QCOMPARE(islandX(windowRect(Open, 960, 14, screen), 960, 400), 220.0);
         QCOMPARE(islandY(open, 900, 38), 440.0);             // 900 - 460
-        QCOMPARE(islandY(open, 1075, 38), OpenH - 38);       // the panel never leaves the window
+        QCOMPARE(islandY(open, 1075, 38), OpenH - 38 - WinMargin); // the card never leaves the window, its edge line stays inside
+        // at the bottom of the screen: a bigger card (scaled, or the panel while it opens) keeps its bottom edge and grows upward
+        QCOMPARE(islandY(open, 1046, 38 * 1.5), OpenH - 57 - WinMargin);
+        const qreal b1 = islandY(open, 1046, 120) + 120, b2 = islandY(open, 1046, 266) + 266; // bottom edge while growing
+        QCOMPARE(b1, b2);
+        QVERIFY(b2 <= OpenH - WinMargin);
+        QVERIFY(islandY(open, 1046, 266) < islandY(open, 1046, 120)); // the top moves up as it grows
+        QCOMPARE(islandX(windowRect(Open, 1900, 14, screen), 1900, 400), OpenW - 400 - WinMargin); // at the right edge, inside
         // snap: close to an edge or the middle sticks, far away does not
         QCOMPARE(snap(965, 300, 400, 38, screen), QPointF(960, 300));
         QCOMPARE(snap(215, 300, 400, 38, screen), QPointF(200 + EdgeGap, 300));

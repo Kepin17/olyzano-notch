@@ -32,7 +32,7 @@ Rectangle {
     border.color: theme.dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.12)
     opacity: open ? 1 : 0
     visible: opacity > 0
-    Behavior on opacity { NumberAnimation { duration: 140 } }
+    Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 140 } }
     onOpenChanged: {
         if (open) quick.refresh()
         else { askFor = ""; closeDetail(); wifiOpen = false; btOpen = false; ethOpen = false; soundOpen = false; inputOpen = false } // closing the card folds its lists
@@ -61,7 +61,7 @@ Rectangle {
         color: on ? card.tileOn : card.tileOff
         border.width: on ? 1 : 0
         border.color: theme.accent
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on color { enabled: activities.animations; ColorAnimation { duration: 120 } }
         MouseArea { anchors.fill: parent; onClicked: tile.toggled() }
         RowLayout {
             anchors { fill: parent; leftMargin: 10; rightMargin: 6 }
@@ -84,7 +84,7 @@ Rectangle {
             AbstractButton {
                 implicitWidth: 28; implicitHeight: 28
                 onClicked: tile.expand()
-                contentItem: Item { Chev { anchors.centerIn: parent; rotation: tile.expanded ? 180 : 0; Behavior on rotation { NumberAnimation { duration: 140 } } } }
+                contentItem: Item { Chev { anchors.centerIn: parent; rotation: tile.expanded ? 180 : 0; Behavior on rotation { enabled: activities.animations; NumberAnimation { duration: 140 } } } }
             }
         }
     }

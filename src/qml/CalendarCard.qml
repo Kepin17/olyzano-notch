@@ -19,7 +19,7 @@ Rectangle {
     border.color: theme.dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.12)
     opacity: open ? 1 : 0
     visible: opacity > 0
-    Behavior on opacity { NumberAnimation { duration: 140 } }
+    Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 140 } }
     onOpenChanged: if (open) today()
 
     function today() { const n = new Date(); year = n.getFullYear(); month = n.getMonth() + 1 }

@@ -23,7 +23,7 @@ AbstractButton {
         color: chip.dropHover ? theme.accentFaint : chip.active ? Qt.alpha(theme.accent, 0.16) : chip.hovered ? theme.hoverFill : "transparent"
         border.width: 1
         border.color: chip.dropHover ? theme.accent : chip.active ? Qt.alpha(theme.accent, 0.45) : theme.washi ? theme.outline : theme.hairline
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on color { enabled: activities.animations; ColorAnimation { duration: 120 } }
     }
     contentItem: Item {
         Row {

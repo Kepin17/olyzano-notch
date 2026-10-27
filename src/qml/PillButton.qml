@@ -20,7 +20,7 @@ AbstractButton {
         color: pb.checked ? Qt.alpha(theme.accent, 0.16) : pb.down ? theme.pressFill : pb.hovered ? theme.hoverFill : "transparent"
         border.width: 1
         border.color: pb.checked ? Qt.alpha(theme.accent, 0.45) : theme.washi ? theme.outline : theme.hairline
-        Behavior on color { ColorAnimation { duration: 120 } }
+        Behavior on color { enabled: activities.animations; ColorAnimation { duration: 120 } }
     }
     contentItem: Item {
         Row {

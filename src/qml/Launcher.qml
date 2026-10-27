@@ -53,8 +53,8 @@ Rectangle {
     visible: opacity > 0
     scale: open ? 1 : 0.97
     transformOrigin: Item.TopLeft
-    Behavior on opacity { NumberAnimation { duration: 130 } }
-    Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+    Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 130 } }
+    Behavior on scale { enabled: activities.animations; NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
 
     // one app: an icon over its name (grid), or the icon beside it (list); the pin shows on hover
     component AppTile: Item {
@@ -83,7 +83,7 @@ Rectangle {
             fillMode: Image.PreserveAspectFit
             smooth: true
             scale: tileHover.hovered ? 1.06 : 1
-            Behavior on scale { NumberAnimation { duration: 120 } }
+            Behavior on scale { enabled: activities.animations; NumberAnimation { duration: 120 } }
         }
         Text {
             x: card.grid ? 4 : 52

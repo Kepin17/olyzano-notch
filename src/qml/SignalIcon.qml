@@ -26,7 +26,7 @@ Item {
                     radius: width / 2
                     color: icon.color
                     opacity: icon.off ? 0.22 : parent.index < icon.bars ? 1 : 0.25
-                    Behavior on opacity { NumberAnimation { duration: 140 } }
+                    Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 140 } }
                 }
             }
         }

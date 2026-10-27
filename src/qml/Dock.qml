@@ -32,7 +32,7 @@ Window {
     readonly property int padding: 10
     readonly property int edgeGap: 8
     readonly property real headroom: iconSize * (magnify - 1) + 16 // icons grow this far inwards
-    readonly property bool animated: dock.animation !== "none"
+    readonly property bool animated: dock.animation !== "none" && activities.animations // the dock's own Off / Smooth / Bouncy, and the global switch
     readonly property real barRadius: Math.min(thickness / 2.6, theme.washi ? theme.chipRadius + 8 : 22)
 
     readonly property bool overlayOpen: appMenu.visible || picker.visible || folderDialog.visible || trashMenu.visible || emptyConfirm.visible

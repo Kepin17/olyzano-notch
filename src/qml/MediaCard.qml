@@ -60,25 +60,29 @@ Rectangle {
     Connections {
         target: media
         function onChanged() {
-            if (media.title !== card.lastTitle || media.artUrl !== card.lastArt) {
-                const newSong = media.title !== card.lastTitle
+            // One animation per song. Windows reports the title first and the cover a little later (3 to 11 events per song), so
+            // only a new title starts it; a cover that arrives afterwards just replaces the picture.
+            if (media.title !== card.lastTitle) {
+                const firstSong = card.lastTitle === "" // the card was just built: nothing to change from
                 card.lastTitle = media.title
                 card.lastArt = media.artUrl
-                change.restart()
-                if (newSong) { // the player still reports the old song's position for a moment: start at 0 and ask again
-                    if (!card.scrubbing) card.position = 0
-                    settle.restart()
-                    return
-                }
+                if (!firstSong && activities.animations)
+                    change.restart()
+                if (!card.scrubbing) card.position = 0 // the player still reports the old song's position for a moment: start at 0 and ask again
+                settle.restart()
+                return
             }
+            card.lastArt = media.artUrl
             card.sync()
         }
     }
     onVisibleChanged: { if (visible) sync(); else volumeOpen = false }
 
     // ---- a new song: the background fades up, the cover pops, the text slides in ----
-    property string lastTitle: media.title
-    property url lastArt: media.artUrl
+    // The song shown. Plain values on purpose: as bindings (`: media.title`) they were already the new song when the handler
+    // above compared them, so the animation below never started.
+    property string lastTitle: ""
+    property url lastArt
     property real fade: 1        // the blurred background's opacity
     property real pop: 1         // the cover's scale
     property real slide: 1       // 0..1: the text has arrived
@@ -180,7 +184,7 @@ Rectangle {
         background: Rectangle {
             radius: width / 2
             color: rb.down ? Qt.rgba(1, 1, 1, 0.22) : rb.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
-            Behavior on color { ColorAnimation { duration: 100 } }
+            Behavior on color { enabled: activities.animations; ColorAnimation { duration: 100 } }
         }
     }
 
@@ -212,13 +216,8 @@ Rectangle {
                 Item {
                     id: face
                     anchors.fill: parent
-                    // it breathes a little while the music plays
-                    SequentialAnimation on scale {
-                        running: media.playing && card.visible
-                        loops: Animation.Infinite
-                        NumberAnimation { to: 1.025; duration: 1800; easing.type: Easing.InOutSine }
-                        NumberAnimation { to: 1.0; duration: 1800; easing.type: Easing.InOutSine }
-                    }
+                    // The cover used to breathe (1.0 <-> 1.025, for ever) while the music played, which read as it shrinking back and
+                    // forth. It now moves once, when the song changes (the pop, see `change`), and is still the rest of the time.
                     Rectangle {
                         anchors.fill: parent
                         radius: 14
@@ -256,8 +255,15 @@ Rectangle {
                 spacing: 3
                 opacity: card.slide
                 transform: Translate { y: (card.slide - 1) * 12 } // the new song comes down from above
+                // The card keeps the same height for every song: room for a two-line title and for the album line is always
+                // reserved, so the panel does not resize as the title, album and length arrive one after another.
+                FontMetrics { id: titleFont; font: titleText.font }
+                FontMetrics { id: albumFont; font: albumText.font }
                 Text {
+                    id: titleText
                     Layout.fillWidth: true
+                    Layout.minimumHeight: titleFont.lineSpacing * (card.compact ? 1 : 2)
+                    verticalAlignment: Text.AlignTop
                     text: media.title || media.identity
                     color: card.fg
                     font.pixelSize: card.compact ? 15 : 17
@@ -274,8 +280,9 @@ Rectangle {
                     elide: Text.ElideRight
                 }
                 Text {
+                    id: albumText
                     Layout.fillWidth: true
-                    visible: media.album !== ""
+                    Layout.minimumHeight: albumFont.lineSpacing // reserved even without an album
                     text: media.album
                     color: card.fgFaint
                     font.pixelSize: 11
@@ -294,7 +301,9 @@ Rectangle {
         // progress: a thin line that thickens under the pointer, with a thumb only then
         ColumnLayout {
             Layout.fillWidth: true
-            visible: media.lengthMs > 0 // live streams have no length
+            // live streams have no length; the room stays, so the card does not grow when a song's length arrives
+            opacity: media.lengthMs > 0 ? 1 : 0
+            enabled: media.lengthMs > 0
             spacing: 0
             Item {
                 id: bar
@@ -308,7 +317,7 @@ Rectangle {
                     height: bar.active ? 6 : 4
                     radius: height / 2
                     color: card.hasArt ? Qt.rgba(1, 1, 1, 0.22) : theme.surfacePressed
-                    Behavior on height { NumberAnimation { duration: 100 } }
+                    Behavior on height { enabled: activities.animations; NumberAnimation { duration: 100 } }
                     Rectangle {
                         width: parent.width * bar.ratio
                         height: parent.height
@@ -323,8 +332,8 @@ Rectangle {
                     color: "#ffffff"
                     opacity: bar.active ? 1 : 0
                     scale: bar.active ? 1 : 0.4
-                    Behavior on opacity { NumberAnimation { duration: 120 } }
-                    Behavior on scale { NumberAnimation { duration: 120 } }
+                    Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 120 } }
+                    Behavior on scale { enabled: activities.animations; NumberAnimation { duration: 120 } }
                 }
                 MouseArea {
                     id: seekArea
@@ -407,8 +416,8 @@ Rectangle {
                     color: Qt.rgba(0.05, 0.05, 0.06, 0.94)
                     border.width: 1
                     border.color: Qt.rgba(1, 1, 1, 0.12)
-                    Behavior on opacity { NumberAnimation { duration: 140 } }
-                    Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                    Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 140 } }
+                    Behavior on scale { enabled: activities.animations; NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         y: 9
@@ -505,14 +514,14 @@ Rectangle {
                         width: parent.width + 14; height: width; radius: width / 2
                         color: card.tint
                         opacity: media.playing ? 0.34 : 0.14
-                        Behavior on opacity { NumberAnimation { duration: 200 } }
+                        Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 200 } }
                     }
                     Rectangle {
                         anchors.fill: parent
                         radius: width / 2
                         color: play.down ? "#d8d8d8" : "#ffffff"
                         scale: play.down ? 0.95 : play.hovered ? 1.04 : 1
-                        Behavior on scale { NumberAnimation { duration: 100 } }
+                        Behavior on scale { enabled: activities.animations; NumberAnimation { duration: 100 } }
                     }
                 }
                 contentItem: Item {
