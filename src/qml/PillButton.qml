@@ -8,17 +8,18 @@ AbstractButton {
     property string iconName
     property bool iconOnly: false // just the icon (tooltip and screen readers keep the text), when there is no room for words
     implicitWidth: iconOnly ? 34 : pbRow.implicitWidth + 22
-    implicitHeight: 26
+    implicitHeight: 28
     opacity: enabled ? 1 : 0.4
     Accessible.name: text
     ToolTip.visible: iconOnly && hovered
     ToolTip.delay: 400
     ToolTip.text: text
+    // Hairline outline, no fill until the pointer is there; the chosen one is tinted with the accent (not a solid block).
     background: Rectangle {
-        radius: theme.washi ? theme.chipRadius : height / 2
-        color: pb.checked ? theme.accent : pb.down ? theme.surfacePressed : pb.hovered ? theme.surfaceHover : theme.surface
-        border.width: theme.washi && !pb.checked ? 1 : 0
-        border.color: theme.outline
+        radius: theme.washi ? theme.chipRadius : theme.radiusSm
+        color: pb.checked ? Qt.alpha(theme.accent, 0.16) : pb.down ? theme.pressFill : pb.hovered ? theme.hoverFill : "transparent"
+        border.width: 1
+        border.color: pb.checked ? Qt.alpha(theme.accent, 0.45) : theme.washi ? theme.outline : theme.hairline
         Behavior on color { ColorAnimation { duration: 120 } }
     }
     contentItem: Item {
@@ -37,7 +38,7 @@ AbstractButton {
                 id: pbLabel
                 visible: !pb.iconOnly
                 text: pb.text
-                color: pb.checked ? theme.onColor(theme.accent) : theme.text // whichever of white / dark reads on the accent
+                color: pb.checked ? theme.accent : theme.text
                 font.pixelSize: 12
                 font.weight: pb.checked ? Font.DemiBold : Font.Medium
             }
