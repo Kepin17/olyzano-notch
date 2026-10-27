@@ -505,6 +505,9 @@ Window {
     readonly property bool sharingNow: shareSessions > 0
     // {kind, title, detail, progress (0-1, -1 none), color}
     readonly property var live: {
+        if (assistant.state !== "idle") // a voice command: listening, thinking, or what it did
+            return { kind: "assistant", progress: -1, detail: "", color: assistant.state === "error" ? theme.warn : theme.accent,
+                     title: assistant.state === "listening" ? "Listening…" : assistant.state === "thinking" ? (assistant.heard !== "" ? assistant.heard : "Thinking…") : assistant.result }
         if (call)
             return { kind: "call", title: call.who, detail: "Calling", progress: -1, color: theme.success }
         if (wellbeing.state === "break") {
@@ -1377,9 +1380,26 @@ Window {
             }
             LineIcon {
                 visible: !(liveRow.l.kind === "copy" || liveRow.l.kind === "call" || liveRow.l.kind === "share")
-                glyph: liveRow.l.kind === "timer" ? "timer" : liveRow.l.kind === "doomscroll" ? "phone" : liveRow.l.kind === "break" ? "heart" : liveRow.l.kind === "download" ? "download" : "share"
+                glyph: liveRow.l.kind === "assistant" ? (assistant.state === "error" ? "mic-off" : "mic") : liveRow.l.kind === "timer" ? "timer" : liveRow.l.kind === "doomscroll" ? "phone" : liveRow.l.kind === "break" ? "heart" : liveRow.l.kind === "download" ? "download" : "share"
                 sourceSize: Qt.size(14, 14)
                 color: liveRow.l.color
+            }
+            Row { // the voice, while listening
+                visible: liveRow.l.kind === "assistant" && assistant.state === "listening"
+                height: 16
+                spacing: 2
+                Repeater {
+                    model: 4
+                    Rectangle {
+                        required property int index
+                        y: (parent.height - height) / 2
+                        width: 3
+                        radius: 1.5
+                        height: 4 + 12 * Math.min(1, assistant.level * (0.7 + 0.25 * index))
+                        color: liveRow.l.color
+                        Behavior on height { NumberAnimation { duration: 70 } }
+                    }
+                }
             }
             Text {
                 Layout.fillWidth: true
@@ -1858,6 +1878,16 @@ Window {
                             onEntered: (drag) => { drag.accepted = drag.source && drag.source.draggedIds !== undefined }
                             onDropped: (d) => root.removeWithConfirm(d.source.draggedIds)
                         }
+                    }
+                    IconButton {
+                        visible: assistant.available && assistant.enabled && assistant.modelState === "ready" && !root.selecting
+                        iconName: "mic"
+                        checked: assistant.state === "listening" || assistant.state === "thinking"
+                        Accessible.name: "Voice command"
+                        ToolTip.visible: hovered
+                        ToolTip.delay: 500
+                        ToolTip.text: "Say a command: open an app, search, volume, timer…"
+                        onClicked: assistant.start()
                     }
                     IconButton {
                         visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color") && !root.selecting

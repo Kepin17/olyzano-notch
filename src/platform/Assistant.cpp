@@ -262,6 +262,19 @@ QString Assistant::transcribeFile(const QString &wavPath)
     return m_whisper.transcribe(samples, language());
 }
 
+void Assistant::debugShow(const QString &state, qreal level, const QString &heard, const QString &result)
+{
+    m_heard = heard;
+    m_result = result;
+    m_level = level;
+    emit resultChanged();
+    emit levelChanged();
+    m_state.clear();
+    m_idleTimer.stop();
+    setState(state);
+    m_idleTimer.stop(); // for a picture it stays
+}
+
 void Assistant::say(const QString &text)
 {
     if (text.trimmed().isEmpty())
@@ -286,7 +299,7 @@ QString Assistant::describe(const AssistantModel::Intent &in) const
     case K::Search: return tr("search for \"%1\"").arg(in.text);
     case K::Volume: return tr("volume (%1)").arg(in.number);
     case K::Media: return tr("music control");
-    case K::Timer: return tr("a timer for %1").arg(duration(in.number));
+    case K::Timer: return tr("set a timer for %1").arg(duration(in.number));
     case K::Task: return tr("add the task \"%1\"").arg(in.text);
     case K::Note: return tr("save the note \"%1\"").arg(in.text);
     default: return tr("nothing");

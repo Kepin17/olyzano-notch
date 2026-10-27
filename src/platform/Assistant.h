@@ -71,6 +71,7 @@ public:
     Q_INVOKABLE void start();            // listen for one command
     Q_INVOKABLE void cancel();
     Q_INVOKABLE void say(const QString &text); // the same without the microphone (the words typed or given on the command line)
+    void debugShow(const QString &state, qreal level, const QString &heard, const QString &result); // `--shot-page file assistant-...`
     Q_INVOKABLE void downloadModel();    // the one thing that uses the network: asked for, from Settings
     Q_INVOKABLE void cancelDownload();
     Q_INVOKABLE void removeModel();

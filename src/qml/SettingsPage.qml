@@ -34,7 +34,7 @@ RowLayout {
     readonly property var index: [
         ["about", "Updates", "update upgrade new version release check download latest github notify"], ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
         ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Sounds", "sound effects volume quiet mute"],
-        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["general", "Floating pill", "pill floating capsule dynamic island edge look shape"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"], ["appearance", "Glass", "glass glassmorphism translucent transparent blur frosted see-through"],
+        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Voice assistant", "voice assistant commands speech microphone whisper offline say listen"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["general", "Floating pill", "pill floating capsule dynamic island edge look shape"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"], ["appearance", "Glass", "glass glassmorphism translucent transparent blur frosted see-through"],
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
         ["panel", "Transparency and blur", "glass opacity bar"], ["panel", "What the bar shows", "app name date seconds battery percentage"],
         ["panel", "Quick Settings", "wifi bluetooth volume brightness power click hover"],
@@ -297,6 +297,94 @@ RowLayout {
                     caption: "While an app or game that fills the screen (full screen or maximised) is in front, Olyzano Notch and the dock cannot be reached at all (no pointer, no clicks, nothing opens), and sounds and reminders stay quiet. Minimise it or make its window smaller and they work again."
                     checked: gaming.enabled
                     onToggled: gaming.enabled = !gaming.enabled
+                }
+            }
+
+            SettingCard {
+                title: "Voice assistant"
+                visible: assistant.available
+                SettingToggle {
+                    title: "Voice commands"
+                    caption: "Press the microphone in the notch and say a command: open an app, search the web, set the volume, start a timer, add a task or a note, control the music. It works offline: the words are recognised on this computer, and the microphone is on only while it listens."
+                    checked: assistant.enabled
+                    onToggled: assistant.enabled = !assistant.enabled
+                }
+                ColumnLayout {
+                    visible: assistant.enabled
+                    Layout.fillWidth: true
+                    spacing: 8
+                    SectionLabel { text: "Model" }
+                    Row {
+                        spacing: 6
+                        Repeater {
+                            model: [["base", "Base · better"], ["tiny", "Tiny · faster"]]
+                            PillButton {
+                                required property var modelData
+                                text: modelData[1]
+                                checked: assistant.model === modelData[0]
+                                enabled: assistant.modelState !== "downloading"
+                                onClicked: assistant.model = modelData[0]
+                            }
+                        }
+                    }
+                    Row {
+                        spacing: 8
+                        PillButton {
+                            visible: assistant.modelState === "missing"
+                            text: "Download the model (" + assistant.modelSizeText + ")"
+                            iconName: "download"
+                            checked: true
+                            onClicked: assistant.downloadModel()
+                        }
+                        PillButton { visible: assistant.modelState === "downloading"; text: "Cancel"; onClicked: assistant.cancelDownload() }
+                        PillButton { visible: assistant.modelState === "ready"; text: "Remove the model"; iconName: "trash"; onClicked: assistant.removeModel() }
+                    }
+                    Rectangle {
+                        visible: assistant.modelState === "downloading"
+                        Layout.fillWidth: true
+                        height: 4
+                        radius: 2
+                        color: theme.hairline
+                        Rectangle { width: parent.width * assistant.modelProgress; height: parent.height; radius: 2; color: theme.accent }
+                    }
+                    Caption {
+                        Layout.fillWidth: true
+                        color: assistant.modelError !== "" ? theme.danger : theme.textDim
+                        text: assistant.modelError !== "" ? assistant.modelError
+                            : assistant.modelState === "ready" ? "Ready. The model stays on this computer."
+                            : assistant.modelState === "downloading" ? "Downloading… " + Math.round(assistant.modelProgress * 100) + "%"
+                            : "The model is a file downloaded once (from Hugging Face). Nothing else is ever sent."
+                    }
+                    SectionLabel { text: "Language"; Layout.topMargin: 4 }
+                    Row {
+                        spacing: 6
+                        Repeater {
+                            model: [["auto", "Automatic"], ["id", "Indonesia"], ["en", "English"]]
+                            PillButton {
+                                required property var modelData
+                                text: modelData[1]
+                                checked: assistant.language === modelData[0]
+                                onClicked: assistant.language = modelData[0]
+                            }
+                        }
+                    }
+                    SectionLabel { text: "Search with"; Layout.topMargin: 4 }
+                    Row {
+                        spacing: 6
+                        Repeater {
+                            model: [["duckduckgo", "DuckDuckGo"], ["google", "Google"], ["bing", "Bing"], ["youtube", "YouTube"]]
+                            PillButton {
+                                required property var modelData
+                                text: modelData[1]
+                                checked: assistant.searchEngine === modelData[0]
+                                onClicked: assistant.searchEngine = modelData[0]
+                            }
+                        }
+                    }
+                    Caption {
+                        Layout.fillWidth: true
+                        text: "Try: “open Firefox”, “search for cats on YouTube”, “volume 40”, “timer 10 minutes”, “add task buy milk tomorrow 5”, “pause the music”. Nothing that deletes or shuts down is understood."
+                    }
                 }
             }
 
