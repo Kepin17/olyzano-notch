@@ -777,9 +777,16 @@ Window {
         }
     }
     // Glass: the desktop blurs what is behind the island (KWin; nothing where it cannot) while the island is see-through.
+    property bool blurOn: false // the desktop has been asked to blur behind this window
     function updateBlur() {
-        if (!activities.glass || !desktop.canBlur || island.height < 4 || mode === "hidden")
-            return desktop.setBlurRegion(root, Qt.rect(0, 0, 0, 0), 0)
+        if (!activities.glass || !desktop.canBlur || island.height < 4 || mode === "hidden") {
+            if (blurOn) { // only undo what was asked: with Glass off the window is never touched
+                blurOn = false
+                desktop.setBlurRegion(root, Qt.rect(0, 0, 0, 0), 0)
+            }
+            return
+        }
+        blurOn = true
         const k = floating || mode === "idle" ? activities.capsuleScale : 1
         const w = island.width * k, h = island.height * k
         desktop.setBlurRegion(root, Qt.rect(island.x + (island.width - w) / 2, island.y, w, h), island.roundShape ? island.roundRadius : Math.min(24, h / 2))
