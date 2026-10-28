@@ -238,6 +238,23 @@ void DesktopIntegration::setKeyboardInteractive(QWindow *window, bool interactiv
         window->requestActivate();
 }
 
+void DesktopIntegration::grabKeyboard(QWindow *window, bool grab)
+{
+    if (!window)
+        return;
+#ifdef NOTCH_HAVE_LAYERSHELL
+    if (auto *ls = LayerShellQt::Window::get(window)) {
+        // Exclusive: the keys go here at once, without a click first (a shortcut opened the search); back to on-demand afterwards.
+        ls->setKeyboardInteractivity(grab ? LayerShellQt::Window::KeyboardInteractivityExclusive : LayerShellQt::Window::KeyboardInteractivityOnDemand);
+        if (grab)
+            window->requestActivate();
+        return;
+    }
+#endif
+    if (grab)
+        window->requestActivate();
+}
+
 bool DesktopIntegration::canBlur() const
 {
 #ifdef NOTCH_HAVE_KWINDOWSYSTEM

@@ -12,6 +12,34 @@ Rectangle {
     readonly property string state: lyrics.state
     readonly property bool synced: state === "synced"
 
+    // Karaoke lives here: your voice through the speakers or headphones, with the music.
+    RoundButton {
+        id: sing
+        z: 2
+        visible: karaoke.supported
+        anchors { top: parent.top; right: parent.right; margins: 8 }
+        implicitWidth: 28
+        implicitHeight: 28
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
+        Accessible.name: karaoke.active ? "Stop karaoke" : "Karaoke: sing along"
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
+        ToolTip.text: karaoke.active ? "Stop karaoke" : "Karaoke: your voice plays with the music"
+        onClicked: karaoke.toggle()
+        background: Rectangle {
+            radius: width / 2
+            color: karaoke.active ? Qt.alpha(theme.accent, 0.3) : sing.down ? Qt.rgba(1, 1, 1, 0.22) : sing.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+        }
+        contentItem: Item {
+            LineIcon {
+                anchors.centerIn: parent
+                glyph: "mic"
+                sourceSize: Qt.size(15, 15)
+                color: karaoke.active ? theme.accent : theme.textDim
+            }
+        }
+    }
+
     // Lines with timing: the current one kept in the middle.
     ListView {
         id: view

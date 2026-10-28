@@ -65,11 +65,13 @@ Window {
     readonly property bool pillLook: activities.capsuleLook === "pill" && !geoWidget
     // How big the island is drawn: the capsule by its size setting, the open panel by "Interface size" (and never wider than the
     // screen when enlarged).
+    // The spring damping, as the Bounce setting wants it (Settings -> Appearance): Off lifts every spring to no overshoot.
+    function damp(base) { return activities.damp(base, activities.bounceFactor) }
     readonly property real uiK: activities.uiScale > 1 ? Math.min(activities.uiScale, Math.max(1, (width - 20) / Math.max(1, panelWidth))) : activities.uiScale
     readonly property real islandK: mode === "idle" || floating ? activities.capsuleScale : mode === "open" ? uiK : 1
     property bool dragging: false
     property string dragMask: ""
-    readonly property bool docked: !widgetMode || mode === "prompt" || mode === "hidden"
+    readonly property bool docked: !widgetMode || mode === "prompt" || mode === "search" || mode === "hidden"
     readonly property bool floating: !docked && mode !== "open"
     readonly property string screenName: root.screen ? root.screen.name : ""
     function loadWidgetPos() {
@@ -164,6 +166,44 @@ Window {
     }
     property bool open: false
     property bool dwelled: false
+    // Search from the notch (Shift + Space): the island turns into a search field with the matching apps under it.
+    property bool searchOpen: false
+    property bool searchFocused: false // the window has had the keys since the search opened
+    function openSearch() {
+        if (gaming.active)
+            return
+        open = false
+        searchFocused = false
+        searchOpen = true
+        desktop.grabKeyboard(root, true) // exclusive for a moment, so the keys arrive without a click first
+        searchGuard.restart()
+        searchSettle.restart() // the window may already be "active": no change will tell us, so look again in a moment
+    }
+    function closeSearch() {
+        searchGuard.stop()
+        searchOpen = false
+        desktop.grabKeyboard(root, false)
+        island.forceActiveFocus()
+    }
+    function debugSearch(text) { openSearch(); searchPanel.setQuery(text) } // `notch --shot-search fire`
+    // Once the window has the keys it lets the exclusivity go: a click on another window then takes them, and that closes the search.
+    onActiveChanged: {
+        dbg("window active=" + active + " searchOpen=" + searchOpen)
+        if (!searchOpen)
+            return
+        if (active) {
+            searchFocused = true
+            desktop.grabKeyboard(root, false)
+        } else if (searchFocused) {
+            closeSearch()
+        }
+    }
+    Timer {
+        id: searchSettle
+        interval: 350
+        onTriggered: if (root.searchOpen && root.active) { root.searchFocused = true; desktop.grabKeyboard(root, false) }
+    }
+    Timer { id: searchGuard; interval: 4000; onTriggered: if (root.searchOpen && !root.searchFocused) root.closeSearch() } // never got the keys: do not hang there
     property string page: "shelf" // shelf | preview | settings | note
     // Quick note being written/edited. The draft survives closing Notch until it is saved.
     property string noteId: ""       // empty = new note
@@ -211,7 +251,7 @@ Window {
             dbg("dragframe " + (lastFrame > 0 ? now - lastFrame : 0))
         lastFrame = now
     }
-    readonly property bool engaged: !gaming.active && (pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt" && !floating)
+    readonly property bool engaged: !gaming.active && (pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt" && mode !== "search" && !floating)
                                     || dragOver || anyMenu || (dragging && mode === "open")
                                     || saveDialog.visible || addDialog.visible)
     // hidden: only the top-edge strip is live. peek: copy in progress. open: full panel.
@@ -325,7 +365,7 @@ Window {
         NumberAnimation { target: root; property: "toastRoll"; to: 0; duration: 260; easing.type: Easing.OutCubic }
     }
     // prompt: the stretch reminder asking. idle: the small clock pill when nothing else is going on.
-    readonly property string mode: wellbeing.state === "reminding" || doomscroll.reminding ? "prompt" : open ? "open" : toast && !gaming.active ? "toast"
+    readonly property string mode: wellbeing.state === "reminding" || doomscroll.reminding ? "prompt" : searchOpen ? "search" : open ? "open" : toast && !gaming.active ? "toast"
                                  : live ? "peek" : idleShown ? "idle" : "hidden"
 
     // ---- Doomscrolling: quiet in a game or on a call ----
@@ -1090,11 +1130,11 @@ Window {
         x: root.geoWidget ? Math.max(width * scale / 2, Math.min(root.width - width * scale / 2 - 2, root.widgetCx - root.winRect.x)) - width / 2 : (root.width - width) / 2
         y: root.geoWidget ? Math.max(0, Math.min(root.height - height * scale - 2, root.widgetY - root.winRect.y)) : 0
         // Where the island is heading; width and height follow it with the springs below.
-        readonly property real targetWidth: root.mode === "open" ? root.panelWidth : root.mode === "prompt" ? 440 : root.mode === "toast" ? 400
+        readonly property real targetWidth: root.mode === "open" ? root.panelWidth : root.mode === "search" ? 560 : root.mode === "prompt" ? 440 : root.mode === "toast" ? 400
              : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
              : root.mode === "idle" ? (root.musicShown ? root.capWidth : root.infoShown ? 390 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         readonly property real targetHeight: root.mode === "open" ? Math.max(panel.implicitHeight + (root.dragOver ? 8 : 0), root.shareNeed)
-              : root.mode === "prompt" ? 92 : root.mode === "toast" ? 56 : root.mode === "peek" ? 36 : root.mode === "idle" ? (root.musicShown ? 48 : 26) : 0
+              : root.mode === "search" ? searchPanel.wantedHeight : root.mode === "prompt" ? 92 : root.mode === "toast" ? 56 : root.mode === "peek" ? 36 : root.mode === "idle" ? 48 : 0
         width: targetWidth
         height: targetHeight
         focus: true
@@ -1112,13 +1152,44 @@ Window {
         readonly property real progress: Math.max(0, Math.min(1, Math.min(targetWidth > 0 ? width / targetWidth : 1,
                                                                           targetHeight > 0 ? height / targetHeight : 1)))
         property bool revealed: false
-        Component.onCompleted: revealed = root.mode === "open"
+        Component.onCompleted: { revealed = root.mode === "open"; curMode = root.mode }
         readonly property real revealAt: 0.7 // share of the target size at which the content appears
         onProgressChanged: if (root.mode === "open" && progress >= revealAt) revealed = true
         onRevealedChanged: root.dbg("revealed=" + revealed) // --debug-hover: pointer arrives -> content shown, for timing the opening
         Connections {
             target: root
-            function onModeChanged() { island.revealed = root.mode === "open" && island.progress >= island.revealAt }
+            function onModeChanged() {
+                island.revealed = root.mode === "open" && island.progress >= island.revealAt
+                island.prevMode = island.curMode // the layer that is going away, and where the island was when it began
+                island.curMode = root.mode
+                island.fromW = island.width
+                island.fromH = island.height
+                island.transitioning = true
+                transitionEnd.restart()
+            }
+        }
+        // Content and background move together: while the island changes from one mode to another, the layer that is leaving fades out as
+        // the background starts to move and the one that arrives fades in as it gets there, both following the background's own size
+        // (not a timer), so no item is ever seen before or after the shape it belongs to.
+        property string curMode: ""
+        property string prevMode: ""
+        property real fromW: 0
+        property real fromH: 0
+        property bool transitioning: false
+        Timer { id: transitionEnd; interval: 900; onTriggered: island.transitioning = false }
+        // How much of the way from the old size to the new one the background has gone, 0..1.
+        readonly property real covered: {
+            const dh = targetHeight - fromH, dw = targetWidth - fromW
+            const ch = Math.abs(dh) < 2 ? 1 : (height - fromH) / dh
+            const cw = Math.abs(dw) < 2 ? 1 : (width - fromW) / dw
+            return Math.max(0, Math.min(1, Math.min(ch, cw))) // both axes there, so content never shows outside the shape
+        }
+        function fade(mode) {
+            if (!transitioning)
+                return root.mode === mode ? 1 : 0
+            if (root.mode === mode)
+                return Math.max(0, Math.min(1, (covered - 0.4) / 0.4))
+            return prevMode === mode ? Math.max(0, 1 - covered * 2.4) : 0
         }
 
         // Height is stiffer than width: the drop falls first, then spreads and settles. The same on every platform (an extra
@@ -1126,8 +1197,8 @@ Window {
         // --debug-hover on Windows, pointer arriving -> content shown: 424 ms with width spring 3.4 and reveal at 85 %, 324 ms
         // with 4.8 and 70 % (160 ms of it is the dwell on the hidden edge). epsilon 0.4 ends the tail of the animation earlier
         // (invisible at that size).
-        Behavior on height { enabled: activities.animations; SpringAnimation { spring: island.closing ? 7 : 5.5; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : root.pillLook ? 0.6 : 0.32; epsilon: 0.4 } }
-        Behavior on width { enabled: activities.animations; SpringAnimation { spring: island.closing ? 6 : 4.8; damping: island.closing ? 0.9 : root.mode === "idle" ? 0.8 : root.pillLook ? 0.6 : 0.3; epsilon: 0.4 } }
+        Behavior on height { enabled: activities.animations; SpringAnimation { spring: island.closing ? 7 : 5.5; damping: root.damp(island.closing ? 0.9 : root.mode === "idle" ? 0.8 : root.pillLook ? 0.6 : 0.32); epsilon: 0.4 } }
+        Behavior on width { enabled: activities.animations; SpringAnimation { spring: island.closing ? 6 : 4.8; damping: root.damp(island.closing ? 0.9 : root.mode === "idle" ? 0.8 : root.pillLook ? 0.6 : 0.3); epsilon: 0.4 } }
         onTargetWidthChanged: root.maskMoving()
         onTargetHeightChanged: root.maskMoving()
         Connections { target: activities; function onSettingsChanged() { root.maskMoving() } }
@@ -1264,9 +1335,8 @@ Window {
         Item {
             id: toastRow
             anchors.fill: parent
-            opacity: root.mode === "toast" && island.height > 30 ? 1 : 0
+            opacity: island.fade("toast")
             visible: opacity > 0
-            Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 180 } }
             readonly property var t: root.shownToast || ({ kind: "", title: "", detail: "", icon: "", art: "", level: -1 })
             readonly property bool isPower: t.kind === "charging" || t.kind === "battery"
                                             || (t.kind === "lowbattery" && t.icon === "battery-low")
@@ -1446,9 +1516,8 @@ Window {
             anchors.rightMargin: island.shoulder + 16
             anchors.bottomMargin: liveRow.l.progress >= 0 ? 4 : 0
             spacing: 8
-            opacity: root.mode === "peek" && island.height > 24 ? 1 : 0
+            opacity: island.fade("peek")
             visible: opacity > 0
-            Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 160 } }
             PulseDot {
                 visible: liveRow.l.kind === "copy" || liveRow.l.kind === "call"
                 color: liveRow.l.color
@@ -1528,9 +1597,9 @@ Window {
             anchors.leftMargin: island.shoulder + 14
             anchors.rightMargin: island.shoulder + 14
             spacing: 8
-            opacity: root.mode === "idle" && !root.musicShown && island.height > 20 ? 1 : 0
+            opacity: root.musicShown ? 0 : island.fade("idle")
             visible: opacity > 0
-            Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 160 } }
+            Behavior on opacity { enabled: activities.animations && !island.transitioning; NumberAnimation { duration: 140 } }
             Text {
                 text: Qt.formatTime(root.idleNow, Qt.locale().timeFormat(Locale.ShortFormat))
                 color: root.textPrimary
@@ -1605,9 +1674,9 @@ Window {
             anchors.topMargin: 3
             anchors.bottomMargin: 9 // the progress line runs below
             spacing: 10
-            opacity: root.mode === "idle" && root.musicShown && island.height > 20 ? 1 : 0
+            opacity: root.musicShown ? island.fade("idle") : 0
             visible: opacity > 0
-            Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 160 } }
+            Behavior on opacity { enabled: activities.animations && !island.transitioning; NumberAnimation { duration: 140 } }
             CoverArt {
                 Layout.preferredWidth: 30
                 Layout.preferredHeight: 30
@@ -1697,6 +1766,25 @@ Window {
             }
         }
 
+        // Search: Shift + Space. Apps matching what is typed, under the field; Enter opens one.
+        Item { // the panel keeps its full size; the island's growing edge uncovers it, so rows and background arrive together
+            anchors.fill: parent
+            anchors.leftMargin: island.shoulder + 16
+            anchors.rightMargin: island.shoulder + 16
+            anchors.topMargin: 12
+            anchors.bottomMargin: 12
+            clip: true
+            opacity: island.fade("search")
+            visible: opacity > 0
+            SearchPanel {
+                id: searchPanel
+                width: parent.width
+                height: searchPanel.wantedHeight - 24
+                active: root.searchOpen
+                onCloseRequested: root.closeSearch()
+            }
+        }
+
         // Prompt: the stretch reminder. The person chooses; nothing happens until they do (or a minute passes = later).
         ColumnLayout {
             anchors.fill: parent
@@ -1705,9 +1793,8 @@ Window {
             anchors.topMargin: 10
             anchors.bottomMargin: 12
             spacing: 8
-            opacity: root.mode === "prompt" && island.height > 70 ? 1 : 0
+            opacity: island.fade("prompt")
             visible: opacity > 0
-            Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 180 } }
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
@@ -1750,9 +1837,8 @@ Window {
             width: Math.max(0, island.width - 2 * island.shoulder)
             height: Math.max(0, island.height)
             clip: true
-            opacity: root.mode === "open" && island.revealed ? 1 : 0
+            opacity: island.fade("open")
             visible: opacity > 0
-            Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: root.mode === "open" ? 140 : 90; easing.type: Easing.OutCubic } }
 
             ColumnLayout {
                 id: panel
@@ -1790,7 +1876,7 @@ Window {
                         text: root.selecting ? root.selection.length + " selected"
                             : root.page === "settings" ? "Settings" : root.page === "preview" ? root.preview.name
                             : root.page === "note" ? (root.noteId !== "" ? "Edit note" : "New note")
-                            : root.page === "timer" ? "Timer" : root.page === "tasks" ? "Tasks" : root.page === "music" ? "Now playing" : root.page === "color" ? "Color picker" : root.page === "clipboard" ? "Clipboard" : "Olyzano Notch"
+                            : root.page === "timer" ? "Timer" : root.page === "tasks" ? "Tasks" : root.page === "music" ? "Now playing" : root.page === "color" ? "Color picker" : root.page === "clipboard" ? "Clipboard" : root.page === "camera" ? "Camera" : "Olyzano Notch"
                         color: root.textPrimary
                         font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
                         font.pixelSize: 15
@@ -1971,7 +2057,7 @@ Window {
                         onClicked: assistant.start()
                     }
                     IconButton {
-                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard") && !root.selecting
+                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "camera") && !root.selecting
                         iconName: "gamepad"
                         checked: gaming.enabled
                         Accessible.name: gaming.enabled ? "Gaming mode is on: turn it off" : "Gaming mode: keep away from full-screen games"
@@ -1982,7 +2068,7 @@ Window {
                         }
                     }
                     IconButton {
-                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard") && !root.selecting
+                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "camera") && !root.selecting
                         iconName: "gear"
                         Accessible.name: "Settings"
                         onClicked: root.page = "settings"
@@ -1999,7 +2085,7 @@ Window {
                 // What to look at: one section at a time. Dropping files is an action too (Add).
                 ActionBar {
                     id: actionBar
-                    visible: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard")
+                    visible: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "camera")
                     Layout.fillWidth: true
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
@@ -2012,8 +2098,6 @@ Window {
                     colorAvailable: colorPicker.supported || notch.recentColors.length > 0
                     onAddFiles: addDialog.open()
                     onNewNote: root.newNote()
-                    lyricsOn: lyrics.enabled
-                    onToggleLyrics: lyrics.enabled = !lyrics.enabled // on by default; the button is the only switch
                     onOpenShares: {
                         const s = root.sharePopup()
                         if (s.visible && s.view === "sessions")
@@ -2210,6 +2294,11 @@ Window {
 
                 // ---- Clipboard: what was copied lately ----
                 ClipboardPage {
+                    shell: root
+                }
+
+                // ---- Camera: a mirror, and a photo booth ----
+                CameraPage {
                     shell: root
                 }
 
@@ -2820,7 +2909,7 @@ Window {
         border.color: theme.outline
         scale: visible ? 1 : 0.92
         opacity: visible ? 1 : 0
-        Behavior on scale { enabled: activities.animations; SpringAnimation { spring: 5; damping: 0.4 } }
+        Behavior on scale { enabled: activities.animations; SpringAnimation { spring: 5; damping: root.damp(0.4) } }
         Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 120 } }
 
         ColumnLayout {

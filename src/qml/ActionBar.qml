@@ -13,11 +13,9 @@ RowLayout {
     signal pick(string target)
     signal addFiles()
     signal newNote()
-    property bool lyricsOn: false
     property bool colorAvailable: false
     property int tasksBadge: 0 // overdue tasks
     signal openShares()
-    signal toggleLyrics()
     spacing: 6
     // With Music, Color and Sharing all there, the words of Note and Add no longer fit the panel: they shrink to icons.
     readonly property bool tight: (musicAvailable ? 1 : 0) + (colorAvailable ? 1 : 0) + (shareAvailable ? 1 : 0) >= 2
@@ -33,7 +31,8 @@ RowLayout {
             { id: "timer", label: "Timer", icon: "timer", badge: 0, on: true },
             { id: "tasks", label: "Tasks", icon: "check", badge: bar.tasksBadge, on: true },
             { id: "color", label: "Color", icon: "palette", badge: 0, on: bar.colorAvailable },
-            { id: "clipboard", label: "Clipboard", icon: "copy", badge: 0, on: true }
+            { id: "clipboard", label: "Clipboard", icon: "copy", badge: 0, on: true },
+            { id: "camera", label: "Camera", icon: "camera", badge: 0, on: true }
         ].filter(p => p.on)
         readonly property int current: { for (let i = 0; i < pages.length; ++i) if (pages[i].id === bar.page) return i; return -1 }
         readonly property Item cur: current >= 0 ? segs.itemAt(current) : null
@@ -152,7 +151,6 @@ RowLayout {
     }
     PillButton { visible: bar.shareAvailable; text: bar.shareBusy ? "Sharing" : "Share"; iconName: "share"; checked: bar.shareBusy; onClicked: bar.openShares() }
     Item { Layout.fillWidth: true; Layout.preferredWidth: 0 }
-    PillButton { visible: bar.page === "music"; text: "Lyrics"; checked: bar.lyricsOn; onClicked: bar.toggleLyrics() }
     PillButton { visible: bar.page === "shelf"; text: "Note"; iconName: "pen"; iconOnly: bar.tight; onClicked: bar.newNote() }
     PillButton { visible: bar.page === "shelf"; text: "Add"; iconName: "plus"; iconOnly: bar.tight; onClicked: bar.addFiles() } // adding files belongs to Files
 }

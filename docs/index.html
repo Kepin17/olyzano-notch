@@ -27,7 +27,7 @@ nav ul a{color:var(--dim);text-decoration:none}
 nav ul a:hover{color:var(--ink)}
 nav ul svg{display:none}
 /* a phone: the links are a bar at the bottom, like the menu of a mobile app; the name stays on top */
-@media (max-width:720px){
+@media (max-width:720px){      
   nav{border-bottom:0}
   nav .wrap{height:52px}
   nav ul{position:fixed;left:0;right:0;bottom:0;z-index:50;justify-content:space-around;gap:0;padding:6px 8px calc(6px + env(safe-area-inset-bottom));background:color-mix(in srgb,var(--bg) 88%,transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid var(--line);font-size:.68rem}
@@ -521,6 +521,19 @@ details ul{margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:.92rem}
 @keyframes rnfill{from{width:0}}
 @keyframes rnbolt{50%{transform:scale(1.25)}}
 /* prompt: margins shoulder+16, top 10, bottom 12, spacing 8 */
+:is(#demo,.rnx) .rn .rn-srch{position:absolute;left:calc(var(--s) + 16px);right:calc(var(--s) + 16px);top:12px;bottom:12px;display:flex;flex-direction:column}
+:is(#demo,.rnx) .rn .rn-sf{display:flex;align-items:center;gap:12px;height:46px;font-size:22px;font-weight:300;color:var(--i-text);border-bottom:1px solid var(--i-hov);flex:none}
+:is(#demo,.rnx) .rn .rn-sf .ph{color:var(--i-ph)}
+:is(#demo,.rnx) .rn .rn-sf .cur{display:inline-block;width:1.5px;height:24px;margin-left:1px;background:var(--i-text);vertical-align:middle}
+:is(#demo,.rnx) .rn .rn-sh{margin-top:8px;height:20px;font-size:10px;letter-spacing:1px;font-weight:650;color:var(--i-ph)}
+:is(#demo,.rnx) .rn .rn-sr{display:flex;align-items:center;gap:12px;height:46px;padding:0 12px 0 10px;border-radius:12px;flex:none}
+:is(#demo,.rnx) .rn .rn-sr.on{background:var(--i-accSoft)}
+:is(#demo,.rnx) .rn .rn-sr i{width:30px;height:30px;border-radius:8px;flex:none}
+:is(#demo,.rnx) .rn .rn-sr b{flex:1;font-size:15px;font-weight:500;color:var(--i-text)}
+:is(#demo,.rnx) .rn .rn-sr.on b{font-weight:650}
+:is(#demo,.rnx) .rn .rn-sr span{font-size:11px;color:var(--i-dim)}
+:is(#demo,.rnx) .rn .rn-sr em{font-style:normal;font-size:10px;color:var(--i-ph)}
+:is(#demo,.rnx) .rn .rn-sr.on em{font-size:16px;color:var(--i-acc)}
 :is(#demo,.rnx) .rn .rn-prompt{position:absolute;left:calc(var(--s) + 16px);right:calc(var(--s) + 16px);top:10px;bottom:12px;display:flex;flex-direction:column;justify-content:space-around;gap:8px}
 :is(#demo,.rnx) .rn .rn-pr1{display:flex;gap:10px;align-items:center}
 :is(#demo,.rnx) .rn .rn-col{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
@@ -673,6 +686,9 @@ details ul{margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:.92rem}
 :is(#demo,.rnx) .rn .rn-lyr:after{bottom:0;background:linear-gradient(transparent,var(--i-card))}
 :is(#demo,.rnx) .rn .rn-mic{width:40px;height:40px;border-radius:20px;display:grid;place-items:center;transition:background .15s}
 :is(#demo,.rnx) .rn .rn-mic.on{background:var(--i-accSoft)}
+:is(#demo,.rnx) .rn .rn-sing{position:absolute;z-index:2;top:8px;right:8px;width:28px;height:28px;border-radius:14px;display:grid;place-items:center;transition:background .15s}
+:is(#demo,.rnx) .rn .rn-sing.on{background:var(--i-accSoft)}
+:is(#demo,.rnx) .rn .rn-sing.hov{background:var(--i-hov)}
 :is(#demo,.rnx) .rn .rn-karo{font-size:11px;color:var(--i-dim);line-height:1.3}
 :is(#demo,.rnx) .rn .rn-cp{display:flex;flex-direction:column;gap:12px;padding:0 12px 8px}
 :is(#demo,.rnx) .rn .rn-sw{display:flex;flex-wrap:wrap;gap:10px}
@@ -911,6 +927,13 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       <h3>A shelf for files in transit</h3><p>Drop files, folders, images, links and text on the notch. Preview them, sort them into categories, drag them back out, and let old ones expire on their own. With many files the shelf grows into rows and scrolls.</p></article>
     <article class="bc w4"><span class="tag">New</span><div class="mini" data-mini="tasks"></div>
       <h3>Tasks with a calendar</h3><p>A month with a dot on every day that has something to do, and what is next beside it. Tap a day to see just that day; <b>New</b> opens a small window. A line of words like &ldquo;Buy milk fri 17:00&rdquo; still works, and the nearest deadline shows in the capsule.</p></article>
+    <article class="bc"><span class="tag">New</span><div class="viz dk" style="padding:16px;display:flex;flex-direction:column;gap:9px;justify-content:center;font-size:12px;color:#cfd3da">
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="padding:5px 11px;border-radius:13px;background:#3daee9;color:#111;font-weight:650">Mirror</span><span style="padding:5px 11px;border-radius:13px;background:#1c1c1e">Photo booth</span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Single</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e;box-shadow:inset 0 0 0 1px #3daee9;color:#3daee9">Strip of 4</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Polaroid</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Frame</span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Normal</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Black &amp; white</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Warm</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Vivid</span></div></div>
+      <h3>A mirror and a photo booth</h3><p>See yourself before a call, or take a picture with a 3-2-1 countdown: single, a strip of four, a polaroid or a framed one, with a filter. It lands on the shelf; share it to your phone with a QR code. The camera is on only while the page is open.</p></article>
+    <article class="bc"><span class="tag">New</span><div class="mini" data-mini="search"></div>
+      <h3>Search apps from the notch</h3><p>Press Shift + Space, type a few letters, and the matches drop down from the notch. Enter opens one. Ranked by what you use; nothing leaves the computer.</p></article>
     <article class="bc"><span class="tag">New</span><div class="mini" data-mini="clip"></div>
       <h3>Clipboard history</h3><p>Turn it on and the text and pictures you copy are kept on this computer, newest first. Click to copy again, pin, or keep one in Files. Off by default; things marked secret are skipped.</p></article>
     <article class="bc"><span class="tag">New</span><div class="mini" data-mini="launcher"></div>
@@ -1046,6 +1069,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
     ICONS.gamepad = ["<path d=\"M7 7h10a4 4 0 0 1 3.9 3.1l1 4.6a2.6 2.6 0 0 1-4.4 2.3L15.8 15H8.2l-2.7 2a2.6 2.6 0 0 1-4.4-2.3l1-4.6A4 4 0 0 1 7 7z\"/><path d=\"M8 9.5v3M6.5 11h3\"/><circle cx=\"15.5\" cy=\"10\" r=\".6\"/><circle cx=\"17.5\" cy=\"12\" r=\".6\"/>", "1.5", true];
     ICONS.folder = ["<path d=\"M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z\"/>", "1.5", true];
     ICONS.music = ["<path d=\"M9 17.5V5.5l10-2v12\"/><circle cx=\"6.5\" cy=\"17.5\" r=\"2.5\"/><circle cx=\"16.5\" cy=\"15.5\" r=\"2.5\"/>", "1.5", true];
+    ICONS.lyrics = ["<path d=\"M5 4.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-6.5L8 20v-3.5H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z\"/><path d=\"M7.5 9h9M7.5 12h5.5\"/>", "1.5", true];
     ICONS.check = ["<path d=\"M5 12.5l4.5 4.5L19 7\"/>", "1.8", true];
     ICONS.copy = ["<rect x=\"9\" y=\"9\" width=\"11\" height=\"11\" rx=\"2.5\"/><path d=\"M15 9V6.5A2.5 2.5 0 0 0 12.5 4h-6A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15H9\"/>", "1.6", true];
     ICONS.pin = ["<path d=\"M9 3.5h6l-1 5.5 3 3v1.5H7V12l3-3z\"/><path d=\"M12 13.5V20\"/>", "1.6", true];
@@ -1069,6 +1093,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       switch (st.mode) {
         case "open": return [st.page === "music" && st.lyrics ? 780 : st.page === "tasks" ? 620 : 560, null];
         case "prompt": return [440, 92];
+        case "search": return [560, searchHeight(st)];
         case "toast": return [380, 46];
         case "peek": return [st.kind !== "copy" ? 320 : 230, 36];
         case "idle": return st.song ? [songWidth(st), 38] : [230, 26];
@@ -1167,7 +1192,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
         (pg === "shelf" ? '<span class="rn-search">Search</span>' : "") +
         ibtn("gamepad", { id: "rnGame", checked: !!st.gaming }) + ibtn("gear") + pill(st.pinned === false ? "Pin" : "Pinned", { checked: st.pinned !== false }) + "</div>";
     }
-    // ActionBar.qml: one section at a time; Add and Note belong to Files, Lyrics to Music.
+    // ActionBar.qml: one section at a time; Add and Note belong to Files.
     function actionBar(st) {
       var pg = st.page || "shelf";
       function it(id, page, name, ic, badge) {
@@ -1179,13 +1204,13 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
         it("rnTabClip", "clipboard", "Clipboard", "copy") + "</span>" +
         (st.share ? pill("Share", { icon: "share" }) : "") + '<span class="rn-fill"></span>' +
         (pg === "shelf" ? pill("Note", { icon: "pen" }) + pill("Add", { icon: "plus", id: "rnAdd" }) : "") +
-        (pg === "music" ? pill("Lyrics", { checked: !!st.lyrics, id: "rnLyrics" }) : "") + "</div>";
+        "</div>";
     }
     function tri(back) {
       var p = '<path d="M0 0L12 7L0 14Z" fill="' + T.text + '"/>';
       return '<svg width="22" height="14" viewBox="0 0 22 14"' + (back ? ' style="transform:scaleX(-1)"' : "") + "><g>" + p + '</g><g transform="translate(10 0)">' + p + "</g></svg>";
     }
-    function mediaHTML(m) {
+    function mediaHTML(m, lyr) {
       var pos = m.pos || 2481000, len = 7200000;
       function fmt(ms) { var s = Math.floor(ms / 1000), h = Math.floor(s / 3600), mm = Math.floor(s / 60) % 60, ss = s % 60; return (h ? h + ":" + (mm < 10 ? "0" : "") : "") + mm + ":" + (ss < 10 ? "0" : "") + ss; }
       return '<div class="rn-media"><div class="rn-m1"><span class="rn-cover" style="background-image:url(' + (m.cover || "") + ')"></span><span class="rn-col">' +
@@ -1193,7 +1218,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
         (m.playing ? eq(5, 3, 20, T.media) : "") + '</div><div class="rn-m2"><span>' + fmt(pos) + '</span><span class="rn-seek"><i style="width:' + (pos / len * 100) + '%"></i></span><span>-' +
         fmt(len - pos) + '</span></div><div class="rn-m3"><span class="rn-raise">↗</span><span class="rn-fill"></span><span class="rn-skip">' + tri(true) + '</span><span class="rn-play" id="rnPlay">' +
         (m.playing ? "<i></i><i></i>" : '<svg width="20" height="22" viewBox="0 0 20 22"><path d="M2 1l17 10L2 21z" fill="' + T.text + '"/></svg>') +
-        '</span><span class="rn-skip">' + tri(false) + '</span><span class="rn-fill"></span><span class="rn-mic' + (m.karaoke ? " on" : "") + '" id="rnMic">' + icon("mic", 18, m.karaoke ? T.accent : T.textDim) + '</span></div>' +
+        '</span><span class="rn-skip">' + tri(false) + '</span><span class="rn-fill"></span><span class="rn-mic' + (lyr ? " on" : "") + '" id="rnMic">' + icon("lyrics", 18, lyr ? T.accent : T.textDim) + '</span></div>' +
         (m.karaoke ? '<div class="rn-karo">Your voice plays with the music. Use headphones, or a speaker will echo.</div>' : "") + "</div>";
     }
     // The words for the right half of the Music page (LyricsPanel.qml): the current line big, the list follows the song.
@@ -1201,12 +1226,12 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       "Sunset drive, sunset drive", "Take me somewhere slow tonight", "Where the radio fades to blue"];
     function lyricsHTML(st) {
       var idx = st.lyricIdx == null ? 0 : st.lyricIdx;
-      return '<div class="rn-lyr"><div class="rn-ly" style="transform:translateY(' + (107 - (idx * 36 + 18)) + 'px)">' + LYRICS.map(function (l, i) {
+      return '<div class="rn-lyr"><span class="rn-sing' + (st.media && st.media.karaoke ? " on" : "") + '" id="rnSing">' + icon("mic", 15, st.media && st.media.karaoke ? T.accent : T.textDim) + '</span><div class="rn-ly" style="transform:translateY(' + (107 - (idx * 36 + 18)) + 'px)">' + LYRICS.map(function (l, i) {
         return '<p class="' + (i === idx ? "cur" : "") + '" style="opacity:' + (i === idx ? 1 : Math.max(0.25, 0.65 - Math.abs(i - idx) * 0.15)) + '">' + esc(l) + "</p>";
       }).join("") + "</div></div>";
     }
     function musicBody(st) {
-      return '<div class="rn-mrow">' + mediaHTML(st.media) + (st.lyrics ? lyricsHTML(st) : "") + "</div>";
+      return '<div class="rn-mrow">' + mediaHTML(st.media, st.lyrics) + (st.lyrics ? lyricsHTML(st) : "") + "</div>";
     }
     // Picked colours: a button to pick from the screen, and the ones picked before (ColorPage in Main.qml).
     function colorBody(st) {
@@ -1287,6 +1312,21 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       }).join("");
       return '<div class="rn-cb"><div class="rn-r" style="gap:8px"><span class="rn-in" style="flex:1">Search what you copied</span><span class="rn-sub" style="flex:none">' + (st.clips || []).length + "</span>" + pill("Clear", { icon: "trash" }) + "</div>" + rows + "</div>";
     }
+    // Search from the notch (SearchPanel.qml): the field, and the apps that match under it.
+    var SEARCH_APPS = [["Firefox", "#e8683a", "Internet"], ["Files", "#3a7de8", "Utilities"], ["Kate", "#5ac36a", "Development"], ["Konsole", "#6a7280", "System"],
+      ["Okular", "#e8b43a", "Office"], ["Spectacle", "#a45be0", "Graphics"], ["LibreOffice Writer", "#3b82f6", "Office"], ["Calculator", "#14b8a6", "Utilities"]];
+    function searchRows(q) {
+      var l = q.toLowerCase();
+      return q === "" ? SEARCH_APPS.slice(0, 5) : SEARCH_APPS.filter(function (a) { return a[0].toLowerCase().indexOf(l) >= 0; }).slice(0, 6);
+    }
+    function searchHeight(st) { var r = searchRows(st.q || "").length, q = st.q || ""; return 12 + 46 + (r > 0 ? 8 + (q === "" ? 20 : 0) + r * 46 : q ? 52 : 0) + 12; }
+    function searchHTML(st) {
+      var q = st.q || "", rows = searchRows(q);
+      return '<div class="rn-srch"><div class="rn-sf">' + icon("search", 22, T.textDim) + (q ? "<span>" + esc(q) + '<i class="cur"></i></span>' : '<span class="ph">Search apps</span>') + "</div>" +
+        (q === "" && rows.length ? '<div class="rn-sh">RECENT</div>' : "") +
+        rows.map(function (a, i) { return '<div class="rn-sr' + (i === 0 ? " on" : "") + '" id="srRow' + i + '"><i style="background:' + a[1] + '"></i><b>' + esc(a[0]) + "</b><span>" + a[2] + "</span><em>" + (i === 0 ? "↵" : "Ctrl+" + (i + 1)) + "</em></div>"; }).join("") +
+        (q && !rows.length ? '<div class="rn-sh" style="font-size:14px;letter-spacing:0;font-weight:400;color:' + T.textDim + ';height:44px;line-height:44px">No app called “' + esc(q) + "”</div>" : "") + "</div>";
+    }
     function openHTML(st) {
       var pg = st.page || "shelf";
       return '<div class="rn-panel">' + header(st) + (st.selected ? "" : actionBar(st)) +
@@ -1315,6 +1355,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
         if (st.mode === "peek") set("peek", peekHTML(st));
         if (st.mode === "toast") { set("toast", toastHTML(st)); toastColor = st.color || T.success; }
         if (st.mode === "prompt") set("prompt", promptHTML(st));
+        if (st.mode === "search") set("prompt", searchHTML(st));
         if (st.mode === "open") set("open", openHTML(st));
         var t = target(st);
         tw = t[0];
@@ -1328,7 +1369,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
         L.toast.classList.toggle("on", m === "toast" && h > 30);
         L.peek.classList.toggle("on", m === "peek" && h > 24);
         L.idle.classList.toggle("on", m === "idle" && h > 20);
-        L.prompt.classList.toggle("on", m === "prompt" && h > 70);
+        L.prompt.classList.toggle("on", (m === "prompt" && h > 70) || (m === "search" && h > 50));
         L.open.classList.toggle("on", m === "open");
       }
       function draw() {
@@ -1584,7 +1625,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
   };
   function f(k, extra) { return Object.assign({}, F[k], extra || {}); }
   var CATS = [["Documents", 2], ["Images", 1], ["Screenshots", 0, "camera"]];
-  function N(st) { notch.to(st); nh = st.mode === "open" ? 260 : st.mode === "idle" && st.song ? 38 : ({ idle: 26, peek: 36, toast: 46, prompt: 92 })[st.mode] || 26; dotPlace(); }
+  function N(st) { notch.to(st); nh = st.mode === "open" ? 260 : st.mode === "idle" && st.song ? 38 : ({ idle: 26, peek: 36, toast: 46, prompt: 92, search: 160 })[st.mode] || 26; dotPlace(); }
   function q(sel) { return notch.q(sel); }
   function idleN(o) { N(Object.assign({ mode: "idle", time: "10:17", battery: 76 }, o || {})); }
   function shelfN(o) { N(Object.assign({ mode: "open", files: [f("photo"), f("assets")], cats: CATS }, o || {})); }
@@ -1946,13 +1987,13 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       shelfN({ media: m, page: "music" });
       cap("A click opens just the <b>Music</b> section: the player, nothing else");
       await sleep(1600);
-      await tap(q("#rnLyrics"), 700);
+      await tap(q("#rnMic"), 700);
       shelfN({ media: m, page: "music", lyrics: true, lyricIdx: 0 });
-      cap("<b>Lyrics</b>: the player on the left, only the words on the right, like Spotify");
+      cap("The <b>lyrics</b> button: the player on the left, only the words on the right, like Spotify");
       for (var i = 1; i <= 3; i++) { await sleep(1000); m.pos += 4000; shelfN({ media: m, page: "music", lyrics: true, lyricIdx: i }); bar.style.setProperty("--p", (34 + i) + "%"); }
-      await tap(q("#rnMic"), 800);
+      await tap(q("#rnSing"), 800);
       m.karaoke = true; shelfN({ media: m, page: "music", lyrics: true, lyricIdx: 3 });
-      cap("The <b>mic</b> button plays your voice through the speakers with the music: karaoke");
+      cap("The <b>mic</b> on the lyrics plays your voice through the speakers with the music: karaoke");
       await sleep(1800);
       shelfN({ media: m, page: "music", lyrics: true, lyricIdx: 4 });
       await sleep(1500);
@@ -2069,6 +2110,27 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       cap("Copied again: paste it with <b>Ctrl+V</b>");
       sound("drop");
       await sleep(1700);
+      kind("arrow");
+      await move(640, 420, 800);
+      idleN();
+    } },
+    { id: "search", name: "Search apps", dur: 15000, run: async function () {
+      idleN();
+      cap("Press <b>Shift + Space</b> anywhere…");
+      await move(480, 120, 700);
+      await sleep(900);
+      N({ mode: "search", q: "" });
+      cap("…and a search drops down from the notch, with the apps you opened lately");
+      await sleep(2200);
+      var word = "fire";
+      for (var k = 1; k <= word.length; k++) { N({ mode: "search", q: word.slice(0, k) }); await sleep(260); }
+      cap("Type a few letters: the best match is under the field, ranked by what you use");
+      await sleep(1800);
+      await tap(q("#srRow0"), 700);
+      toastN("Opening Firefox", "↵", RN.T.accent, "share", "");
+      sound("drop");
+      cap("<b>Enter</b> (or a click) opens it. <b>Ctrl+1…7</b> opens a row at once, <b>Esc</b> closes");
+      await sleep(2000);
       kind("arrow");
       await move(640, 420, 800);
       idleN();
@@ -2505,6 +2567,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       shelf: { crop: [203, 0, 554, 262], build: function (h, o) { o.to({ mode: "open", files: [f("photo"), f("assets"), f("report"), f("notes")], cats: CATS }, true); } },
       share: { crop: [296, 0, 368, 520], build: function (h, o) { o.to({ mode: "idle", time: "10:17", battery: 76 }, true); popup(shareSession(true), h, 310, 54); } },
       nearby: { crop: [296, 0, 368, 520], build: function (h, o) { o.to({ mode: "idle", time: "10:17", battery: 76 }, true); popup(nearbySession("sending", 62), h, 310, 54); } },
+      search: { crop: [203, 0, 554, 300], build: function (h, o) { o.to({ mode: "search", q: "fire" }, true); } },
       tasks: { crop: [165, 0, 630, 372], build: function (h, o) {
         o.to({ mode: "open", files: [], page: "tasks", late: 1, cats: CATS, tasks: [{ t: "Design review", sub: "3:00 PM · overdue 2 h", state: "late", day: 26 }, { t: "Gym", sub: "5:30 PM · in 27 min", state: "soon", day: 26 },
           { t: "Call Ana", sub: "Tue 27 Oct, 9:00 AM · tomorrow", state: "later", day: 27 }, { t: "Pay rent", sub: "Fri 30 Oct, 9:00 AM", state: "later", day: 30 }] }, true); } },

@@ -4,6 +4,7 @@
 
 #include <QNetworkAccessManager>
 #include <QObject>
+#include <QProcess>
 #include <QSettings>
 #include <QTimer>
 
@@ -25,6 +26,11 @@ class Updates : public QObject
     Q_PROPERTY(QString lastChecked READ lastChecked NOTIFY changed)
     Q_PROPERTY(QStringList contributors READ contributors NOTIFY contributorsChanged) // GitHub logins, for the thank-you in About
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY settingsChanged)
+    Q_PROPERTY(bool canInstall READ canInstall NOTIFY changed)      // this copy can update itself (installed from the package or the installer)
+    Q_PROPERTY(bool installing READ installing NOTIFY installChanged)
+    Q_PROPERTY(double progress READ progress NOTIFY installChanged) // 0..1 while downloading
+    Q_PROPERTY(QString stage READ stage NOTIFY installChanged)      // "Downloading…", "Checking the file…", "Installing…"
+    Q_PROPERTY(QString installError READ installError NOTIFY installChanged)
     Q_PROPERTY(bool quiet READ quiet WRITE setQuiet NOTIFY settingsChanged) // set from QML: a game, a call or a timer is on, so no toast now
 
 public:
@@ -50,7 +56,16 @@ public:
     Q_INVOKABLE void skip();         // this version: no more toasts (a newer one will speak)
     Q_INVOKABLE void unskip();
     Q_INVOKABLE void remindLater();  // a week
-    Q_INVOKABLE void download();     // the file for this system in the browser, else the release page
+    Q_INVOKABLE void download();
+    // Downloads this system's file, checks its SHA-256 against the release's checksum file, installs it (Windows: the installer, silent;
+    // Linux: apt through polkit's password prompt) and starts the new version. Nothing is installed unless the checksum matches.
+    Q_INVOKABLE void installNow();
+    Q_INVOKABLE void cancelInstall();
+    bool canInstall() const;
+    bool installing() const { return m_installing; }
+    double progress() const { return m_progress; }
+    QString stage() const { return m_stage; }
+    QString installError() const { return m_installError; }     // the file for this system in the browser, else the release page
     QByteArray report() const;       // `notch --check-updates`
 
 signals:
@@ -59,12 +74,16 @@ signals:
     void settingsChanged();
     void updateFound(const QString &version);  // once per version, at a quiet moment
     void checked();                             // a check has ended (well or not)
+    void installChanged();
 
 private:
     void ask(bool manual);
     void onReply(bool manual);
     void maybeAnnounce();
     QString assetUrl() const;
+    void failInstall(const QString &why);
+    void setStage(const QString &stage, double progress = 0);
+    void verifyAndRun(const QString &path, const QString &expectedHex);
 
     QNetworkAccessManager m_nam;
     QNetworkReply *m_reply = nullptr;
@@ -75,4 +94,9 @@ private:
     UpdateModel::Release m_release;
     bool m_quiet = false;
     QTimer m_start, m_tick;
+    bool m_installing = false;
+    double m_progress = 0;
+    QString m_stage, m_installError;
+    QNetworkReply *m_download = nullptr;
+    QProcess *m_installer = nullptr;
 };

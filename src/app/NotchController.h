@@ -170,6 +170,7 @@ public:
     Q_INVOKABLE void emptyRecentlyRemoved();
     Q_INVOKABLE void pasteClipboard(const QString &categoryId = {});
     void keepBytes(const QString &name, const QString &mimeType, const QByteArray &bytes, const QString &source); // into the category being viewed
+    QString keepBytesId(const QString &name, const QString &mimeType, const QByteArray &bytes, const QString &source); // the same, and the new item's id ("" when it failed)
     // Text dropped on Notch (no file): saved as a note named after its first line.
     Q_INVOKABLE void addTextNote(const QString &text, const QString &categoryId = {});
     Q_INVOKABLE void copyFiles(const QStringList &ids);
@@ -280,7 +281,7 @@ private:
     void startDownload(const QUrl &url, const QString &categoryId);
     void addLink(const QUrl &url, const QString &categoryId);
     bool addBytes(const QString &name, const QString &mimeType, const QByteArray &bytes, const QString &source,
-                  const QString &categoryId);
+                  const QString &categoryId, QString *idOut = nullptr);
     // Moves a finished file (e.g. a tool's output) into managed storage as a new item.
     bool adoptFile(const QString &path, const QString &name, const QString &source, const QString &categoryId);
     void deleteNow(const FileItem &item);

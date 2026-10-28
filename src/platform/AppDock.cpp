@@ -1,5 +1,7 @@
 #include "platform/AppDock.h"
 
+#include <QKeySequence>
+
 #include "platform/LauncherModel.h"
 
 #include "models/FileItem.h"
@@ -711,6 +713,15 @@ if (mine.length > 0) {
 }
 )JS";
 
+// A KWin script whose only job is a global shortcut: KWin keeps it (and shows it in System Settings -> Shortcuts, where it can be changed)
+// and calls Notch over D-Bus when it is pressed. Works on Wayland, where an application cannot grab keys itself.
+static const char SearchScript[] = R"JS(
+registerShortcut("Search apps (Notch)", "Search apps from the notch (Olyzano Notch)", "@KEY@", function () {
+    callDBus("org.olyzano.Notch", "/Launcher", "org.olyzano.Notch", "openSearch");
+});
+)JS";
+static const QString SearchPlugin = QStringLiteral("notch-search-shortcut");
+
 static QDBusMessage scriptingCall(const QString &method, const QVariantList &args = {})
 {
     QDBusMessage msg = QDBusMessage::createMethodCall(KWinService, QStringLiteral("/Scripting"),
@@ -753,6 +764,37 @@ void AppDock::startKWin()
     bus.call(scriptingCall(QStringLiteral("start")));
     m_kwin = true;
     qCInfo(lcNotch) << "Dock: window list from KWin";
+}
+
+void AppDock::setSearchShortcut(bool on, const QString &key)
+{
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!bus.isConnected() || !bus.interface() || !bus.interface()->isServiceRegistered(KWinService))
+        return;
+    bus.call(scriptingCall(QStringLiteral("unloadScript"), {SearchPlugin}));
+    if (!on)
+        return;
+    const QString path = writeScript(QStringLiteral("search-shortcut.js"), QString::fromUtf8(SearchScript).replace(QStringLiteral("@KEY@"), key));
+    if (path.isEmpty())
+        return;
+    const QDBusMessage reply = bus.call(scriptingCall(QStringLiteral("loadScript"), {path, SearchPlugin}));
+    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().value(0).toInt() < 0) {
+        qCWarning(lcNotch) << "Search: KWin refused the shortcut script";
+        return;
+    }
+    bus.call(scriptingCall(QStringLiteral("start")));
+    // KWin keeps the key the person last had for this name and only uses the script's as the default, so make the chosen key the active one.
+    QTimer::singleShot(400, this, [key] {
+        QList<int> codes;
+        const QKeySequence seq(key, QKeySequence::PortableText);
+        for (int i = 0; i < seq.count(); ++i)
+            codes << int(seq[i].toCombined());
+        QDBusMessage msg = QDBusMessage::createMethodCall(QStringLiteral("org.kde.kglobalaccel"), QStringLiteral("/kglobalaccel"), QStringLiteral("org.kde.KGlobalAccel"), QStringLiteral("setShortcut"));
+        msg << QStringList{QStringLiteral("kwin"), QStringLiteral("Search apps (Notch)"), QStringLiteral("KWin"), QStringLiteral("Search apps from the notch (Olyzano Notch)")}
+            << QVariant::fromValue(codes) << uint(6); // 6: it is present, and the given keys win over the ones stored
+        QDBusConnection::sessionBus().asyncCall(msg);
+    });
+    qCInfo(lcNotch) << "Search:" << key << "opens the search in the notch";
 }
 
 void AppDock::runKWinAction(const QString &mode, const QStringList &windows)

@@ -52,6 +52,7 @@ public:
     Q_INVOKABLE void setInputRegions(QWindow *window, const QVariantList &rects); // several rectangles at once
     // Let a dock window take the keyboard (while its search field is open) or not.
     Q_INVOKABLE void setKeyboardInteractive(QWindow *window, bool interactive);
+    Q_INVOKABLE void grabKeyboard(QWindow *window, bool grab); // the notch window takes every key while the search is open (Wayland: exclusive layer-shell keyboard)
     // Blur what's behind this rounded rect of `window` (KDE Plasma, with KF6WindowSystem); an empty rect stops it.
     Q_INVOKABLE void setBlurRegion(QWindow *window, const QRectF &rect, qreal radius);
     bool canBlur() const;

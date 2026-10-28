@@ -570,7 +570,7 @@ void NotchController::addLink(const QUrl &url, const QString &categoryId)
 }
 
 bool NotchController::addBytes(const QString &name, const QString &mimeType, const QByteArray &bytes,
-                               const QString &source, const QString &categoryId)
+                               const QString &source, const QString &categoryId, QString *idOut)
 {
     FileItem item = newItem(FileService::safeFileName(name), categoryId);
     item.mimeType = mimeType;
@@ -588,6 +588,8 @@ bool NotchController::addBytes(const QString &name, const QString &mimeType, con
         return false;
     }
     m_model.upsert(item);
+    if (idOut)
+        *idOut = item.id;
     return true;
 }
 
@@ -648,6 +650,12 @@ void NotchController::pasteClipboard(const QString &categoryId)
 void NotchController::keepBytes(const QString &name, const QString &mimeType, const QByteArray &bytes, const QString &source)
 {
     addBytes(name, mimeType, bytes, source, m_categoryFilter);
+}
+
+QString NotchController::keepBytesId(const QString &name, const QString &mimeType, const QByteArray &bytes, const QString &source)
+{
+    QString id;
+    return addBytes(name, mimeType, bytes, source, m_categoryFilter, &id) ? id : QString();
 }
 
 void NotchController::addTextNote(const QString &text, const QString &categoryId)
@@ -1227,7 +1235,7 @@ void NotchController::addColor(const QString &hex)
     QStringList colors = recentColors();
     colors.removeAll(hex);
     colors.prepend(hex);
-    m_settings.setValue(QStringLiteral("colors"), colors.mid(0, 12));
+    m_settings.setValue(QStringLiteral("colors"), colors.mid(0, 60));
     copyText(hex);
     emit recentColorsChanged();
     emit notice(tr("Color copied"), hex, QStringLiteral("color"), QString()); // "color" icon: QML shows a swatch

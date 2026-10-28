@@ -9,7 +9,8 @@ RowLayout {
     required property var shell
     // Its menu / folder dialog are open: Notch keeps the whole window clickable meanwhile.
     property bool keysOpen: false // the member-keys window
-    readonly property bool overlayOpen: ruleMenu.visible || folderDialog.visible || keysOpen
+    property bool guideOpen: false // the "set up your own server" guide
+    readonly property bool overlayOpen: ruleMenu.visible || folderDialog.visible || keysOpen || guideOpen
     property string category: shell.settingsCategory // the section shown; kept by Main while Notch runs (this page may be unloaded)
     onCategoryChanged: shell.settingsCategory = category
     property string query: ""
@@ -37,8 +38,8 @@ RowLayout {
     // What a search can find: section, setting, words that also describe it.
     readonly property var index: [
         ["about", "Updates", "update upgrade new version release check download latest github notify"], ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
-        ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Low memory mode", "memory ram performance software renderer gpu graphics lower usage"], ["general", "Clipboard history", "clipboard copy paste history remember klipper"], ["general", "Sounds", "sound effects volume quiet mute"],
-        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Voice assistant", "voice assistant commands speech microphone whisper offline say listen"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["appearance", "Capsule shape", "capsule shape notch pill rounded dynamic island edge look widget"],["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"], ["appearance", "Glass", "glass glassmorphism translucent transparent blur frosted see-through"], ["appearance", "Border matches my system accent", "border outline edge accent windows color capsule widget"], ["appearance", "Animations and transitions", "animation animations transition motion reduce disable off smooth instant bounce spring"],
+        ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Search from the notch", "search apps launcher spotlight shortcut win space meta keyboard open app"], ["general", "Low memory mode", "memory ram performance software renderer gpu graphics lower usage"], ["general", "Clipboard history", "clipboard copy paste history remember klipper"], ["general", "Sounds", "sound effects volume quiet mute"],
+        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Voice assistant", "voice assistant commands speech microphone whisper offline say listen"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["appearance", "Capsule shape", "capsule shape notch pill rounded dynamic island edge look widget"],["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"], ["appearance", "Glass", "glass glassmorphism translucent transparent blur frosted see-through"], ["appearance", "Border matches my system accent", "border outline edge accent windows color capsule widget"], ["appearance", "Bounce", "bounce overshoot spring elastic animation capsule panel soft bouncy"], ["appearance", "Animations and transitions", "animation animations transition motion reduce disable off smooth instant bounce spring"],
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
         ["panel", "Transparency and blur", "glass opacity bar"], ["panel", "What the bar shows", "app name date seconds battery percentage"],
         ["panel", "Quick Settings", "wifi bluetooth volume brightness power click hover system cpu ram memory gpu disk network monitor usage"],
@@ -52,7 +53,7 @@ RowLayout {
         ["dock", "Icon size", "size"], ["dock", "Transparency", "opacity glass"], ["dock", "Blur behind the dock", "glass blur"],
         ["dock", "Magnification", "zoom"], ["dock", "Animation", "motion smooth spring"], ["dock", "Show running apps", "windows"],
         ["dock", "Show Trash", "bin"], ["dock", "Apps kept in the dock", "pinned"],
-        ["sharing", "Nearby device name", "computer name receive"], ["sharing", "Sharing servers", "relay vps share qr server"],
+        ["sharing", "Nearby device name", "computer name receive"], ["sharing", "Sharing servers", "relay vps share qr server"], ["sharing", "Set up your own server (guide)", "tutorial guide how to setup server docker vps domain self host install key"],
         ["wellbeing", "Stretch reminder", "break work minutes"], ["wellbeing", "Don't interrupt", "video call pomodoro"],
         ["wellbeing", "20-20-20 eye reminder", "eyes"], ["wellbeing", "Today", "breaks count"]
     ]
@@ -209,6 +210,66 @@ RowLayout {
             }
 
             // One choice for how the notch sits; only the options that belong to it appear below.
+            SettingCard {
+                title: "Search from the notch"
+                SettingToggle {
+                    title: "Search apps with a shortcut"
+                    caption: "Press " + launcher.searchKeyLabel + ", type, and the apps that match drop down from the notch; Enter opens one."
+                             + (Qt.platform.os === "windows" || launcher.superKeyAvailable ? "" : " Needs KDE Plasma for the shortcut; elsewhere bind a key to: qdbus6 org.olyzano.Notch /Launcher openSearch")
+                    checked: launcher.searchEnabled
+                    onToggled: launcher.searchEnabled = !launcher.searchEnabled
+                }
+                // The key: press Change, then the combination you want (it needs Win, Ctrl, Alt or Shift with another key).
+                RowLayout {
+                    id: keyRow
+                    visible: launcher.searchEnabled
+                    Layout.fillWidth: true
+                    spacing: 8
+                    property bool capturing: false
+                    property string hint: ""
+                    Text { text: "Shortcut"; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium }
+                    Item { Layout.fillWidth: true }
+                    FocusScope {
+                        id: keyBox
+                        Layout.preferredWidth: 170
+                        Layout.preferredHeight: 30
+                        focus: keyRow.capturing
+                        Keys.onPressed: (e) => {
+                            if (!keyRow.capturing)
+                                return
+                            e.accepted = true
+                            if (e.key === Qt.Key_Escape) { keyRow.capturing = false; keyRow.hint = ""; return }
+                            const t = launcher.describeKey(e.key, e.modifiers)
+                            if (t === "") { keyRow.hint = e.key === Qt.Key_Shift || e.key === Qt.Key_Control || e.key === Qt.Key_Alt || e.key === Qt.Key_Meta ? "" : "Add Win, Ctrl, Alt or Shift"; return }
+                            launcher.searchKey = t
+                            keyRow.capturing = false
+                            keyRow.hint = ""
+                        }
+                        onActiveFocusChanged: if (!activeFocus) keyRow.capturing = false
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: theme.radiusSm + 2
+                            color: theme.well
+                            border.width: 1
+                            border.color: keyRow.capturing ? theme.accent : theme.hairline
+                            Text {
+                                anchors.centerIn: parent
+                                text: keyRow.capturing ? "Press the keys…" : launcher.searchKeyLabel
+                                color: keyRow.capturing ? theme.accentText : theme.text
+                                font.pixelSize: 13
+                                font.weight: Font.DemiBold
+                            }
+                        }
+                    }
+                    PillButton { text: keyRow.capturing ? "Cancel" : "Change"; onClicked: { keyRow.hint = ""; keyRow.capturing = !keyRow.capturing; if (keyRow.capturing) keyBox.forceActiveFocus() } }
+                    PillButton { visible: !launcher.searchKeyIsDefault; text: "Reset"; iconName: "undo"; onClicked: launcher.resetSearchKey() }
+                }
+                Caption { visible: keyRow.hint !== ""; Layout.fillWidth: true; text: keyRow.hint; color: theme.warn }
+                Caption { visible: keyRow.visible && Qt.platform.os !== "windows" && launcher.superKeyAvailable; Layout.fillWidth: true; text: "On KDE it can also be changed in System Settings \u2192 Shortcuts \u2192 KWin \u2192 Search apps (Notch)." }
+                Caption { visible: launcher.searchNote !== ""; Layout.fillWidth: true; text: launcher.searchNote; color: theme.danger }
+                PillButton { visible: launcher.searchEnabled; text: "Open it now"; iconName: "search"; onClicked: shell.openSearch() }
+            }
+
             SettingCard {
                 title: "Notch"
                 Segmented {
@@ -1234,10 +1295,46 @@ RowLayout {
                             Text { id: notesText; width: parent.width; text: updates.notes.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/^#+\s*/gm, "").replace(/^[ \t]*[-*][ \t]+/gm, "• ").replace(/[*`]/g, ""); color: theme.textDim; font.pixelSize: 12; wrapMode: Text.Wrap; textFormat: Text.PlainText }
                         }
                     }
+                    // one-click update: download, check the file, install, start the new version
+                    ColumnLayout {
+                        visible: updates.canInstall || updates.installing || updates.installError !== ""
+                        Layout.fillWidth: true
+                        spacing: 6
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            PillButton {
+                                visible: !updates.installing
+                                text: "Update now"
+                                iconName: "download"
+                                checked: true
+                                enabled: updates.canInstall
+                                onClicked: updates.installNow()
+                            }
+                            PillButton { visible: updates.installing && updates.progress < 1; text: "Cancel"; onClicked: updates.cancelInstall() }
+                            Caption { visible: updates.installing; Layout.fillWidth: true; text: updates.stage }
+                        }
+                        Rectangle {
+                            visible: updates.installing
+                            Layout.fillWidth: true
+                            height: 4
+                            radius: 2
+                            color: theme.hairline
+                            Rectangle { width: parent.width * updates.progress; height: parent.height; radius: 2; color: theme.accent }
+                        }
+                        Text { visible: updates.installError !== ""; Layout.fillWidth: true; text: updates.installError; color: theme.danger; font.pixelSize: 12; wrapMode: Text.Wrap }
+                        Caption {
+                            visible: !updates.installing && updates.canInstall
+                            Layout.fillWidth: true
+                            text: Qt.platform.os === "windows" ? "Downloads the installer, checks it and installs it, then Notch starts again."
+                                                               : "Downloads the package, checks it, and asks for your password to install it, then Notch starts again."
+                        }
+                    }
                     Flow {
                         Layout.fillWidth: true
                         spacing: 6
-                        PillButton { text: "Download"; iconName: "download"; checked: true; onClicked: updates.download() }
+                        PillButton { visible: !updates.canInstall; text: "Download"; iconName: "download"; checked: true; onClicked: updates.download() }
+                        PillButton { visible: updates.canInstall; text: "Download only"; iconName: "download"; onClicked: updates.download() }
                         PillButton { text: "Release page"; iconName: "external"; onClicked: Qt.openUrlExternally(updates.page) }
                         PillButton { visible: !updates.skipped; text: "Remind me in a week"; onClicked: updates.remindLater() }
                         PillButton { text: updates.skipped ? "Don't skip it" : "Skip this version"; onClicked: updates.skipped ? updates.unskip() : updates.skip() }
@@ -1589,10 +1686,14 @@ RowLayout {
                 function hours(h) { return h % 24 === 0 ? (h / 24) + (h === 24 ? " day" : " days") : h + " h" }
                 function mb(bytes) { return bytes >= 10 * 1048576 ? Math.round(bytes / 1048576) + " MB" : (bytes / 1048576).toFixed(1) + " MB" }
 
-                SectionLabel { text: "Sharing servers" }
+                RowLayout {
+                    Layout.fillWidth: true
+                    SectionLabel { Layout.fillWidth: true; text: "Sharing servers" }
+                    PillButton { text: "How to set up a server"; iconName: "info"; onClicked: serverGuide.open() }
+                }
                 Caption {
                     Layout.fillWidth: true
-                    text: "Share via QR can use a server you or your team run. Files are encrypted on this computer first. Ask the host for a key, or set one up with server/README.md."
+                    text: "Share via QR can use a server you or your team run. Files are encrypted on this computer first. Ask the host for a key, or set up your own: the guide shows how, step by step."
                 }
                 Caption { Layout.fillWidth: true; visible: share.servers.length === 0; text: "No server yet." }
 
@@ -1954,6 +2055,118 @@ RowLayout {
                     }
                 }
 
+                // A one-page guide: what the server is, and the steps to run it. Commands copy with a click.
+                Popup {
+                    id: serverGuide
+                    parent: settingsScroll
+                    x: (settingsScroll.width - width) / 2
+                    y: Math.max(0, (settingsScroll.height - height) / 2)
+                    width: Math.min(560, settingsScroll.width - 24)
+                    height: Math.min(520, settingsScroll.height - 16)
+                    modal: true
+                    dim: false
+                    focus: true
+                    padding: 16
+                    onOpened: settingsScroll.guideOpen = true
+                    onClosed: settingsScroll.guideOpen = false
+                    Overlay.modal: Item {}
+                    background: Rectangle { radius: 16; color: Qt.rgba(theme.surface.r, theme.surface.g, theme.surface.b, 1); border.color: theme.outline }
+                    component Step: RowLayout {
+                        property int n
+                        property string title
+                        property string body
+                        Layout.fillWidth: true
+                        spacing: 10
+                        Rectangle {
+                            Layout.alignment: Qt.AlignTop
+                            Layout.preferredWidth: 22; Layout.preferredHeight: 22
+                            radius: 11
+                            color: Qt.alpha(theme.accent, 0.2)
+                            Text { anchors.centerIn: parent; text: n; color: theme.accentText; font.pixelSize: 12; font.weight: Font.DemiBold }
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text { Layout.fillWidth: true; text: title; color: theme.text; font.pixelSize: 13; font.weight: Font.DemiBold; wrapMode: Text.Wrap }
+                            Text { Layout.fillWidth: true; visible: body !== ""; text: body; color: theme.textDim; font.pixelSize: 12; wrapMode: Text.Wrap }
+                        }
+                    }
+                    component Cmd: Rectangle {
+                        property string code
+                        Layout.fillWidth: true
+                        Layout.leftMargin: 32
+                        implicitHeight: cmdText.implicitHeight + 16
+                        radius: 8
+                        color: theme.well
+                        border.width: 1
+                        border.color: theme.hairline
+                        Text {
+                            id: cmdText
+                            anchors { left: parent.left; right: copyBtn.left; verticalCenter: parent.verticalCenter; leftMargin: 10; rightMargin: 6 }
+                            text: code
+                            color: theme.text
+                            font.family: "monospace"
+                            font.pixelSize: 11
+                            wrapMode: Text.WrapAnywhere
+                        }
+                        IconButton {
+                            id: copyBtn
+                            anchors { right: parent.right; verticalCenter: parent.verticalCenter; rightMargin: 4 }
+                            iconName: "copy"
+                            Accessible.name: "Copy"
+                            ToolTip.visible: hovered
+                            ToolTip.text: "Copy"
+                            onClicked: notch.copyText(code)
+                        }
+                    }
+                    contentItem: ColumnLayout {
+                        spacing: 10
+                        RowLayout {
+                            Layout.fillWidth: true
+                            SectionLabel { Layout.fillWidth: true; text: "Run your own share server" }
+                            IconButton { iconName: "close"; Accessible.name: "Close"; onClicked: serverGuide.close() }
+                        }
+                        ScrollView {
+                            id: guideScroll
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            clip: true
+                            contentWidth: availableWidth
+                            ColumnLayout {
+                                width: guideScroll.availableWidth - 12
+                                spacing: 10
+                                Caption { Layout.fillWidth: true; text: "The server only keeps files that were already encrypted on your computer, and deletes them when they expire; it can never read them. You need a small always-on computer with a domain name: a cheap VPS (Linux) is the usual choice, and Docker." }
+                                Step { n: 1; title: "Point a domain at the server"; body: "Make an A record (for example share.example.com) that points to the server's IP address, and open ports 80 and 443." }
+                                Step { n: 2; title: "Get the server files"; body: "On the server:" }
+                                Cmd { code: "git clone https://github.com/Kepin17/olyzano-notch.git\ncd olyzano-notch/server" }
+                                Step { n: 3; title: "Set the domain and a secret key"; body: "Copy the settings file, make a long random key, then put the key and your domain into .env (RELAY_API_KEY and DOMAIN). Keep that key private: it is the host's key." }
+                                Cmd { code: "cp .env.example .env\nopenssl rand -hex 32\nnano .env" }
+                                Step { n: 4; title: "Start it"; body: "HTTPS is set up by itself the first time the domain is visited. A file may be up to 5 GB and the server holds 20 GB by default (MAX_FILE_MB and MAX_TOTAL_MB in .env)." }
+                                Cmd { code: "docker compose up -d --build" }
+                                Step { n: 5; title: "Add it to Notch"; body: "Back in Notch press Add a server by hand, type the address (https://share.example.com) and the key from step 3, then Add. The server card should say Connected and Host." }
+                                Step { n: 6; title: "Let other people use it"; body: "On the server's card press Manage, then Add member: type a name, choose how much space and for how long, and send the key it makes to that person. They paste it under Join a server." }
+                                Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: theme.hairline }
+                                Text { text: "Later"; color: theme.text; font.pixelSize: 13; font.weight: Font.DemiBold }
+                                Caption { Layout.fillWidth: true; text: "Restart it:" }
+                                Cmd { code: "docker compose restart relay" }
+                                Caption { Layout.fillWidth: true; text: "Update it after copying new files (or git pull) and see what it is doing:" }
+                                Cmd { code: "docker compose up -d --build\ndocker compose logs -f relay" }
+                                Caption { Layout.fillWidth: true; text: "Without Docker (Python 3.9 or newer, behind any HTTPS proxy):" }
+                                Cmd { code: "RELAY_API_KEY=your-key DATA_DIR=./data PORT=8080 python3 relay.py" }
+                                Caption { Layout.fillWidth: true; text: "Lost the host key? Make a new one in .env and run docker compose up -d; Notch needs the new key once. Starting over completely deletes the data volume (all members and shares): see the full guide." }
+                                Item { Layout.preferredHeight: 4 }
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            PillButton { text: "Open the full guide"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/blob/main/server/README.md") }
+                            Item { Layout.fillWidth: true }
+                            PillButton { text: "Add a server"; iconName: "plus"; checked: true; onClicked: { serverGuide.close(); sharing.manual = true } }
+                        }
+                    }
+                }
+
                 PillButton {
                     text: sharing.manual ? "Hide" : "Add a server by hand"
                     onClicked: sharing.manual = !sharing.manual
@@ -2143,6 +2356,20 @@ RowLayout {
                     caption: "Turn it off and everything moves at once: the capsule and panels change size without easing, songs and notifications swap without a roll, and nothing glides, pulses or bounces. Easier on slow computers and for people who prefer a still screen."
                     checked: activities.animations
                     onToggled: activities.animations = !activities.animations
+                }
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    enabled: activities.animations
+                    opacity: enabled ? 1 : 0.45
+                    SectionLabel { text: "Bounce" }
+                    Segmented {
+                        Layout.fillWidth: true
+                        model: [["off", "Off"], ["soft", "Soft"], ["normal", "Normal"], ["bouncy", "Bouncy"]]
+                        value: activities.animBounce
+                        onPicked: (v) => activities.animBounce = v
+                    }
+                    Caption { Layout.fillWidth: true; text: "How far the capsule and panel overshoot their size before they settle. Off: they glide straight to it." }
                 }
             }
             SettingCard {

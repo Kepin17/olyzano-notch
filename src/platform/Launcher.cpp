@@ -1,5 +1,8 @@
 #include "platform/Launcher.h"
 
+#include <QCoreApplication>
+#include <QKeySequence>
+
 #include "platform/AppDock.h"
 
 #include <QProcess>
@@ -51,7 +54,59 @@ Launcher::Launcher(AppDock *dock, QObject *parent)
     QDBusConnection bus = QDBusConnection::sessionBus();
     if (bus.isConnected() && bus.registerService(QStringLiteral("org.olyzano.Notch")))
         bus.registerObject(QStringLiteral("/Launcher"), this, QDBusConnection::ExportScriptableSlots);
+    if (searchEnabled())
+        m_dock->setSearchShortcut(true, searchKey());
+    connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { m_dock->setSearchShortcut(false, QString()); }); // the shortcut goes with the program
 #endif
+}
+
+void Launcher::setSearchEnabled(bool on)
+{
+    if (on == searchEnabled())
+        return;
+    m_settings.setValue(QStringLiteral("searchEnabled"), on);
+#ifdef NOTCH_HAVE_DBUS
+    m_dock->setSearchShortcut(on, searchKey());
+#endif
+    emit searchEnabledChanged();
+}
+
+// One key combination, as Qt writes it ("Shift+Space", "Ctrl+Alt+K"); anything that is not exactly one falls back to the default.
+QString Launcher::searchKey() const
+{
+    const QKeySequence k(m_settings.value(QStringLiteral("searchKey"), QStringLiteral("Shift+Space")).toString(), QKeySequence::PortableText);
+    return k.count() == 1 ? k.toString(QKeySequence::PortableText) : QStringLiteral("Shift+Space");
+}
+
+void Launcher::setSearchKey(const QString &key)
+{
+    const QKeySequence k(key, QKeySequence::PortableText);
+    if (k.count() != 1 || k.toString(QKeySequence::PortableText) == searchKey())
+        return;
+    m_settings.setValue(QStringLiteral("searchKey"), k.toString(QKeySequence::PortableText));
+#ifdef NOTCH_HAVE_DBUS
+    if (searchEnabled())
+        m_dock->setSearchShortcut(true, searchKey());
+#endif
+    emit searchEnabledChanged();
+}
+
+QString Launcher::searchKeyLabel() const
+{
+    return searchKey().replace(QLatin1String("Meta"), QLatin1String("Win")).replace(u'+', QLatin1String(" + "));
+}
+
+QString Launcher::describeKey(int key, int modifiers) const
+{
+    switch (key) { // a modifier alone is not a shortcut
+    case Qt::Key_Shift: case Qt::Key_Control: case Qt::Key_Alt: case Qt::Key_Meta: case Qt::Key_AltGr: case Qt::Key_Super_L: case Qt::Key_Super_R: case Qt::Key_unknown:
+        return {};
+    default:
+        break;
+    }
+    if (!(modifiers & (Qt::ShiftModifier | Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)))
+        return {}; // a bare key would steal typing
+    return QKeySequence(modifiers | key).toString(QKeySequence::PortableText);
 }
 
 bool Launcher::superKeyAvailable() const

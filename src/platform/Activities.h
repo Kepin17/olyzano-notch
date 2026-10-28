@@ -1,5 +1,7 @@
 #pragma once
 
+#include "platform/BounceModel.h"
+
 #include <QElapsedTimer>
 #include <QFileSystemWatcher>
 #include <QHash>
@@ -66,6 +68,9 @@ class Activities : public QObject
     Q_PROPERTY(QString capsuleLook READ capsuleLook WRITE setCapsuleLook NOTIFY settingsChanged) // "edge" (fused to the top edge) or "pill" (a floating capsule)
     Q_PROPERTY(bool reserveSpace READ reserveSpace WRITE setReserveSpace NOTIFY settingsChanged) // keep other windows clear of the capsule
     Q_PROPERTY(bool borderMatchesSystem READ borderMatchesSystem WRITE setBorderMatchesSystem NOTIFY settingsChanged) // capsule / card edge in the system accent
+    // How far the capsule and panel overshoot when they spring to their size: "off" | "soft" | "normal" | "bouncy".
+    Q_PROPERTY(QString animBounce READ animBounce WRITE setAnimBounce NOTIFY settingsChanged)
+    Q_PROPERTY(qreal bounceFactor READ bounceFactor NOTIFY settingsChanged) // what the springs' damping is multiplied by
     Q_PROPERTY(bool animations READ animations WRITE setAnimations NOTIFY settingsChanged) // transitions and movement on or off (Settings → Appearance)
     Q_PROPERTY(bool taskInCapsule READ taskInCapsule WRITE setTaskInCapsule NOTIFY settingsChanged) // the next task in the idle capsule
     // Settings
@@ -152,6 +157,14 @@ public:
     void setReserveSpace(bool on) { store(QStringLiteral("reserveSpace"), on); }
     bool borderMatchesSystem() const { return m_settings.value(QStringLiteral("borderMatchesSystem"), false).toBool(); }
     void setBorderMatchesSystem(bool on) { store(QStringLiteral("borderMatchesSystem"), on); }
+    QString animBounce() const
+    {
+        const QString v = m_settings.value(QStringLiteral("animBounce")).toString();
+        return v == QLatin1String("off") || v == QLatin1String("soft") || v == QLatin1String("bouncy") ? v : QStringLiteral("normal");
+    }
+    void setAnimBounce(const QString &level) { store(QStringLiteral("animBounce"), level == QLatin1String("off") || level == QLatin1String("soft") || level == QLatin1String("bouncy") ? level : QStringLiteral("normal")); }
+    qreal bounceFactor() const { return BounceModel::factor(animBounce()); }
+    Q_INVOKABLE qreal damp(qreal base, qreal factor) const { return BounceModel::damp(base, factor); }
     bool animations() const { return m_settings.value(QStringLiteral("animations"), true).toBool(); }
     void setAnimations(bool on) { store(QStringLiteral("animations"), on); }
     bool taskInCapsule() const { return m_settings.value(QStringLiteral("taskInCapsule"), true).toBool(); }

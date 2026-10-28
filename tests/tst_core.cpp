@@ -23,6 +23,8 @@
 #include "platform/GlassModel.h"
 #include "platform/SystemStatsModel.h"
 #include "platform/ClipboardHistoryModel.h"
+#include "platform/BounceModel.h"
+#include "platform/PhotoModel.h"
 #include "platform/UtteranceModel.h"
 #include "platform/KaraokeModel.h"
 #include "platform/CalendarModel.h"
@@ -236,6 +238,85 @@ class TestCore : public QObject
     QString path(const FileItem &item) { return FileService::storedPath(m_files, item.storedName); }
 
 private slots:
+    void photoModel()
+    {
+        using namespace PhotoModel;
+        QCOMPARE(templateOf("strip"), Template::Strip);
+        QCOMPARE(templateOf("nothing"), Template::Single);
+        QCOMPARE(filterOf("vivid"), Filter::Vivid);
+        QCOMPARE(shots(Template::Strip), 4);
+        QCOMPARE(shots(Template::Polaroid), 1);
+
+        // every template: the slots lie inside the canvas, do not overlap, and match the number of shots
+        for (Template t : {Template::Single, Template::Strip, Template::Polaroid, Template::Frame}) {
+            const Layout l = layout(t);
+            QCOMPARE(l.cells.size(), shots(t));
+            for (int i = 0; i < l.cells.size(); ++i) {
+                QVERIFY(QRect(QPoint(0, 0), l.canvas).contains(l.cells.at(i)));
+                for (int j = i + 1; j < l.cells.size(); ++j)
+                    QVERIFY(!l.cells.at(i).intersects(l.cells.at(j)));
+            }
+            if (!l.caption.isEmpty())
+                QVERIFY(QRect(QPoint(0, 0), l.canvas).contains(l.caption));
+        }
+        QVERIFY(layout(Template::Strip).canvas.height() > 3 * layout(Template::Strip).canvas.width()); // tall, like a booth strip
+
+        // the middle of a picture that is too wide / too tall for the slot, never stretched
+        QCOMPARE(coverRect(QSize(1600, 900), QSize(100, 100)), QRect(350, 0, 900, 900));
+        QCOMPARE(coverRect(QSize(900, 1600), QSize(100, 100)), QRect(0, 350, 900, 900));
+        QCOMPARE(coverRect(QSize(400, 300), QSize(400, 300)), QRect(0, 0, 400, 300));
+
+        // filters on a coloured picture
+        QImage red(8, 8, QImage::Format_RGB32);
+        red.fill(QColor(200, 80, 60));
+        const QRgb mono = applyFilter(red, Filter::Mono).pixel(3, 3);
+        QVERIFY(qRed(mono) == qGreen(mono) && qGreen(mono) == qBlue(mono));
+        const QRgb warm = applyFilter(red, Filter::Warm).pixel(3, 3);
+        QVERIFY(qRed(warm) > 200 && qBlue(warm) < 60);
+        QImage soft(8, 8, QImage::Format_RGB32);
+        soft.fill(QColor(150, 120, 110));
+        const QRgb vivid = applyFilter(soft, Filter::Vivid).pixel(3, 3);
+        QVERIFY(QColor(vivid).saturation() > QColor(150, 120, 110).saturation());
+        QCOMPARE(applyFilter(red, Filter::Normal).pixel(1, 1), red.pixel(1, 1));
+
+        // composing: size, a frame in its slot (mirrored: the left half of the source lands on the right), the border colour, a strip's four
+        QImage half(40, 30, QImage::Format_RGB32);
+        half.fill(Qt::blue);
+        QPainter hp(&half);
+        hp.fillRect(0, 0, 20, 30, Qt::red); // left half red
+        hp.end();
+        const QDateTime when(QDate(2026, 10, 28), QTime(14, 30));
+        const QImage single = compose(Template::Single, Filter::Normal, false, {half}, Qt::green, when);
+        QCOMPARE(single.size(), layout(Template::Single).canvas);
+        QCOMPARE(QColor(single.pixel(100, 480)).red(), 255);             // left side red
+        const QImage mirrored = compose(Template::Single, Filter::Normal, true, {half}, Qt::green, when);
+        QCOMPARE(QColor(mirrored.pixel(100, 480)).blue(), 255);         // left side now the blue half
+        const QImage framed = compose(Template::Frame, Filter::Normal, false, {half}, QColor(10, 200, 30), when);
+        QCOMPARE(QColor(framed.pixel(5, 5)), QColor(10, 200, 30));       // the border is the accent
+        const Layout strip = layout(Template::Strip);
+        const QImage tall = compose(Template::Strip, Filter::Mono, false, {half, half, half, half}, Qt::red, when);
+        QCOMPARE(tall.size(), strip.canvas);
+        for (const QRect &slot : strip.cells)                           // every slot is filled (not the paper colour)
+            QVERIFY(QColor(tall.pixel(slot.center())) != QColor(250, 247, 240));
+        const QImage partial = compose(Template::Strip, Filter::Normal, false, {half}, Qt::red, when); // fewer frames than slots: no crash, the rest stay paper
+        QCOMPARE(QColor(partial.pixel(strip.cells.at(3).center())), QColor(250, 247, 240));
+    }
+
+    void bounceModel()
+    {
+        using namespace BounceModel;
+        QCOMPARE(factor(QStringLiteral("normal")), 1.0);
+        QCOMPARE(factor(QStringLiteral("whatever")), 1.0); // anything unknown is "normal"
+        QVERIFY(factor(QStringLiteral("soft")) > 1.0 && factor(QStringLiteral("bouncy")) < 1.0 && factor(QStringLiteral("off")) == 0.0);
+        QCOMPARE(damp(0.32, 1.0), 0.32);                   // normal: untouched
+        QVERIFY(damp(0.32, factor(QStringLiteral("soft"))) > 0.5);
+        QVERIFY(damp(0.32, factor(QStringLiteral("bouncy"))) < 0.2);
+        QCOMPARE(damp(0.32, 0.0), 1.0);                    // off: critically damped, no overshoot
+        QCOMPARE(damp(0.9, 0.0), 1.0);
+        QVERIFY(damp(0.05, 0.55) >= 0.12);                 // never so loose it rings for ever
+        QVERIFY(damp(0.9, 1.7) <= 1.0);                    // nor over-damped past critical
+    }
+
     void clipboardHistoryModel()
     {
         using namespace ClipboardHistoryModel;
@@ -848,6 +929,32 @@ private slots:
         const QByteArray json = R"([{"login":"Kepin17","type":"User"},{"login":"dependabot[bot]","type":"Bot"},{"login":"helngopidingin","type":"User"}])";
         QCOMPARE(UpdateModel::parseContributors(json), (QStringList{"Kepin17", "helngopidingin"}));
         QVERIFY(UpdateModel::parseContributors("{}").isEmpty());
+
+        // installing from inside the app: which checksum file, what it says, and which hosts may serve the download
+        const QList<QPair<QString, QString>> assets = {{"notch_0.13.1_amd64.deb", "https://github.com/x/releases/download/v0.13.1/notch_0.13.1_amd64.deb"},
+                                                       {"SHA256SUMS-linux.txt", "https://github.com/x/releases/download/v0.13.1/SHA256SUMS-linux.txt"},
+                                                       {"SHA256SUMS-windows.txt", "http://example.com/plain.txt"}};
+        QCOMPARE(UpdateModel::pickChecksums(assets, "linux"), QStringLiteral("https://github.com/x/releases/download/v0.13.1/SHA256SUMS-linux.txt"));
+        QVERIFY(UpdateModel::pickChecksums(assets, "windows").isEmpty()); // not https: never used
+        const QString sums = "ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789  notch_0.13.1_amd64.deb\n"
+                             "1111111111111111111111111111111111111111111111111111111111111111 *Notch-0.13.0-windows-x64-setup.exe\r\n"
+                             "not a checksum line\n";
+        const QHash<QString, QString> h = UpdateModel::parseChecksums(sums);
+        QCOMPARE(h.size(), 2);
+        QCOMPARE(h.value("notch_0.13.1_amd64.deb"), QStringLiteral("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"));
+        QCOMPARE(h.value("Notch-0.13.0-windows-x64-setup.exe"), QString(64, u'1'));
+        const QByteArray data = "hello";
+        const QByteArray hex = QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex();
+        QVERIFY(UpdateModel::sha256Matches(hex, QString::fromLatin1(hex).toUpper()));
+        QVERIFY(!UpdateModel::sha256Matches(hex, QString(64, u'0')));
+        QVERIFY(!UpdateModel::sha256Matches(hex, QString())); // nothing to compare with is never a match
+        QVERIFY(UpdateModel::trustedHost(QUrl("https://github.com/a/b")));
+        QVERIFY(UpdateModel::trustedHost(QUrl("https://objects.githubusercontent.com/x")));
+        QVERIFY(!UpdateModel::trustedHost(QUrl("http://github.com/a")));
+        QVERIFY(!UpdateModel::trustedHost(QUrl("https://github.com.evil.example/a")));
+        QVERIFY(!UpdateModel::trustedHost(QUrl("https://evilgithubusercontent.com/a")));
+        QCOMPARE(UpdateModel::linuxInstallCommand("/tmp/x.deb").first(), QStringLiteral("pkexec"));
+        QVERIFY(UpdateModel::windowsInstallerArgs().contains("/SILENT") && UpdateModel::windowsInstallerArgs().contains("/NORESTART"));
     }
 
     void discordPipeFrames()

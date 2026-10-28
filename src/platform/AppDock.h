@@ -146,6 +146,9 @@ private:
     void refresh();
     QList<DockApp> runningApps(QString *activeId);
     void startKWin();
+public:
+    void setSearchShortcut(bool on, const QString &key); // Plasma: `key` (Shift+Space unless changed; also changeable in System Settings -> Shortcuts) opens the search in the notch
+private:
     void runKWinAction(const QString &mode, const QStringList &windows);
     static QString iconSource(const QString &id);
     static bool isFolder(const QString &id) { return id.startsWith(QLatin1String("folder:")); }

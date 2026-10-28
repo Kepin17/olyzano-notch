@@ -1,3 +1,22 @@
+## Olyzano Notch 0.14.0
+
+Update from inside Notch, a Bounce setting for the animations, and a simpler music player.
+
+- **Update now (Settings → About).** When a newer version is out, one button downloads the installer (Windows) or the package (Linux), checks its SHA-256 against the release's checksum file, installs it and starts the new version. On Windows the installer runs silently; on Linux your system asks for your password. A copy you built yourself or the portable zip still uses *Download*. Nothing is installed unless the checksum matches.
+- **Bounce (Settings → Appearance → Animations):** *Off*, *Soft*, *Normal* or *Bouncy*: how far the capsule and panel overshoot before they settle.
+- **The music player is simpler.** The *Lyrics* button at the top is gone: the button at the right of the controls now shows or hides the lyrics. Karaoke (your voice through the speakers with the music) is a small microphone button on the lyrics panel.
+- **Linux: much less memory** (since 0.13.1): about 133 MB instead of 154 MB at rest, and about 87 MB with the new *Low memory mode* (Settings → General → Performance). Windows is unchanged.
+
+### Downloads
+- **Linux:** `notch_0.14.0_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.14.0_amd64.deb`, then restart Olyzano Notch.
+- **Windows:** `Notch-0.14.0-windows-x64-setup.exe`, or the portable `.zip`.
+- Optional components (OCR, KDE Connect, PDF tools on Windows): see the [install page](https://kepin17.github.io/olyzano-notch/#optional).
+
+### Is the Windows warning safe to click through?
+Windows SmartScreen says *"Windows protected your PC"* because the installer is not code-signed yet and Notch is new to Microsoft, not because anything was found in it. Click **More info → Run anyway**. To check the file yourself, compare its SHA-256 with `SHA256SUMS-windows.txt` (and `SHA256SUMS-linux.txt` for the `.deb`) on this page: in PowerShell, `Get-FileHash .\Notch-0.14.0-windows-x64-setup.exe`. The code is open and built by GitHub Actions from this repository.
+
+---
+
 ## Olyzano Notch 0.13.1
 
 Linux: much less memory. Nothing else changes; the Windows installer of 0.13.0 is still the current one.

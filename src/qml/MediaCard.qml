@@ -568,29 +568,32 @@ Rectangle {
                 }
             }
             Item { Layout.fillWidth: true }
-            Item { // karaoke: your voice through the speakers or headphones, with the music
+            Item { // the words: shows the lyrics beside the player (karaoke is a button on the lyrics panel)
                 Layout.preferredWidth: 32
                 Layout.preferredHeight: 32
                 Layout.minimumWidth: 32
                 Layout.alignment: Qt.AlignVCenter
                 RoundButton {
-                    id: mic
+                    id: words
                     anchors.centerIn: parent
-                    visible: karaoke.supported
                     implicitWidth: 30
                     implicitHeight: 30
-                    Accessible.name: karaoke.active ? "Stop karaoke" : "Karaoke: sing along"
-                    onClicked: karaoke.toggle()
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
+                    Accessible.name: lyrics.enabled ? "Hide the lyrics" : "Show the lyrics"
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: lyrics.enabled ? "Hide the lyrics" : "Show the lyrics"
+                    onClicked: lyrics.enabled = !lyrics.enabled
                     background: Rectangle {
                         radius: width / 2
-                        color: karaoke.active ? Qt.alpha(card.tint, 0.3) : mic.down ? Qt.rgba(1, 1, 1, 0.22) : mic.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                        color: lyrics.enabled ? Qt.alpha(card.tint, 0.3) : words.down ? Qt.rgba(1, 1, 1, 0.22) : words.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
                     }
                     contentItem: Item {
                         LineIcon {
                             anchors.centerIn: parent
-                            glyph: "mic"
+                            glyph: "lyrics"
                             sourceSize: Qt.size(16, 16)
-                            color: karaoke.active ? card.tint : card.fgDim
+                            color: lyrics.enabled ? card.tint : card.fgDim
                         }
                     }
                 }
