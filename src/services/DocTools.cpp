@@ -222,7 +222,7 @@ ToolResult runTool(const QString &kind, const QList<ToolInput> &inputs, const QS
 {
     ToolResult r;
     const auto out = [&](const QString &name) {
-        const QString path = workDir + u'/' + FileService::uniqueName(workDir, name);
+        const QString path = workDir + u'/' + FileService::uniqueName(workDir, FileService::safeFileName(name));
         r.outputs << qMakePair(path, QFileInfo(path).fileName());
         return path;
     };
@@ -263,7 +263,7 @@ ToolResult runTool(const QString &kind, const QList<ToolInput> &inputs, const QS
         const QList<int> pages = parsePageRanges(option, pdfPageCount(inputs.first().path), &err);
         r.error = pages.isEmpty() ? err
                                   : extractPages(inputs.first().path, pages,
-                                                           out(inputs.first().base + QStringLiteral(" (pages %1).pdf").arg(option.simplified())));
+                                                           out(inputs.first().base + QStringLiteral(" (pages %1).pdf").arg(QString(option.simplified()).remove(QRegularExpression(QStringLiteral("[^0-9,\\- ]"))))));
         r.summary = QStringLiteral("Extracted %1 pages").arg(pages.size());
     } else if (kind == QLatin1String("ocr-copy") || kind == QLatin1String("ocr-note")) {
         const bool pdf = inputs.first().name.endsWith(QLatin1String(".pdf"), Qt::CaseInsensitive);

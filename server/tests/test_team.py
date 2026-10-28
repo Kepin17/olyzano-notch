@@ -72,6 +72,67 @@ class TeamTest(unittest.TestCase):
         self.assertEqual(self.call("POST", "/api/v1/join", json.dumps({"token": link.split("#", 1)[1]}).encode())[0], 404)
         self.assertEqual(self.call("GET", "/api/v1/ping", key="not-a-key")[0], 401)
 
+    def raw(self, data, read_all=True):
+        """Send raw bytes on one connection; -> everything the server wrote until it closed (or stopped for a moment)."""
+        import socket
+        sk = socket.create_connection(("127.0.0.1", self.port), timeout=2)
+        sk.sendall(data)
+        out = b""
+        try:
+            while True:
+                chunk = sk.recv(65536)
+                if not chunk:
+                    break
+                out += chunk
+        except socket.timeout:
+            pass
+        sk.close()
+        return out
+
+    def test_unread_body_cannot_smuggle_a_second_request(self):
+        # a 401 is sent before the body is read; the body holds a full request that must not be run as the next one
+        inner = b"GET /api/v1/ping HTTP/1.1\r\nHost: x\r\nAuthorization: Bearer " + HOST_KEY.encode() + b"\r\n\r\n"
+        outer = (b"POST /api/v1/shares HTTP/1.1\r\nHost: x\r\nContent-Length: %d\r\n\r\n" % len(inner)) + inner
+        out = self.raw(outer)
+        self.assertEqual(out.count(b"HTTP/1.1 "), 1, out)
+        self.assertIn(b"401", out.split(b"\r\n")[0])
+
+    def test_ambiguous_framing_is_refused(self):
+        out = self.raw(b"POST /api/v1/join HTTP/1.1\r\nHost: x\r\nTransfer-Encoding: chunked\r\nContent-Length: 4\r\n\r\n0\r\n\r\n")
+        self.assertIn(b"400", out.split(b"\r\n")[0])
+        out = self.raw(b"POST /api/v1/join HTTP/1.1\r\nHost: x\r\nContent-Length: 4\r\nContent-Length: 40\r\n\r\n{}  ")
+        self.assertIn(b"400", out.split(b"\r\n")[0])
+
+    def test_one_invitation_gives_one_key_even_when_used_in_parallel(self):
+        link = self.cli("members", "add", "racer").strip().splitlines()[-1].strip()
+        token = link.split("#", 1)[1]
+        results = []
+        def go():
+            results.append(self.call("POST", "/api/v1/join", json.dumps({"token": token}).encode())[0])
+        ts = [threading.Thread(target=go) for _ in range(8)]
+        [t.start() for t in ts]
+        [t.join() for t in ts]
+        self.assertEqual(results.count(200), 1, results)
+
+    def test_parallel_uploads_cannot_pass_the_space_quota(self):
+        key, _ = self.join("sam", quota_mb=3)
+        results = []
+        def go():
+            results.append(self.call("POST", "/api/v1/shares", b"x" * (2 * MB), {"X-TTL": "3600"}, key)[0])
+        ts = [threading.Thread(target=go) for _ in range(6)]
+        [t.start() for t in ts]
+        [t.join() for t in ts]
+        self.assertEqual(results.count(201), 1, results)
+
+    def test_a_changing_forwarded_address_does_not_reset_the_pin_lock(self):
+        self.srv.cfg.trust_proxy = True
+        status, body = self.call("POST", "/api/v1/shares", b"secret", {"X-TTL": "3600", "X-Pin": "1234"}, HOST_KEY)
+        sid = json.loads(body)["id"]
+        for i in range(relay.PIN_MAX_FAILS * 6 + 1):
+            self.call("GET", "/s/%s/blob" % sid, headers={"X-Pin": "0000", "X-Forwarded-For": "6.6.6.%d, 10.0.0.%d" % (i, i)})
+        status, _ = self.call("GET", "/s/%s/blob" % sid, headers={"X-Pin": "1234", "X-Forwarded-For": "7.7.7.7, 10.9.9.9"})
+        self.assertEqual(status, 429)
+
     def test_expired_and_wrong_invitations_fail_and_guessing_is_limited(self):
         link = self.cli("members", "add", "bob").strip().splitlines()[-1].strip()
         token = link.split("#", 1)[1]

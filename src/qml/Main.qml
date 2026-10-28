@@ -1446,6 +1446,7 @@ Window {
                     spacing: 1
                     Text {
                         Layout.fillWidth: true
+                        textFormat: Text.PlainText // a name can look like markup
                         text: toastRow.t.title
                         color: root.textPrimary
                         font.pixelSize: 14
@@ -1560,6 +1561,7 @@ Window {
                 elide: Text.ElideRight
             }
             Text {
+                textFormat: Text.PlainText // a name can look like markup
                 text: liveRow.l.detail
                 readonly property bool clockLike: liveRow.l.kind === "timer" || liveRow.l.kind === "break"
                 color: clockLike || liveRow.l.kind === "call" ? liveRow.l.color : root.textSecondary
@@ -2949,6 +2951,7 @@ Window {
             }
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText // a name can look like markup
                 text: (quickLookCard.info.name || "") + "  ·  " + (quickLookCard.info.sizeText || "") + "  ·  "
                       + (quickLookCard.info.addedText || "")
                 color: theme.textDim

@@ -3,7 +3,8 @@
 <style>body{font:14px/1.5 system-ui;background:#111;color:#eee;padding:20px}.ok{color:#5c5}.bad{color:#f66;font-weight:700}code{color:#9cf}</style></head>
 <body><h1>Olyzano Notch for the web: tests</h1><p>The pure functions, run in this browser. Open this page; every line should say <span class="ok">PASS</span>.</p><div id="out"></div>
 <script type="module">
-import { uniqueName, parsePageRanges, parseLrc, formatBytes, clock, kindOf, extOf, baseOf, shareLink } from "./js/util.js";
+import { uniqueName, parsePageRanges, parseLrc, formatBytes, clock, kindOf, extOf, baseOf, shareLink, openType } from "./js/util.js";
+import { entryName } from "./js/tools/zip.js";
 import { fmt } from "./js/color.js";
 import { wifiQr } from "./js/tools/misc.js";
 import { THEMES } from "./js/themes.js";
@@ -37,5 +38,7 @@ eq("colour formats", [fmt("#3daee9", "hex"), fmt("#3daee9", "rgb"), fmt("#ff0000
 eq("share link from a QR", [shareLink(" https://relay.example/s/ab#KEY "), shareLink("http://192.168.1.5:4000/t0k/"), shareLink("WIFI:T:WPA;S:a;;"), shareLink("javascript:alert(1)")], ["https://relay.example/s/ab#KEY", "http://192.168.1.5:4000/t0k/", "", ""]);
 eq("wifi QR text", [wifiQr("olyzano room", "olzm0404"), wifiQr("a;b", "p:x"), wifiQr("cafe", "", false)], ["WIFI:T:WPA;S:olyzano room;P:olzm0404;;", String.raw`WIFI:T:WPA;S:a\;b;P:p\:x;;`, "WIFI:T:nopass;S:cafe;;"]);
 eq("fourteen themes, each with dark and light", [THEMES.length, THEMES.every(t => t.dark && t.light && /^#/.test(t.dark.accent) && /^#/.test(t.light.accent))], [14, true]);
+eq("zip entry names are plain file names", [entryName("../../etc/x.txt"), entryName("a\\b\\c.png"), entryName("C:evil.exe"), entryName(".."), entryName("ok.pdf")], ["x.txt", "c.png", "evil.exe", "file", "ok.pdf"]);
+eq("only safe types open in a tab (never html or svg as a page)", [openType("a.svg"), openType("a.html"), openType("a.xml"), openType("a.PDF"), openType("a.png")], ["", "text/plain", "", "application/pdf", "image/png"]);
 const total = document.createElement("h2"); total.textContent = fails ? fails + " failed" : "All passed"; total.className = fails ? "bad" : "ok"; out.prepend(total);
 </script></body></html>

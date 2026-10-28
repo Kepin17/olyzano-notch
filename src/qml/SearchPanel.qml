@@ -111,7 +111,7 @@ ColumnLayout {
                     asynchronous: true
                     fillMode: Image.PreserveAspectFit
                 }
-                Text { Layout.fillWidth: true; text: row.modelData.name; color: theme.text; font.pixelSize: 15; font.weight: row.picked ? Font.DemiBold : Font.Medium; elide: Text.ElideRight }
+                Text { Layout.fillWidth: true; textFormat: Text.PlainText; text: row.modelData.name; color: theme.text; font.pixelSize: 15; font.weight: row.picked ? Font.DemiBold : Font.Medium; elide: Text.ElideRight }
                 Text { text: row.modelData.category; color: theme.textDim; font.pixelSize: 11 }
                 Text { visible: row.picked; text: "↵"; color: theme.accentText; font.pixelSize: 16 }
                 Text { visible: !row.picked && row.index < 7; text: "Ctrl+" + (row.index + 1); color: theme.textFaint; font.pixelSize: 10 }

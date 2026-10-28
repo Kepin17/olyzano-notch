@@ -23,14 +23,14 @@ void FolderWatcher::watch(const QString &dir, int settleMs)
     if (dir.isEmpty() || !QDir(dir).exists())
         return;
     m_settle.setInterval(settleMs);
-    for (const QString &name : QDir(dir).entryList(QDir::Files | QDir::Hidden))
+    for (const QString &name : QDir(dir).entryList(QDir::Files | QDir::Hidden | QDir::NoSymLinks))
         m_known.insert(name);
     m_watcher.addPath(dir);
 }
 
 void FolderWatcher::scan()
 {
-    const QStringList names = QDir(m_dir).entryList(QDir::Files | QDir::Hidden);
+    const QStringList names = QDir(m_dir).entryList(QDir::Files | QDir::Hidden | QDir::NoSymLinks);
     const QSet<QString> present(names.cbegin(), names.cend());
     m_known.intersect(present); // forget deleted files, so a re-created name counts as new
     for (const QString &name : names) {
@@ -46,6 +46,10 @@ void FolderWatcher::checkPending()
 {
     for (auto it = m_pending.begin(); it != m_pending.end();) {
         const QFileInfo fi(m_dir + u'/' + it.key());
+        if (fi.isSymLink()) { // a link could point at anything on the disk (a key, a password file): never copy what it leads to
+            it = m_pending.erase(it);
+            continue;
+        }
         if (!fi.exists()) { // renamed away (e.g. a partial file got its final name: that one is new)
             it = m_pending.erase(it);
             continue;

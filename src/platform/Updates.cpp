@@ -312,7 +312,7 @@ void Updates::installNow()
         failInstall(tr("This release has no checksum file, so Notch will not install it by itself. Use Download instead."));
         return;
     }
-    if (!UpdateModel::trustedHost(QUrl(fileUrl)) || !UpdateModel::trustedHost(QUrl(sumsUrl))) {
+    if (!UpdateModel::trustedAsset(QUrl(fileUrl)) || !UpdateModel::trustedAsset(QUrl(sumsUrl))) {
         failInstall(tr("The download address is not a GitHub one. Use Download instead."));
         return;
     }

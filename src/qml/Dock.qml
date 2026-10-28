@@ -736,6 +736,7 @@ Window {
             Text {
                 leftPadding: 6
                 bottomPadding: 4
+                textFormat: Text.PlainText // a name can look like markup
                 text: windowList.app ? windowList.app.name : ""
                 color: theme.textDim
                 font.pixelSize: 11
@@ -754,6 +755,7 @@ Window {
                         anchors.leftMargin: 8
                         anchors.rightMargin: 8
                         verticalAlignment: Text.AlignVCenter
+                        textFormat: Text.PlainText // a name can look like markup
                         text: parent.modelData.title || "Untitled window"
                         color: theme.text
                         font.pixelSize: 12
@@ -804,6 +806,7 @@ Window {
                 Layout.fillWidth: true
                 Text {
                     Layout.fillWidth: true
+                    textFormat: Text.PlainText // a name can look like markup
                     text: stack.folder ? stack.folder.name : ""
                     color: theme.text
                     font.pixelSize: 13
@@ -859,6 +862,7 @@ Window {
                             y: 52
                             width: parent.width - 8
                             horizontalAlignment: Text.AlignHCenter
+                            textFormat: Text.PlainText // a name can look like markup
                             text: entry.modelData.name
                             color: theme.text
                             font.pixelSize: 10
@@ -1026,6 +1030,7 @@ Window {
                         }
                         Text {
                             Layout.fillWidth: true
+                            textFormat: Text.PlainText // a name can look like markup
                             text: entry.modelData.name
                             color: theme.text
                             font.pixelSize: 12

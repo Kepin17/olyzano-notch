@@ -105,7 +105,7 @@ CopyResult copyInto(const QString &src, const QString &itemDir, const QString &n
 QString safeFileName(const QString &name, const QString &fallback)
 {
     QString s = name;
-    s.replace(u'/', u'_').remove(QChar(u'\0')).remove(u'\n').remove(u'\r');
+    s.replace(u'/', u'_').replace(u'\\', u'_').remove(QChar(u'\0')).remove(u'\n').remove(u'\r');
     while (s.startsWith(u'.'))
         s.remove(0, 1);
     s = s.trimmed().left(200);

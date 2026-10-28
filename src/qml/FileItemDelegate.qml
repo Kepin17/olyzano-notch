@@ -252,6 +252,7 @@ Item {
         anchors.topMargin: 8
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 8
+        textFormat: Text.PlainText // a name can look like markup
         text: tile.name
         color: theme.text
         font.pixelSize: 11
@@ -287,6 +288,7 @@ Item {
               + (tile.sourcePath ? "\nFrom " + tile.sourcePath : "")
         background: Rectangle { color: theme.card; radius: theme.radiusSm + 2; border.color: theme.hairline }
         contentItem: Text {
+            textFormat: Text.PlainText // a name can look like markup
             text: tip.text
             color: theme.text
             font.pixelSize: 11

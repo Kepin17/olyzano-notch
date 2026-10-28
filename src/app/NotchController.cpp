@@ -330,7 +330,7 @@ FileItem NotchController::newItem(const QString &name, const QString &categoryId
 {
     FileItem item;
     item.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    item.originalName = freeName(name);
+    item.originalName = freeName(FileService::safeFileName(name)); // a category called "a/b" must not become a folder in the zip's name
     item.storedName = item.id + u'/' + item.originalName;
     item.addedAt = QDateTime::currentDateTimeUtc();
     item.status = Status::Copying;

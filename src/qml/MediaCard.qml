@@ -265,6 +265,7 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.minimumHeight: titleFont.lineSpacing * (card.compact ? 1 : 2)
                     verticalAlignment: Text.AlignTop
+                    textFormat: Text.PlainText // a name can look like markup
                     text: media.title || media.identity
                     color: card.fg
                     font.pixelSize: card.compact ? 15 : 17

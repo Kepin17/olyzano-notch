@@ -953,6 +953,10 @@ private slots:
         QVERIFY(!UpdateModel::trustedHost(QUrl("http://github.com/a")));
         QVERIFY(!UpdateModel::trustedHost(QUrl("https://github.com.evil.example/a")));
         QVERIFY(!UpdateModel::trustedHost(QUrl("https://evilgithubusercontent.com/a")));
+        QVERIFY(UpdateModel::trustedAsset(QUrl("https://github.com/Kepin17/olyzano-notch/releases/download/v1/notch.deb")));
+        QVERIFY(!UpdateModel::trustedAsset(QUrl("https://github.com/evil/olyzano-notch/releases/download/v1/notch.deb")));
+        QVERIFY(!UpdateModel::trustedAsset(QUrl("https://github.com/Kepin17/olyzano-notch-fake/releases/download/v1/notch.deb")));
+        QVERIFY(!UpdateModel::trustedAsset(QUrl("https://github.com/Kepin17/olyzano-notch/releases/download/v1/.hidden")));
         QCOMPARE(UpdateModel::linuxInstallCommand("/tmp/x.deb").first(), QStringLiteral("pkexec"));
         QVERIFY(UpdateModel::windowsInstallerArgs().contains("/SILENT") && UpdateModel::windowsInstallerArgs().contains("/NORESTART"));
     }
@@ -1599,6 +1603,31 @@ private slots:
         QCOMPARE(spy.size(), 2); // reported once each, old.txt never
     }
 
+#ifndef Q_OS_WIN // QFile::link makes a .lnk shortcut there, not a symbolic link
+    void folderWatcherIgnoresSymlinks()
+    {
+        const QString dir = m_tmp.filePath(QStringLiteral("watched-links"));
+        QDir().mkpath(dir);
+        const QString secret = m_tmp.filePath(QStringLiteral("secret.txt"));
+        QFile f(secret);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("private");
+        f.close();
+        FolderWatcher watcher;
+        watcher.watch(dir, 300);
+        QSignalSpy spy(&watcher, &FolderWatcher::fileReady);
+        QVERIFY(QFile::link(secret, dir + QStringLiteral("/x.png"))); // ln -s: a "download" that is really another file
+        QFile real(dir + QStringLiteral("/real.png"));
+        QVERIFY(real.open(QIODevice::WriteOnly));
+        real.write("png");
+        real.close();
+        QTRY_COMPARE_WITH_TIMEOUT(spy.size(), 1, 5000);
+        QTest::qWait(800);
+        QCOMPARE(spy.size(), 1);
+        QCOMPARE(QFileInfo(spy.first().first().toString()).fileName(), QStringLiteral("real.png"));
+    }
+#endif
+
     void recentlyRemovedLastsADay()
     {
         const QDateTime now = QDateTime::currentDateTimeUtc();
@@ -1702,6 +1731,16 @@ private slots:
         QCOMPARE(merged.error, QString());
         QCOMPARE(DocTools::pdfPageCount(merged.outputs.first().first), 2);
         QCOMPARE(merged.summary, QStringLiteral("Merged 2 PDFs"));
+
+        // a name that tries to leave the work folder stays inside it
+        const DocTools::ToolInput sneaky{png, QStringLiteral("../../escape"), QStringLiteral("card.png")};
+        auto sneakyOut = DocTools::runTool(QStringLiteral("images-pdf"), {sneaky}, {}, work);
+        QCOMPARE(sneakyOut.error, QString());
+        QCOMPARE(QFileInfo(sneakyOut.outputs.first().first).absolutePath(), QFileInfo(work).absoluteFilePath());
+        QVERIFY(!sneakyOut.outputs.first().second.contains(u'/'));
+        auto pages = DocTools::runTool(QStringLiteral("extract"), {doc}, QStringLiteral("1/../../x"), work);
+        for (const auto &o : pages.outputs)
+            QCOMPARE(QFileInfo(o.first).absolutePath(), QFileInfo(work).absoluteFilePath());
 
         auto resized = DocTools::runTool(QStringLiteral("resize"), {card}, QStringLiteral("400"), work);
         QCOMPARE(resized.outputs.first().second, QStringLiteral("card (400px).png"));

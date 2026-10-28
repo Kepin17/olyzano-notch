@@ -77,7 +77,7 @@ export async function renderPage(doc, n, scale) {
   await page.render({ canvasContext: c.getContext("2d"), viewport: vp }).promise;
   return c;
 }
-export async function openPdf(file) { const P = await pdfjs(); return P.getDocument({ data: await bytes(file) }).promise; }
+export async function openPdf(file) { const P = await pdfjs(); return P.getDocument({ data: await bytes(file), isEvalSupported: false }).promise; } // CVE-2024-4367: no eval of font code from the file
 
 // Smaller file: every page is re-drawn as a JPEG picture (so the text can no longer be selected).
 export async function compress(file, { dpi = 150, quality = .7 } = {}, progress = () => {}) {

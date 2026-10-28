@@ -75,7 +75,7 @@ multi-file share is fetched with a byte `Range`, so only that file travels, neve
 ## Without Docker
 
 `RELAY_API_KEY=... DATA_DIR=./data PORT=8080 python3 relay.py` (Python 3.9+, standard library only),
-behind any HTTPS reverse proxy. Set `TRUST_PROXY=1` only when a proxy sets `X-Forwarded-For`.
+behind any HTTPS reverse proxy. Set `TRUST_PROXY=1` only when a proxy sets `X-Forwarded-For`; `PROXY_HOPS` (default 1) is how many proxies are in front, counted from the right of that header, so an address the client writes itself is never believed.
 
 ## Tests
 

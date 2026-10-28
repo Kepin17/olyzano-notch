@@ -378,7 +378,7 @@ Window {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 2
-                            Text { Layout.fillWidth: true; text: dev.modelData.name; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium; elide: Text.ElideRight }
+                            Text { Layout.fillWidth: true; textFormat: Text.PlainText; text: dev.modelData.name; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium; elide: Text.ElideRight }
                             RowLayout {
                                 spacing: 6
                                 Rectangle { // battery bar
