@@ -1,13 +1,26 @@
 ## Olyzano Notch 0.15.0
 
-Dev hub in the action bar: API tester, SSH manager and a database browser in one page.
+Dev hub in the action bar, a camera photo booth, notch search, and a faster app.
 
+### New
 - **Dev hub** (action bar → *Dev*): **API**, **SSH** and **Database** behind one switcher; the notch stays open while you work.
 - **API tester:** HTTP client with collections, folders, environments (`{{baseUrl}}` / `{{relayKey}}`), history, pretty JSON, pre-request and test scripts, Postman Collection v2.1 / Environment import-export, and a **Ports** tab (listener / process / PID, stop, control command).
 - **SSH manager:** save hosts, **persistent terminal** in the notch (`ssh -tt`, live shell, `clear`), test connectivity (key/agent preferred), open a system terminal. Passwords never go on the command line.
 - **Database browser:** SQLite always; MySQL/MariaDB and PostgreSQL when the Qt SQL driver is installed — databases + tables side by side, browse rows, run SQL with timing.
+- **Camera photo booth** (action bar → *Camera*): take frames, pick a template and filter, compose one picture and keep it on the shelf. The privacy dot shows while the camera is on.
+- **Search from the notch** (Shift + Space): Spotlight-style field with matching apps underneath — the same search works from the top edge on Windows too.
 - Clock colour can follow the theme accent (*Settings → Appearance → Clock follows theme colour*).
-- Faster theme switching (Settings sections and idle pages load only when opened); the reserved top strip on Windows is filled with a visual bar instead of bare wallpaper; tray menu gains Settings shortcuts; the notch and dock re-assert themselves on Windows when another app steals z-order.
+
+### Improved
+- **Faster app:** Settings sections and idle pages load only when opened; album art is served from a cover cache instead of re-reading files; menu and button hover/press states are solid theme colours (no system-white flash).
+- Share: guide for setting up the sharing server, plus a clearer layout around server URLs.
+- The reserved top strip on Windows is filled with a visual bar instead of bare wallpaper; tray menu gains Settings shortcuts.
+- The notch and dock re-assert themselves on Windows when another app steals z-order.
+
+### Fixed
+- Dev section: menus, modals and the database form no longer show a white system background or an empty panel; the panel is wide enough for the database browser (no cut-off).
+- Confirmation toasts stick to the bottom of the open panel and clear themselves (they used to sit in the page flow or never disappear).
+- Contrast of right-click menus, auth picker and dialog buttons on dark and light themes.
 
 ### Downloads
 - **Linux:** `notch_0.15.0_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.15.0_amd64.deb`, then restart Olyzano Notch.
