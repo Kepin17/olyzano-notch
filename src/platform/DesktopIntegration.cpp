@@ -5,6 +5,7 @@
 #include "platform/WidgetModel.h"
 #ifdef Q_OS_WIN
 #include "platform/WinAppBar.h"
+#include <windows.h>
 #endif
 
 #include <QCursor>
@@ -217,7 +218,19 @@ void DesktopIntegration::setAboveBar(QWindow *notchWindow, bool above)
     // Windows and X11: two always-on-top windows stack by who was shown or raised last, so the bar can end up over
     // the notch (its menu then cannot be reached). Put the notch back on top; it takes no focus.
     if (above)
-        notchWindow->raise();
+        raiseOnTop(notchWindow);
+}
+
+void DesktopIntegration::raiseOnTop(QWindow *window)
+{
+    if (!window)
+        return;
+#ifdef Q_OS_WIN
+    if (const HWND hwnd = reinterpret_cast<HWND>(window->winId()))
+        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+#else
+    window->raise();
+#endif
 }
 
 void DesktopIntegration::setKeyboardInteractive(QWindow *window, bool interactive)
@@ -378,6 +391,58 @@ void DesktopIntegration::placeDocked(QWindow *window)
 
 // ---- Keeping windows clear of the capsule ----
 
+#ifdef Q_OS_WIN
+// A picture-only bar along the top: the appbar already shrinks the work area, but only the capsule
+// draws there — without this the reserved strip is bare wallpaper. Clicks fall through to what is below.
+class WinReserveStrip : public QRasterWindow
+{
+public:
+    explicit WinReserveStrip(QScreen *screen)
+    {
+        setScreen(screen);
+        QSurfaceFormat f;
+        f.setAlphaBufferSize(8);
+        setFormat(f);
+        setFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool | Qt::WindowTransparentForInput
+                 | Qt::WindowDoesNotAcceptFocus);
+        setColor(Qt::transparent);
+    }
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        p.fillRect(QRect(QPoint(0, 0), size()), QColor(10, 10, 12, 240)); // matches the island's black glass
+        p.setPen(QColor(255, 255, 255, 24)); // faint top-edge highlight like the bar
+        p.drawLine(0, size().height() - 1, size().width(), size().height() - 1);
+    }
+};
+
+void DesktopIntegration::updateWinReserveStrip(QWindow *notchWindow, int logicalPx)
+{
+    QScreen *screen = notchWindow ? notchWindow->screen() : nullptr;
+    if (!screen)
+        return;
+    const auto key = QPointer<QScreen>(screen);
+    if (logicalPx <= 0) {
+        if (auto it = m_winStrips.find(key); it != m_winStrips.end()) {
+            if (*it)
+                (*it)->deleteLater();
+            m_winStrips.erase(it);
+        }
+        return;
+    }
+    QPointer<QWindow> strip = m_winStrips.value(key);
+    if (!strip) {
+        strip = new WinReserveStrip(screen);
+        m_winStrips.insert(key, strip);
+    }
+    const QRect g = screen->geometry();
+    strip->setGeometry(g.x(), g.y(), g.width(), qMax(1, logicalPx));
+    strip->show();
+    raiseOnTop(notchWindow); // the capsule stays above its own strip
+}
+#endif
+
 DesktopIntegration::DesktopIntegration()
 {
 #ifdef Q_OS_WIN
@@ -385,7 +450,15 @@ DesktopIntegration::DesktopIntegration()
 #endif
 }
 
-DesktopIntegration::~DesktopIntegration() = default;
+DesktopIntegration::~DesktopIntegration()
+{
+#ifdef Q_OS_WIN
+    for (auto it = m_winStrips.begin(); it != m_winStrips.end(); ++it)
+        if (*it)
+            (*it)->deleteLater();
+    m_winStrips.clear();
+#endif
+}
 
 bool DesktopIntegration::canReserve() const
 {
@@ -434,7 +507,9 @@ void DesktopIntegration::reserve(QWindow *window, const QString &mode, bool on, 
 #ifdef Q_OS_WIN
     if (!window->isVisible()) // the native window may still be replaced while it is being set up; QML asks again once shown
         return;
-    m_appBar->set(window, ReserveModel::plan(mode, on, scale, barPx, false).appBar);
+    const int appBarPx = ReserveModel::plan(mode, on, scale, barPx, false).appBar;
+    m_appBar->set(window, appBarPx);
+    updateWinReserveStrip(window, appBarPx); // fill the reserved gap so it does not look like empty space
 #else
 #ifdef NOTCH_HAVE_LAYERSHELL
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {

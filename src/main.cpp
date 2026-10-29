@@ -28,6 +28,7 @@
 #include "platform/SystemStats.h"
 #include "platform/ClipboardHistory.h"
 #include "platform/MemoryTuner.h"
+#include "services/CoverCache.h"
 #include "platform/PhotoBooth.h"
 #ifdef Q_OS_WIN
 #include "platform/SearchHotkey_win.h"
@@ -369,10 +370,14 @@ int main(int argc, char *argv[])
     QObject::connect(&activities, &Activities::settingsChanged, &theme, applyGlass);
     theme.setMode(controller.themeMode());
     theme.setStyle(controller.uiStyle());
-    QObject::connect(&controller, &NotchController::uiStyleChanged, &theme, [&] { theme.setStyle(controller.uiStyle()); });
+    QObject::connect(&controller, &NotchController::uiStyleChanged, &theme, [&] {
+        theme.setStyle(controller.uiStyle());
+    });
     QObject::connect(&controller, &NotchController::themeModeChanged, &theme, [&] { theme.setMode(controller.themeMode()); });
     QObject::connect(&kdeconnect, &KdeConnect::received, &controller, &NotchController::addReceived);
     QQmlApplicationEngine engine;
+    CoverCache coverCache; // one decode per cover, shared by the capsule, the toast and the card (services/CoverCache.h)
+    engine.addImageProvider(QStringLiteral("cover"), CoverCache::makeProvider(&coverCache));
     engine.addImageProvider(QStringLiteral("mime"), new MimeIconProvider);
     engine.addImageProvider(QStringLiteral("tray"), new TrayIconProvider(&trayHost));
     engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider);
@@ -393,6 +398,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("sysstats"), &sysstats);
     engine.rootContext()->setContextProperty(QStringLiteral("clipboardHistory"), &clipboardHistory);
     engine.rootContext()->setContextProperty(QStringLiteral("memtune"), &memtune);
+    engine.rootContext()->setContextProperty(QStringLiteral("coverCache"), &coverCache);
     engine.rootContext()->setContextProperty(QStringLiteral("photoBooth"), &photoBooth);
     engine.rootContext()->setContextProperty(QStringLiteral("wellbeing"), &wellbeing);
     engine.rootContext()->setContextProperty(QStringLiteral("sounds"), &sounds);
@@ -496,6 +502,17 @@ int main(int argc, char *argv[])
                     desktop.setAboveBar(window, true);
             });
             keepAbove->start();
+            // Windows especially: a Tool window can lose topmost or vanish behind peers after the shell re-sorts
+            // z-order or an app restores. Bring it back; menus must stay reachable (raise when they open, not here).
+            auto *notchGuard = new QTimer(window);
+            notchGuard->setInterval(2000);
+            QObject::connect(notchGuard, &QTimer::timeout, window, [window, &desktop] {
+                if (!window->isVisible())
+                    window->show(); // nothing legitimate hides it; syncScreens rebuilds only after a screen change
+                if (!window->property("anyMenu").toBool())
+                    desktop.raiseOnTop(window);
+            });
+            notchGuard->start();
         }
 
         auto *dockView = qobject_cast<QQuickWindow *>(dockWindow.create());
@@ -513,6 +530,18 @@ int main(int argc, char *argv[])
             desktop.moveDock(dockView, dock.position());
             dockView->setVisible(dock.enabled());
         }, Qt::QueuedConnection);
+        if (!QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
+            // Same drift as the notch on Windows: keep the dock on top and shown while it is enabled.
+            auto *dockGuard = new QTimer(dockView);
+            dockGuard->setInterval(2000);
+            QObject::connect(dockGuard, &QTimer::timeout, dockView, [dockView, &dock, &desktop] {
+                if (dock.enabled() && !dockView->isVisible())
+                    dockView->show();
+                if (dockView->isVisible())
+                    desktop.raiseOnTop(dockView);
+            });
+            dockGuard->start();
+        }
         docks.insert(screen, dockView);
     };
     for (QScreen *screen : app.screens())

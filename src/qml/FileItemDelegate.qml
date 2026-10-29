@@ -110,7 +110,7 @@ Item {
         Image {
             id: photo
             anchors.fill: parent
-            visible: false
+            visible: memtune.running && tile.showThumbnail // software mode: no shader for the mask, the thumbnail is drawn straight
             source: tile.showThumbnail ? tile.fileUrl : ""
             sourceSize: Qt.size(128, 128)
             fillMode: Image.PreserveAspectCrop
@@ -125,7 +125,7 @@ Item {
         }
         MultiEffect {
             anchors.fill: parent
-            visible: tile.showThumbnail
+            visible: tile.showThumbnail && !memtune.running
             source: photo
             maskEnabled: true
             maskSource: roundMask

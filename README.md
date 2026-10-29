@@ -572,9 +572,11 @@ installer, are in [`.github/workflows/windows.yml`](.github/workflows/windows.ym
 
 ---
 
-## Memory on Linux
+## Memory
 
 At rest the capsule costs about **133 MB PSS** (the memory it really owns; the Qt, KDE and Mesa libraries it shares with other programs are divided between them, so the *RES* column of `top`, ~275 MB, looks much bigger). **Settings → General → Performance → Low memory mode** draws with Qt's software renderer instead of the graphics card and needs about **87 MB PSS** (~175 MB RES); it takes a restart and uses a little more processor while the panel moves. Settings and the share dialog are unloaded a minute or two after they are closed. To measure on your own machine: `scripts/memcheck.sh build/notch default low`.
+
+**Windows:** the same Low memory mode is in *Settings → General → Performance*; there it skips the graphics driver, which is most of the idle memory (about 190 MB working set to start with, see [windows-developer-notes.md](docs/windows-developer-notes.md)). Measure a run with `powershell -ExecutionPolicy Bypass -File scripts\memcheck.ps1` (close a running Notch first; `-Variants default,low` compares both).
 
 ## Project layout
 

@@ -15,6 +15,7 @@ Rectangle {
     implicitHeight: content.implicitHeight + 20
 
     readonly property bool hasArt: art.status === Image.Ready
+    readonly property bool software: memtune.running // the software renderer cannot draw blur or mask shaders (see CameraView)
     readonly property bool compact: width < 400
     readonly property color tint: cover.color
     readonly property color fg: hasArt ? "#ffffff" : theme.text
@@ -97,8 +98,8 @@ Rectangle {
     Image { // the picture itself (the cover and the background both look at it)
         id: art
         visible: false
-        source: media.artUrl
-        cache: false // browsers reuse one temp file for every track's cover
+        source: coverCache.cover(media.artUrl) // content-addressed: one decode shared by every cover on screen
+        cache: false // the cover cache does the sharing, keyed by content, not by a reused temp file
         sourceSize: Qt.size(200, 200)
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
@@ -111,21 +112,23 @@ Rectangle {
     Item { // the blurred cover, drawn larger than the card (a blur fades at its edges, and the card clips them away)
         id: backdrop
         anchors.fill: parent
-        anchors.margins: -70
+        anchors.margins: card.software ? 0 : -70 // -70 only gives the blur room; the plain image fills the card exactly
         visible: card.hasArt
         opacity: card.fade
         Image {
             id: bgArt
             anchors.fill: parent
-            visible: false
-            source: media.artUrl
+            visible: card.hasArt && card.software // software mode: no blur shader, the cover itself is the backdrop, a little dimmed
+            opacity: 0.7
+            source: coverCache.cover(media.artUrl)
             cache: false
-            sourceSize: Qt.size(160, 160)
+            sourceSize: Qt.size(200, 200) // same size as the cover: one decode serves both
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
         }
         MultiEffect {
             anchors.fill: parent
+            visible: card.hasArt && !card.software
             source: bgArt
             autoPaddingEnabled: false
             blurEnabled: true
@@ -231,9 +234,18 @@ Rectangle {
                         layer.enabled: true
                         Rectangle { anchors.fill: parent; radius: 14 }
                     }
+                    Image { // software mode: no shader for the mask, so the cover is drawn straight (square corners, still the cover)
+                        anchors.fill: parent
+                        visible: card.hasArt && card.software
+                        source: coverCache.cover(media.artUrl)
+                        cache: false
+                        sourceSize: Qt.size(200, 200)
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                    }
                     MultiEffect {
                         anchors.fill: parent
-                        visible: card.hasArt
+                        visible: card.hasArt && !card.software
                         source: art
                         maskEnabled: true
                         maskSource: coverMask

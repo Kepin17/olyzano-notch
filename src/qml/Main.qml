@@ -23,7 +23,7 @@ Window {
     // The panel is as wide as its page needs, and never narrower than the row of section buttons (Files, Music, Timer, Tasks,
     // Color, Sharing, Lyrics, Note, Add): with every button there, it grows (up to the window) instead of cutting them off.
     readonly property int panelWidth: Math.max(lyricsSplit ? 780 : page === "settings" ? 720 : page === "tasks" ? 620 : openWidth,
-                                               Math.min(width - 20, Math.max(actionBar.visible ? Math.ceil(actionBar.implicitWidth) + 44 : 0,
+                                               Math.min(width - 20, Math.max(actionBarLoader.item && actionBarLoader.item.visible ? Math.ceil(actionBarLoader.item.implicitWidth) + 44 : 0,
                                                                               Math.ceil(headerRow.implicitWidth) + 36)))
 
     property bool pinned: false
@@ -185,7 +185,7 @@ Window {
         desktop.grabKeyboard(root, false)
         island.forceActiveFocus()
     }
-    function debugSearch(text) { openSearch(); searchPanel.setQuery(text) } // `notch --shot-search fire`
+    function debugSearch(text) { openSearch(); if (searchPanelLoader.item) searchPanelLoader.item.setQuery(text) } // `notch --shot-search fire`
     // Once the window has the keys it lets the exclusivity go: a click on another window then takes them, and that closes the search.
     onActiveChanged: {
         dbg("window active=" + active + " searchOpen=" + searchOpen)
@@ -230,7 +230,7 @@ Window {
                                     || toolsMenu.visible || extractPopup.visible || (settingsLoader.item !== null && settingsLoader.item.overlayOpen)
                                     || quickLookCard.visible || vaultPopup.visible || confirmDelete.visible
                                     || (shareLoader.item !== null && shareLoader.item.visible) || incomingPopup.visible
-                                    || sortMenu.visible || removedMenu.visible || tasksPage.modalOpen
+                                    || sortMenu.visible || removedMenu.visible || (tasksPageLoader.item && tasksPageLoader.item.modalOpen)
                                     || removedChipMenu.visible
     readonly property bool dragOver: dragLive && (edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver)
     // Once it has started to open it stays open a moment, so a hover that blinks while the panel grows under a
@@ -811,7 +811,7 @@ Window {
         function onChanged() { if (!media.active && root.page === "music") root.page = "shelf" }
     }
     onDragOverChanged: if (dragOver) page = "shelf" // a file being dragged in: show where it lands
-    onAnyMenuChanged: updateMask()
+    onAnyMenuChanged: { updateMask(); if (anyMenu) desktop.raiseOnTop(root) } // a popup must not open under a peer window
     Timer { id: closeTimer; interval: 110; onTriggered: root.open = false }
     // Dwell before revealing, so flinging the mouse up to a tab doesn't pop the panel.
     Timer { id: dwellTimer; interval: 160; onTriggered: root.dwelled = true }
@@ -1052,12 +1052,15 @@ Window {
 
     // Called by DesktopIntegration for tray actions.
     function toggleFromTray(target) {
-        if (target === "settings") {
+        if (typeof target === "string" && target.indexOf("settings") === 0) {
             page = "settings"
             pinned = true
-        } else {
-            pinned = capsuleMode === "open" || !pinned
+            const parts = target.split(":")
+            if (parts.length > 1)
+                settingsPage().category = parts[1]
+            return
         }
+        pinned = capsuleMode === "open" || !pinned
     }
 
     // Text files open straight in the note editor; everything else in the preview.
@@ -1096,9 +1099,11 @@ Window {
     }
 
     onPageChanged: {
-        if (page === "note")
-            notePage.load()
-        else if (page === "settings")
+        if (page === "note") {
+            notePageLoader.active = true
+            if (notePageLoader.item)
+                notePageLoader.item.load()
+        } else if (page === "settings")
             settingsLoader.active = true
     }
     function restartInfo() { infoTimer.restart() }
@@ -1134,7 +1139,7 @@ Window {
              : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
              : root.mode === "idle" ? (root.musicShown ? root.capWidth : root.infoShown ? 390 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         readonly property real targetHeight: root.mode === "open" ? Math.max(panel.implicitHeight + (root.dragOver ? 8 : 0), root.shareNeed)
-              : root.mode === "search" ? searchPanel.wantedHeight : root.mode === "prompt" ? 92 : root.mode === "toast" ? 56 : root.mode === "peek" ? 36 : root.mode === "idle" ? 48 : 0
+              : root.mode === "search" ? (searchPanelLoader.item ? searchPanelLoader.item.wantedHeight : 0) : root.mode === "prompt" ? 92 : root.mode === "toast" ? 56 : root.mode === "peek" ? 36 : root.mode === "idle" ? 48 : 0
         width: targetWidth
         height: targetHeight
         focus: true
@@ -1415,7 +1420,8 @@ Window {
                         source: toastRow.t.icon ? "image://mime/" + toastRow.t.icon : ""
                         sourceSize: Qt.size(44, 44)
                         // Device icons are monochrome theme icons drawn for light backgrounds: render them white.
-                        layer.enabled: visible
+                        // Software mode cannot tint (no shader): show the icon as it is, better visible than gone.
+                        layer.enabled: visible && !memtune.running
                         layer.effect: MultiEffect { brightness: theme.dark ? 1.0 : -1.0 } // white on dark, black on light
                     }
                     LineIcon {
@@ -1604,7 +1610,7 @@ Window {
             Behavior on opacity { enabled: activities.animations && !island.transitioning; NumberAnimation { duration: 140 } }
             Text {
                 text: Qt.formatTime(root.idleNow, Qt.locale().timeFormat(Locale.ShortFormat))
-                color: root.textPrimary
+                color: activities.clockAccent ? theme.accent : root.textPrimary
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
             }
@@ -1778,12 +1784,17 @@ Window {
             clip: true
             opacity: island.fade("search")
             visible: opacity > 0
-            SearchPanel {
-                id: searchPanel
+            Loader {
+                id: searchPanelLoader
+                active: root.searchOpen || root.mode === "search"
                 width: parent.width
-                height: searchPanel.wantedHeight - 24
-                active: root.searchOpen
-                onCloseRequested: root.closeSearch()
+                height: item ? item.wantedHeight - 24 : 0
+                sourceComponent: SearchPanel {
+                    id: searchPanel
+                    width: parent.width
+                    active: root.searchOpen
+                    onCloseRequested: root.closeSearch()
+                }
             }
         }
 
@@ -2085,27 +2096,31 @@ Window {
                 }
 
                 // What to look at: one section at a time. Dropping files is an action too (Add).
-                ActionBar {
-                    id: actionBar
-                    visible: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "camera")
+                // Loader: not built while Settings/theme is in use — fewer live theme bindings on a swatch click.
+                Loader {
+                    id: actionBarLoader
+                    visible: active
+                    active: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "camera")
                     Layout.fillWidth: true
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
-                    page: root.page
-                    musicAvailable: media.active
-                    shareAvailable: share.count + nearby.count > 0
-                    shareBusy: share.activeCount + nearby.activeCount > 0
-                    tasksBadge: tasks.overdueCount
-                    onPick: (target) => root.page = target
-                    colorAvailable: colorPicker.supported || notch.recentColors.length > 0
-                    onAddFiles: addDialog.open()
-                    onNewNote: root.newNote()
-                    onOpenShares: {
-                        const s = root.sharePopup()
-                        if (s.visible && s.view === "sessions")
-                            s.close()
-                        else
-                            s.openSessions()
+                    sourceComponent: ActionBar {
+                        page: root.page
+                        musicAvailable: media.active
+                        shareAvailable: share.count + nearby.count > 0
+                        shareBusy: share.activeCount + nearby.activeCount > 0
+                        tasksBadge: tasks.overdueCount
+                        onPick: (target) => root.page = target
+                        colorAvailable: colorPicker.supported || notch.recentColors.length > 0
+                        onAddFiles: addDialog.open()
+                        onNewNote: root.newNote()
+                        onOpenShares: {
+                            const s = root.sharePopup()
+                            if (s.visible && s.view === "sessions")
+                                s.close()
+                            else
+                                s.openSessions()
+                        }
                     }
                 }
 
@@ -2295,18 +2310,35 @@ Window {
                 }
 
                 // ---- Clipboard: what was copied lately ----
-                ClipboardPage {
-                    shell: root
+                Loader {
+                    active: root.page === "clipboard"
+                    visible: active // an idle Loader is still a layout item: its spacing left a gap above the page
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: 100000
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 12
+                    sourceComponent: ClipboardPage { shell: root }
                 }
 
                 // ---- Camera: a mirror, and a photo booth ----
-                CameraPage {
-                    shell: root
+                Loader {
+                    active: root.page === "camera"
+                    visible: active // an idle Loader is still a layout item: its spacing left a gap above the page
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 12
+                    sourceComponent: CameraPage { shell: root }
                 }
 
                 // ---- Color: pick one from the screen, and the ones picked before ----
-                ColorPage {
-                    shell: root
+                Loader {
+                    active: root.page === "color"
+                    visible: active // an idle Loader is still a layout item: its spacing left a gap above the page
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: 100000
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 12
+                    sourceComponent: ColorPage { shell: root }
                 }
 
                 // ---- Locked category, vault closed ----
@@ -2562,13 +2594,26 @@ Window {
                     maximumLineCount: 2
                 }
 
-                TimerPage {
-                    shell: root
+                Loader {
+                    id: timerPageLoader
+                    active: root.page === "timer"
+                    visible: active // an idle Loader is still a layout item: its spacing left a gap above the page
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: 100000
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 12
+                    sourceComponent: TimerPage { shell: root }
                 }
 
-                TasksPage {
-                    id: tasksPage
-                    shell: root
+                Loader {
+                    id: tasksPageLoader
+                    active: root.page === "tasks"
+                    visible: root.page === "tasks" // an idle Loader still keeps its minimum height, which left a gap above the other pages
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 14
+                    Layout.rightMargin: 14
+                    Layout.minimumHeight: 300
+                    sourceComponent: TasksPage { shell: root }
                 }
 
                 // On a break: how long is left, and a way to end it early.
@@ -2610,9 +2655,14 @@ Window {
                     elide: Text.ElideRight
                 }
 
-                NotePage {
-                    id: notePage
-                    shell: root
+                Loader {
+                    id: notePageLoader
+                    active: root.page === "note"
+                    visible: active // an idle Loader is still a layout item: its spacing left a gap above the page
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    sourceComponent: NotePage { shell: root }
                 }
 
                 Loader {

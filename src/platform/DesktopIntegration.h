@@ -1,9 +1,11 @@
 #pragma once
 
+#include <QHash>
 #include <QList>
 #include <QObject>
 #include <QPointer>
 #include <QRectF>
+#include <QScreen>
 #include <QVariantList>
 #include <QWindow>
 #include <memory>
@@ -37,6 +39,8 @@ public:
     void setBarReserve(QWindow *window, int reserve);
     // The notch above the status bar (both sit on the top edge): in the overlay layer while the bar is on, else the top layer.
     void setAboveBar(QWindow *notchWindow, bool above);
+    // Windows/X11: put a tool window back above other always-on-top peers (z-order drifts when apps or the shell re-sort).
+    Q_INVOKABLE void raiseOnTop(QWindow *window);
     // Move a dock to another edge. Call while it is hidden: a layer-shell surface takes anchors when mapped.
     void moveDock(QWindow *window, const QString &side);
     bool layerShell() const { return m_layerShell; }
@@ -78,6 +82,9 @@ private:
     QPointer<QWindow> m_strip; // Wayland: the sliver that holds the room kept free at the top (see DesktopIntegration::reserve)
 #ifdef Q_OS_WIN
     std::unique_ptr<WinAppBar> m_appBar;
+    // The reserved top strip as a picture only (clicks pass through), so the gap under maximised windows is not empty wallpaper.
+    QHash<QPointer<QScreen>, QPointer<QWindow>> m_winStrips;
+    void updateWinReserveStrip(QWindow *notchWindow, int logicalPx);
 #endif
     bool m_layerShell = false;
 };

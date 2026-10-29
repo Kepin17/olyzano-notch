@@ -11,6 +11,7 @@ worth porting. Everything here comes from this working tree; nothing is committe
 | Build | `cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=<Qt>\msvc2022_64 -DOPENSSL_ROOT_DIR=<openssl>` then `cmake --build build` |
 | Tests (`tst_core`) | 71 passed, 1 failed, 7 skipped. The failure is `convertAndOcr`: this Qt install has no WebP image plugin (not related to the changes) |
 | Idle memory | about 190 MB working set, 230 MB private, flat over time (no leak). Most of it is the graphics driver and the 3-4 QML windows per screen |
+| Low memory mode | now on Windows too (Settings → General → Performance): the software renderer skips the graphics driver. Measure with `scripts\memcheck.ps1` (close a running Notch first; `-Variants default,low`) and record both numbers here once measured |
 | Run it | `windeployqt --release --qmldir src\qml notch.exe`, then start `notch.exe` |
 | Pictures without a screen | `notch --shot-settings`, `--shot-page`, `--shot` (see the developer guide) |
 

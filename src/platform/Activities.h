@@ -68,6 +68,7 @@ class Activities : public QObject
     Q_PROPERTY(QString capsuleLook READ capsuleLook WRITE setCapsuleLook NOTIFY settingsChanged) // "edge" (fused to the top edge) or "pill" (a floating capsule)
     Q_PROPERTY(bool reserveSpace READ reserveSpace WRITE setReserveSpace NOTIFY settingsChanged) // keep other windows clear of the capsule
     Q_PROPERTY(bool borderMatchesSystem READ borderMatchesSystem WRITE setBorderMatchesSystem NOTIFY settingsChanged) // capsule / card edge in the system accent
+    Q_PROPERTY(bool clockAccent READ clockAccent WRITE setClockAccent NOTIFY settingsChanged) // idle / status-bar clock in the look's accent colour
     // How far the capsule and panel overshoot when they spring to their size: "off" | "soft" | "normal" | "bouncy".
     Q_PROPERTY(QString animBounce READ animBounce WRITE setAnimBounce NOTIFY settingsChanged)
     Q_PROPERTY(qreal bounceFactor READ bounceFactor NOTIFY settingsChanged) // what the springs' damping is multiplied by
@@ -157,6 +158,8 @@ public:
     void setReserveSpace(bool on) { store(QStringLiteral("reserveSpace"), on); }
     bool borderMatchesSystem() const { return m_settings.value(QStringLiteral("borderMatchesSystem"), false).toBool(); }
     void setBorderMatchesSystem(bool on) { store(QStringLiteral("borderMatchesSystem"), on); }
+    bool clockAccent() const { return m_settings.value(QStringLiteral("clockAccent"), true).toBool(); }
+    void setClockAccent(bool on) { store(QStringLiteral("clockAccent"), on); }
     QString animBounce() const
     {
         const QString v = m_settings.value(QStringLiteral("animBounce")).toString();

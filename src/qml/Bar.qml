@@ -299,7 +299,7 @@ Window {
                 Text {
                     Layout.alignment: Qt.AlignRight
                     text: topbar.showSeconds ? Qt.formatTime(root.now, "hh:mm:ss") : Qt.formatTime(root.now, Qt.locale().timeFormat(Locale.ShortFormat))
-                    color: theme.text
+                    color: activities.clockAccent ? theme.accent : theme.text
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
                 }
@@ -307,7 +307,8 @@ Window {
                     visible: topbar.showDate
                     Layout.alignment: Qt.AlignRight
                     text: Qt.formatDate(root.now, "ddd d MMM")
-                    color: theme.textDim
+                    color: activities.clockAccent ? theme.accent : theme.textDim
+                    opacity: activities.clockAccent ? 0.75 : 1
                     font.pixelSize: 10
                 }
             }
