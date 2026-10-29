@@ -88,3 +88,14 @@ To remove everything, uninstall and delete those folders. Full table: [Settings 
 | WiFi share cannot be reached from the phone | Same network? Guest WiFi often isolates devices; allow the firewall prompt on Windows. |
 | OCR / PDF tools greyed out | Install Tesseract / Poppler / Ghostscript and restart: [optional components](../README.md#optional-components). |
 | "Windows protected your PC" | The installer is unsigned: *More info → Run anyway*. |
+
+## 9. Test an API (the API page)
+
+Open the notch → **API** in the action bar. Craft an HTTP request (GET, POST, PUT, PATCH, DELETE), pick **Params**, **Headers**, **Body**, **Auth** or **Scripts**, then **Send**. The response shows status, time, body (pretty JSON), headers and test results.
+
+- **Collections** live on the left, and all of them are yours: nothing is built in. Start with **+** (or *New collection* when it is empty); right-click a row or use its **⋯** for *New request*, *New folder*, *Rename*, *Duplicate*, *Move to…*, *Export* and *Delete*. Folders nest and fold shut with their arrow. A request has **Save**, **Duplicate** and **Save as…** above the builder.
+- **Environments** (the *ENV* chip at the top of the sidebar → *Manage environments…*): a list on the left and the chosen one's variables on the right, saved as you type. Write `{{name}}` in a URL, header, query or body; mark a variable as secret to hide its value. There are none until you make one.
+- The notch **stays open** while you are on the API page, so it never closes under a request you are writing; go back (or to another page) and it closes as usual.
+- **Scripts:** a pre-request script can `env.set("token", "…")`; a test script uses `test("name", fn)` and `expect(response.status).toBe(200)` with `response.text()` / `response.json()`.
+- **History** (sidebar tab) keeps the last 50 sends (toggle or clear in the **…** tab). Bodies and headers may include tokens you sent — clear history when you are done.
+- **Import / export** uses Postman Collection v2.1 and Environment JSON (paste into the dialog, or export to the clipboard).

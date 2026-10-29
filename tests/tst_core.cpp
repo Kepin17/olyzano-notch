@@ -30,6 +30,7 @@
 #include "platform/CalendarModel.h"
 #include "platform/DoomscrollModel.h"
 #include "platform/TasksModel.h"
+#include "platform/ApiTesterModel.h"
 #include "platform/Cities.h"
 #include "platform/PrayerModel.h"
 #include "platform/ReserveModel.h"
@@ -762,6 +763,266 @@ private slots:
         QVERIFY(due[0].now);
         QCOMPARE(fire(list, now.addSecs(22 * 60)).size(), 0);
         QVERIFY(!nextWake(list, now.addSecs(22 * 60)).isValid());
+    }
+
+    void apiModelRoundTripCollections()
+    {
+        using namespace ApiTesterModel;
+        Collection c;
+        c.id = newId();
+        c.name = "Round trip";
+        RequestNode folder;
+        folder.type = "folder";
+        folder.id = newId();
+        folder.name = "Nested";
+        RequestNode req;
+        req.type = "request";
+        req.id = newId();
+        req.name = "Ping";
+        req.request.id = req.id;
+        req.request.name = "Ping";
+        req.request.method = "POST";
+        req.request.url = "{{baseUrl}}/api/v1/ping";
+        req.request.headers = {{"Accept", "application/json", true}, {"X-Test", "1", false}};
+        req.request.bodyMode = "json";
+        req.request.body = "{\"a\":1}";
+        req.request.auth.type = "bearer";
+        req.request.auth.token = "{{relayKey}}";
+        req.request.preScript = "env.set(\"x\",\"1\")";
+        req.request.testScript = "test(\"ok\", function(){} )";
+        folder.items << req;
+        c.items << folder;
+
+        const QByteArray bytes = collectionsToJson({c});
+        const auto back = collectionsFromJson(bytes);
+        QCOMPARE(back.size(), 1);
+        QCOMPARE(back[0].name, c.name);
+        QCOMPARE(back[0].items.size(), 1);
+        QCOMPARE(back[0].items[0].type, QStringLiteral("folder"));
+        QCOMPARE(back[0].items[0].items.size(), 1);
+        const auto &r = back[0].items[0].items[0].request;
+        QCOMPARE(r.method, QStringLiteral("POST"));
+        QCOMPARE(r.url, QStringLiteral("{{baseUrl}}/api/v1/ping"));
+        QCOMPARE(r.headers.size(), 2);
+        QVERIFY(r.headers[0].enabled);
+        QVERIFY(!r.headers[1].enabled);
+        QCOMPARE(r.bodyMode, QStringLiteral("json"));
+        QCOMPARE(r.auth.type, QStringLiteral("bearer"));
+        QCOMPARE(r.preScript, QStringLiteral("env.set(\"x\",\"1\")"));
+        QVERIFY(!r.testScript.isEmpty());
+    }
+
+    void apiModelSubstitutesVariables()
+    {
+        using namespace ApiTesterModel;
+        const QVector<KeyValue> vars{{"baseUrl", "http://127.0.0.1:8080", true}, {"off", "no", false}, {"relayKey", "secret", true}};
+        QCOMPARE(substitute("{{baseUrl}}/api/v1/ping", vars), QStringLiteral("http://127.0.0.1:8080/api/v1/ping"));
+        QCOMPARE(substitute("{{ off }}", vars), QStringLiteral("{{ off }}")); // disabled stays literal
+        QCOMPARE(substitute("{{missing}}", vars), QStringLiteral("{{missing}}"));
+        QCOMPARE(substitute("Bearer {{relayKey}}", vars), QStringLiteral("Bearer secret"));
+        QVERIFY(!hasUnresolved("{{baseUrl}}", vars));
+        QVERIFY(hasUnresolved("{{nope}}", vars));
+        // query assembly
+        const QVector<KeyValue> q{{"a", "1", true}, {"b", "x y", true}, {"c", "skip", false}};
+        QCOMPARE(buildUrl("http://h/p", q), QStringLiteral("http://h/p?a=1&b=x%20y"));
+        QCOMPARE(buildUrl("http://h/p?x=1", q), QStringLiteral("http://h/p?x=1&a=1&b=x%20y"));
+    }
+
+    void apiModelHistoryRing()
+    {
+        using namespace ApiTesterModel;
+        QList<HistoryEntry> list;
+        for (int i = 0; i < 60; ++i) {
+            HistoryEntry h;
+            h.method = "GET";
+            h.url = QString::number(i);
+            h.status = 200;
+            historyPush(list, h, 50);
+        }
+        QCOMPARE(list.size(), 50);
+        QCOMPARE(list.first().url, QStringLiteral("59")); // newest first
+        QCOMPARE(list.last().url, QStringLiteral("10"));  // 0..9 dropped
+        const auto bytes = historyToJson(list);
+        const auto back = historyFromJson(bytes);
+        QCOMPARE(back.size(), 50);
+        QCOMPARE(back.first().url, QStringLiteral("59"));
+    }
+
+    void apiModelPrettyJson()
+    {
+        using namespace ApiTesterModel;
+        const QByteArray compact = "{\"a\":1,\"b\":[2,3]}";
+        const QString pretty = prettyJson(compact);
+        QVERIFY(pretty.contains('\n'));
+        QVERIFY(pretty.contains("\"a\": 1"));
+        QCOMPARE(prettyJson("not json"), QStringLiteral("not json"));
+    }
+
+    void apiPostmanImportExport()
+    {
+        using namespace ApiTesterModel;
+        // Built without a raw string literal: moc fails to parse multi-line R"…JSON" here.
+        const QByteArray fixture =
+            QStringLiteral(
+                "{"
+                "\"info\": { \"name\": \"Sample\", \"schema\": \"https://schema.getpostman.com/json/collection/v2.1.0/collection.json\" },"
+                "\"item\": [ {"
+                "  \"name\": \"Group\","
+                "  \"item\": ["
+                "    { \"name\": \"Get ping\","
+                "      \"request\": {"
+                "        \"method\": \"GET\","
+                "        \"url\": { \"raw\": \"http://127.0.0.1:8080/api/v1/ping\", \"protocol\": \"http\","
+                "                 \"host\": [\"127\",\"0\",\"0\",\"1\"], \"path\": [\"api\",\"v1\",\"ping\"] },"
+                "        \"header\": [ { \"key\": \"Accept\", \"value\": \"application/json\" } ]"
+                "      },"
+                "      \"event\": [ { \"listen\": \"test\","
+                "        \"script\": { \"type\": \"text/javascript\", \"exec\": [\"test('ok', function(){} )\"] } } ]"
+                "    },"
+                "    { \"name\": \"Post echo\","
+                "      \"request\": { \"method\": \"POST\", \"url\": \"http://example.com/x\","
+                "        \"body\": { \"mode\": \"raw\", \"raw\": \"{\\\"k\\\":1}\","
+                "          \"options\": { \"raw\": { \"language\": \"json\" } } } }"
+                "    }"
+                "  ]"
+                "} ]"
+                "}")
+                .toUtf8();
+        bool ok = false;
+        const Collection c = collectionFromPostman(fixture, &ok);
+        QVERIFY(ok);
+        QCOMPARE(c.name, QStringLiteral("Sample"));
+        QCOMPARE(c.items.size(), 1);
+        QCOMPARE(c.items[0].type, QStringLiteral("folder"));
+        QCOMPARE(c.items[0].items.size(), 2);
+        const auto &g = c.items[0].items[0].request;
+        QCOMPARE(g.method, QStringLiteral("GET"));
+        QCOMPARE(g.url, QStringLiteral("http://127.0.0.1:8080/api/v1/ping"));
+        QCOMPARE(g.headers.size(), 1);
+        QVERIFY(g.testScript.contains("test('ok'"));
+        const auto &p = c.items[0].items[1].request;
+        QCOMPARE(p.method, QStringLiteral("POST"));
+        QCOMPARE(p.bodyMode, QStringLiteral("json"));
+
+        // export → re-import round trip keeps names/methods
+        const QByteArray exported = collectionToPostman(c);
+        bool ok2 = false;
+        const Collection c2 = collectionFromPostman(exported, &ok2);
+        QVERIFY(ok2);
+        QCOMPARE(c2.name, c.name);
+        QCOMPARE(c2.items[0].items.size(), 2);
+        QCOMPARE(c2.items[0].items[0].request.method, QStringLiteral("GET"));
+        QCOMPARE(c2.items[0].items[1].request.bodyMode, QStringLiteral("json"));
+    }
+
+    void apiEnvironmentPostman()
+    {
+        using namespace ApiTesterModel;
+        const QByteArray env =
+            QStringLiteral(
+                "{"
+                "\"id\": \"abc\", \"name\": \"Local\","
+                "\"values\": ["
+                "  { \"key\": \"baseUrl\", \"value\": \"http://127.0.0.1:8080\", \"enabled\": true },"
+                "  { \"key\": \"k\", \"value\": \"v\", \"enabled\": false }"
+                "],"
+                "\"_postman_variable_scope\": \"environment\""
+                "}")
+                .toUtf8();
+        bool ok = false;
+        const Environment e = environmentFromPostman(env, &ok);
+        QVERIFY(ok);
+        QCOMPARE(e.name, QStringLiteral("Local"));
+        QCOMPARE(e.variables.size(), 2);
+        QVERIFY(e.variables[0].enabled);
+        QVERIFY(!e.variables[1].enabled);
+
+        const QByteArray out = environmentToPostman(e);
+        bool ok2 = false;
+        const Environment e2 = environmentFromPostman(out, &ok2);
+        QVERIFY(ok2);
+        QCOMPARE(e2.variables.size(), 2);
+        QCOMPARE(e2.variables[0].value, QStringLiteral("http://127.0.0.1:8080"));
+    }
+
+    void apiOldTemplatesAreDropped()
+    {
+        using namespace ApiTesterModel;
+        // what older versions saved: built-in read-only collections next to the person's own
+        const QByteArray old = R"({"version":1,"collections":[
+            {"id":"t1","name":"GitHub","readonly":true,"items":[]},
+            {"id":"m1","name":"Mine","items":[{"type":"request","id":"r1","name":"Ping","method":"GET","url":"http://x"}]}]})";
+        const auto cols = collectionsFromJson(old);
+        QCOMPARE(cols.size(), 1);
+        QCOMPARE(cols.first().name, QStringLiteral("Mine"));
+        QVERIFY(!collectionsToJson(cols).contains("readonly"));
+    }
+
+    void apiTreeCrud()
+    {
+        using namespace ApiTesterModel;
+        QList<Collection> cols;
+        Collection c;
+        c.id = newId();
+        c.name = QStringLiteral("API");
+        cols << c;
+        const QString f1 = addFolder(cols, c.id, QStringLiteral("Users"));
+        const QString f2 = addFolder(cols, f1, QStringLiteral("Admin")); // folders nest
+        const QString r1 = addRequestNode(cols, f2, QStringLiteral("List"));
+        const QString r2 = addRequestNode(cols, c.id, QStringLiteral("Ping"));
+        QVERIFY(!f1.isEmpty() && !f2.isEmpty() && !r1.isEmpty() && !r2.isEmpty());
+        QVERIFY(addFolder(cols, QStringLiteral("nope"), QStringLiteral("x")).isEmpty()); // no such parent
+
+        QVERIFY(renameNode(cols, r1, QStringLiteral("List all")));
+        QCOMPARE(locate(cols, r1).list->at(locate(cols, r1).index).request.name, QStringLiteral("List all"));
+        QVERIFY(!renameNode(cols, r1, QStringLiteral("   "))); // an empty name is refused
+
+        // a copy of a folder carries its children, all with new ids
+        const QString copy = duplicateNode(cols, f1);
+        QVERIFY(!copy.isEmpty() && copy != f1);
+        QVERIFY(!locate(cols, r1).list->isEmpty());
+        QCOMPARE(cols.first().items.size(), 3); // Users, Users copy, Ping (the copy sits right after)
+        QCOMPARE(cols.first().items.at(1).name, QStringLiteral("Users copy"));
+        QVERIFY(cols.first().items.at(1).items.first().items.first().request.id != r1);
+
+        // move: a request into a folder; a folder never into itself or something inside it
+        QVERIFY(moveNode(cols, r2, f2));
+        QCOMPARE(locate(cols, r2).list, &cols.first().items.first().items.first().items);
+        QVERIFY(!moveNode(cols, f1, f2));
+        QVERIFY(!moveNode(cols, f1, f1));
+        QVERIFY(moveNode(cols, r2, c.id, 0)); // back to the collection, first
+        QCOMPARE(nodeId(cols.first().items.first()), r2);
+
+        // duplicate a whole collection
+        const QString cc = duplicateNode(cols, c.id);
+        QCOMPARE(cols.size(), 2);
+        QVERIFY(cols.at(1).id == cc && cols.at(1).name == QStringLiteral("API copy"));
+
+        // delete: a request, a folder (with what is in it), a collection
+        QVERIFY(removeNode(cols, r1));
+        QVERIFY(!locate(cols, r1));
+        QVERIFY(removeNode(cols, f1));
+        QVERIFY(removeNode(cols, cc));
+        QCOMPARE(cols.size(), 1);
+        QVERIFY(!removeNode(cols, QStringLiteral("gone")));
+
+        // and it survives a save and a load
+        const auto back = collectionsFromJson(collectionsToJson(cols));
+        QCOMPARE(back.size(), 1);
+        QCOMPARE(back.first().items.size(), cols.first().items.size());
+    }
+
+    void apiEnvironmentSecretsRoundTrip()
+    {
+        using namespace ApiTesterModel;
+        Environment e;
+        e.id = newId();
+        e.name = QStringLiteral("Dev");
+        e.variables = {{QStringLiteral("baseUrl"), QStringLiteral("http://x"), true, false}, {QStringLiteral("token"), QStringLiteral("s3"), true, true}};
+        const auto list = environmentsFromJson(environmentsToJson({e}, e.id), nullptr);
+        QCOMPARE(list.size(), 1);
+        QVERIFY(!list.first().variables.at(0).secret);
+        QVERIFY(list.first().variables.at(1).secret);
     }
 
     void widgetGeometry()

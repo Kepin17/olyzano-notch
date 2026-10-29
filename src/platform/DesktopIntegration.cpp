@@ -405,7 +405,7 @@ public:
         setFormat(f);
         setFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool | Qt::WindowTransparentForInput
                  | Qt::WindowDoesNotAcceptFocus);
-        setColor(Qt::transparent);
+        // No QWindow::setColor — paintEvent fills every pixel (same as the Wayland ReserveStrip).
     }
 protected:
     void paintEvent(QPaintEvent *) override

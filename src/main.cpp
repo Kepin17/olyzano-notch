@@ -17,6 +17,7 @@
 #include "platform/Doomscroll.h"
 #include "platform/Prayer.h"
 #include "platform/Tasks.h"
+#include "platform/ApiTester.h"
 #include "platform/Assistant.h"
 #include "platform/AssistantCorpus.h"
 #include "platform/Updates.h"
@@ -251,6 +252,7 @@ int main(int argc, char *argv[])
     Launcher launcher(&dock);
     Doomscroll doomscroll(&dock, &media, &wellbeing);
     Tasks tasks;
+    ApiTester apiTester;
     Prayer prayer;
     Updates updates;
     Assistant assistant(&launcher, &tasks, &quick, &media, &activities, &controller);
@@ -414,6 +416,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("updates"), &updates);
     engine.rootContext()->setContextProperty(QStringLiteral("assistant"), &assistant);
     engine.rootContext()->setContextProperty(QStringLiteral("tasks"), &tasks);
+    engine.rootContext()->setContextProperty(QStringLiteral("apiTester"), &apiTester);
     engine.rootContext()->setContextProperty(QStringLiteral("prayer"), &prayer);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
 

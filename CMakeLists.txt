@@ -93,7 +93,7 @@ qt_add_executable(notch
     src/platform/GamingMode.h src/platform/GamingMode.cpp src/platform/GamingModel.h
     src/platform/PanelBar.h src/platform/PanelBar.cpp
     src/platform/QuickSettings.h src/platform/QuickSettings.cpp src/platform/SystemStats.h src/platform/SystemStats.cpp src/platform/ClipboardHistory.h src/platform/ClipboardHistory.cpp src/platform/MemoryTuner.h src/platform/MemoryTuner.cpp src/platform/PhotoBooth.h src/platform/PhotoBooth.cpp src/platform/PhotoModel.h src/platform/PanelModel.h
-    src/platform/AppMenu.h src/platform/AppMenu.cpp src/platform/DbusMenuModel.h src/platform/CalendarModel.h src/platform/Prayer.h src/platform/Prayer.cpp src/platform/PrayerModel.h src/platform/Cities.h src/platform/Tasks.h src/platform/Tasks.cpp src/platform/TasksModel.h src/platform/Updates.h src/platform/Updates.cpp src/platform/UpdateModel.h src/platform/Doomscroll.h src/platform/Doomscroll.cpp src/platform/DoomscrollModel.h src/platform/Launcher.h src/platform/Launcher.cpp src/platform/LauncherModel.h src/platform/ColorFormat.h src/platform/TrayHost.h src/platform/TrayHost.cpp
+    src/platform/AppMenu.h src/platform/AppMenu.cpp src/platform/DbusMenuModel.h src/platform/CalendarModel.h src/platform/Prayer.h src/platform/Prayer.cpp src/platform/PrayerModel.h src/platform/Cities.h src/platform/Tasks.h src/platform/Tasks.cpp src/platform/TasksModel.h src/platform/Updates.h src/platform/Updates.cpp src/platform/UpdateModel.h src/platform/Doomscroll.h src/platform/Doomscroll.cpp src/platform/DoomscrollModel.h src/platform/Launcher.h src/platform/Launcher.cpp src/platform/LauncherModel.h src/platform/ColorFormat.h src/platform/TrayHost.h src/platform/TrayHost.cpp src/platform/ApiTester.h src/platform/ApiTester.cpp src/platform/ApiTesterModel.h
     src/platform/DesktopNotifications.h src/platform/DesktopNotifications.cpp src/platform/NotificationFilter.h
 )
 if(NOTCH_DBUS)
@@ -170,11 +170,11 @@ qt_add_qml_module(notch
         src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkSeparator.qml
         src/qml/SettingToggle.qml src/qml/Chip.qml src/qml/WheelScroller.qml
         src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml src/qml/ActionBar.qml src/qml/Bar.qml src/qml/Segmented.qml src/qml/GlassLayer.qml src/qml/Launcher.qml src/qml/SignalIcon.qml src/qml/CircleAction.qml src/qml/ColorPage.qml src/qml/AppMenuPopup.qml src/qml/CalendarCard.qml src/qml/QuickSettings.qml src/qml/ClipboardPage.qml src/qml/SearchPanel.qml src/qml/CameraPage.qml src/qml/CameraView.qml src/qml/LyricsPanel.qml
-        src/qml/Dock.qml src/qml/TimerPage.qml src/qml/TasksPage.qml src/qml/ArtColor.qml src/qml/MarqueeText.qml src/qml/CoverArt.qml src/qml/DiscordBadge.qml
+        src/qml/Dock.qml src/qml/TimerPage.qml src/qml/TasksPage.qml src/qml/ArtColor.qml src/qml/MarqueeText.qml src/qml/CoverArt.qml src/qml/DiscordBadge.qml src/qml/ApiPage.qml src/qml/ApiEnvEditor.qml
     RESOURCES
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg
         src/qml/images/traktir.jpeg src/qml/icons/info.svg src/qml/icons/grid.svg src/qml/icons/ethernet.svg src/qml/icons/eye.svg src/qml/icons/eye-off.svg src/qml/icons/external.svg src/qml/icons/undo.svg src/qml/icons/play.svg src/qml/icons/pause.svg src/qml/icons/stop.svg src/qml/icons/minus.svg src/qml/icons/check.svg src/qml/icons/copy.svg src/qml/icons/pin.svg src/qml/icons/image.svg src/qml/icons/eyedropper.svg src/qml/icons/unlock.svg src/qml/icons/trash.svg src/qml/icons/palette.svg src/qml/icons/pen.svg
-        src/qml/icons/gear.svg src/qml/icons/sort.svg src/qml/icons/camera.svg src/qml/icons/download.svg
+        src/qml/icons/gear.svg src/qml/icons/sort.svg src/qml/icons/camera.svg src/qml/icons/download.svg src/qml/icons/upload.svg
         src/qml/icons/phone.svg src/qml/icons/search.svg src/qml/icons/share.svg src/qml/icons/wifi.svg src/qml/icons/server.svg src/qml/icons/notch.png src/qml/icons/laptop.svg src/qml/icons/folder.svg src/qml/icons/music.svg src/qml/icons/gamepad.svg src/qml/icons/dock.svg src/qml/icons/heart.svg src/qml/icons/panel.svg src/qml/icons/volume.svg src/qml/icons/volume-off.svg src/qml/icons/sun.svg src/qml/icons/chevron.svg src/qml/icons/bluetooth.svg src/qml/icons/headphones.svg
         src/qml/icons/timer.svg src/qml/icons/mic.svg src/qml/icons/lyrics.svg src/qml/icons/mic-off.svg src/qml/icons/notifications.svg
         # made by tools/make_sounds.py

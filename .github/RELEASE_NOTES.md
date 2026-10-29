@@ -1,3 +1,11 @@
+## Unreleased
+
+- **API tester** (action bar → *API*): an HTTP client in the notch — collections with folders, environments (`{{baseUrl}}` / `{{relayKey}}`), request history, pretty JSON, pre-request and test scripts, and import/export of Postman Collection v2.1 / Environment JSON. Read-only presets for the share relay, GitHub and LRCLIB.
+- Clock colour can follow the theme accent (*Settings → Appearance → Clock follows theme colour*).
+- Faster theme switching (Settings sections and idle pages load only when opened); the reserved top strip on Windows is filled with a visual bar instead of bare wallpaper; tray menu gains Settings shortcuts; the notch and dock re-assert themselves on Windows when another app steals z-order.
+
+---
+
 ## Olyzano Notch 0.14.0
 
 Update from inside Notch, a Bounce setting for the animations, and a simpler music player.
