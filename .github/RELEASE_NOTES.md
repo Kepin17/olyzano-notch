@@ -1,11 +1,21 @@
-## Unreleased
+## Olyzano Notch 0.15.0
 
-- **Dev hub** (action bar → *Dev*): one page for developer tools — **API**, **SSH** and **Database**.
-- **API tester:** an HTTP client in the notch — collections with folders, environments (`{{baseUrl}}` / `{{relayKey}}`), request history, pretty JSON, pre-request and test scripts, import/export of Postman Collection v2.1 / Environment JSON, and a **Ports** tab that checks local listeners (process/PID, stop, or run a control command).
-- **SSH manager:** save hosts, test connectivity (key/agent preferred), run one remote command, or open a system terminal pre-connected. Passwords never go on the command line.
-- **Database browser:** SQLite always; MySQL/MariaDB and PostgreSQL when the Qt SQL driver is installed — browse tables and run SQL with row count and timing.
+Dev hub in the action bar: API tester, SSH manager and a database browser in one page.
+
+- **Dev hub** (action bar → *Dev*): **API**, **SSH** and **Database** behind one switcher; the notch stays open while you work.
+- **API tester:** HTTP client with collections, folders, environments (`{{baseUrl}}` / `{{relayKey}}`), history, pretty JSON, pre-request and test scripts, Postman Collection v2.1 / Environment import-export, and a **Ports** tab (listener / process / PID, stop, control command).
+- **SSH manager:** save hosts, **persistent terminal** in the notch (`ssh -tt`, live shell, `clear`), test connectivity (key/agent preferred), open a system terminal. Passwords never go on the command line.
+- **Database browser:** SQLite always; MySQL/MariaDB and PostgreSQL when the Qt SQL driver is installed — databases + tables side by side, browse rows, run SQL with timing.
 - Clock colour can follow the theme accent (*Settings → Appearance → Clock follows theme colour*).
 - Faster theme switching (Settings sections and idle pages load only when opened); the reserved top strip on Windows is filled with a visual bar instead of bare wallpaper; tray menu gains Settings shortcuts; the notch and dock re-assert themselves on Windows when another app steals z-order.
+
+### Downloads
+- **Linux:** `notch_0.15.0_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.15.0_amd64.deb`, then restart Olyzano Notch.
+- **Windows:** `Notch-0.15.0-windows-x64-setup.exe`, or the portable `.zip`.
+- Optional components (OCR, KDE Connect, PDF tools on Windows): see the [install page](https://kepin17.github.io/olyzano-notch/#optional).
+
+### Is the Windows warning safe to click through?
+Windows SmartScreen says *"Windows protected your PC"* because the installer is not code-signed yet and Notch is new to Microsoft, not because anything was found in it. Click **More info → Run anyway**. To check the file yourself, compare its SHA-256 with `SHA256SUMS-windows.txt` (and `SHA256SUMS-linux.txt` for the `.deb`) on this page: in PowerShell, `Get-FileHash .\Notch-0.15.0-windows-x64-setup.exe`. The code is open and built by GitHub Actions from this repository.
 
 ---
 
