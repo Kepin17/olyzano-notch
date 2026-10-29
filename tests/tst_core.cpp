@@ -1111,7 +1111,7 @@ private slots:
         const QRectF open = windowRect(Open, 100, 900, screen);
         QCOMPARE(open, QRectF(0, 460, OpenW, OpenH));
         QCOMPARE(islandX(open, 100, 400), 0.0);              // would stick out on the left: pushed in
-        QCOMPARE(islandX(windowRect(Open, 960, 14, screen), 960, 400), 220.0);
+        QCOMPARE(islandX(windowRect(Open, 960, 14, screen), 960, 400), (OpenW - 400) / 2); // centred in the open window
         QCOMPARE(islandY(open, 900, 38), 440.0);             // 900 - 460
         QCOMPARE(islandY(open, 1075, 38), OpenH - 38 - WinMargin); // the card never leaves the window, its edge line stays inside
         // at the bottom of the screen: a bigger card (scaled, or the panel while it opens) keeps its bottom edge and grows upward

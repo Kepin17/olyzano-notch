@@ -13,6 +13,9 @@ ColumnLayout {
     spacing: 10
 
     property string tab: "api" // api | ssh | db
+    // Database gets a wider panel (Databases | Tables | values side by side)
+    onTabChanged: shell.devWide = tab === "db"
+    Component.onCompleted: shell.devWide = tab === "db"
     // forwarded so Main.qml can keep the notch open while a dialog is up
     readonly property bool modalOpen: (apiLoader.item && apiLoader.item.modalOpen) || (sshLoader.item && sshLoader.item.modalOpen)
                                       || (dbLoader.item && dbLoader.item.modalOpen)

@@ -558,15 +558,17 @@ ColumnLayout {
                     }
                 }
 
-                // Browse view
+                // Browse view — Databases | Tables side by side, then values grid
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     visible: tab.detailTab === "tables"
                     spacing: 10
 
+                    // Databases column
                     Rectangle {
-                        Layout.preferredWidth: 180
+                        Layout.preferredWidth: 150
+                        Layout.maximumWidth: 180
                         Layout.fillHeight: true
                         color: theme.well
                         border.width: 1
@@ -590,7 +592,7 @@ ColumnLayout {
                             ListView {
                                 id: dbList
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: Math.min(contentHeight, 130)
+                                Layout.fillHeight: true
                                 clip: true
                                 model: dbModel
                                 spacing: 1
@@ -635,14 +637,23 @@ ColumnLayout {
                                     font.pixelSize: 11
                                 }
                             }
+                        }
+                    }
 
-                            Rectangle {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 1
-                                Layout.topMargin: 6
-                                Layout.bottomMargin: 6
-                                color: theme.hairline
-                            }
+                    // Tables column
+                    Rectangle {
+                        Layout.preferredWidth: 150
+                        Layout.maximumWidth: 180
+                        Layout.fillHeight: true
+                        color: theme.well
+                        border.width: 1
+                        border.color: theme.hairline
+                        radius: theme.radiusMd
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 6
+                            spacing: 0
 
                             Text {
                                 text: "TABLES  (" + tableModel.count + ")"

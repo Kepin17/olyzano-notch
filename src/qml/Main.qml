@@ -8,7 +8,7 @@ import QtQuick.Shapes
 
 Window {
     id: root
-    width: 840 // the widest panel (the Music page with lyrics, 780) and a margin; the rest of the window is click-through
+    width: 1040 // the widest panel (Dev → Database, 980) and a margin; the rest of the window is click-through
     height: 620
     visible: false
     color: "transparent"
@@ -20,9 +20,11 @@ Window {
     readonly property int openWidth: 560
     // The Music page with lyrics is split in two (player left, words right): wider, so each half has room.
     readonly property bool lyricsSplit: page === "music" && lyrics.enabled && media.active
+    // Database tab in Dev needs room for Databases | Tables | values grid side by side.
+    property bool devWide: false
     // The panel is as wide as its page needs, and never narrower than the row of section buttons (Files, Music, Timer, Tasks,
     // Color, Sharing, Lyrics, Note, Add): with every button there, it grows (up to the window) instead of cutting them off.
-    readonly property int panelWidth: Math.max(lyricsSplit ? 780 : page === "settings" ? 720 : page === "dev" ? 720 : page === "tasks" ? 620 : openWidth,
+    readonly property int panelWidth: Math.max(lyricsSplit ? 780 : page === "settings" ? 720 : page === "dev" ? (devWide ? 980 : 720) : page === "tasks" ? 620 : openWidth,
                                                Math.min(width - 20, Math.max(actionBarLoader.item && actionBarLoader.item.visible ? Math.ceil(actionBarLoader.item.implicitWidth) + 44 : 0,
                                                                               Math.ceil(headerRow.implicitWidth) + 36)))
 
@@ -57,7 +59,7 @@ Window {
     readonly property bool widgetMode: capsuleMode === "widget"
     property real widgetCx: 0
     property real widgetY: 14
-    property rect winRect: Qt.rect(0, 0, 840, 620)
+    property rect winRect: Qt.rect(0, 0, 1040, 620)
     property bool geoWidget: false // the window is placed by the card (not at the top centre)
     // "Pill" capsule shape (Settings -> Appearance): the capsule is a fully rounded pill instead of the notch with concave
     // shoulders. It sits exactly where the notch does (on the top edge, same size), so the strip kept free for it and the
