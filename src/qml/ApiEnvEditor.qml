@@ -7,6 +7,8 @@ import QtQuick.Layouts
 Popup {
     id: ed
     modal: true
+    dim: false
+    Overlay.modal: Item {}
     anchors.centerIn: Overlay.overlay
     width: Math.min(parent ? parent.width - 40 : 680, 700)
     height: 400

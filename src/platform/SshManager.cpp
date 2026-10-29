@@ -226,9 +226,13 @@ SshManager::SshProcessSpec SshManager::buildSsh(const SshModel::Connection &c, c
 {
     SshProcessSpec s;
     s.program = QStringLiteral("ssh");
+    // interactive shell: force a remote TTY so the session behaves like a normal ssh login
+    if (command.trimmed().isEmpty())
+        s.args << QStringLiteral("-tt");
     s.args << QStringLiteral("-p") << QString::number(c.port);
     s.args << QStringLiteral("-o") << QStringLiteral("StrictHostKeyChecking=accept-new");
-    if (c.auth == QLatin1String("key") || batchMode)
+    // BatchMode only for non-interactive (test / one-shot): a login shell may need prompts
+    if (batchMode)
         s.args << QStringLiteral("-o") << QStringLiteral("BatchMode=yes");
     if (c.auth == QLatin1String("key") && !c.keyPath.isEmpty())
         s.args << QStringLiteral("-i") << expandTilde(c.keyPath);
@@ -354,6 +358,98 @@ void SshManager::cancelCommand()
 {
     if (m_cmd)
         m_cmd->kill();
+}
+
+// ---- persistent interactive shell (ssh -tt) ----
+
+void SshManager::teardownShell(const QString &note)
+{
+    if (!m_shell)
+        return;
+    m_shell->disconnect(this);
+    if (m_shell->state() != QProcess::NotRunning) {
+        m_shell->write("exit\n");
+        if (!m_shell->waitForFinished(800))
+            m_shell->kill();
+        m_shell->waitForFinished(400);
+    }
+    m_shell->deleteLater();
+    m_shell = nullptr;
+    m_shellHost.clear();
+    emit shellStateChanged();
+    if (!note.isEmpty())
+        emit statusMessage(note);
+}
+
+void SshManager::openShell(const QString &id)
+{
+    teardownShell({});
+    const auto *cp = find(id);
+    if (!cp) {
+        emit statusMessage(QStringLiteral("SSH — unknown host"));
+        return;
+    }
+    const SshModel::Connection c = *cp;
+    if (!SshModel::validHost(c.host) || !SshModel::validUser(c.user)) {
+        emit statusMessage(QStringLiteral("SSH — host or user is not a valid name"));
+        return;
+    }
+    m_lastOutput.clear();
+    emit outputChanged();
+
+    m_shell = new QProcess(this);
+    m_shell->setProcessChannelMode(QProcess::MergedChannels);
+    // -tt + no BatchMode: interactive login shell; key path still passed when set
+    const auto spec = buildSsh(c, {}, false);
+    connect(m_shell, &QProcess::readyReadStandardOutput, this, [this] {
+        const QString chunk = QString::fromLocal8Bit(m_shell->readAllStandardOutput());
+        m_lastOutput += chunk;
+        emit outputChanged();
+        emit shellOutput(chunk);
+    });
+    connect(m_shell, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this, c](int, QProcess::ExitStatus) {
+        m_lastOutput += QStringLiteral("\n— shell closed —\n");
+        if (m_shell) {
+            m_shell->deleteLater();
+            m_shell = nullptr;
+        }
+        m_shellHost.clear();
+        emit shellStateChanged();
+        emit outputChanged();
+        emit statusMessage(QStringLiteral("SSH — shell closed for %1@%2").arg(c.user, c.host));
+    });
+    connect(m_shell, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
+        if (e != QProcess::FailedToStart)
+            return;
+        m_lastOutput += QStringLiteral("Failed to start ssh\n");
+        if (m_shell) {
+            m_shell->deleteLater();
+            m_shell = nullptr;
+        }
+        m_shellHost.clear();
+        emit shellStateChanged();
+        emit outputChanged();
+        emit statusMessage(QStringLiteral("SSH — ssh binary not found"));
+    });
+    m_shellHost = QStringLiteral("%1@%2:%3").arg(c.user, c.host).arg(c.port);
+    m_shell->start(spec.program, spec.args);
+    emit shellStateChanged();
+    emit statusMessage(QStringLiteral("SSH — connecting shell to %1").arg(m_shellHost));
+}
+
+void SshManager::closeShell()
+{
+    teardownShell(QStringLiteral("SSH — shell closed"));
+}
+
+void SshManager::writeShell(const QString &line)
+{
+    if (!m_shell || m_shell->state() != QProcess::Running)
+        return;
+    QString out = line;
+    if (!out.endsWith(QLatin1Char('\n')))
+        out += QLatin1Char('\n');
+    m_shell->write(out.toUtf8());
 }
 
 // Open a system terminal already running `ssh user@host`. argv-only where the terminal allows it;

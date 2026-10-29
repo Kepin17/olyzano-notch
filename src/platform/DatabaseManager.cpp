@@ -186,7 +186,9 @@ QString DatabaseManager::addConnection(const QVariantMap &fields)
     c.id = DbModel::newId();
     DbModel::applyFields(c, QJsonObject::fromVariantMap(fields));
     if (c.name.isEmpty())
-        c.name = c.driver == QLatin1String("sqlite") ? QFileInfo(c.sqlitePath).fileName() : c.host;
+        c.name = c.driver == QLatin1String("sqlite")
+                     ? (c.sqlitePath.isEmpty() ? QStringLiteral("SQLite") : QFileInfo(c.sqlitePath).fileName())
+                     : (c.host.isEmpty() ? QStringLiteral("Connection") : c.host);
     if (c.driver != QLatin1String("mysql") && c.driver != QLatin1String("postgres") && c.driver != QLatin1String("sqlite"))
         c.driver = QStringLiteral("sqlite");
     if (c.port <= 0)

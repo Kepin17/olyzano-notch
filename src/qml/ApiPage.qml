@@ -1927,6 +1927,8 @@ ColumnLayout {
     Popup {
         id: renameDialog
         modal: true
+        dim: false
+        Overlay.modal: Item {}
         anchors.centerIn: Overlay.overlay
         width: Math.min(parent ? parent.width - 40 : 400, 420)
         implicitHeight: renameCol.implicitHeight + 28
@@ -2007,6 +2009,8 @@ ColumnLayout {
     Popup {
         id: deleteDialog
         modal: true
+        dim: false
+        Overlay.modal: Item {}
         anchors.centerIn: Overlay.overlay
         width: Math.min(parent ? parent.width - 40 : 400, 420)
         implicitHeight: delCol.implicitHeight + 28
@@ -2064,6 +2068,8 @@ ColumnLayout {
         property string mode: "move" // move | saveas
         property string chosen: ""
         modal: true
+        dim: false
+        Overlay.modal: Item {}
         anchors.centerIn: Overlay.overlay
         width: Math.min(parent ? parent.width - 40 : 420, 440)
         height: 340
@@ -2152,6 +2158,8 @@ ColumnLayout {
         id: importDialog
         property string mode: "collection"
         modal: true
+        dim: false
+        Overlay.modal: Item {}
         anchors.centerIn: Overlay.overlay
         width: Math.min(parent ? parent.width - 40 : 520, 560)
         height: 300

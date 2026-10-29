@@ -1,30 +1,34 @@
 import QtQuick
 import QtQuick.Controls.Basic
-import QtQuick.Layouts
 
-// Shared popup menu. Uses solid high-contrast fills (not theme.surface alone —
-// on light palettes surface ≈ well and the menu vanishes into the panel).
-// Palette is forced so Basic-style MenuItems cannot paint system-grey text.
+// Shared popup menu. Palette.highlight is forced to grey so the Basic style cannot
+// paint a white system highlight on hover (that white block was covering the item).
 Menu {
     id: menu
-    padding: 8
+    padding: 6
+    width: 180
+    implicitWidth: 180
 
-    // Solid, readable surfaces for both modes
-    readonly property color menuBg: theme.dark ? "#232326" : "#ffffff"
-    readonly property color menuFg: theme.dark ? "#f2f2f7" : "#111111"
+    readonly property color menuBg: theme.dark ? "#2c2c2e" : "#ffffff"
+    readonly property color menuFg: theme.dark ? "#f5f5f7" : "#111111"
     readonly property color menuFgDim: theme.dark ? "#8e8e93" : "#6e6e73"
-    readonly property color menuEdge: theme.dark ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(0, 0, 0, 0.16)
-    readonly property color menuHover: theme.dark ? Qt.rgba(1, 1, 1, 0.08) : Qt.rgba(0, 0, 0, 0.06)
+    readonly property color menuEdge: theme.dark ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(0, 0, 0, 0.2)
+    readonly property color menuHoverBg: theme.dark ? "#3a3a3c" : "#e4e4e9"
 
-    // Force Control palette (Basic still reads these for some chrome)
+    // Override every role the Basic style might use for a menu row
     palette.window: menuBg
     palette.windowText: menuFg
-    palette.base: menuBg
     palette.text: menuFg
     palette.buttonText: menuFg
     palette.button: menuBg
-    palette.highlight: theme.accent
-    palette.highlightedText: theme.dark ? "#ffffff" : "#ffffff"
+    palette.base: menuBg
+    palette.alternateBase: menuBg
+    palette.highlight: menuHoverBg          // NOT white / bright accent
+    palette.highlightedText: menuFg
+    palette.light: menuBg
+    palette.dark: menuBg
+    palette.mid: menuEdge
+    palette.shadow: menuEdge
     palette.toolTipBase: menuBg
     palette.toolTipText: menuFg
 
@@ -33,41 +37,40 @@ Menu {
         color: menu.menuBg
         border.width: 1
         border.color: menu.menuEdge
-        // soft drop ring
-        Rectangle {
-            anchors.fill: parent
-            anchors.margins: -3
-            z: -1
-            radius: parent.radius + 2
-            color: "transparent"
-            border.width: 2
-            border.color: Qt.rgba(0, 0, 0, theme.dark ? 0.35 : 0.08)
-        }
     }
 
     delegate: MenuItem {
         id: mi
-        implicitHeight: 32
+        implicitWidth: menu.width - 12
+        implicitHeight: 30
         leftPadding: 10
         rightPadding: 10
+        topPadding: 4
+        bottomPadding: 4
+        spacing: 0
         indicator: null
+        arrow: null
         hoverEnabled: true
+        // keep Basic from applying its own white "sunken" chrome
+        down: false
 
-        // Force every piece of text chrome
         contentItem: Text {
             text: mi.text
             color: mi.enabled ? menu.menuFg : menu.menuFgDim
             font.pixelSize: 12
             font.weight: Font.Medium
             elide: Text.ElideRight
+            horizontalAlignment: Text.AlignLeft
             verticalAlignment: Text.AlignVCenter
-            leftPadding: 2
+            anchors.fill: parent
+            anchors.leftMargin: mi.leftPadding
+            anchors.rightMargin: mi.rightPadding
         }
+
+        // Always an opaque row — no transparency for a style highlight to show through
         background: Rectangle {
             radius: theme.radiusSm
-            color: mi.highlighted && mi.enabled ? Qt.alpha(theme.accent, theme.dark ? 0.35 : 0.2) : "transparent"
-            border.width: mi.highlighted && mi.enabled ? 1 : 0
-            border.color: Qt.alpha(theme.accent, 0.55)
+            color: mi.highlighted && mi.enabled ? menu.menuHoverBg : menu.menuBg
         }
     }
 }

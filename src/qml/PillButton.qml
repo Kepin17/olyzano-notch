@@ -15,10 +15,13 @@ AbstractButton {
     ToolTip.visible: iconOnly && hovered
     ToolTip.delay: 400
     ToolTip.text: text
-    // Hairline outline, no fill until the pointer is there; the chosen one is tinted with the accent (not a solid block).
+    // Hairline outline; hover/press are solid greys (a white alpha wash read as a white block on dark).
     background: Rectangle {
         radius: theme.washi ? theme.chipRadius : theme.radiusSm
-        color: pb.checked ? Qt.alpha(theme.accent, 0.16) : pb.down ? theme.pressFill : pb.hovered ? theme.hoverFill : "transparent"
+        color: pb.checked ? Qt.alpha(theme.accent, 0.18)
+             : pb.down ? (theme.dark ? "#3a3a3c" : "#d8d8de")
+             : pb.hovered ? (theme.dark ? "#2f2f32" : "#e8e8ed")
+             : "transparent"
         border.width: 1
         border.color: pb.checked ? Qt.alpha(theme.accent, 0.45) : theme.washi ? theme.outline : theme.hairline
         Behavior on color { enabled: activities.animations; ColorAnimation { duration: 120 } }

@@ -248,7 +248,7 @@ ColumnLayout {
                                 spacing: 2
                                 Text {
                                     Layout.fillWidth: true
-                                    text: connRow.modelData.name
+                                    text: connRow.modelData.name || connRow.modelData.driver || "Connection"
                                     color: theme.text
                                     font.pixelSize: 12
                                     font.weight: Font.Medium
@@ -935,35 +935,60 @@ ColumnLayout {
         }
     }
 
-    Dialog {
+    // Themed confirm — Popup + PillButton (no system Dialog chrome)
+    Popup {
         id: deleteDialog
-        anchors.centerIn: Overlay.overlay
+        parent: Overlay.overlay
+        x: Math.max(12, (Overlay.overlay.width - width) / 2)
+        y: Math.max(48, (Overlay.overlay.height - height) / 2)
+        width: 320
+        padding: 16
         modal: true
-        title: "Delete connection?"
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        width: 340
-        palette.window: theme.dark ? "#232326" : "#ffffff"
-        palette.windowText: theme.dark ? "#f2f2f7" : "#111111"
-        palette.text: theme.dark ? "#f2f2f7" : "#111111"
-        palette.buttonText: theme.dark ? "#f2f2f7" : "#111111"
+        dim: false
+        Overlay.modal: Item {}
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         background: Rectangle {
-            radius: theme.radiusMd
-            color: theme.dark ? "#232326" : "#ffffff"
+            radius: theme.radiusLg
+            color: theme.surface
             border.width: 1
-            border.color: Qt.alpha(theme.text, 0.2)
+            border.color: theme.outline
         }
-        onAccepted: {
-            const wasSelected = selectedId === tab.selectedId
-            dbManager.removeConnection(selectedId)
-            if (wasSelected)
-                tab.select("")
-            tab.say("DB — deleted")
-        }
-        contentItem: Text {
-            text: "The connection is removed from the list. Saved password (if any) is dropped too."
-            wrapMode: Text.Wrap
-            color: theme.dark ? "#f2f2f7" : "#1d1d1f"
-            font.pixelSize: 12
+        contentItem: ColumnLayout {
+            spacing: 12
+            Text {
+                text: "Delete connection?"
+                color: theme.text
+                font.pixelSize: 14
+                font.weight: Font.DemiBold
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "The connection is removed from the list. Saved password (if any) is dropped too."
+                wrapMode: Text.Wrap
+                color: theme.textDim
+                font.pixelSize: 12
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                PillButton {
+                    text: "Cancel"
+                    onClicked: deleteDialog.close()
+                }
+                PillButton {
+                    text: "Delete"
+                    checked: true
+                    onClicked: {
+                        const wasSelected = selectedId === tab.selectedId
+                        dbManager.removeConnection(selectedId)
+                        if (wasSelected)
+                            tab.select("")
+                        tab.say("DB — deleted")
+                        deleteDialog.close()
+                    }
+                }
+            }
         }
     }
 }

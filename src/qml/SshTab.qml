@@ -2,8 +2,8 @@ import QtQuick
 import QtQuick.Controls.Basic
 import QtQuick.Layouts
 
-// SSH tab inside DevPage: saved hosts on the left; connection card + run/output on the right.
-// Layout: label-above fields in a card, actions in their own row, output in a fixed well.
+// SSH tab: hosts on the left; a terminal-style pane on the right.
+// New/edit connection is a modal form (open with + or Edit).
 ColumnLayout {
     id: tab
     required property var shell
@@ -11,7 +11,7 @@ ColumnLayout {
     Layout.fillHeight: true
     spacing: 0
 
-    readonly property bool modalOpen: deleteDialog.visible
+    readonly property bool modalOpen: formPopup.visible || deleteDialog.visible
     property string selectedId: ""
     property var draft: ({})
     property bool editing: false
@@ -20,55 +20,132 @@ ColumnLayout {
     function blankDraft() {
         return { id: "", name: "", host: "", user: "", port: 22, auth: "key", keyPath: "", defaultCommand: "", savePassword: false }
     }
-    function select(id) {
-        selectedId = id
-        draft = id ? sshManager.connectionById(id) : blankDraft()
-        editing = !!id
-        if (id) {
-            const c = sshManager.connectionById(id)
-            cmdField.text = (c && c.defaultCommand) ? c.defaultCommand : ""
-        } else {
-            cmdField.text = ""
-        }
-    }
     function say(msg) {
         shell.infoText = msg
         shell.restartInfo()
     }
-    function save() {
+    function openForm(id) {
+        if (id) {
+            selectedId = id
+            const c = sshManager.connectionById(id)
+            draft = {
+                id: c.id, name: c.name, host: c.host, user: c.user, port: c.port || 22,
+                auth: c.auth || "key", keyPath: c.keyPath || "", defaultCommand: c.defaultCommand || "",
+                savePassword: !!c.savePassword, password: ""
+            }
+            editing = true
+        } else {
+            selectedId = ""
+            draft = blankDraft()
+            editing = false
+        }
+        formPopup.open()
+    }
+    function select(id) {
+        selectedId = id
+        draft = id ? sshManager.connectionById(id) : blankDraft()
+        editing = !!id
+        const c = id ? sshManager.connectionById(id) : null
+        cmdInput.text = (c && c.defaultCommand) ? c.defaultCommand : ""
+        termOutput.text = ""
+        if (sshManager.shellOpen)
+            sshManager.closeShell()
+        if (id) {
+            termOutput.text = "— connecting to " + (draft.user || "?") + "@" + (draft.host || "?") + ":" + (draft.port || 22) + " —\n"
+            sshManager.openShell(id)
+        } else {
+            termOutput.text = "Welcome to the SSH terminal.\nSelect a host on the left, or press + to add one.\n"
+        }
+    }
+    function saveForm() {
+        const host = (hostField.text !== undefined && hostField.text !== "") ? hostField.text.trim() : String(draft.host || "").trim()
+        const user = (userField.text !== undefined && userField.text !== "") ? userField.text.trim() : String(draft.user || "").trim()
+        const name = (nameField.text !== undefined && nameField.text !== "") ? nameField.text.trim() : String(draft.name || "").trim()
+        const port = parseInt(portField.text) || Number(draft.port) || 22
         const fields = {
-            name: draft.name, host: draft.host, user: draft.user, port: Number(draft.port) || 22,
-            auth: draft.auth, keyPath: draft.keyPath, defaultCommand: draft.defaultCommand,
+            name: name, host: host, user: user, port: port,
+            auth: draft.auth || "key",
+            keyPath: String(draft.keyPath || keyField.text || "").trim(),
+            defaultCommand: draft.defaultCommand || "",
             savePassword: !!draft.savePassword
+        }
+        if (draft.password && draft.password.length > 0)
+            fields.password = draft.password
+        if (!fields.host || !fields.user) {
+            say("SSH — host and user are required")
+            return
         }
         if (editing) {
             if (sshManager.updateConnection(selectedId, fields))
                 say("SSH — saved")
         } else {
             const id = sshManager.addConnection(fields)
-            if (id) { select(id); say("SSH — added") }
+            if (id) {
+                select(id)
+                say("SSH — added")
+            }
         }
+        formPopup.close()
+    }
+    function runCmd(cmd) {
+        if (!selectedId || !cmd.trim().length)
+            return
+        const c = cmd.trim()
+        // local clear — wipe the pane without sending to the remote
+        if (c === "clear" || c === "cls") {
+            termOutput.text = ""
+            cmdInput.clear()
+            return
+        }
+        if (sshManager.shellOpen) {
+            termOutput.text += c + "\n"
+            sshManager.writeShell(c)
+        } else {
+            termOutput.text += "$ " + c + "\n"
+            sshManager.runCommand(selectedId, c)
+        }
+        cmdInput.clear()
+        termFlick.contentY = Math.max(0, termOutput.height - termFlick.height)
     }
 
     Component.onCompleted: {
         sshManager.statusMessage.connect(msg => tab.say(msg))
+        sshManager.shellOutput.connect(chunk => {
+            const clean = String(chunk).replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "").replace(/\r/g, "")
+            termOutput.text += clean
+            termFlick.contentY = Math.max(0, termOutput.height - termFlick.height)
+        })
+        sshManager.shellStateChanged.connect(() => {
+            // auto-clear the pane whenever the shell opens or closes
+            termOutput.text = ""
+            if (sshManager.shellOpen)
+                termOutput.text = "— connected " + sshManager.shellHost + " —\n"
+        })
         sshManager.testFinished.connect(r => {
             if (r.id !== tab.selectedId)
                 return
-            resultLabel.text = r.ok ? "Reachable · " + r.latencyMs + " ms" : (r.error || "failed")
-            resultLabel.color = r.ok ? theme.success : theme.danger
+            termOutput.text += (r.ok ? "✓ reachable (" + r.latencyMs + " ms)\n" : "✗ " + (r.error || "failed") + "\n")
+        })
+        sshManager.commandFinished.connect(r => {
+            if (r.output && r.output.length)
+                termOutput.text += r.output + (r.output.endsWith("\n") ? "" : "\n")
+            if (!r.ok)
+                termOutput.text += "— exit " + r.exitCode + " —\n"
+            termFlick.contentY = Math.max(0, termOutput.height - termFlick.height)
         })
         select("")
     }
 
-    // shared field chrome
- component Field: ColumnLayout {
+    component Field: ColumnLayout {
         id: fl
-        required property string label
+        property string label: ""
         property string placeholder: ""
         property string value: ""
         property bool mono: false
         property bool show: true
+        property int echoMode: TextInput.Normal
+        // live text always available for save, even if the draft binding lags
+        readonly property alias text: tf.text
         signal edited(string text)
         visible: show
         Layout.fillWidth: true
@@ -87,6 +164,7 @@ ColumnLayout {
             placeholderText: fl.placeholder
             placeholderTextColor: theme.textFaint
             color: theme.text
+            echoMode: fl.echoMode
             font.family: fl.mono ? "monospace" : ""
             font.pixelSize: 12
             leftPadding: 10
@@ -97,51 +175,11 @@ ColumnLayout {
                 border.width: 1
                 border.color: tf.activeFocus ? Qt.alpha(theme.accent, 0.45) : theme.hairline
             }
-            onTextEdited: fl.edited(text)
-        }
-    }
-
-    // Port spinner themed for dark/light
-    component PortSpin: SpinBox {
-        id: spin
-        Layout.fillWidth: true
-        Layout.preferredHeight: 32
-        from: 1
-        to: 65535
-        font.pixelSize: 12
-        font.family: "monospace"
-        contentItem: TextInput {
-            id: textIn
-            text: spin.textFromValue(spin.value, spin.locale)
-            font: spin.font
-            color: theme.text
-            selectionColor: Qt.alpha(theme.accent, 0.35)
-            selectedTextColor: theme.text
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            readOnly: !spin.editable
-            validator: spin.validator
-            inputMethodHints: Qt.ImhFormattedNumbersOnly
-        }
-        background: Rectangle {
-            radius: 8
-            color: theme.well
-            border.width: 1
-            border.color: textIn.activeFocus ? Qt.alpha(theme.accent, 0.45) : theme.hairline
-        }
-        up.indicator: Rectangle {
-            x: spin.mirrored ? 0 : parent.width - width
-            width: 22; height: parent.height
-            color: up.hovered ? Qt.alpha(theme.accent, 0.18) : "transparent"
-            Text { anchors.centerIn: parent; text: "▴"; color: theme.textDim; font.pixelSize: 10 }
-            HoverHandler { id: up }
-        }
-        down.indicator: Rectangle {
-            x: spin.mirrored ? parent.width - width : 0
-            width: 22; height: parent.height
-            color: down.hovered ? Qt.alpha(theme.accent, 0.18) : "transparent"
-            Text { anchors.centerIn: parent; text: "▾"; color: theme.textDim; font.pixelSize: 10 }
-            HoverHandler { id: down }
+            onTextChanged: {
+                // keep the draft in sync on every change (not only textEdited — paste/autofill too)
+                if (text !== fl.value)
+                    fl.edited(text)
+            }
         }
     }
 
@@ -150,10 +188,10 @@ ColumnLayout {
         Layout.fillHeight: true
         spacing: 12
 
-        // ---- sidebar ----
+        // ---- hosts ----
         ColumnLayout {
             Layout.preferredWidth: 200
-            Layout.maximumWidth: 220
+            Layout.maximumWidth: 230
             Layout.fillHeight: true
             spacing: 8
 
@@ -171,12 +209,7 @@ ColumnLayout {
                 IconButton {
                     iconName: "plus"
                     Accessible.name: "New SSH connection"
-                    onClicked: {
-                        selectedId = ""
-                        draft = tab.blankDraft()
-                        editing = false
-                        cmdField.text = ""
-                    }
+                    onClicked: openForm("")
                 }
             }
 
@@ -198,29 +231,25 @@ ColumnLayout {
                     boundsBehavior: Flickable.StopAtBounds
 
                     delegate: Rectangle {
+                        id: hRow
                         required property var modelData
                         readonly property bool sel: modelData.id === tab.selectedId
                         width: hostList.width
                         height: 40
                         radius: 6
-                        color: sel ? Qt.alpha(theme.accent, 0.16) : hover.hovered ? Qt.alpha(theme.text, 0.05) : "transparent"
-
-                        HoverHandler { id: hover }
-                        TapHandler {
-                            onTapped: {
-                                tab.select(modelData.id)
-                                contextMenu.close()
-                            }
-                        }
+                        color: sel ? Qt.alpha(theme.accent, 0.18) : hHov.hovered ? Qt.alpha(theme.text, 0.07) : "transparent"
+                        border.width: sel ? 1 : 0
+                        border.color: Qt.alpha(theme.accent, 0.4)
+                        HoverHandler { id: hHov }
+                        TapHandler { onTapped: tab.select(hRow.modelData.id) }
                         TapHandler {
                             acceptedButtons: Qt.RightButton
                             onTapped: {
-                                menuId = modelData.id
-                                tab.select(modelData.id)
+                                menuId = hRow.modelData.id
+                                tab.select(hRow.modelData.id)
                                 contextMenu.popup()
                             }
                         }
-
                         Column {
                             anchors {
                                 left: parent.left; right: parent.right
@@ -230,7 +259,7 @@ ColumnLayout {
                             spacing: 2
                             Text {
                                 width: parent.width
-                                text: modelData.name
+                                text: hRow.modelData.name
                                 color: theme.text
                                 font.pixelSize: 12
                                 font.weight: Font.Medium
@@ -238,7 +267,7 @@ ColumnLayout {
                             }
                             Text {
                                 width: parent.width
-                                text: modelData.label
+                                text: hRow.modelData.label
                                 color: theme.textFaint
                                 font.family: "monospace"
                                 font.pixelSize: 10
@@ -259,100 +288,288 @@ ColumnLayout {
             }
         }
 
-        // ---- detail ----
-        ColumnLayout {
+        // ---- terminal ----
+        Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            spacing: 10
+            radius: theme.radiusMd
+            color: theme.dark ? "#0d0d0f" : "#1a1a1c"
+            border.width: 1
+            border.color: theme.dark ? Qt.rgba(1, 1, 1, 0.1) : Qt.rgba(0, 0, 0, 0.15)
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 6
+
+                // title bar
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    Rectangle {
+                        width: 8; height: 8; radius: 4
+                        color: !sshManager.shellOpen ? (selectedId === "" ? theme.textFaint : theme.warn) : theme.success
+                    }
+                    Text {
+                        text: selectedId === "" ? "Terminal — select a host"
+                            : sshManager.shellOpen ? (draft.user || "?") + "@" + (draft.host || "?") + ":" + (draft.port || 22) + "  (shell)"
+                            : (draft.user || "?") + "@" + (draft.host || "?") + ":" + (draft.port || 22) + "  (offline)"
+                        color: "#c8c8cc"
+                        font.family: "monospace"
+                        font.pixelSize: 11
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
+                    }
+                    PillButton {
+                        text: sshManager.shellOpen ? "Disconnect" : "Connect"
+                        checked: sshManager.shellOpen
+                        enabled: selectedId !== ""
+                        onClicked: {
+                            if (sshManager.shellOpen)
+                                sshManager.closeShell()
+                            else
+                                sshManager.openShell(selectedId)
+                        }
+                    }
+                    PillButton {
+                        text: "Test"
+                        enabled: selectedId !== "" && !sshManager.busy
+                        onClicked: sshManager.testConnection(selectedId)
+                    }
+                    PillButton {
+                        text: "Terminal app"
+                        iconName: "external"
+                        enabled: selectedId !== ""
+                        onClicked: sshManager.openTerminal(selectedId)
+                    }
+                    IconButton {
+                        visible: selectedId !== ""
+                        iconName: "pen"
+                        Accessible.name: "Edit connection"
+                        onClicked: openForm(selectedId)
+                    }
+                    IconButton {
+                        visible: selectedId !== ""
+                        iconName: "trash"
+                        Accessible.name: "Delete connection"
+                        onClicked: deleteDialog.open()
+                    }
+                }
+
+                // scrollback
+                Flickable {
+                    id: termFlick
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    contentWidth: width
+                    contentHeight: termOutCol.implicitHeight
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: termOutCol
+                        width: termFlick.width
+                        Text {
+                            id: termOutput
+                            width: parent.width
+                            text: selectedId === ""
+                                ? "Welcome to the SSH terminal.\nSelect a host on the left, or press + to add one.\n"
+                                : ""
+                            color: "#a8a8b0"
+                            font.family: "monospace"
+                            font.pixelSize: 12
+                            wrapMode: Text.WrapAnywhere
+                            textFormat: Text.PlainText
+                        }
+                    }
+
+                    // click to focus the prompt
+                    TapHandler {
+                        onTapped: cmdInput.forceActiveFocus()
+                    }
+                }
+
+                // prompt line
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Text {
+                        text: sshManager.shellOpen ? "$" : "›"
+                        color: sshManager.shellOpen ? theme.success : theme.textFaint
+                        font.family: "monospace"
+                        font.pixelSize: 13
+                        font.weight: Font.Bold
+                        Layout.alignment: Qt.AlignVCenter
+                    }
+                    TextField {
+                        id: cmdInput
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 30
+                        enabled: selectedId !== ""
+                        placeholderText: !selectedId ? "Select a host first"
+                            : sshManager.shellOpen ? "command…  (clear to wipe)" : "Connect to start the shell"
+                        placeholderTextColor: "#5a5a5e"
+                        color: "#e8e8ec"
+                        font.family: "monospace"
+                        font.pixelSize: 12
+                        leftPadding: 8
+                        rightPadding: 8
+                        background: Rectangle {
+                            radius: 6
+                            color: "#1c1c1e"
+                            border.width: 1
+                            border.color: cmdInput.activeFocus ? Qt.alpha(theme.success, 0.5) : Qt.rgba(1, 1, 1, 0.08)
+                        }
+                        onAccepted: tab.runCmd(text)
+                    }
+                    PillButton {
+                        text: "Send"
+                        checked: true
+                        enabled: selectedId !== "" && cmdInput.text.trim().length > 0
+                        onClicked: tab.runCmd(cmdInput.text)
+                    }
+                }
+            }
+        }
+    }
+
+    // ---- modal: new / edit connection ----
+    Popup {
+        id: formPopup
+        parent: Overlay.overlay
+        // centre on the notch panel, not the whole window
+        x: Math.max(12, (Overlay.overlay.width - width) / 2)
+        y: Math.max(48, (Overlay.overlay.height - height) / 2)
+        width: 400
+        padding: 0
+        modal: true
+        dim: false
+        Overlay.modal: Item {}
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+
+        background: Rectangle {
+            radius: theme.radiusLg
+            color: theme.surface
+            border.width: 1
+            border.color: theme.outline
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 0
 
             // header
             RowLayout {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 28
+                Layout.margins: 14
+                Layout.bottomMargin: 8
                 Text {
-                    text: editing ? (draft.name || "Connection") : "New connection"
+                    text: editing ? "Edit connection" : "New connection"
                     color: theme.text
                     font.pixelSize: 14
                     font.weight: Font.DemiBold
-                    elide: Text.ElideRight
                     Layout.fillWidth: true
                 }
-                Text {
-                    id: resultLabel
-                    text: ""
-                    color: theme.textDim
-                    font.pixelSize: 11
-                }
                 IconButton {
-                    visible: editing
-                    iconName: "trash"
-                    Accessible.name: "Delete connection"
-                    onClicked: deleteDialog.open()
+                    iconName: "close"
+                    Accessible.name: "Close"
+                    onClicked: formPopup.close()
                 }
             }
 
-            // connection form card
-            Rectangle {
+            // form body
+            Flickable {
                 Layout.fillWidth: true
-                implicitHeight: formCol.implicitHeight + 28
-                radius: theme.radiusMd
-                color: theme.well
-                border.width: 1
-                border.color: theme.hairline
+                Layout.preferredHeight: Math.min(360, formCol.implicitHeight + 28)
+                clip: true
+                contentHeight: formCol.implicitHeight + 28
+                boundsBehavior: Flickable.StopAtBounds
 
-                GridLayout {
+                ColumnLayout {
                     id: formCol
-                    anchors {
-                        left: parent.left; right: parent.right; top: parent.top
-                        margins: 14
-                    }
-                    columns: 2
-                    columnSpacing: 12
-                    rowSpacing: 12
+                    width: formPopup.width - 28
+                    x: 14
+                    y: 0
+                    spacing: 12
 
                     Field {
+                        id: nameField
                         label: "Name"
                         placeholder: "prod-web"
                         value: draft.name || ""
-                        Layout.columnSpan: 2
                         onEdited: t => draft.name = t
                     }
-                    Field {
-                        label: "Host"
-                        placeholder: "10.0.0.5 or example.com"
-                        value: draft.host || ""
-                        mono: true
-                        onEdited: t => draft.host = t
-                    }
-                    ColumnLayout {
+
+                    // Host (wide) | Port (fixed)
+                    RowLayout {
                         Layout.fillWidth: true
-                        spacing: 4
-                        Text { text: "Port"; color: theme.textDim; font.pixelSize: 11; font.weight: Font.Medium }
-                        PortSpin {
-                            id: portField
-                            value: draft.port || 22
-                            onValueModified: draft.port = value
-                        }
-                    }
-                    Field {
-                        label: "User"
-                        placeholder: "root"
-                        value: draft.user || ""
-                        mono: true
-                        onEdited: t => draft.user = t
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 4
-                        Text { text: "Auth"; color: theme.textDim; font.pixelSize: 11; font.weight: Font.Medium }
-                        PillButton {
-                            id: authBtn
+                        spacing: 12
+                        Field {
+                            id: hostField
+                            label: "Host"
+                            placeholder: "10.0.0.5 or example.com"
+                            value: draft.host || ""
+                            mono: true
                             Layout.fillWidth: true
-                            text: draft.auth === "password" ? "Password" : "Key / agent"
-                            onClicked: authMenu.popup()
+                            onEdited: t => draft.host = t
+                        }
+                        ColumnLayout {
+                            Layout.preferredWidth: 100
+                            Layout.maximumWidth: 110
+                            spacing: 4
+                            Text { text: "Port"; color: theme.textDim; font.pixelSize: 11; font.weight: Font.Medium }
+                            TextField {
+                                id: portField
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 32
+                                text: String(draft.port || 22)
+                                color: theme.text
+                                font.family: "monospace"
+                                font.pixelSize: 12
+                                horizontalAlignment: Text.AlignHCenter
+                                leftPadding: 8
+                                rightPadding: 8
+                                validator: IntValidator { bottom: 1; top: 65535 }
+                                background: Rectangle {
+                                    radius: 8
+                                    color: theme.well
+                                    border.width: 1
+                                    border.color: portField.activeFocus ? Qt.alpha(theme.accent, 0.45) : theme.hairline
+                                }
+                                onEditingFinished: draft.port = parseInt(text) || 22
+                            }
                         }
                     }
+
+                    // User | Auth — equal halves
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 12
+                        Field {
+                            id: userField
+                            label: "User"
+                            placeholder: "root"
+                            value: draft.user || ""
+                            mono: true
+                            Layout.fillWidth: true
+                            onEdited: t => draft.user = t
+                        }
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+                            Text { text: "Auth"; color: theme.textDim; font.pixelSize: 11; font.weight: Font.Medium }
+                            PillButton {
+                                id: authBtn
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 32
+                                text: draft.auth === "password" ? "Password" : "Key / agent"
+                                onClicked: authMenu.popup()
+                            }
+                        }
+                    }
+
                     Field {
+                        id: keyField
                         label: "Key path"
                         placeholder: "~/.ssh/id_ed25519  (empty = agent)"
                         value: draft.keyPath || ""
@@ -370,141 +587,21 @@ ColumnLayout {
                 }
             }
 
-            // actions
+            // footer actions
             RowLayout {
                 Layout.fillWidth: true
+                Layout.margins: 14
+                Layout.topMargin: 4
                 spacing: 6
+                PillButton {
+                    text: "Cancel"
+                    onClicked: formPopup.close()
+                }
+                Item { Layout.fillWidth: true }
                 PillButton {
                     text: editing ? "Save" : "Add"
                     checked: true
-                    onClicked: tab.save()
-                }
-                PillButton {
-                    text: "Test"
-                    iconName: "check"
-                    enabled: editing && !sshManager.busy
-                    onClicked: {
-                        resultLabel.text = "Testing…"
-                        resultLabel.color = theme.textDim
-                        sshManager.testConnection(selectedId)
-                    }
-                }
-                PillButton {
-                    text: "Open terminal"
-                    iconName: "external"
-                    enabled: editing
-                    onClicked: sshManager.openTerminal(selectedId)
-                }
-                Item { Layout.fillWidth: true }
-            }
-
-            // run + output card
-            Rectangle {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: editing
-                radius: theme.radiusMd
-                color: theme.well
-                border.width: 1
-                border.color: theme.hairline
-
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.margins: 12
-                    spacing: 8
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-                        Text {
-                            text: "Run a command"
-                            color: theme.textDim
-                            font.pixelSize: 11
-                            font.weight: Font.Medium
-                            Layout.alignment: Qt.AlignVCenter
-                        }
-                        Item { Layout.fillWidth: true }
-                        PillButton {
-                            text: sshManager.commandRunning ? "Running…" : "Run"
-                            checked: sshManager.commandRunning
-                            enabled: !sshManager.commandRunning && cmdField.text.trim().length > 0
-                            onClicked: sshManager.runCommand(selectedId, cmdField.text.trim())
-                        }
-                        IconButton {
-                            visible: sshManager.commandRunning
-                            iconName: "stop"
-                            Accessible.name: "Cancel command"
-                            onClicked: sshManager.cancelCommand()
-                        }
-                    }
-
-                    TextField {
-                        id: cmdField
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 32
-                        placeholderText: "uptime · df -h · docker ps"
-                        placeholderTextColor: theme.textFaint
-                        color: theme.text
-                        font.family: "monospace"
-                        font.pixelSize: 12
-                        leftPadding: 10
-                        rightPadding: 10
-                        background: Rectangle {
-                            radius: 8
-                            color: theme.surface
-                            border.width: 1
-                            border.color: cmdField.activeFocus ? Qt.alpha(theme.accent, 0.45) : theme.hairline
-                        }
-                        onAccepted: if (text.trim().length && !sshManager.commandRunning) sshManager.runCommand(selectedId, text.trim())
-                    }
-
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        Layout.minimumHeight: 90
-                        radius: 8
-                        color: theme.surface
-                        border.width: 1
-                        border.color: theme.hairline
-
-                        Text {
-                            id: emptyOut
-                            anchors.centerIn: parent
-                            visible: sshManager.lastOutput.length === 0
-                            text: "Output appears here"
-                            color: theme.textFaint
-                            font.pixelSize: 11
-                        }
-
-                        ScrollView {
-                            anchors.fill: parent
-                            anchors.margins: 8
-                            visible: sshManager.lastOutput.length > 0
-                            TextArea {
-                                id: sshOut
-                                readOnly: true
-                                text: sshManager.lastOutput
-                                color: theme.textSoft
-                                font.family: "monospace"
-                                font.pixelSize: 11
-                                wrapMode: Text.WrapAnywhere
-                                background: null
-                            }
-                        }
-                    }
-                }
-            }
-
-            // empty state when no selection
-            Item {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                visible: !editing
-                Text {
-                    anchors.centerIn: parent
-                    text: "Select a host, or press + to add one"
-                    color: theme.textFaint
-                    font.pixelSize: 12
+                    onClicked: tab.saveForm()
                 }
             }
         }
@@ -522,45 +619,72 @@ ColumnLayout {
         }
     }
 
-    // Host context menu — same high-contrast chrome as DarkMenu
     DarkMenu {
         id: contextMenu
+        MenuItem { text: "Open in terminal"; onTriggered: tab.select(menuId) }
+        MenuItem { text: "Edit…"; onTriggered: openForm(menuId) }
         MenuItem { text: "Test"; onTriggered: sshManager.testConnection(menuId) }
-        MenuItem { text: "Open terminal"; onTriggered: sshManager.openTerminal(menuId) }
+        MenuItem { text: "Open external terminal"; onTriggered: sshManager.openTerminal(menuId) }
         MenuItem { text: "Duplicate"; onTriggered: sshManager.duplicateConnection(menuId) }
-        MenuItem { text: "Delete"; onTriggered: deleteDialog.open() }
+        MenuItem {
+            text: "Delete"
+            onTriggered: {
+                selectedId = menuId
+                deleteDialog.open()
+            }
+        }
     }
 
-    Dialog {
+    Popup {
         id: deleteDialog
-        anchors.centerIn: Overlay.overlay
+        parent: Overlay.overlay
+        x: Math.max(12, (Overlay.overlay.width - width) / 2)
+        y: Math.max(48, (Overlay.overlay.height - height) / 2)
+        width: 320
+        padding: 16
         modal: true
-        title: "Delete connection?"
-        standardButtons: Dialog.Ok | Dialog.Cancel
-        width: 340
-        palette.window: theme.dark ? "#232326" : "#ffffff"
-        palette.windowText: theme.dark ? "#f2f2f7" : "#111111"
-        palette.text: theme.dark ? "#f2f2f7" : "#111111"
-        palette.buttonText: theme.dark ? "#f2f2f7" : "#111111"
-        palette.button: theme.dark ? "#2c2c2e" : "#f0f0f2"
+        dim: false
+        Overlay.modal: Item {}
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         background: Rectangle {
-            radius: theme.radiusMd
-            color: theme.dark ? "#232326" : "#ffffff"
+            radius: theme.radiusLg
+            color: theme.surface
             border.width: 1
-            border.color: Qt.alpha(theme.text, 0.2)
+            border.color: theme.outline
         }
-        onAccepted: {
-            const wasSelected = selectedId === tab.selectedId
-            sshManager.removeConnection(selectedId)
-            if (wasSelected)
-                tab.select("")
-            tab.say("SSH — deleted")
-        }
-        contentItem: Text {
-            text: "The host is removed from the list. Saved password (if any) is dropped too."
-            wrapMode: Text.Wrap
-            color: theme.dark ? "#f2f2f7" : "#1d1d1f"
-            font.pixelSize: 12
+        contentItem: ColumnLayout {
+            spacing: 12
+            Text {
+                text: "Delete connection?"
+                color: theme.text
+                font.pixelSize: 14
+                font.weight: Font.DemiBold
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "The host is removed from the list. Saved password (if any) is dropped too."
+                wrapMode: Text.Wrap
+                color: theme.textDim
+                font.pixelSize: 12
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                Item { Layout.fillWidth: true }
+                PillButton { text: "Cancel"; onClicked: deleteDialog.close() }
+                PillButton {
+                    text: "Delete"
+                    checked: true
+                    onClicked: {
+                        const wasSelected = selectedId === tab.selectedId
+                        sshManager.removeConnection(selectedId)
+                        if (wasSelected)
+                            tab.select("")
+                        tab.say("SSH — deleted")
+                        deleteDialog.close()
+                    }
+                }
+            }
         }
     }
 }
