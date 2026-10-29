@@ -31,6 +31,8 @@
 #include "platform/DoomscrollModel.h"
 #include "platform/TasksModel.h"
 #include "platform/ApiTesterModel.h"
+#include "platform/SshModel.h"
+#include "platform/DbModel.h"
 #include "platform/Cities.h"
 #include "platform/PrayerModel.h"
 #include "platform/ReserveModel.h"
@@ -956,6 +958,77 @@ private slots:
         QCOMPARE(cols.size(), 1);
         QCOMPARE(cols.first().name, QStringLiteral("Mine"));
         QVERIFY(!collectionsToJson(cols).contains("readonly"));
+    }
+
+    void sshModelRoundTrip()
+    {
+        using namespace SshModel;
+        Connection c;
+        c.id = newId();
+        c.name = QStringLiteral("prod");
+        c.host = QStringLiteral("10.0.0.5");
+        c.user = QStringLiteral("deploy");
+        c.port = 2222;
+        c.auth = QStringLiteral("key");
+        c.keyPath = QStringLiteral("~/.ssh/id_ed25519");
+        c.defaultCommand = QStringLiteral("uptime");
+        c.savePassword = false;
+
+        const QByteArray bytes = listToJson({c});
+        const auto back = listFromJson(bytes);
+        QCOMPARE(back.size(), 1);
+        QCOMPARE(back[0].name, c.name);
+        QCOMPARE(back[0].host, QStringLiteral("10.0.0.5"));
+        QCOMPARE(back[0].user, QStringLiteral("deploy"));
+        QCOMPARE(back[0].port, 2222);
+        QCOMPARE(back[0].auth, QStringLiteral("key"));
+        QCOMPARE(back[0].keyPath, QStringLiteral("~/.ssh/id_ed25519"));
+        QCOMPARE(back[0].defaultCommand, QStringLiteral("uptime"));
+    }
+
+    void sshModelValidatesHostUserPort()
+    {
+        using namespace SshModel;
+        QVERIFY(validHost(QStringLiteral("example.com")));
+        QVERIFY(validHost(QStringLiteral("10.0.0.1")));
+        QVERIFY(validHost(QStringLiteral("::1")));
+        QVERIFY(!validHost(QStringLiteral("bad host")));
+        QVERIFY(!validHost(QStringLiteral("host;rm -rf")));
+        QVERIFY(validUser(QStringLiteral("deploy")));
+        QVERIFY(validUser(QStringLiteral("user.name")));
+        QVERIFY(!validUser(QStringLiteral("root;id")));
+        QVERIFY(validPort(22));
+        QVERIFY(!validPort(0));
+        QVERIFY(!validPort(70000));
+
+        // incomplete rows (no host/user) are dropped on load
+        const QByteArray bad = R"({"version":1,"connections":[{"id":"x","name":"","host":"","user":"","port":22}]})";
+        QVERIFY(listFromJson(bad).isEmpty());
+    }
+
+    void dbConnectionJsonRoundTrip()
+    {
+        using namespace DbModel;
+        Connection c;
+        c.id = newId();
+        c.name = QStringLiteral("local-mysql");
+        c.driver = QStringLiteral("mysql");
+        c.host = QStringLiteral("127.0.0.1");
+        c.port = 3306;
+        c.user = QStringLiteral("root");
+        c.database = QStringLiteral("app");
+        c.sqlitePath = QString();
+
+        const auto back = listFromJson(listToJson({c}));
+        QCOMPARE(back.size(), 1);
+        QCOMPARE(back[0].driver, QStringLiteral("mysql"));
+        QCOMPARE(back[0].port, 3306);
+        QCOMPARE(back[0].database, QStringLiteral("app"));
+        QCOMPARE(qtDriver(back[0].driver), QStringLiteral("QMYSQL"));
+        QCOMPARE(defaultPort(QStringLiteral("postgres")), 5432);
+        QCOMPARE(defaultPort(QStringLiteral("sqlite")), 0);
+        QCOMPARE(quoteIdent(QStringLiteral("users"), QStringLiteral("mysql")), QStringLiteral("`users`"));
+        QCOMPARE(quoteIdent(QStringLiteral("users"), QStringLiteral("sqlite")), QStringLiteral("\"users\""));
     }
 
     void apiTreeCrud()

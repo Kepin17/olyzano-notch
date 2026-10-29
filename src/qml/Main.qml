@@ -22,7 +22,7 @@ Window {
     readonly property bool lyricsSplit: page === "music" && lyrics.enabled && media.active
     // The panel is as wide as its page needs, and never narrower than the row of section buttons (Files, Music, Timer, Tasks,
     // Color, Sharing, Lyrics, Note, Add): with every button there, it grows (up to the window) instead of cutting them off.
-    readonly property int panelWidth: Math.max(lyricsSplit ? 780 : page === "settings" ? 720 : page === "api" ? 720 : page === "tasks" ? 620 : openWidth,
+    readonly property int panelWidth: Math.max(lyricsSplit ? 780 : page === "settings" ? 720 : page === "dev" ? 720 : page === "tasks" ? 620 : openWidth,
                                                Math.min(width - 20, Math.max(actionBarLoader.item && actionBarLoader.item.visible ? Math.ceil(actionBarLoader.item.implicitWidth) + 44 : 0,
                                                                               Math.ceil(headerRow.implicitWidth) + 36)))
 
@@ -231,7 +231,7 @@ Window {
                                     || quickLookCard.visible || vaultPopup.visible || confirmDelete.visible
                                     || (shareLoader.item !== null && shareLoader.item.visible) || incomingPopup.visible
                                     || sortMenu.visible || removedMenu.visible || (tasksPageLoader.item && tasksPageLoader.item.modalOpen)
-                                    || (apiPageLoader.item && apiPageLoader.item.modalOpen)
+                                    || (devPageLoader.item && devPageLoader.item.modalOpen)
                                     || removedChipMenu.visible
     readonly property bool dragOver: dragLive && (edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver)
     // Once it has started to open it stays open a moment, so a hover that blinks while the panel grows under a
@@ -254,7 +254,7 @@ Window {
     }
     readonly property bool engaged: !gaming.active && (pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt" && mode !== "search" && !floating)
                                     || dragOver || anyMenu || (dragging && mode === "open")
-                                    || (open && page === "api") // the API tester stays open while you work in it; back or another page lets it close
+                                    || (open && page === "dev") // the Dev hub (API tester) stays open while you work in it; back or another page lets it close
                                     || saveDialog.visible || addDialog.visible)
     // hidden: only the top-edge strip is live. peek: copy in progress. open: full panel.
     // toast: a short system alert (charger, Bluetooth). Shown even while hidden, like Dynamic Island.
@@ -1891,7 +1891,7 @@ Window {
                         text: root.selecting ? root.selection.length + " selected"
                             : root.page === "settings" ? "Settings" : root.page === "preview" ? root.preview.name
                             : root.page === "note" ? (root.noteId !== "" ? "Edit note" : "New note")
-                            : root.page === "timer" ? "Timer" : root.page === "tasks" ? "Tasks" : root.page === "music" ? "Now playing" : root.page === "color" ? "Color picker" : root.page === "clipboard" ? "Clipboard" : root.page === "camera" ? "Camera" : root.page === "api" ? "API Tester" : "Olyzano Notch"
+                            : root.page === "timer" ? "Timer" : root.page === "tasks" ? "Tasks" : root.page === "music" ? "Now playing" : root.page === "color" ? "Color picker" : root.page === "clipboard" ? "Clipboard" : root.page === "camera" ? "Camera" : root.page === "dev" ? "Dev" : "Olyzano Notch"
                         color: root.textPrimary
                         font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
                         font.pixelSize: 15
@@ -2072,7 +2072,7 @@ Window {
                         onClicked: assistant.start()
                     }
                     IconButton {
-                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "camera" || root.page === "api") && !root.selecting
+                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "camera" || root.page === "dev") && !root.selecting
                         iconName: "gamepad"
                         checked: gaming.enabled
                         Accessible.name: gaming.enabled ? "Gaming mode is on: turn it off" : "Gaming mode: keep away from full-screen games"
@@ -2083,7 +2083,7 @@ Window {
                         }
                     }
                     IconButton {
-                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "camera" || root.page === "api") && !root.selecting
+                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "camera" || root.page === "dev") && !root.selecting
                         iconName: "gear"
                         Accessible.name: "Settings"
                         onClicked: root.page = "settings"
@@ -2102,7 +2102,7 @@ Window {
                 Loader {
                     id: actionBarLoader
                     visible: active
-                    active: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "camera" || root.page === "api")
+                    active: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "camera" || root.page === "dev")
                     Layout.fillWidth: true
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
@@ -2343,17 +2343,17 @@ Window {
                     sourceComponent: ColorPage { shell: root }
                 }
 
-                // ---- API tester: HTTP requests, collections, environments ----
+                // ---- Dev hub: API tester, SSH manager, database browser ----
                 Loader {
-                    id: apiPageLoader
-                    active: root.page === "api"
+                    id: devPageLoader
+                    active: root.page === "dev"
                     visible: active
                     Layout.fillWidth: true
                     Layout.maximumWidth: 100000
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
                     Layout.minimumHeight: 360
-                    sourceComponent: ApiPage { shell: root }
+                    sourceComponent: DevPage { shell: root }
                 }
 
                 // ---- Locked category, vault closed ----
@@ -2691,35 +2691,30 @@ Window {
                     sourceComponent: SettingsPage { shell: root }
                 }
 
-                Rectangle {
-                    visible: root.infoText !== ""
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 8
-                    Layout.rightMargin: 8
-                    implicitHeight: 34
-                    radius: theme.radiusMd
-                    color: theme.infoBg
-                    Text {
-                        anchors.fill: parent
-                        anchors.leftMargin: 14
-                        anchors.rightMargin: 14
-                        verticalAlignment: Text.AlignVCenter
-                        readonly property bool warning: root.infoText.startsWith("⚠")
-                        text: (warning ? "" : "✓  ") + root.infoText
-                        color: warning ? theme.warn : theme.info
-                        font.pixelSize: 12
-                        elide: Text.ElideMiddle
-                    }
-                }
+                Item { Layout.preferredHeight: 4 }
+            }
+
+            // Sticky toasts at the bottom of the open panel — always in the same place,
+            // not pushed around by how tall the page content is.
+            Column {
+                id: panelToasts
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.leftMargin: 8
+                anchors.rightMargin: 8
+                anchors.bottomMargin: 8
+                spacing: 6
+                z: 10
 
                 Rectangle {
                     visible: notch.undoCount > 0 && root.page === "shelf"
-                    Layout.fillWidth: true
-                    Layout.leftMargin: 8
-                    Layout.rightMargin: 8
-                    implicitHeight: 36
+                    width: parent.width
+                    height: 36
                     radius: theme.radiusMd
                     color: theme.surface
+                    border.width: 1
+                    border.color: theme.hairline
                     RowLayout {
                         anchors.fill: parent
                         anchors.leftMargin: 14
@@ -2734,7 +2729,24 @@ Window {
                     }
                 }
 
-                Item { Layout.preferredHeight: 4 }
+                Rectangle {
+                    visible: root.infoText !== ""
+                    width: parent.width
+                    height: 34
+                    radius: theme.radiusMd
+                    color: theme.infoBg
+                    Text {
+                        anchors.fill: parent
+                        anchors.leftMargin: 14
+                        anchors.rightMargin: 14
+                        verticalAlignment: Text.AlignVCenter
+                        readonly property bool warning: root.infoText.startsWith("⚠")
+                        text: (warning ? "" : "✓  ") + root.infoText
+                        color: warning ? theme.warn : theme.info
+                        font.pixelSize: 12
+                        elide: Text.ElideMiddle
+                    }
+                }
             }
         }
 

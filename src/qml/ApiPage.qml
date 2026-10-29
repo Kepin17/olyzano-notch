@@ -8,11 +8,10 @@ import QtQuick.Layouts
 ColumnLayout {
     id: page
     required property var shell
-    visible: shell.page === "api"
+    // mounted by DevPage's Loader; that shell controls when this tab is shown
+    visible: true
     Layout.fillWidth: true
     Layout.maximumWidth: 100000
-    Layout.leftMargin: 12
-    Layout.rightMargin: 12
     spacing: 0
 
     property string sidebarTab: "collections"
@@ -277,21 +276,28 @@ ColumnLayout {
     // menu rows in the notch's own colours (a bare MenuItem is drawn in the system style, nearly invisible on the dark card)
     component NodeItem: MenuItem {
         id: mi
-        implicitHeight: 30
+        implicitHeight: 32
+        leftPadding: 8
+        rightPadding: 8
         contentItem: Text {
             text: (mi.checkable && mi.checked ? "✓  " : "") + mi.text
-            color: mi.enabled ? theme.text : theme.textDim
+            color: mi.enabled ? theme.text : theme.textFaint
             font.pixelSize: 12
-            elide: Text.ElideMiddle
+            font.weight: Font.Medium
+            elide: Text.ElideRight
             verticalAlignment: Text.AlignVCenter
-            leftPadding: 4
         }
         indicator: null
-        background: Rectangle { radius: theme.radiusSm; color: mi.highlighted && mi.enabled ? theme.surfaceHover : "transparent" }
+        background: Rectangle {
+            radius: theme.radiusSm
+            color: mi.highlighted && mi.enabled ? Qt.alpha(theme.accent, 0.22) : "transparent"
+            border.width: mi.highlighted && mi.enabled ? 1 : 0
+            border.color: Qt.alpha(theme.accent, 0.45)
+        }
     }
     component NodeSep: MenuSeparator {
         implicitHeight: 9
-        contentItem: Rectangle { implicitHeight: 1; color: theme.hairline }
+        contentItem: Rectangle { implicitHeight: 1; color: Qt.alpha(theme.text, 0.15) }
     }
 
     component StatusDot: Rectangle {

@@ -89,13 +89,35 @@ To remove everything, uninstall and delete those folders. Full table: [Settings 
 | OCR / PDF tools greyed out | Install Tesseract / Poppler / Ghostscript and restart: [optional components](../README.md#optional-components). |
 | "Windows protected your PC" | The installer is unsigned: *More info → Run anyway*. |
 
-## 9. Test an API (the API page)
+## 9. Dev hub (API · SSH · Database)
 
-Open the notch → **API** in the action bar. Craft an HTTP request (GET, POST, PUT, PATCH, DELETE), pick **Params**, **Headers**, **Body**, **Auth** or **Scripts**, then **Send**. The response shows status, time, body (pretty JSON), headers and test results.
+Open the notch → **Dev** in the action bar. A top switcher picks **API**, **SSH** or **Database**. The notch **stays open** while you are on this page.
+
+### API tester
+
+Craft an HTTP request (GET, POST, PUT, PATCH, DELETE), pick **Params**, **Headers**, **Body**, **Auth** or **Scripts**, then **Send**. The response shows status, time, body (pretty JSON), headers and test results.
 
 - **Collections** live on the left, and all of them are yours: nothing is built in. Start with **+** (or *New collection* when it is empty); right-click a row or use its **⋯** for *New request*, *New folder*, *Rename*, *Duplicate*, *Move to…*, *Export* and *Delete*. Folders nest and fold shut with their arrow. A request has **Save**, **Duplicate** and **Save as…** above the builder.
 - **Environments** (the *ENV* chip at the top of the sidebar → *Manage environments…*): a list on the left and the chosen one's variables on the right, saved as you type. Write `{{name}}` in a URL, header, query or body; mark a variable as secret to hide its value. There are none until you make one.
-- The notch **stays open** while you are on the API page, so it never closes under a request you are writing; go back (or to another page) and it closes as usual.
 - **Scripts:** a pre-request script can `env.set("token", "…")`; a test script uses `test("name", fn)` and `expect(response.status).toBe(200)` with `response.text()` / `response.json()`.
 - **History** (sidebar tab) keeps the last 50 sends (toggle or clear in the **…** tab). Bodies and headers may include tokens you sent — clear history when you are done.
+- **Ports** (sidebar tab) watches local ports (the share relay, a dev server, docker…). Add a port below the list, then select a row to see if anything is **listening**, which process and PID holds it, **Recheck**, **Stop process** (SIGTERM / taskkill), or **Run a command** (`docker compose stop relay`, `systemctl --user stop myapp`, …). The watched list is kept; each probe’s state is forgotten on restart until you recheck.
 - **Import / export** uses Postman Collection v2.1 and Environment JSON (paste into the dialog, or export to the clipboard).
+
+### SSH
+
+Save the hosts you connect to, run one remote command, or open a system terminal already logged in.
+
+- **+** adds a host (name, host, port, user). Auth is **Key / agent** (preferred — path optional, uses your agent) or **Password**.
+- **Test** runs a non-interactive check (`BatchMode`). **Run** sends one command and shows stdout/stderr in the pane. **Terminal** opens gnome-terminal / konsole / kitty / alacritty (or Windows Terminal) with `ssh user@host`.
+- Host keys use trust-on-first-use (`StrictHostKeyChecking=accept-new`): the first connection to a new host is trusted and remembered by OpenSSH.
+- Passwords are never put on the command line. Prefer keys; if you save a password it lives only in an owner-only file under your config directory.
+
+### Database
+
+Browse tables and run SQL against **SQLite** (always available), **MySQL / MariaDB** or **PostgreSQL** when the matching Qt SQL driver is installed (`libqt6sql6-mysql`, `libqt6sql6-psql`, …).
+
+- **+** adds a connection (driver, host, port, user, database — or a file path for SQLite). A red driver chip means the Qt plugin is missing on this machine.
+- **Connect**, then pick a table to **browse** (first 50 rows) or open **Query** for free-form SQL (`Ctrl+Enter` to run). Results show columns, row count and duration; errors appear under the editor.
+- Free-form SQL runs only on the connection you saved and selected — treat it like phpMyAdmin: you are responsible for what you execute.
+- Passwords (if saved) sit in an owner-only file next to the connection list, never in logs.

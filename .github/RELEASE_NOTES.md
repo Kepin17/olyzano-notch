@@ -1,6 +1,9 @@
 ## Unreleased
 
-- **API tester** (action bar → *API*): an HTTP client in the notch — collections with folders, environments (`{{baseUrl}}` / `{{relayKey}}`), request history, pretty JSON, pre-request and test scripts, and import/export of Postman Collection v2.1 / Environment JSON. Read-only presets for the share relay, GitHub and LRCLIB.
+- **Dev hub** (action bar → *Dev*): one page for developer tools — **API**, **SSH** and **Database**.
+- **API tester:** an HTTP client in the notch — collections with folders, environments (`{{baseUrl}}` / `{{relayKey}}`), request history, pretty JSON, pre-request and test scripts, import/export of Postman Collection v2.1 / Environment JSON, and a **Ports** tab that checks local listeners (process/PID, stop, or run a control command).
+- **SSH manager:** save hosts, test connectivity (key/agent preferred), run one remote command, or open a system terminal pre-connected. Passwords never go on the command line.
+- **Database browser:** SQLite always; MySQL/MariaDB and PostgreSQL when the Qt SQL driver is installed — browse tables and run SQL with row count and timing.
 - Clock colour can follow the theme accent (*Settings → Appearance → Clock follows theme colour*).
 - Faster theme switching (Settings sections and idle pages load only when opened); the reserved top strip on Windows is filled with a visual bar instead of bare wallpaper; tray menu gains Settings shortcuts; the notch and dock re-assert themselves on Windows when another app steals z-order.
 

@@ -57,7 +57,8 @@ Then move the mouse to the top-centre of the screen. Details: [Install](#install
 - **PDF:** images to PDF, merge, split, extract pages (`2-5, 8, 10-`), rotate, compress.
 - **Text and archives:** OCR (several languages), zip and unzip, QR codes (make and read), checksums, Base64.
 - **The notch's own things:** categories, search, a 24-hour *Recently removed* with undo, locked categories (AES-256), timer and Pomodoro, a colour picker, a music player with `.lrc` lyrics, 14 themes, and `Ctrl+K` for a command palette. On a phone, install it and use *Share → Olyzano Notch* to put files on the shelf.
-- **API tester:** craft GET/POST/… requests from the notch (local or internet), save collections and environments (`{{vars}}`), run short test scripts, and import/export Postman collections. Everything is your own (folders, duplicate, move, environments with secret variables), the notch stays open on this page, and nothing is built in.
+- **API tester:** craft GET/POST/… requests from the notch (local or internet), save collections and environments (`{{vars}}`), run short test scripts, and import/export Postman collections. Everything is your own (folders, duplicate, move, environments with secret variables), the notch stays open on this page, and nothing is built in. The **Ports** tab checks whether a local port is listening, shows the process/PID, can stop it, or run a control command.
+- **Dev hub (SSH + Database):** the *Dev* page also saves SSH hosts (test, run a remote command, open a terminal) and database connections — SQLite always, MySQL/MariaDB and PostgreSQL when the Qt SQL driver is installed — with table browse and a SQL runner.
 
 What a web page cannot do stays in the desktop app: the status bar, tray, Quick Settings, KDE Connect, the dock, gaming mode and watching your screenshots folder. The code is in [`docs/app`](docs/app) (plain ES modules, no build step; `docs/app/tests.html` runs its tests).
 
@@ -168,7 +169,9 @@ account* → select **Path** → **Edit** → **New** → paste the folder → O
 | Locked (encrypted) categories | ✅ | ✅ |
 | Now-playing card with a real-sound equalizer | ✅ | ✅ |
 | Bluetooth alerts · KDE Connect · colour picker | ✅ | ✅ |
-| API tester (collections, environments, history, scripts) | ✅ | ✅ |
+| API tester (collections, environments, history, scripts, local ports) | ✅ | ✅ |
+| SSH manager (hosts, run command, open terminal) | ✅ | ✅ |
+| Database browser (SQLite, MySQL, PostgreSQL*) | ✅ | ✅ |
 
 Controls that a platform cannot offer are hidden or greyed out.
 

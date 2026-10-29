@@ -33,7 +33,7 @@ RowLayout {
             { id: "color", label: "Color", icon: "palette", badge: 0, on: bar.colorAvailable },
             { id: "clipboard", label: "Clipboard", icon: "copy", badge: 0, on: true },
             { id: "camera", label: "Camera", icon: "camera", badge: 0, on: true },
-            { id: "api", label: "API", icon: "server", badge: 0, on: true }
+            { id: "dev", label: "Dev", icon: "server", badge: 0, on: true }
         ].filter(p => p.on)
         readonly property int current: { for (let i = 0; i < pages.length; ++i) if (pages[i].id === bar.page) return i; return -1 }
         readonly property Item cur: current >= 0 ? segs.itemAt(current) : null
