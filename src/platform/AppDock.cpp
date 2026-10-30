@@ -32,6 +32,9 @@
 #ifdef Q_OS_WIN
 #include <windows.h>
 #include <shellapi.h>
+#include <shlobj.h>
+#include <shobjidl.h>
+#include <objbase.h>
 #endif
 
 #ifndef Q_OS_WIN
@@ -279,6 +282,22 @@ void AppDock::setWatching(bool watching)
 void AppDock::launchNew(const QString &id)
 {
     const DockApp app = m_catalog.contains(id) ? m_catalog.value(id) : m_seenRunning.value(id);
+#ifdef Q_OS_WIN
+    if (isUwpId(id) || (app.command.isEmpty() && isUwpId(app.id))) {
+        // Store / UWP: ActivateApplication by AUMID (no .exe to startDetached).
+        CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+        IApplicationActivationManager *activator = nullptr;
+        if (SUCCEEDED(CoCreateInstance(CLSID_ApplicationActivationManager, nullptr, CLSCTX_INPROC_SERVER,
+                                       IID_PPV_ARGS(&activator)))
+            && activator) {
+            const QString aumid = app.id.contains(u'!') ? app.id : id;
+            DWORD pid = 0;
+            activator->ActivateApplication(reinterpret_cast<LPCWSTR>(aumid.utf16()), nullptr, AO_NONE, &pid);
+            activator->Release();
+            return;
+        }
+    }
+#endif
     if (!app.command.isEmpty())
         QProcess::startDetached(app.command.first(), app.command.mid(1), QDir::homePath());
 }
@@ -837,6 +856,92 @@ AppDock::~AppDock() = default;
 
 #ifdef Q_OS_WIN
 
+namespace {
+
+// Start Menu folder path (relative, e.g. "Microsoft Visual Studio 2022") as search keywords.
+QString lnkFolderKeywords(const QString &root, const QString &lnkPath)
+{
+    const QString rel = QDir(root).relativeFilePath(lnkPath);
+    QString folders = QFileInfo(rel).path();
+    if (folders == QLatin1String(".") || folders.isEmpty())
+        return {};
+    return folders.replace(u'/', u' ');
+}
+
+// shell:AppsFolder → installed UWP/Store apps (AUMID launch). Returns false if the shell enum fails.
+bool loadUwpCatalog(QHash<QString, DockApp> &catalog)
+{
+    PIDLIST_ABSOLUTE pidl = nullptr;
+    if (FAILED(SHParseDisplayName(L"shell:AppsFolder", nullptr, &pidl, 0, nullptr)) || !pidl)
+        return false;
+    IShellItem *folder = nullptr;
+    const HRESULT hrBind = SHCreateItemFromIDList(pidl, IID_PPV_ARGS(&folder));
+    CoTaskMemFree(pidl);
+    if (FAILED(hrBind) || !folder)
+        return false;
+
+    IShellItemFolder *folderItem = nullptr;
+    IEnumIDList *items = nullptr;
+    if (SUCCEEDED(folder->QueryInterface(IID_PPV_ARGS(&folderItem))) && folderItem)
+        folderItem->EnumObjects(nullptr, SHCONTF_NONFOLDERS, &items);
+    folder->Release();
+
+    if (!items) {
+        if (folderItem)
+            folderItem->Release();
+        return false;
+    }
+
+    QSet<QString> names;
+    for (const DockApp &app : std::as_const(catalog))
+        names.insert(app.name.toLower());
+
+    PIDLIST_ABSOLUTE child = nullptr;
+    while (items->Next(1, &child, nullptr) == S_OK && child) {
+        IShellItem *item = nullptr;
+        if (SUCCEEDED(SHCreateItemFromIDList(child, IID_PPV_ARGS(&item))) && item) {
+            PWSTR display = nullptr;
+            PWSTR parsing = nullptr;
+            item->GetDisplayName(SIGDN_NORMALDISPLAY, &display);
+            item->GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING, &parsing);
+            item->Release();
+            const QString name = display ? QString::fromWCharArray(display) : QString();
+            const QString aumid = parsing ? QString::fromWCharArray(parsing) : QString();
+            if (display)
+                CoTaskMemFree(display);
+            if (parsing)
+                CoTaskMemFree(parsing);
+            // AUMID is "PackageFamilyName!AppId"; skip junk and classic apps already in the .lnk catalog.
+            if (!name.isEmpty() && aumid.contains(u'!') && !names.contains(name.toLower())) {
+                DockApp app;
+                app.id = aumid;
+                app.name = name;
+                app.key = aumid.toLower();
+                // Launch through IApplicationActivationManager (command stays empty).
+                const QString family = aumid.section(u'!', 0, 0);
+                app.keywords = name + u' ' + family.section(u'_', 0, 0).replace(u'.', u' ') + u' ' + family.section(u'_', 1, 1);
+                if (!catalog.contains(app.id)) {
+                    catalog.insert(app.id, app);
+                    names.insert(name.toLower());
+                }
+            }
+        }
+        CoTaskMemFree(child);
+        child = nullptr;
+    }
+    items->Release();
+    if (folderItem)
+        folderItem->Release();
+    return true;
+}
+
+bool isUwpId(const QString &id)
+{
+    return id.contains(u'!');
+}
+
+} // namespace
+
 void AppDock::loadCatalog()
 {
     if (m_catalogLoaded)
@@ -856,10 +961,15 @@ void AppDock::loadCatalog()
             app.name = name;
             app.command = {target};
             app.key = app.id;
+            // Search also looks at the Start Menu folders the shortcut sits in and the binary name.
+            app.keywords = lnkFolderKeywords(dir, lnk.absoluteFilePath()) + u' ' + QFileInfo(target).completeBaseName();
             if (!m_catalog.contains(app.id))
                 m_catalog.insert(app.id, app);
         }
     }
+    // Store / UWP apps have no resolvable .exe shortcut: add them from shell:AppsFolder.
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED); // no-op if Qt already initialized COM on this thread
+    loadUwpCatalog(m_catalog);
 }
 
 namespace {

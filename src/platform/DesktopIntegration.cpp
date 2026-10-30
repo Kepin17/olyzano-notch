@@ -296,16 +296,34 @@ void DesktopIntegration::setBlurRegion(QWindow *window, const QRectF &rect, qrea
 #endif
 }
 
+// Low memory mode (QT_QUICK_BACKEND=software): the window is a Windows layered surface and the
+// shell hit-tests by per-pixel alpha, not by SetWindowRgn. Calling setMask there clips paint but
+// delivers no pointer events (the 3px edge strip is fully transparent, so hover never fires and
+// the notch cannot open). Main.qml paints a near-invisible live strip instead when this is true.
+static bool softwareBackend()
+{
+    return qgetenv("QT_QUICK_BACKEND") == QByteArrayLiteral("software");
+}
+
 void DesktopIntegration::setInputRegion(QWindow *window, const QRectF &rect)
 {
-    if (window)
-        window->setMask(QRegion(rect.toAlignedRect()));
+    if (!window)
+        return;
+#ifdef Q_OS_WIN
+    if (softwareBackend())
+        return;
+#endif
+    window->setMask(QRegion(rect.toAlignedRect()));
 }
 
 void DesktopIntegration::setInputRegions(QWindow *window, const QVariantList &rects)
 {
     if (!window)
         return;
+#ifdef Q_OS_WIN
+    if (softwareBackend())
+        return;
+#endif
     QRegion region;
     for (const QVariant &v : rects)
         region += v.toRectF().toAlignedRect();

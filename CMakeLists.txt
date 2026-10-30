@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(notch VERSION 0.15.0 LANGUAGES CXX)
+project(notch VERSION 0.15.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -117,9 +117,10 @@ if(WIN32)
                                  src/platform/WinAppBar.h src/platform/WinAppBar.cpp
                                  src/platform/MediaPlayers_win.cpp src/platform/MediaNames.h src/platform/AudioLevels_win.cpp
                                  src/platform/DesktopNotifications_win.cpp src/platform/SearchHotkey_win.h src/platform/SearchHotkey_win.cpp)
-    # user32/shell32: AppDock lists and raises windows, and asks the Recycle Bin. ole32/advapi32: microphone, registry.
+    # user32/shell32: AppDock lists and raises windows, asks the Recycle Bin, enumerates shell:AppsFolder.
+    # ole32/advapi32: microphone, registry, COM (UWP ActivateApplication). uuid: CLSID_ApplicationActivationManager.
     # windowsapp: the WinRT APIs (Bluetooth, media sessions) through C++/WinRT, which ships with the Windows SDK.
-    target_link_libraries(notch PRIVATE user32 shell32 ole32 advapi32 crypt32 windowsapp winmm) # winmm: PlaySound; crypt32: the saved Discord sign-in is encrypted for this user (on Linux it is a file only you can read)
+    target_link_libraries(notch PRIVATE user32 shell32 ole32 advapi32 crypt32 windowsapp winmm uuid) # winmm: PlaySound; crypt32: the saved Discord sign-in is encrypted for this user (on Linux it is a file only you can read)
     # C++/WinRT's coroutine support needs C++20 (under C++17 it pulls in the removed <experimental/coroutine>).
     set_source_files_properties(src/platform/WinBluetooth.cpp src/platform/MediaPlayers_win.cpp
                                 src/platform/DesktopNotifications_win.cpp

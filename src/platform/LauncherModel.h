@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHash>
+#include <QRegularExpression>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
@@ -30,11 +31,11 @@ inline QString groupOf(const QStringList &categories)
     return QStringLiteral("Other");
 }
 
-// How well an app matches a query (0 = not at all): the name beats a word of it beats a part of it beats its keywords
-// beats the letters in order ("ffx" finds Firefox).
-inline int score(const QString &query, const QString &name, const QString &keywords)
+// How well one token matches an app (0 = not at all): the name beats a word of it beats a part of it beats its
+// keywords beats the letters in order ("ffx" finds Firefox).
+inline int scoreToken(const QString &token, const QString &name, const QString &keywords)
 {
-    const QString q = query.trimmed().toLower(), n = name.toLower();
+    const QString q = token.trimmed().toLower(), n = name.toLower();
     if (q.isEmpty())
         return 1;
     if (n == q)
@@ -56,6 +57,34 @@ inline int score(const QString &query, const QString &name, const QString &keywo
         ++at;
     }
     return 10;
+}
+
+// How well a query matches an app (0 = not at all). One word: the name beats a word of it beats a part of it beats
+// its keywords beats the letters in order. Several words ("visual studio"): every word must match name or keywords
+// (AND); the score is the average of the words, with a bonus when all of them hit the name itself.
+inline int score(const QString &query, const QString &name, const QString &keywords)
+{
+    const QString q = query.trimmed();
+    if (q.isEmpty())
+        return 1;
+    const QStringList tokens = q.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts);
+    if (tokens.isEmpty())
+        return 1;
+    if (tokens.size() == 1)
+        return scoreToken(tokens.first(), name, keywords);
+
+    int sum = 0;
+    int nameOnly = 0;
+    for (const QString &token : tokens) {
+        const int s = scoreToken(token, name, keywords);
+        if (s == 0)
+            return 0; // every word must match somewhere
+        sum += s;
+        if (scoreToken(token, name, {}) > 0)
+            ++nameOnly;
+    }
+    const int avg = sum / tokens.size();
+    return nameOnly == tokens.size() ? avg + 15 : avg;
 }
 
 // The apps ([{id, name, keywords, category, ...}]) that match, best first: by score, then by how often they were used,

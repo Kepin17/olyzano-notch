@@ -820,6 +820,23 @@ Window {
     // Dwell before revealing, so flinging the mouse up to a tab doesn't pop the panel.
     Timer { id: dwellTimer; interval: 160; onTriggered: root.dwelled = true }
 
+    // Windows + Low memory mode (software renderer): the window is layered and the shell hit-tests
+    // by pixel alpha, not SetWindowRgn. A 1/255-alpha strip over the same live rect is invisible but
+    // gives the pointer something to land on (HoverHandler on the 3px edge alone never fires).
+    property rect liveHit: Qt.rect(0, 0, 0, 0)
+    readonly property bool softHitTest: memtune.running && !desktop.layerShell
+    Rectangle {
+        id: softHit
+        // Painted for the Windows layered hit-test (pixel alpha only); QML hover still goes to edge/island.
+        enabled: false
+        visible: root.softHitTest && root.liveHit.width > 0 && root.liveHit.height > 0
+        x: root.liveHit.x
+        y: root.liveHit.y
+        width: root.liveHit.width
+        height: root.liveHit.height
+        color: Qt.rgba(0, 0, 0, 1 / 255)
+    }
+
     // Everything outside the live area is click-through. Opening changes the mode and both target sizes in one go: the
     // mask is set once afterwards (on Windows each call is a synchronous SetWindowRgn that can hold up the first frame).
     function updateMask() { Qt.callLater(applyMask) }
@@ -827,15 +844,17 @@ Window {
         // Gaming mode over a full-screen app: the notch stays on screen but nothing can be reached. On Wayland an empty input
         // region does it (one corner pixel stays, as an empty mask means none). Elsewhere (Windows) a mask also clips what is
         // drawn, so the mask stays the notch's own shape and the window is made click-through instead (setClickThrough).
-        if (gaming.active && desktop.layerShell)
-            desktop.setInputRegion(root, Qt.rect(0, height - 1, 1, 1))
-        else if (anyMenu)
-            desktop.setInputRegion(root, Qt.rect(0, 0, width, height))
-        else if (geoWidget) { // the card (or its panel) in its own window
+        let live = Qt.rect(0, 0, width, height)
+        if (gaming.active && desktop.layerShell) {
+            live = Qt.rect(0, height - 1, 1, 1)
+            desktop.setInputRegion(root, live)
+        } else if (anyMenu) {
+            desktop.setInputRegion(root, live)
+        } else if (geoWidget) { // the card (or its panel) in its own window
             if (dragging) { // once: a mask change at every step makes a Windows window flash
                 if (dragMask !== width + "x" + height) {
                     dragMask = width + "x" + height
-                    desktop.setInputRegion(root, Qt.rect(0, 0, width, height))
+                    desktop.setInputRegion(root, live)
                 }
             } else {
                 dragMask = ""
@@ -848,11 +867,13 @@ Window {
                 const top = Math.max(0, Math.min(island.y, goalTop) - slack)
                 const bottom = Math.min(height, Math.max(island.y + island.height * k, goalTop + island.targetHeight * k) + slack)
                 const mid = Math.max(w / 2, Math.min(width - w / 2, widgetCx - winRect.x))
-                desktop.setInputRegion(root, Qt.rect(mid - w / 2, top, w, bottom - top))
+                live = Qt.rect(mid - w / 2, top, w, bottom - top)
+                desktop.setInputRegion(root, live)
             }
-        } else if (mode === "hidden" || (mode === "idle" && capsuleMode !== "capsule")) // the idle clock is see-through for clicks; the top edge opens Notch (the capsule itself can be pointed at)
-            desktop.setInputRegion(root, Qt.rect(edge.x, 0, edge.width, edge.height))
-        else {
+        } else if (mode === "hidden" || (mode === "idle" && capsuleMode !== "capsule")) { // the idle clock is see-through for clicks; the top edge opens Notch (the capsule itself can be pointed at)
+            live = Qt.rect(edge.x, 0, edge.width, edge.height)
+            desktop.setInputRegion(root, live)
+        } else {
             // Covers where the island is going, not where it is this frame: a native mask change per animation
             // frame is what made opening lag on Windows. A little slack while it moves, so the spring's overshoot
             // is not clipped; maskSettle tightens it once the island has come to rest.
@@ -860,8 +881,11 @@ Window {
             const k = root.mode === "idle" || root.mode === "open" ? root.islandK : 1
             const w = Math.max(island.width, island.targetWidth) * k + 2 * slack
             const h = Math.max(island.height, island.targetHeight, edge.height) * k + slack
-            desktop.setInputRegion(root, Qt.rect((width - w) / 2, 0, w, h))
+            live = Qt.rect((width - w) / 2, 0, w, h)
+            desktop.setInputRegion(root, live)
         }
+        // Same rect for the software hit-test strip (empty when GPU / Wayland use setMask).
+        root.liveHit = root.softHitTest ? live : Qt.rect(0, 0, 0, 0)
     }
     // Glass: the desktop blurs what is behind the island (KWin; nothing where it cannot) while the island is see-through.
     property bool blurOn: false // the desktop has been asked to blur behind this window

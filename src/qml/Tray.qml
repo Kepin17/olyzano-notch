@@ -5,8 +5,10 @@ import Qt.labs.platform as Labs
 // Right-click shows this menu (Qt.labs.platform → QSystemTrayIcon on Windows).
 Labs.SystemTrayIcon {
     visible: true
-    icon.name: "folder-download" // a theme icon where there is one (KDE) ...
-    icon.source: "icons/notch.png" // ... else ours (Windows has no icon theme)
+    // Theme name where there is one (KDE). On Windows there is no icon theme: a bare relative path
+    // often fails to resolve for the native tray, so the source is an absolute qrc URL.
+    icon.name: "folder-download"
+    icon.source: Qt.resolvedUrl("icons/notch.png")
     tooltip: gaming.active ? "Olyzano Notch · gaming mode" : "Olyzano Notch · " + notch.count + (notch.count === 1 ? " file" : " files")
     onActivated: (reason) => {
         if (reason !== Labs.SystemTrayIcon.Trigger && reason !== Labs.SystemTrayIcon.DoubleClick)

@@ -1672,6 +1672,12 @@ private slots:
         QVERIFY(LauncherModel::score(QStringLiteral("web"), QStringLiteral("Firefox"), QStringLiteral("browser web")) > 0);
         QVERIFY(LauncherModel::score(QStringLiteral("ffx"), QStringLiteral("Firefox"), {}) > 0);
         QCOMPARE(LauncherModel::score(QStringLiteral("zzz"), QStringLiteral("Firefox"), {}), 0);
+        // Multi-token content filter: every word must match; all-in-name ranks above keywords-only.
+        QVERIFY(LauncherModel::score(QStringLiteral("visual studio"), QStringLiteral("Visual Studio 2022"), QStringLiteral("Microsoft IDE")) > 0);
+        QCOMPARE(LauncherModel::score(QStringLiteral("zzz visual"), QStringLiteral("Visual Studio 2022"), {}), 0);
+        QVERIFY(LauncherModel::score(QStringLiteral("windows terminal"), QStringLiteral("Windows Terminal"), {})
+                > LauncherModel::score(QStringLiteral("windows terminal"), QStringLiteral("Terminal"), QStringLiteral("windows console")));
+        QVERIFY(LauncherModel::score(QStringLiteral("fire fox"), QStringLiteral("Firefox"), {}) > 0);
         {
             const QVariantList apps{QVariantMap{{"id", "a"}, {"name", "Konsole"}, {"category", "System"}}, QVariantMap{{"id", "b"}, {"name", "Kate"}, {"category", "Development"}},
                                     QVariantMap{{"id", "c"}, {"name", "Okular Kate Viewer"}, {"category", "Office"}}};
