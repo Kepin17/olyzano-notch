@@ -422,23 +422,25 @@ void DesktopIntegration::updateWinReserveStrip(QWindow *notchWindow, int logical
     QScreen *screen = notchWindow ? notchWindow->screen() : nullptr;
     if (!screen)
         return;
-    const auto key = QPointer<QScreen>(screen);
+    auto it = m_winStrips.begin();
+    for (; it != m_winStrips.end(); ++it)
+        if (it->screen == screen)
+            break;
     if (logicalPx <= 0) {
-        if (auto it = m_winStrips.find(key); it != m_winStrips.end()) {
-            if (*it)
-                (*it)->deleteLater();
+        if (it != m_winStrips.end()) {
+            if (it->window)
+                it->window->deleteLater();
             m_winStrips.erase(it);
         }
         return;
     }
-    QPointer<QWindow> strip = m_winStrips.value(key);
-    if (!strip) {
-        strip = new WinReserveStrip(screen);
-        m_winStrips.insert(key, strip);
-    }
+    if (it == m_winStrips.end())
+        it = m_winStrips.insert(m_winStrips.end(), WinStrip{QPointer<QScreen>(screen), nullptr});
+    if (!it->window)
+        it->window = new WinReserveStrip(screen);
     const QRect g = screen->geometry();
-    strip->setGeometry(g.x(), g.y(), g.width(), qMax(1, logicalPx));
-    strip->show();
+    it->window->setGeometry(g.x(), g.y(), g.width(), qMax(1, logicalPx));
+    it->window->show();
     raiseOnTop(notchWindow); // the capsule stays above its own strip
 }
 #endif
@@ -453,9 +455,9 @@ DesktopIntegration::DesktopIntegration()
 DesktopIntegration::~DesktopIntegration()
 {
 #ifdef Q_OS_WIN
-    for (auto it = m_winStrips.begin(); it != m_winStrips.end(); ++it)
-        if (*it)
-            (*it)->deleteLater();
+    for (auto &s : m_winStrips)
+        if (s.window)
+            s.window->deleteLater();
     m_winStrips.clear();
 #endif
 }

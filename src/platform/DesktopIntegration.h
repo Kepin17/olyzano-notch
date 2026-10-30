@@ -1,6 +1,5 @@
 #pragma once
 
-#include <QHash>
 #include <QList>
 #include <QObject>
 #include <QPointer>
@@ -83,7 +82,9 @@ private:
 #ifdef Q_OS_WIN
     std::unique_ptr<WinAppBar> m_appBar;
     // The reserved top strip as a picture only (clicks pass through), so the gap under maximised windows is not empty wallpaper.
-    QHash<QPointer<QScreen>, QPointer<QWindow>> m_winStrips;
+    // A list, not a QHash: QPointer has no qHash (MSVC rejects it), and a handful of screens needs no hash table.
+    struct WinStrip { QPointer<QScreen> screen; QPointer<QWindow> window; };
+    QList<WinStrip> m_winStrips;
     void updateWinReserveStrip(QWindow *notchWindow, int logicalPx);
 #endif
     bool m_layerShell = false;
