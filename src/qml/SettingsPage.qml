@@ -2518,31 +2518,9 @@ RowLayout {
         onAccepted: notch.setStorageDir(selectedFolder)
     }
 
-    // A titled group of settings on a card.
-    component SettingCard: Rectangle {
-        id: settingCard
-        property string title
-        default property alias content: cardBody.data
-        Layout.fillWidth: true
-        implicitHeight: cardBody.implicitHeight + 24
-        radius: theme.radiusMd
-        color: theme.card
-        border.width: 1
-        border.color: theme.outline
-        GlassLayer { anchors.fill: parent; radius: theme.radiusMd }
-        ColumnLayout {
-            id: cardBody
-            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
-            spacing: 10
-            Text {
-                text: settingCard.title.toUpperCase()
-                color: theme.textDim
-                font.pixelSize: 10
-                font.weight: Font.DemiBold
-                font.letterSpacing: 1
-            }
-        }
-    }
+    // Promoted to global Card.qml (title + content + optional glass). Kept as an alias so
+    // the ~30 SettingCard call sites in this file do not change.
+    component SettingCard: Card { glass: true }
 
     // A row of minute choices for the wellbeing settings.
     component MinutePicker: ColumnLayout {

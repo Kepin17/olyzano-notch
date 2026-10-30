@@ -1,5 +1,6 @@
 #include "DocTools.h"
 
+#include "platform/ProcessRunner.h"
 #include "services/FileService.h"
 
 #include <QDir>
@@ -9,7 +10,6 @@
 #include <QPageSize>
 #include <QPainter>
 #include <QPdfWriter>
-#include <QProcess>
 #include <QRegularExpression>
 #include <QSet>
 #include <QTemporaryDir>
@@ -20,26 +20,20 @@ namespace {
 // Runs a program to completion; empty string on success.
 QString run(const QString &program, const QStringList &args, QByteArray *stdOut = nullptr, int timeoutMs = 120000)
 {
-    QProcess p;
 #ifdef Q_OS_WIN
     // Ghostscript's console program has another name there; the others keep theirs (put on PATH by their installers).
-    p.start(program == QLatin1String("gs") ? QStringLiteral("gswin64c") : program, args);
+    const QString prog = program == QLatin1String("gs") ? QStringLiteral("gswin64c") : program;
 #else
-    p.start(program, args);
+    const QString prog = program;
 #endif
-    if (!p.waitForStarted(5000))
-        return QStringLiteral("%1 is not installed (see the README for the PDF and OCR tools)").arg(program);
-    if (!p.waitForFinished(timeoutMs)) {
-        p.kill();
-        return QStringLiteral("%1 took too long").arg(program);
-    }
+    const auto r = ProcessRunner::run(prog, args, timeoutMs);
     if (stdOut)
-        *stdOut = p.readAllStandardOutput();
-    if (p.exitStatus() != QProcess::NormalExit || p.exitCode() != 0) {
-        const QString err = QString::fromLocal8Bit(p.readAllStandardError()).trimmed().section(u'\n', 0, 0);
-        return err.isEmpty() ? QStringLiteral("%1 failed (exit %2)").arg(program).arg(p.exitCode()) : err;
-    }
-    return {};
+        *stdOut = r.out;
+    if (r.ok)
+        return {};
+    if (r.failedToStart)
+        return QStringLiteral("%1 is not installed (see the README for the PDF and OCR tools)").arg(program);
+    return r.error;
 }
 }
 

@@ -241,13 +241,9 @@ ColumnLayout {
                     }
                 }
 
-                Text {
-                    anchors.centerIn: parent
+                EmptyState {
                     visible: dbManager.connections.length === 0
-                    text: "No connections.\nPress + to add one."
-                    color: theme.textFaint
-                    font.pixelSize: 11
-                    horizontalAlignment: Text.AlignHCenter
+                    message: "No connections.\nPress + to add one."
                 }
             }
         }

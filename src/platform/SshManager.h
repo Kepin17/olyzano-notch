@@ -74,10 +74,14 @@ private:
     static QString expandTilde(const QString &path);
     // Absolute path to the OpenSSH client, or "" when none is on PATH / the Windows system location.
     static QString findSsh();
+    // True when auth is password, the secret is saved, and a password is stored — the case
+    // where SSH_ASKPASS is wired instead of a real TTY prompt.
+    bool useAskPassFor(const SshModel::Connection &c) const;
+    // Build argv, apply env (and askpass when needed). Returns the askDir the caller must
+    // removeAskPass() after the process finishes ("" when no askpass was created).
+    QString prepareSshProcess(QProcess *proc, const SshModel::Connection &c, const QString &command, bool batchMode);
     // When auth is password and a secret is saved, point SSH_ASKPASS at a private temp helper so
     // Test / Run / the embedded shell can authenticate without a real TTY (Windows especially).
-    // Returns system env (unchanged) when no saved password applies. On success *askPassDir is the
-    // unique temp dir the caller must remove after the process finishes (removeAskPass).
     QProcessEnvironment sshEnvironment(const SshModel::Connection &c, QString *askPassDir);
     static void removeAskPass(const QString &dir);
     void finishTest(const QString &id, bool ok, const QString &error, qint64 ms);

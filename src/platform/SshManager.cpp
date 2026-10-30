@@ -323,6 +323,20 @@ SshManager::SshProcessSpec SshManager::buildSsh(const SshModel::Connection &c, c
     return s;
 }
 
+bool SshManager::useAskPassFor(const SshModel::Connection &c) const
+{
+    return c.auth == QLatin1String("password") && c.savePassword && !passwordFor(c.id).isEmpty();
+}
+
+QString SshManager::prepareSshProcess(QProcess *proc, const SshModel::Connection &c, const QString &command, bool batchMode)
+{
+    const auto spec = buildSsh(c, command, batchMode);
+    QString askDir;
+    proc->setProcessEnvironment(sshEnvironment(c, &askDir));
+    proc->start(spec.program, spec.args);
+    return askDir;
+}
+
 void SshManager::testConnection(const QString &id)
 {
     if (m_test)
@@ -341,11 +355,9 @@ void SshManager::testConnection(const QString &id)
     m_test = new QProcess(this);
     // BatchMode: never prompts; fails fast when the key/agent cannot authenticate.
     // Password + saved secret uses askpass instead (no real TTY under QProcess), so skip BatchMode.
-    const bool useAskPass = c.auth == QLatin1String("password") && c.savePassword && !passwordFor(c.id).isEmpty();
-    const auto spec = buildSsh(c, QStringLiteral("true"), !useAskPass);
-    QString askDir;
-    m_test->setProcessEnvironment(sshEnvironment(c, &askDir));
+    const bool ask = useAskPassFor(c);
     const qint64 startedAt = QDateTime::currentMSecsSinceEpoch();
+    const QString askDir = prepareSshProcess(m_test, c, QStringLiteral("true"), !ask);
     connect(m_test, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this, id, startedAt, askDir](int code, QProcess::ExitStatus st) {
         const QString err = QString::fromLocal8Bit(m_test ? m_test->readAllStandardError() : QByteArray()).trimmed();
         const bool ok = st == QProcess::NormalExit && code == 0;
@@ -372,7 +384,6 @@ void SshManager::testConnection(const QString &id)
         emit busyChanged();
         finishTest(id, false, msg, QDateTime::currentMSecsSinceEpoch() - startedAt);
     });
-    m_test->start(spec.program, spec.args);
 }
 
 void SshManager::finishTest(const QString &id, bool ok, const QString &error, qint64 ms)
@@ -397,11 +408,9 @@ void SshManager::runCommand(const QString &id, const QString &command)
     m_lastOutput.clear();
     emit outputChanged();
     m_cmd = new QProcess(this);
-    const bool useAskPass = c.auth == QLatin1String("password") && c.savePassword && !passwordFor(c.id).isEmpty();
+    const bool ask = useAskPassFor(c);
     // Password without a saved secret still needs an interactive prompt (open a terminal for that).
-    const auto spec = buildSsh(c, command, c.auth != QLatin1String("password") || !useAskPass);
-    QString askDir;
-    m_cmd->setProcessEnvironment(sshEnvironment(c, &askDir));
+    const QString askDir = prepareSshProcess(m_cmd, c, command, c.auth != QLatin1String("password") || !ask);
     connect(m_cmd, &QProcess::readyReadStandardOutput, this, [this] {
         m_lastOutput += QString::fromLocal8Bit(m_cmd->readAllStandardOutput());
         emit outputChanged();
@@ -444,7 +453,6 @@ void SshManager::runCommand(const QString &id, const QString &command)
         emit statusMessage(QStringLiteral("SSH — ssh binary not found (install OpenSSH on Windows: Settings → Optional features)"));
     });
     emit commandRunningChanged();
-    m_cmd->start(spec.program, spec.args);
 }
 
 void SshManager::cancelCommand()
@@ -495,9 +503,7 @@ void SshManager::openShell(const QString &id)
     m_shell = new QProcess(this);
     m_shell->setProcessChannelMode(QProcess::MergedChannels);
     // -tt + no BatchMode: interactive login shell; key path still passed when set
-    const auto spec = buildSsh(c, {}, false);
-    m_shellAskPass.clear();
-    m_shell->setProcessEnvironment(sshEnvironment(c, &m_shellAskPass));
+    m_shellAskPass = prepareSshProcess(m_shell, c, {}, false);
     connect(m_shell, &QProcess::readyReadStandardOutput, this, [this] {
         const QString chunk = QString::fromLocal8Bit(m_shell->readAllStandardOutput());
         m_lastOutput += chunk;
@@ -533,7 +539,6 @@ void SshManager::openShell(const QString &id)
         emit statusMessage(QStringLiteral("SSH — ssh binary not found (install OpenSSH on Windows: Settings → Optional features)"));
     });
     m_shellHost = QStringLiteral("%1@%2:%3").arg(c.user, c.host).arg(c.port);
-    m_shell->start(spec.program, spec.args);
     emit shellStateChanged();
     emit statusMessage(QStringLiteral("SSH — connecting shell to %1").arg(m_shellHost));
 }

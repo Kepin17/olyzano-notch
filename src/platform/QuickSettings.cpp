@@ -1,11 +1,11 @@
 #include "platform/QuickSettings.h"
 
 #include "models/FileItem.h"
+#include "platform/ProcessRunner.h"
 
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QProcess>
 #include <QStandardPaths>
 
 #ifdef Q_OS_WIN
@@ -122,14 +122,7 @@ void QuickSettings::refresh()
 // ---- sound ----
 static QByteArray pactlOut(const QStringList &args)
 {
-    QProcess p;
-    p.start(QStringLiteral("pactl"), args);
-    if (!p.waitForFinished(1000) || p.exitCode() != 0) {
-        if (p.state() != QProcess::NotRunning)
-            p.kill();
-        return {};
-    }
-    return p.readAllStandardOutput();
+    return ProcessRunner::captureOut(QStringLiteral("pactl"), args, 1000);
 }
 
 void QuickSettings::readAudio()

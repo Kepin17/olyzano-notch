@@ -5,8 +5,8 @@
 #include <QKeySequence>
 
 #include "platform/AppDock.h"
+#include "platform/ProcessRunner.h"
 
-#include <QProcess>
 #include <QStandardPaths>
 
 #ifdef NOTCH_HAVE_DBUS
@@ -21,10 +21,11 @@ const QString NotchKey = QStringLiteral("org.olyzano.Notch,/Launcher,org.olyzano
 
 QString kwinMeta()
 {
-    QProcess p;
-    p.start(QStringLiteral("kreadconfig6"), {QStringLiteral("--file"), QStringLiteral("kwinrc"), QStringLiteral("--group"), QStringLiteral("ModifierOnlyShortcuts"), QStringLiteral("--key"), QStringLiteral("Meta")});
-    p.waitForFinished(1500);
-    return QString::fromUtf8(p.readAllStandardOutput()).trimmed();
+    return QString::fromUtf8(ProcessRunner::captureOut(QStringLiteral("kreadconfig6"),
+                                                       {QStringLiteral("--file"), QStringLiteral("kwinrc"),
+                                                        QStringLiteral("--group"), QStringLiteral("ModifierOnlyShortcuts"),
+                                                        QStringLiteral("--key"), QStringLiteral("Meta")},
+                                                       1500)).trimmed();
 }
 void writeKwinMeta(const QString &value) // empty: back to KWin's own default (Plasma's launcher)
 {
