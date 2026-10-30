@@ -5,6 +5,7 @@
 #include "platform/WidgetModel.h"
 #ifdef Q_OS_WIN
 #include "platform/WinAppBar.h"
+#include <windows.h>
 #endif
 
 #include <QCursor>
@@ -217,7 +218,19 @@ void DesktopIntegration::setAboveBar(QWindow *notchWindow, bool above)
     // Windows and X11: two always-on-top windows stack by who was shown or raised last, so the bar can end up over
     // the notch (its menu then cannot be reached). Put the notch back on top; it takes no focus.
     if (above)
-        notchWindow->raise();
+        raiseOnTop(notchWindow);
+}
+
+void DesktopIntegration::raiseOnTop(QWindow *window)
+{
+    if (!window)
+        return;
+#ifdef Q_OS_WIN
+    if (const HWND hwnd = reinterpret_cast<HWND>(window->winId()))
+        SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+#else
+    window->raise();
+#endif
 }
 
 void DesktopIntegration::setKeyboardInteractive(QWindow *window, bool interactive)
@@ -235,6 +248,23 @@ void DesktopIntegration::setKeyboardInteractive(QWindow *window, bool interactiv
 #endif
     window->setFlag(Qt::WindowDoesNotAcceptFocus, !interactive);
     if (interactive)
+        window->requestActivate();
+}
+
+void DesktopIntegration::grabKeyboard(QWindow *window, bool grab)
+{
+    if (!window)
+        return;
+#ifdef NOTCH_HAVE_LAYERSHELL
+    if (auto *ls = LayerShellQt::Window::get(window)) {
+        // Exclusive: the keys go here at once, without a click first (a shortcut opened the search); back to on-demand afterwards.
+        ls->setKeyboardInteractivity(grab ? LayerShellQt::Window::KeyboardInteractivityExclusive : LayerShellQt::Window::KeyboardInteractivityOnDemand);
+        if (grab)
+            window->requestActivate();
+        return;
+    }
+#endif
+    if (grab)
         window->requestActivate();
 }
 
@@ -266,16 +296,34 @@ void DesktopIntegration::setBlurRegion(QWindow *window, const QRectF &rect, qrea
 #endif
 }
 
+// Low memory mode (QT_QUICK_BACKEND=software): the window is a Windows layered surface and the
+// shell hit-tests by per-pixel alpha, not by SetWindowRgn. Calling setMask there clips paint but
+// delivers no pointer events (the 3px edge strip is fully transparent, so hover never fires and
+// the notch cannot open). Main.qml paints a near-invisible live strip instead when this is true.
+static bool softwareBackend()
+{
+    return qgetenv("QT_QUICK_BACKEND") == QByteArrayLiteral("software");
+}
+
 void DesktopIntegration::setInputRegion(QWindow *window, const QRectF &rect)
 {
-    if (window)
-        window->setMask(QRegion(rect.toAlignedRect()));
+    if (!window)
+        return;
+#ifdef Q_OS_WIN
+    if (softwareBackend())
+        return;
+#endif
+    window->setMask(QRegion(rect.toAlignedRect()));
 }
 
 void DesktopIntegration::setInputRegions(QWindow *window, const QVariantList &rects)
 {
     if (!window)
         return;
+#ifdef Q_OS_WIN
+    if (softwareBackend())
+        return;
+#endif
     QRegion region;
     for (const QVariant &v : rects)
         region += v.toRectF().toAlignedRect();
@@ -361,6 +409,60 @@ void DesktopIntegration::placeDocked(QWindow *window)
 
 // ---- Keeping windows clear of the capsule ----
 
+#ifdef Q_OS_WIN
+// A picture-only bar along the top: the appbar already shrinks the work area, but only the capsule
+// draws there — without this the reserved strip is bare wallpaper. Clicks fall through to what is below.
+class WinReserveStrip : public QRasterWindow
+{
+public:
+    explicit WinReserveStrip(QScreen *screen)
+    {
+        setScreen(screen);
+        QSurfaceFormat f;
+        f.setAlphaBufferSize(8);
+        setFormat(f);
+        setFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool | Qt::WindowTransparentForInput
+                 | Qt::WindowDoesNotAcceptFocus);
+        // No QWindow::setColor — paintEvent fills every pixel (same as the Wayland ReserveStrip).
+    }
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        p.fillRect(QRect(QPoint(0, 0), size()), QColor(10, 10, 12, 240)); // matches the island's black glass
+        p.setPen(QColor(255, 255, 255, 24)); // faint top-edge highlight like the bar
+        p.drawLine(0, size().height() - 1, size().width(), size().height() - 1);
+    }
+};
+
+void DesktopIntegration::updateWinReserveStrip(QWindow *notchWindow, int logicalPx)
+{
+    QScreen *screen = notchWindow ? notchWindow->screen() : nullptr;
+    if (!screen)
+        return;
+    auto it = m_winStrips.begin();
+    for (; it != m_winStrips.end(); ++it)
+        if (it->screen == screen)
+            break;
+    if (logicalPx <= 0) {
+        if (it != m_winStrips.end()) {
+            if (it->window)
+                it->window->deleteLater();
+            m_winStrips.erase(it);
+        }
+        return;
+    }
+    if (it == m_winStrips.end())
+        it = m_winStrips.insert(m_winStrips.end(), WinStrip{QPointer<QScreen>(screen), nullptr});
+    if (!it->window)
+        it->window = new WinReserveStrip(screen);
+    const QRect g = screen->geometry();
+    it->window->setGeometry(g.x(), g.y(), g.width(), qMax(1, logicalPx));
+    it->window->show();
+    raiseOnTop(notchWindow); // the capsule stays above its own strip
+}
+#endif
+
 DesktopIntegration::DesktopIntegration()
 {
 #ifdef Q_OS_WIN
@@ -368,7 +470,15 @@ DesktopIntegration::DesktopIntegration()
 #endif
 }
 
-DesktopIntegration::~DesktopIntegration() = default;
+DesktopIntegration::~DesktopIntegration()
+{
+#ifdef Q_OS_WIN
+    for (auto &s : m_winStrips)
+        if (s.window)
+            s.window->deleteLater();
+    m_winStrips.clear();
+#endif
+}
 
 bool DesktopIntegration::canReserve() const
 {
@@ -417,7 +527,9 @@ void DesktopIntegration::reserve(QWindow *window, const QString &mode, bool on, 
 #ifdef Q_OS_WIN
     if (!window->isVisible()) // the native window may still be replaced while it is being set up; QML asks again once shown
         return;
-    m_appBar->set(window, ReserveModel::plan(mode, on, scale, barPx, false).appBar);
+    const int appBarPx = ReserveModel::plan(mode, on, scale, barPx, false).appBar;
+    m_appBar->set(window, appBarPx);
+    updateWinReserveStrip(window, appBarPx); // fill the reserved gap so it does not look like empty space
 #else
 #ifdef NOTCH_HAVE_LAYERSHELL
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {

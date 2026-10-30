@@ -19,16 +19,16 @@ Item {
         border.width: 1
         border.color: theme.washi ? theme.outline : theme.hairline
     }
-    Rectangle { // the highlight
+    Rectangle { // the highlight — solid grey-ish accent tint, never a pale “white” block
         readonly property real cell: (seg.width - 6) / Math.max(1, seg.model.length)
         x: 3 + seg.index * cell
         y: 3
         width: cell
         height: seg.height - 6
         radius: theme.washi ? Math.max(2, theme.chipRadius - 2) : theme.radiusSm
-        color: Qt.alpha(theme.accent, 0.18)
+        color: theme.dark ? Qt.tint("#3a3a3c", Qt.alpha(theme.accent, 0.35)) : Qt.tint("#e4e4e9", Qt.alpha(theme.accent, 0.25))
         border.width: 1
-        border.color: Qt.alpha(theme.accent, 0.45)
+        border.color: Qt.alpha(theme.accent, 0.4)
         Behavior on x { enabled: activities.animations; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
     }
     Row {
@@ -38,10 +38,13 @@ Item {
         Repeater {
             model: seg.model
             AbstractButton {
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
                 required property var modelData
                 required property int index
                 width: parent.width / seg.model.length
                 height: parent.height
+                // solid empty bg — `null` lets Basic style paint a white pressed block
+                background: Rectangle { color: "transparent" }
                 onClicked: { seg.value = modelData[0]; seg.picked(modelData[0]) }
                 contentItem: Text {
                     text: modelData[1]
@@ -51,7 +54,6 @@ Item {
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
                 }
-                background: null
             }
         }
     }

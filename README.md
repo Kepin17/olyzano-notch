@@ -23,8 +23,8 @@ Runs on **Linux (KDE Plasma, Wayland or X11)** and **Windows 10 / 11**. Free and
 
 | | |
 |---|---|
-| **Linux** (Debian 13, Ubuntu 25.04+, KDE neon) | Download the `.deb` from the [install page](https://kepin17.github.io/olyzano-notch/), then `sudo apt install ./notch_0.12.4_amd64.deb` |
-| **Windows 10 / 11** | Download `Notch-0.12.4-windows-x64-setup.exe` (or the portable `.zip`) and run it. SmartScreen: *More info → Run anyway* |
+| **Linux** (Debian 13, Ubuntu 25.04+, KDE neon) | Download the `.deb` from the [install page](https://kepin17.github.io/olyzano-notch/), then `sudo apt install ./notch_0.15.1_amd64.deb` |
+| **Windows 10 / 11** | Download `Notch-0.15.1-windows-x64-setup.exe` (or the portable `.zip`) and run it. SmartScreen: *More info → Run anyway* |
 | **No install** | Open the [web version](https://kepin17.github.io/olyzano-notch/app/): files stay in your browser, nothing is uploaded |
 
 Then move the mouse to the top-centre of the screen. Details: [Install](#install).
@@ -57,6 +57,8 @@ Then move the mouse to the top-centre of the screen. Details: [Install](#install
 - **PDF:** images to PDF, merge, split, extract pages (`2-5, 8, 10-`), rotate, compress.
 - **Text and archives:** OCR (several languages), zip and unzip, QR codes (make and read), checksums, Base64.
 - **The notch's own things:** categories, search, a 24-hour *Recently removed* with undo, locked categories (AES-256), timer and Pomodoro, a colour picker, a music player with `.lrc` lyrics, 14 themes, and `Ctrl+K` for a command palette. On a phone, install it and use *Share → Olyzano Notch* to put files on the shelf.
+- **API tester:** craft GET/POST/… requests from the notch (local or internet), save collections and environments (`{{vars}}`), run short test scripts, and import/export Postman collections. Everything is your own (folders, duplicate, move, environments with secret variables), the notch stays open on this page, and nothing is built in. The **Ports** tab checks whether a local port is listening, shows the process/PID, can stop it, or run a control command.
+- **Dev hub (SSH + Database):** the *Dev* page also saves SSH hosts (test, run a remote command, open a terminal) and database connections — SQLite always, MySQL/MariaDB and PostgreSQL when the Qt SQL driver is installed — with table browse and a SQL runner.
 
 What a web page cannot do stays in the desktop app: the status bar, tray, Quick Settings, KDE Connect, the dock, gaming mode and watching your screenshots folder. The code is in [`docs/app`](docs/app) (plain ES modules, no build step; `docs/app/tests.html` runs its tests).
 
@@ -76,14 +78,14 @@ Tested on Kubuntu 26.04 (Qt 6.10, KDE Plasma on Wayland).
 **[latest release](https://github.com/Kepin17/olyzano-notch/releases/latest)**, or from a terminal:
 
 ```bash
-wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.12.4/notch_0.12.4_amd64.deb
+wget https://github.com/Kepin17/olyzano-notch/releases/download/v0.15.1/notch_0.15.1_amd64.deb
 ```
 
 **2. Install** it. `apt` pulls in everything it needs (Qt 6 runtime, `layer-shell-qt`, Poppler, Ghostscript,
 `gocryptfs`, `fuse3`, `pulseaudio-utils`, …):
 
 ```bash
-sudo apt install ./notch_0.12.4_amd64.deb
+sudo apt install ./notch_0.15.1_amd64.deb
 ```
 
 **3. Start** **Olyzano Notch** from the application menu, or turn on **Settings → General → Start at login**.
@@ -167,6 +169,9 @@ account* → select **Path** → **Edit** → **New** → paste the folder → O
 | Locked (encrypted) categories | ✅ | ✅ |
 | Now-playing card with a real-sound equalizer | ✅ | ✅ |
 | Bluetooth alerts · KDE Connect · colour picker | ✅ | ✅ |
+| API tester (collections, environments, history, scripts, local ports) | ✅ | ✅ |
+| SSH manager (hosts, run command, open terminal) | ✅ | ✅ |
+| Database browser (SQLite, MySQL, PostgreSQL*) | ✅ | ✅ |
 
 Controls that a platform cannot offer are hidden or greyed out.
 
@@ -572,6 +577,12 @@ installer, are in [`.github/workflows/windows.yml`](.github/workflows/windows.ym
 **The relay server** (Docker Compose, nginx or Caddy, members and quotas) is documented in [server/README.md](server/README.md).
 
 ---
+
+## Memory
+
+At rest the capsule costs about **133 MB PSS** (the memory it really owns; the Qt, KDE and Mesa libraries it shares with other programs are divided between them, so the *RES* column of `top`, ~275 MB, looks much bigger). **Settings → General → Performance → Low memory mode** draws with Qt's software renderer instead of the graphics card and needs about **87 MB PSS** (~175 MB RES); it takes a restart and uses a little more processor while the panel moves. Settings and the share dialog are unloaded a minute or two after they are closed. To measure on your own machine: `scripts/memcheck.sh build/notch default low`.
+
+**Windows:** the same Low memory mode is in *Settings → General → Performance*; there it skips the graphics driver, which is most of the idle memory (about 190 MB working set to start with, see [windows-developer-notes.md](docs/windows-developer-notes.md)). Measure a run with `powershell -ExecutionPolicy Bypass -File scripts\memcheck.ps1` (close a running Notch first; `-Variants default,low` compares both).
 
 ## Project layout
 

@@ -12,4 +12,4 @@ Pinned copies, from npm (via jsDelivr), so the app works offline. Each keeps its
 | `heic2any.min.js` | heic2any 0.0.4 | MIT |
 | `tesseract.min.js` | tesseract.js 5.1.1 | Apache-2.0 |
 
-Tesseract's worker, WebAssembly core and language data are fetched from jsDelivr the first time OCR is used, and then cached by the service worker.
+`ocr/worker.min.js` is tesseract.js 5.1.1's worker and `ocr/tesseract-core-*-lstm.wasm.js` are tesseract.js-core 5.1.1 (both Apache-2.0), served from here. Only the language data is fetched from the tesseract.js CDN the first time OCR is used (data, not code), and then kept by the browser.

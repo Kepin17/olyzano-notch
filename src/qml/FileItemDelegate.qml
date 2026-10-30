@@ -30,7 +30,7 @@ Item {
     signal selectRequested(int index, string id, string mode)
 
     // The ListView owns the selection (selectedIds) and decides what a drag carries (dragIds).
-    readonly property var view: ListView.view
+    readonly property var view: ListView.view ? ListView.view : GridView.view
     readonly property bool selected: view ? view.selectedIds.indexOf(itemId) >= 0 : false
     readonly property bool renaming: view ? view.renamingId === itemId : false
     property var draggedIds: []
@@ -44,6 +44,7 @@ Item {
     height: 136
 
     component CircleButton: AbstractButton {
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
         id: cb
         implicitWidth: 22
         implicitHeight: 22
@@ -109,7 +110,7 @@ Item {
         Image {
             id: photo
             anchors.fill: parent
-            visible: false
+            visible: memtune.running && tile.showThumbnail // software mode: no shader for the mask, the thumbnail is drawn straight
             source: tile.showThumbnail ? tile.fileUrl : ""
             sourceSize: Qt.size(128, 128)
             fillMode: Image.PreserveAspectCrop
@@ -124,7 +125,7 @@ Item {
         }
         MultiEffect {
             anchors.fill: parent
-            visible: tile.showThumbnail
+            visible: tile.showThumbnail && !memtune.running
             source: photo
             maskEnabled: true
             maskSource: roundMask
@@ -251,6 +252,7 @@ Item {
         anchors.topMargin: 8
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 8
+        textFormat: Text.PlainText // a name can look like markup
         text: tile.name
         color: theme.text
         font.pixelSize: 11
@@ -286,6 +288,7 @@ Item {
               + (tile.sourcePath ? "\nFrom " + tile.sourcePath : "")
         background: Rectangle { color: theme.card; radius: theme.radiusSm + 2; border.color: theme.hairline }
         contentItem: Text {
+            textFormat: Text.PlainText // a name can look like markup
             text: tip.text
             color: theme.text
             font.pixelSize: 11

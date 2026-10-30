@@ -85,6 +85,13 @@ export function kindOf(file) {
   return "file";
 }
 
+// What may be opened in a browser tab, and as which type. The tab is on this app's own origin, so anything that can run script (html, svg,
+// xml, ...) would reach the shelf and the vault: those are downloaded instead (""), and the rest is re-typed so the browser cannot sniff a page.
+const OPEN_TYPES = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", avif: "image/avif", bmp: "image/bmp",
+  pdf: "application/pdf", mp4: "video/mp4", webm: "video/webm", mp3: "audio/mpeg", wav: "audio/wav", ogg: "audio/ogg",
+  txt: "text/plain", md: "text/plain", json: "text/plain", csv: "text/plain", log: "text/plain", lrc: "text/plain", css: "text/plain", js: "text/plain", html: "text/plain" };
+export const openType = name => OPEN_TYPES[extOf(name)] || "";
+
 export function download(blob, name) {
   const a = h("a", { href: URL.createObjectURL(blob), download: name });
   document.body.append(a);

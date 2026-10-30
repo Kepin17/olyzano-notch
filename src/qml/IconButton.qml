@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 // Round header button: a line icon (`iconName`) or, without one, its text.
 AbstractButton {
+    HoverHandler { cursorShape: Qt.PointingHandCursor }
     id: ib
     property string iconName
     implicitWidth: 28

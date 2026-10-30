@@ -216,6 +216,7 @@ Popup {
             spacing: 10
             Text {
                 Layout.fillWidth: true
+                textFormat: Text.PlainText // a name can look like markup
                 text: pop.ids.length === 1 ? notch.itemInfo(pop.ids[0]).name : pop.ids.length + " files"
                 color: theme.text
                 font.pixelSize: 13
@@ -271,7 +272,7 @@ Popup {
                             anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                             spacing: 8
                             LineIcon { glyph: "laptop"; sourceSize: Qt.size(16, 16); color: pop.nearbyId === modelData.id ? theme.accent : theme.textDim }
-                            Text { Layout.fillWidth: true; text: modelData.name; color: theme.text; font.pixelSize: 13; elide: Text.ElideRight }
+                            Text { Layout.fillWidth: true; textFormat: Text.PlainText; text: modelData.name; color: theme.text; font.pixelSize: 13; elide: Text.ElideRight }
                             Text { text: modelData.os === "windows" ? "Windows" : modelData.os === "linux" ? "Linux" : ""; color: theme.textDim; font.pixelSize: 11 }
                         }
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: pop.nearbyId = modelData.id }
@@ -308,6 +309,7 @@ Popup {
                 Layout.fillWidth: true
                 visible: pop.mode === "relay" && pop.server !== null && pop.server.tested && !pop.server.ok
                 color: theme.danger
+                textFormat: Text.PlainText // a name can look like markup
                 text: pop.server ? pop.server.name + ": " + pop.server.message : ""
             }
             Caption {
@@ -504,6 +506,7 @@ Popup {
                             }
                             Text {
                                 Layout.fillWidth: true
+                                textFormat: Text.PlainText // a name can look like markup
                                 text: rd.name
                                 color: theme.text
                                 font.pixelSize: 14
@@ -641,6 +644,7 @@ Popup {
                                             spacing: 6
                                             Text {
                                                 Layout.fillWidth: true
+                                                textFormat: Text.PlainText // a name can look like markup
                                                 text: card.name
                                                 color: theme.text
                                                 font.pixelSize: 13

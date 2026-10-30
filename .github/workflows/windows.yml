@@ -26,7 +26,7 @@ jobs:
         with:
           version: ${{ env.QT_VERSION }}
           arch: win64_msvc2022_64
-          modules: qtimageformats # WebP and friends: "Convert to WebP" and thumbnails need them
+          modules: qtimageformats qtmultimedia # WebP and friends: "Convert to WebP" and thumbnails need them; qtmultimedia: the Camera page (windeployqt ships it)
           cache: true
 
       - name: MSVC environment

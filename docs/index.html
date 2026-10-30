@@ -27,7 +27,7 @@ nav ul a{color:var(--dim);text-decoration:none}
 nav ul a:hover{color:var(--ink)}
 nav ul svg{display:none}
 /* a phone: the links are a bar at the bottom, like the menu of a mobile app; the name stays on top */
-@media (max-width:720px){
+@media (max-width:720px){      
   nav{border-bottom:0}
   nav .wrap{height:52px}
   nav ul{position:fixed;left:0;right:0;bottom:0;z-index:50;justify-content:space-around;gap:0;padding:6px 8px calc(6px + env(safe-area-inset-bottom));background:color-mix(in srgb,var(--bg) 88%,transparent);-webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px);border-top:1px solid var(--line);font-size:.68rem}
@@ -521,6 +521,19 @@ details ul{margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:.92rem}
 @keyframes rnfill{from{width:0}}
 @keyframes rnbolt{50%{transform:scale(1.25)}}
 /* prompt: margins shoulder+16, top 10, bottom 12, spacing 8 */
+:is(#demo,.rnx) .rn .rn-srch{position:absolute;left:calc(var(--s) + 16px);right:calc(var(--s) + 16px);top:12px;bottom:12px;display:flex;flex-direction:column}
+:is(#demo,.rnx) .rn .rn-sf{display:flex;align-items:center;gap:12px;height:46px;font-size:22px;font-weight:300;color:var(--i-text);border-bottom:1px solid var(--i-hov);flex:none}
+:is(#demo,.rnx) .rn .rn-sf .ph{color:var(--i-ph)}
+:is(#demo,.rnx) .rn .rn-sf .cur{display:inline-block;width:1.5px;height:24px;margin-left:1px;background:var(--i-text);vertical-align:middle}
+:is(#demo,.rnx) .rn .rn-sh{margin-top:8px;height:20px;font-size:10px;letter-spacing:1px;font-weight:650;color:var(--i-ph)}
+:is(#demo,.rnx) .rn .rn-sr{display:flex;align-items:center;gap:12px;height:46px;padding:0 12px 0 10px;border-radius:12px;flex:none}
+:is(#demo,.rnx) .rn .rn-sr.on{background:var(--i-accSoft)}
+:is(#demo,.rnx) .rn .rn-sr i{width:30px;height:30px;border-radius:8px;flex:none}
+:is(#demo,.rnx) .rn .rn-sr b{flex:1;font-size:15px;font-weight:500;color:var(--i-text)}
+:is(#demo,.rnx) .rn .rn-sr.on b{font-weight:650}
+:is(#demo,.rnx) .rn .rn-sr span{font-size:11px;color:var(--i-dim)}
+:is(#demo,.rnx) .rn .rn-sr em{font-style:normal;font-size:10px;color:var(--i-ph)}
+:is(#demo,.rnx) .rn .rn-sr.on em{font-size:16px;color:var(--i-acc)}
 :is(#demo,.rnx) .rn .rn-prompt{position:absolute;left:calc(var(--s) + 16px);right:calc(var(--s) + 16px);top:10px;bottom:12px;display:flex;flex-direction:column;justify-content:space-around;gap:8px}
 :is(#demo,.rnx) .rn .rn-pr1{display:flex;gap:10px;align-items:center}
 :is(#demo,.rnx) .rn .rn-col{display:flex;flex-direction:column;gap:1px;min-width:0;flex:1}
@@ -588,6 +601,80 @@ details ul{margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:.92rem}
 :is(#demo,.rnx) .rn .rn-play i{width:6px;height:22px;border-radius:2px;background:var(--i-text)}
 /* action bar (ActionBar.qml), Music page split in two, lyrics, colour section, timer ring, capsule with a song */
 :is(#demo,.rnx) .rn .rn-ab{display:flex;align-items:center;gap:6px;padding:0 12px}
+/* the page slider (ActionBar.qml): the open page shows icon, name and count; the others are icons with a count badge */
+:is(#demo,.rnx) .rn .rn-sl{display:inline-flex;align-items:center;height:32px;padding:3px;border-radius:16px;background:var(--i-well);box-shadow:inset 0 0 0 1px var(--i-hov)}
+:is(#demo,.rnx) .rn .rn-sl .it{position:relative;display:inline-flex;align-items:center;justify-content:center;gap:5px;height:26px;min-width:38px;padding:0 9px;border-radius:13px;color:var(--i-dim);transition:background .2s}
+:is(#demo,.rnx) .rn .rn-sl .it .ic{width:14px;height:14px}
+:is(#demo,.rnx) .rn .rn-sl .it.on{background:var(--i-accSoft);box-shadow:inset 0 0 0 1px var(--i-acc);color:var(--i-acc);padding:0 13px}
+:is(#demo,.rnx) .rn .rn-sl .it b{font-size:12px;font-weight:650}
+:is(#demo,.rnx) .rn .rn-sl .it.hov{background:var(--i-hov)}
+:is(#demo,.rnx) .rn .rn-sl .bd{display:inline-grid;place-items:center;min-width:15px;height:15px;padding:0 4px;border-radius:8px;background:#ff453a;color:#fff;font-size:9.5px;font-weight:700}
+:is(#demo,.rnx) .rn .rn-sl .it:not(.on) .bd{position:absolute;top:-2px;right:-3px}
+/* many files: rows instead of one long line */
+:is(#demo,.rnx) .rn .rn-tiles.grid{flex-wrap:wrap;height:auto;max-height:430px;overflow:hidden;align-content:flex-start;row-gap:4px}
+:is(#demo,.rnx) .rn .rn-tiles.grid .rn-tile{width:102.4px}
+/* Tasks: a month on the left, the list on the right */
+:is(#demo,.rnx) .rn .rn-tk{display:flex;gap:18px;padding:0 14px 6px;min-height:300px}
+:is(#demo,.rnx) .rn .rn-cal{width:238px;flex:none}
+:is(#demo,.rnx) .rn .rn-cal .mh{display:flex;align-items:center;gap:4px;margin-bottom:4px;font-size:14px;font-weight:650;color:var(--i-text)}
+:is(#demo,.rnx) .rn .rn-cal .mh span:first-child{flex:1}
+:is(#demo,.rnx) .rn .rn-cal .g{display:grid;grid-template-columns:repeat(7,1fr)}
+:is(#demo,.rnx) .rn .rn-cal .g span{position:relative;height:33px;display:grid;place-items:center;font-size:12px;color:var(--i-text);transition:transform .2s}
+:is(#demo,.rnx) .rn .rn-cal .g span.w{height:16px;font-size:10px;font-weight:650;color:var(--i-dim)}
+:is(#demo,.rnx) .rn .rn-cal .g span.o{color:var(--i-ph)}
+:is(#demo,.rnx) .rn .rn-cal .g span i{position:absolute;top:2px;left:50%;margin-left:-14px;width:28px;height:28px;border-radius:14px}
+:is(#demo,.rnx) .rn .rn-cal .g span em{position:relative;font-style:normal}
+:is(#demo,.rnx) .rn .rn-cal .g span.t i{background:var(--i-acc)}
+:is(#demo,.rnx) .rn .rn-cal .g span.t em{color:var(--i-on,#111113);font-weight:650}
+:is(#demo,.rnx) .rn .rn-cal .g span.s i{box-shadow:inset 0 0 0 1.5px var(--i-acc)}
+:is(#demo,.rnx) .rn .rn-cal .g span.hov{transform:scale(1.12)}
+:is(#demo,.rnx) .rn .rn-cal .g span u{position:absolute;bottom:0;left:50%;margin-left:-2px;width:4px;height:4px;border-radius:2px;background:var(--i-acc)}
+:is(#demo,.rnx) .rn .rn-cal .g span u.late{background:#ff453a}
+:is(#demo,.rnx) .rn .rn-tl{flex:1;min-width:0;display:flex;flex-direction:column;gap:6px}
+:is(#demo,.rnx) .rn .rn-tl .th{display:flex;align-items:center;gap:8px;height:26px}
+:is(#demo,.rnx) .rn .rn-tl .th>b{flex:1;font-size:11px;letter-spacing:1px;color:var(--i-dim);font-weight:650}
+:is(#demo,.rnx) .rn .rn-tl .th>b.day{font-size:14px;letter-spacing:0;color:var(--i-text)}
+:is(#demo,.rnx) .rn .rn-trow{position:relative;display:flex;align-items:center;gap:8px;height:46px;padding-left:14px;border-radius:12px}
+:is(#demo,.rnx) .rn .rn-trow:before{content:"";position:absolute;left:0;top:4px;bottom:4px;width:3px;border-radius:2px;background:var(--c)}
+:is(#demo,.rnx) .rn .rn-trow .tx{flex:1;min-width:0;display:flex;flex-direction:column}
+:is(#demo,.rnx) .rn .rn-trow .tx b{font-size:13px;font-weight:650;color:var(--i-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+:is(#demo,.rnx) .rn .rn-trow .tx span{font-size:11px;color:var(--i-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+:is(#demo,.rnx) .rn .rn-trow .ck{width:20px;height:20px;border-radius:10px;box-shadow:inset 0 0 0 1.5px var(--i-dim);flex:none;margin-right:4px;display:grid;place-items:center}
+:is(#demo,.rnx) .rn .rn-trow.done:before{background:var(--i-ph)}
+:is(#demo,.rnx) .rn .rn-trow.done .tx b{text-decoration:line-through;color:var(--i-ph)}
+:is(#demo,.rnx) .rn .rn-trow.done .ck{background:var(--i-acc);box-shadow:none}
+:is(#demo,.rnx) .rn .rn-trow.pop{animation:rnpop .45s cubic-bezier(.34,1.56,.64,1) both}
+:is(#demo,.rnx) .rn .rn-tk .foot{display:flex;align-items:center;font-size:11px;color:var(--i-dim);margin-top:auto}
+:is(#demo,.rnx) .rn .rn-tk .foot span:first-child{flex:1}
+/* the New task window: opaque, over the page */
+:is(#demo,.rnx) .rn .rn-md{position:absolute;z-index:5;left:50%;top:0;width:380px;margin-left:-190px;padding:16px;border-radius:18px;background:#1c1c1e;box-shadow:0 0 0 1px var(--i-outline),0 12px 30px rgba(0,0,0,.55);display:flex;flex-direction:column;gap:10px}
+:is(#demo,.rnx) .rn .rn-md h4{display:flex;align-items:center;margin:0;font-size:13px;font-weight:650;color:var(--i-text)}
+:is(#demo,.rnx) .rn .rn-md h4 span{flex:1}
+:is(#demo,.rnx) .rn .rn-md .fld{height:34px;display:flex;align-items:center;padding:0 12px;border-radius:12px;background:var(--i-well);box-shadow:inset 0 0 0 1px var(--i-acc);font-size:13px;color:var(--i-text)}
+:is(#demo,.rnx) .rn .rn-md .fld.ph{color:var(--i-ph);box-shadow:inset 0 0 0 1px var(--i-hov)}
+:is(#demo,.rnx) .rn .rn-md .lb{font-size:12px;font-weight:650;color:var(--i-text)}
+:is(#demo,.rnx) .rn .rn-md .tm{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--i-dim)}
+:is(#demo,.rnx) .rn .rn-md .tm strong{font-size:20px;font-weight:650;color:var(--i-text)}
+:is(#demo,.rnx) .rn .rn-md .acts{display:flex;justify-content:flex-end;gap:8px}
+/* Clipboard: what was copied, one row each */
+:is(#demo,.rnx) .rn .rn-cb{display:flex;flex-direction:column;gap:6px;padding:0 12px 8px}
+:is(#demo,.rnx) .rn .rn-cbr{display:flex;align-items:center;gap:10px;height:50px;padding:0 6px 0 10px;border-radius:12px;background:var(--i-well);box-shadow:inset 0 0 0 1px var(--i-hov)}
+:is(#demo,.rnx) .rn .rn-cbr .mk{width:34px;height:34px;border-radius:8px;display:grid;place-items:center;background:var(--i-accFaint);color:var(--i-acc);font-size:12px;font-weight:650;flex:none;background-size:cover}
+:is(#demo,.rnx) .rn .rn-cbr .tx{flex:1;min-width:0;display:flex;flex-direction:column}
+:is(#demo,.rnx) .rn .rn-cbr .tx b{font-size:12px;font-weight:500;color:var(--i-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+:is(#demo,.rnx) .rn .rn-cbr .tx span{font-size:10px;color:var(--i-dim)}
+:is(#demo,.rnx) .rn .rn-cbr.pop{animation:rnpop .45s cubic-bezier(.34,1.56,.64,1) both}
+:is(#demo,.rnx) .rn .rn-cbr.hov{background:var(--i-hov)}
+:is(#demo,.rnx) .rn .rn-cbr.pin{box-shadow:inset 0 0 0 1px var(--i-acc)}
+:is(#demo,.rnx) .rn .rn-off{display:flex;flex-direction:column;gap:8px;align-items:flex-start;padding:14px;border-radius:12px;background:var(--i-well);box-shadow:inset 0 0 0 1px var(--i-hov)}
+:is(#demo,.rnx) .rn .rn-off b{font-size:14px;color:var(--i-text)}
+:is(#demo,.rnx) .rn .rn-off span{font-size:12px;color:var(--i-dim);line-height:1.4}
+/* System meters in the Quick Settings card */
+.sbc .sy{display:flex;flex-direction:column;gap:5px;margin-bottom:10px}
+.sbc .sy div{position:relative;display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:10px;background:rgba(255,255,255,.07);font-size:12px;overflow:hidden}
+.sbc .sy div i{position:absolute;left:0;top:0;bottom:0;background:rgba(61,174,233,.26);border-radius:10px;transition:width .5s}
+.sbc .sy div b{position:relative;width:36px;font-weight:650;color:#f5f5f7}
+.sbc .sy div span{position:relative;flex:1;text-align:right;color:#cfd3da}
 :is(#demo,.rnx) .rn .rn-mrow{display:flex;gap:12px;padding:0 12px;align-items:stretch}
 :is(#demo,.rnx) .rn .rn-mrow .rn-media{flex:1;min-width:0;margin:0;justify-content:center;min-height:214px;box-sizing:border-box}
 :is(#demo,.rnx) .rn .rn-lyr{flex:1;min-width:0;height:214px;border-radius:18px;background:var(--i-card);position:relative;overflow:hidden}
@@ -599,6 +686,9 @@ details ul{margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:.92rem}
 :is(#demo,.rnx) .rn .rn-lyr:after{bottom:0;background:linear-gradient(transparent,var(--i-card))}
 :is(#demo,.rnx) .rn .rn-mic{width:40px;height:40px;border-radius:20px;display:grid;place-items:center;transition:background .15s}
 :is(#demo,.rnx) .rn .rn-mic.on{background:var(--i-accSoft)}
+:is(#demo,.rnx) .rn .rn-sing{position:absolute;z-index:2;top:8px;right:8px;width:28px;height:28px;border-radius:14px;display:grid;place-items:center;transition:background .15s}
+:is(#demo,.rnx) .rn .rn-sing.on{background:var(--i-accSoft)}
+:is(#demo,.rnx) .rn .rn-sing.hov{background:var(--i-hov)}
 :is(#demo,.rnx) .rn .rn-karo{font-size:11px;color:var(--i-dim);line-height:1.3}
 :is(#demo,.rnx) .rn .rn-cp{display:flex;flex-direction:column;gap:12px;padding:0 12px 8px}
 :is(#demo,.rnx) .rn .rn-sw{display:flex;flex-wrap:wrap;gap:10px}
@@ -834,15 +924,26 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
   <p class="sec-lead">Small, local, and out of the way until you need it. These are the app's own screens, drawn the way it draws them.</p>
   <div class="bento">
     <article class="bc w4"><div class="mini" data-mini="shelf"></div>
-      <h3>A shelf for files in transit</h3><p>Drop files, folders, images, links and text on the notch. Preview them, sort them into categories, drag them back out, and let old ones expire on their own.</p></article>
+      <h3>A shelf for files in transit</h3><p>Drop files, folders, images, links and text on the notch. Preview them, sort them into categories, drag them back out, and let old ones expire on their own. With many files the shelf grows into rows and scrolls.</p></article>
+    <article class="bc w4"><span class="tag">New</span><div class="mini" data-mini="tasks"></div>
+      <h3>Tasks with a calendar</h3><p>A month with a dot on every day that has something to do, and what is next beside it. Tap a day to see just that day; <b>New</b> opens a small window. A line of words like &ldquo;Buy milk fri 17:00&rdquo; still works, and the nearest deadline shows in the capsule.</p></article>
+    <article class="bc"><span class="tag">New</span><div class="viz dk" style="padding:16px;display:flex;flex-direction:column;gap:9px;justify-content:center;font-size:12px;color:#cfd3da">
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="padding:5px 11px;border-radius:13px;background:#3daee9;color:#111;font-weight:650">Mirror</span><span style="padding:5px 11px;border-radius:13px;background:#1c1c1e">Photo booth</span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Single</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e;box-shadow:inset 0 0 0 1px #3daee9;color:#3daee9">Strip of 4</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Polaroid</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Frame</span></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Normal</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Black &amp; white</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Warm</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Vivid</span></div></div>
+      <h3>A mirror and a photo booth</h3><p>See yourself before a call, or take a picture with a 3-2-1 countdown: single, a strip of four, a polaroid or a framed one, with a filter. It lands on the shelf; share it to your phone with a QR code. The camera is on only while the page is open.</p></article>
+    <article class="bc"><span class="tag">New</span><div class="mini" data-mini="search"></div>
+      <h3>Search apps from the notch</h3><p>Press Shift + Space, type a few letters, and the matches drop down from the notch. Enter opens one. Ranked by what you use; nothing leaves the computer.</p></article>
+    <article class="bc"><span class="tag">New</span><div class="mini" data-mini="clip"></div>
+      <h3>Clipboard history</h3><p>Turn it on and the text and pictures you copy are kept on this computer, newest first. Click to copy again, pin, or keep one in Files. Off by default; things marked secret are skipped.</p></article>
     <article class="bc"><span class="tag">New</span><div class="mini" data-mini="launcher"></div>
       <h3>An app launcher with search</h3><p>Type a few letters, press Enter. Pin favourites, see recent apps, filter by group, and open it with the Windows key.</p></article>
     <article class="bc w4"><span class="tag">New</span><div class="mini" data-mini="qs"></div>
-      <h3>A glass status bar with Quick Settings</h3><p>The app in front with its own menu, a tray, the clock with a calendar, and one card for Wi-Fi (with real signal bars, details and a password QR), Ethernet, Bluetooth, sound, microphone, brightness and power.</p></article>
+      <h3>A glass status bar with Quick Settings</h3><p>The app in front with its own menu, a tray, the clock with a calendar, and one card for how busy the computer is (processor with its temperature, memory, graphics card, disk and network, with the busiest programs), Wi-Fi (with real signal bars, details and a password QR), Ethernet, Bluetooth, sound, microphone, brightness and power.</p></article>
     <article class="bc"><span class="tag">New</span><div class="mini" data-mini="kde"></div>
       <h3>Tray and KDE Connect</h3><p>Background apps sit on the bar, click to open, right-click for their menu. Your phone's battery is there too, with ping, find and a button for KDE Connect.</p></article>
     <article class="bc"><div class="mini" data-mini="share"></div>
-      <h3>Share by QR code</h3><p>Hand a file to a phone over your WiFi, or through a server you run, with a PIN or password and an expiry. A pill in the notch brings the session back.</p></article>
+      <h3>Share by QR code</h3><p>Hand a file to a phone over your WiFi, or through a server you run (the host makes a key for each person, with their own space and how long it lasts), with a PIN or password and an expiry. A pill in the notch brings the session back.</p></article>
     <article class="bc"><div class="mini" data-mini="nearby"></div>
       <h3>Send to another computer</h3><p>Nearby finds other Olyzano Notch computers on the network. Both screens show the same four digits; the receiver accepts.</p></article>
     <article class="bc"><div class="mini" data-mini="tools"></div>
@@ -851,6 +952,12 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       <i style="background:linear-gradient(135deg,#000 55%,#3daee9 0)">Classic</i><i style="background:linear-gradient(135deg,#14120f 55%,#d4493b 0)">Washi 和紙</i><i style="background:linear-gradient(135deg,#1b1f27 55%,#88c0d0 0)">Frost</i><i style="background:linear-gradient(135deg,#06121c 55%,#2ec4d6 0)">Ocean</i><i style="background:linear-gradient(135deg,#0f140f 55%,#7fbf6a 0)">Forest</i><i style="background:linear-gradient(135deg,#1a1014 55%,#ff7a59 0)">Sunset</i><i style="background:linear-gradient(135deg,#14111c 55%,#b392f0 0)">Lavender</i>
       <i style="background:linear-gradient(135deg,#1b1714 55%,#d39b6a 0)">Mocha</i><i style="background:linear-gradient(135deg,#130e12 55%,#f4a6bd 0)">Sakura 桜</i><i style="background:linear-gradient(135deg,#11150f 55%,#a8c66c 0)">Matcha 抹茶</i><i style="background:linear-gradient(135deg,#0b1020 55%,#6f8cff 0)">Ai 藍</i><i style="background:linear-gradient(135deg,#0d1514 55%,#7fd1b9 0)">Cheongja 청자</i><i style="background:linear-gradient(135deg,#0c1224 55%,#e8546a 0)">Hanbok 한복</i><i style="background:linear-gradient(135deg,#151210 55%,#e2a04a 0)">Hanji 한지</i></div></div>
       <h3>Fourteen themes, Japanese and Korean colours included</h3><p>Each in dark and light: Washi, Sakura, Matcha and Ai from Japan; Cheongja, Hanbok and Hanji from Korea; and the calm ones from before.</p></article>
+    <article class="bc"><span class="tag">New</span><div class="viz dk" style="padding:16px;display:flex;flex-direction:column;gap:8px;justify-content:center;font-size:12px;color:#cfd3da">
+      <div style="display:flex;justify-content:space-between"><b style="color:#fff">Interface size</b><span>Small · <b style="color:#3daee9">Normal</b> · Large · Extra large</span></div>
+      <div style="display:flex;justify-content:space-between"><b style="color:#fff">Corners</b><span>Sharp · <b style="color:#3daee9">Normal</b> · Round</span></div>
+      <div style="display:flex;justify-content:space-between"><b style="color:#fff">Glass</b><span>sheen, rim and blur</span></div>
+      <div style="display:flex;justify-content:space-between"><b style="color:#fff">Low memory mode</b><span>about 87 MB (Linux)</span></div></div>
+      <h3>Make it yours</h3><p>Pick the panel's size and how round it is, turn on glass with a soft sheen and a bright rim, and on Linux switch to a mode that needs about 90 MB instead of 130 MB. Settings are grouped, and a search finds any of them.</p></article>
     <article class="bc"><div class="mini" data-mini="safety"></div>
       <h3>Private, with safety nets</h3><p>Files stay on your computer. Undo, a 24-hour bin for removed files, locked categories encrypted on disk, and names that never overwrite anything.</p></article>
     <article class="bc w4"><div class="mini" data-mini="cycle"></div>
@@ -881,18 +988,26 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
     $("hero").href = "#" + os;
   }
 
-  fetch("https://api.github.com/repos/" + repo + "/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
+  // The newest release that has each file: a release may carry only the Linux package (0.13.1), then Windows keeps pointing at the last one with an installer.
+  fetch("https://api.github.com/repos/" + repo + "/releases?per_page=10", { headers: { Accept: "application/vnd.github+json" } })
     .then(function (r) { if (!r.ok) throw 0; return r.json(); })
-    .then(function (rel) {
-      var find = function (re) { return (rel.assets || []).filter(function (a) { return re.test(a.name); })[0]; };
+    .then(function (list) {
+      var rels = (list || []).filter(function (r) { return !r.draft && !r.prerelease; });
+      var find = function (re) {
+        for (var i = 0; i < rels.length; i++) {
+          var a = (rels[i].assets || []).filter(function (x) { return re.test(x.name); })[0];
+          if (a) return { a: a, rel: rels[i] };
+        }
+      };
       var deb = find(/\.deb$/), exe = find(/setup\.exe$/), zip = find(/portable\.zip$/);
-      var ver = (rel.tag_name || "").replace(/^v/, "");
-      if (deb) { $("deb").href = deb.browser_download_url; label($("deb"), "Debian package (.deb)", deb); $("debCmd").textContent = "sudo apt install ./" + deb.name; }
-      if (exe) { $("exe").href = exe.browser_download_url; label($("exe"), "Installer (.exe)", exe); }
-      if (zip) { $("zip").href = zip.browser_download_url; label($("zip"), "Portable (.zip)", zip); }
+      var ver = function (x) { return x ? (x.rel.tag_name || "").replace(/^v/, "") : ""; };
+      if (deb) { $("deb").href = deb.a.browser_download_url; label($("deb"), "Debian package (.deb)", deb.a); $("debCmd").textContent = "sudo apt install ./" + deb.a.name; }
+      if (exe) { $("exe").href = exe.a.browser_download_url; label($("exe"), "Installer (.exe)", exe.a); }
+      if (zip) { $("zip").href = zip.a.browser_download_url; label($("zip"), "Portable (.zip)", zip.a); }
       var mine = os === "linux" ? deb : os === "windows" ? exe : null;
-      if (mine) $("hero").href = mine.browser_download_url;
-      if (ver) $("heroMeta").textContent = "Version " + ver + (rel.published_at ? ", released " + rel.published_at.slice(0, 10) : "");
+      if (mine) $("hero").href = mine.a.browser_download_url;
+      var shown = mine || deb || exe, v = ver(shown);
+      if (v) $("heroMeta").textContent = "Version " + v + (shown.rel.published_at ? ", released " + shown.rel.published_at.slice(0, 10) : "");
     })
     .catch(function () {});
 })();
@@ -940,6 +1055,11 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
   // ---------- The notch, built like Main.qml: same silhouette, springs, sizes, margins, fonts and colours ----------
   // Every number below comes from src/qml (Main.qml, Chip.qml, PillButton.qml, IconButton.qml, FileItemDelegate.qml,
   // MediaCard.qml, TimerPage.qml, Equalizer.qml) with the Classic dark theme from Theme.cpp.
+  // The System section of Quick Settings: how busy the computer is (the fill is the load).
+  function sysMeters() {
+    return '<div class="sy">' + [["CPU", 18, "18% · 54°C"], ["RAM", 68, "10.3 GB of 15.2 GB"], ["GPU", 17, "17% · 475 MB of 512 MB"], ["Disk", 55, "472 GB of 916 GB"], ["Net", 0, "↓ 2.1 MB/s   ↑ 140 KB/s"]]
+      .map(function (m) { return "<div><i style=\"width:" + m[1] + "%\"></i><b>" + m[0] + "</b><span>" + m[2] + "</span></div>"; }).join("") + "</div>";
+  }
   var RN = (function () {
     var T = { island: "#000000", text: "#f5f5f7", textSoft: "#e5e5ea", textDim: "#8e8e93", textFaint: "#5a5a5e", placeholder: "#6e6e73",
       surface: "#1c1c1e", surfaceHover: "#2c2c2e", surfacePressed: "#3a3a3c", well: "#0c0c0e", card: "#111113", outline: "#1f1f23",
@@ -949,6 +1069,11 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
     ICONS.gamepad = ["<path d=\"M7 7h10a4 4 0 0 1 3.9 3.1l1 4.6a2.6 2.6 0 0 1-4.4 2.3L15.8 15H8.2l-2.7 2a2.6 2.6 0 0 1-4.4-2.3l1-4.6A4 4 0 0 1 7 7z\"/><path d=\"M8 9.5v3M6.5 11h3\"/><circle cx=\"15.5\" cy=\"10\" r=\".6\"/><circle cx=\"17.5\" cy=\"12\" r=\".6\"/>", "1.5", true];
     ICONS.folder = ["<path d=\"M3.5 7.5a2 2 0 0 1 2-2h4l2 2.5h7a2 2 0 0 1 2 2v7.5a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z\"/>", "1.5", true];
     ICONS.music = ["<path d=\"M9 17.5V5.5l10-2v12\"/><circle cx=\"6.5\" cy=\"17.5\" r=\"2.5\"/><circle cx=\"16.5\" cy=\"15.5\" r=\"2.5\"/>", "1.5", true];
+    ICONS.lyrics = ["<path d=\"M5 4.5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-6.5L8 20v-3.5H5a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2z\"/><path d=\"M7.5 9h9M7.5 12h5.5\"/>", "1.5", true];
+    ICONS.check = ["<path d=\"M5 12.5l4.5 4.5L19 7\"/>", "1.8", true];
+    ICONS.copy = ["<rect x=\"9\" y=\"9\" width=\"11\" height=\"11\" rx=\"2.5\"/><path d=\"M15 9V6.5A2.5 2.5 0 0 0 12.5 4h-6A2.5 2.5 0 0 0 4 6.5v6A2.5 2.5 0 0 0 6.5 15H9\"/>", "1.6", true];
+    ICONS.pin = ["<path d=\"M9 3.5h6l-1 5.5 3 3v1.5H7V12l3-3z\"/><path d=\"M12 13.5V20\"/>", "1.6", true];
+    ICONS.chevron = ["<path d=\"M8 10l4 4 4-4\"/>", "1.7", true];
     // Text on the accent fill: white or near-black, whichever reads better (WCAG contrast), as Theme::onColor.
     function onColor(hex) {
       var c = [1, 3, 5].map(function (i) { var v = parseInt(hex.substr(i, 2), 16) / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); });
@@ -966,8 +1091,9 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
     function songWidth(st) { return Math.max(400, Math.min(800, 232 + (st.line || st.song).length * 7.6)); }
     function target(st) {
       switch (st.mode) {
-        case "open": return [st.page === "music" && st.lyrics ? 780 : 560, null];
+        case "open": return [st.page === "music" && st.lyrics ? 780 : st.page === "tasks" ? 620 : 560, null];
         case "prompt": return [440, 92];
+        case "search": return [560, searchHeight(st)];
         case "toast": return [380, 46];
         case "peek": return [st.kind !== "copy" ? 320 : 230, 36];
         case "idle": return st.song ? [songWidth(st), 38] : [230, 26];
@@ -1060,27 +1186,31 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       if (st.selected)
         return '<div class="rn-hd"><b class="rn-title">' + st.selected + ' selected</b><span class="rn-fill"></span>' + pill("Move to…") + pill("Tools", { id: "rnTools" }) +
           pill("Save…") + pill("Share") + pill("Remove") + ibtn("close") + "</div>";
-      var title = pg === "music" ? "Now playing" : pg === "timer" ? "Timer" : pg === "color" ? "Color picker" : "Olyzano Notch";
+      var title = pg === "music" ? "Now playing" : pg === "timer" ? "Timer" : pg === "color" ? "Color picker" : pg === "tasks" ? "Tasks" : pg === "clipboard" ? "Clipboard" : "Olyzano Notch";
       return '<div class="rn-hd"' + (pg !== "shelf" ? ' style="padding-left:6px"' : "") + ">" + (pg !== "shelf" ? ibtn("back", { id: "rnBack" }) : "") +
         '<b class="rn-title">' + title + "</b>" + (pg === "shelf" ? '<span class="rn-count">' + st.files.length + "</span>" : "") + '<span class="rn-fill"></span>' +
         (pg === "shelf" ? '<span class="rn-search">Search</span>' : "") +
         ibtn("gamepad", { id: "rnGame", checked: !!st.gaming }) + ibtn("gear") + pill(st.pinned === false ? "Pin" : "Pinned", { checked: st.pinned !== false }) + "</div>";
     }
-    // ActionBar.qml: one section at a time; Add and Note belong to Files, Lyrics to Music.
+    // ActionBar.qml: one section at a time; Add and Note belong to Files.
     function actionBar(st) {
       var pg = st.page || "shelf";
-      return '<div class="rn-ab">' + pill("Files", { icon: "folder", checked: pg === "shelf", id: "rnTabFiles" }) +
-        (st.media ? pill("Music", { icon: "music", checked: pg === "music", id: "rnTabMusic" }) : "") +
-        pill("Timer", { icon: "timer", checked: pg === "timer", id: "rnTabTimer" }) + pill("Color", { icon: "palette", checked: pg === "color", id: "rnTabColor" }) +
+      function it(id, page, name, ic, badge) {
+        return '<span class="it' + (pg === page ? " on" : "") + '" id="' + id + '">' + icon(ic, 14, "currentColor") + (pg === page ? "<b>" + name + "</b>" : "") +
+          (badge ? '<span class="bd">' + badge + "</span>" : "") + "</span>";
+      }
+      return '<div class="rn-ab"><span class="rn-sl">' + it("rnTabFiles", "shelf", "Files", "folder") + (st.media ? it("rnTabMusic", "music", "Music", "music") : "") +
+        it("rnTabTimer", "timer", "Timer", "timer") + it("rnTabTasks", "tasks", "Tasks", "check", st.late || 0) + it("rnTabColor", "color", "Color", "palette") +
+        it("rnTabClip", "clipboard", "Clipboard", "copy") + "</span>" +
         (st.share ? pill("Share", { icon: "share" }) : "") + '<span class="rn-fill"></span>' +
         (pg === "shelf" ? pill("Note", { icon: "pen" }) + pill("Add", { icon: "plus", id: "rnAdd" }) : "") +
-        (pg === "music" ? pill("Lyrics", { checked: !!st.lyrics, id: "rnLyrics" }) : "") + "</div>";
+        "</div>";
     }
     function tri(back) {
       var p = '<path d="M0 0L12 7L0 14Z" fill="' + T.text + '"/>';
       return '<svg width="22" height="14" viewBox="0 0 22 14"' + (back ? ' style="transform:scaleX(-1)"' : "") + "><g>" + p + '</g><g transform="translate(10 0)">' + p + "</g></svg>";
     }
-    function mediaHTML(m) {
+    function mediaHTML(m, lyr) {
       var pos = m.pos || 2481000, len = 7200000;
       function fmt(ms) { var s = Math.floor(ms / 1000), h = Math.floor(s / 3600), mm = Math.floor(s / 60) % 60, ss = s % 60; return (h ? h + ":" + (mm < 10 ? "0" : "") : "") + mm + ":" + (ss < 10 ? "0" : "") + ss; }
       return '<div class="rn-media"><div class="rn-m1"><span class="rn-cover" style="background-image:url(' + (m.cover || "") + ')"></span><span class="rn-col">' +
@@ -1088,7 +1218,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
         (m.playing ? eq(5, 3, 20, T.media) : "") + '</div><div class="rn-m2"><span>' + fmt(pos) + '</span><span class="rn-seek"><i style="width:' + (pos / len * 100) + '%"></i></span><span>-' +
         fmt(len - pos) + '</span></div><div class="rn-m3"><span class="rn-raise">↗</span><span class="rn-fill"></span><span class="rn-skip">' + tri(true) + '</span><span class="rn-play" id="rnPlay">' +
         (m.playing ? "<i></i><i></i>" : '<svg width="20" height="22" viewBox="0 0 20 22"><path d="M2 1l17 10L2 21z" fill="' + T.text + '"/></svg>') +
-        '</span><span class="rn-skip">' + tri(false) + '</span><span class="rn-fill"></span><span class="rn-mic' + (m.karaoke ? " on" : "") + '" id="rnMic">' + icon("mic", 18, m.karaoke ? T.accent : T.textDim) + '</span></div>' +
+        '</span><span class="rn-skip">' + tri(false) + '</span><span class="rn-fill"></span><span class="rn-mic' + (lyr ? " on" : "") + '" id="rnMic">' + icon("lyrics", 18, lyr ? T.accent : T.textDim) + '</span></div>' +
         (m.karaoke ? '<div class="rn-karo">Your voice plays with the music. Use headphones, or a speaker will echo.</div>' : "") + "</div>";
     }
     // The words for the right half of the Music page (LyricsPanel.qml): the current line big, the list follows the song.
@@ -1096,12 +1226,12 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       "Sunset drive, sunset drive", "Take me somewhere slow tonight", "Where the radio fades to blue"];
     function lyricsHTML(st) {
       var idx = st.lyricIdx == null ? 0 : st.lyricIdx;
-      return '<div class="rn-lyr"><div class="rn-ly" style="transform:translateY(' + (107 - (idx * 36 + 18)) + 'px)">' + LYRICS.map(function (l, i) {
+      return '<div class="rn-lyr"><span class="rn-sing' + (st.media && st.media.karaoke ? " on" : "") + '" id="rnSing">' + icon("mic", 15, st.media && st.media.karaoke ? T.accent : T.textDim) + '</span><div class="rn-ly" style="transform:translateY(' + (107 - (idx * 36 + 18)) + 'px)">' + LYRICS.map(function (l, i) {
         return '<p class="' + (i === idx ? "cur" : "") + '" style="opacity:' + (i === idx ? 1 : Math.max(0.25, 0.65 - Math.abs(i - idx) * 0.15)) + '">' + esc(l) + "</p>";
       }).join("") + "</div></div>";
     }
     function musicBody(st) {
-      return '<div class="rn-mrow">' + mediaHTML(st.media) + (st.lyrics ? lyricsHTML(st) : "") + "</div>";
+      return '<div class="rn-mrow">' + mediaHTML(st.media, st.lyrics) + (st.lyrics ? lyricsHTML(st) : "") + "</div>";
     }
     // Picked colours: a button to pick from the screen, and the ones picked before (ColorPage in Main.qml).
     function colorBody(st) {
@@ -1114,7 +1244,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       var chips = '<div class="rn-chips"><span class="rn-chiplist">' + chip("All", st.files.length, { active: (st.chip || "All") === "All" }) +
         (st.cats || []).map(function (c) { return chip(c[0], c[1], { active: st.chip === c[0], icon: c[2] }); }).join("") + "</span>" +
         ibtn("plus") + (st.files.length > 1 ? pill("Date", { icon: "sort" }) : "") + "</div>";
-      var tiles = st.hint ? '<div class="rn-hint">' + st.hint + "</div>" : '<div class="rn-tiles">' + st.files.map(tileHTML).join("") + "</div>";
+      var tiles = st.hint ? '<div class="rn-hint">' + st.hint + "</div>" : '<div class="rn-tiles' + (st.files.length > 5 ? " grid" : "") + '">' + st.files.map(tileHTML).join("") + "</div>";
       return chips + tiles;
     }
     function timerBody(st) {
@@ -1139,10 +1269,68 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
           : '<div class="rn-r"><span class="rn-sub">Counts up until you stop it.</span>' + pill("Start", { checked: true, cls: "w96" }) + "</div>";
       return '<div class="rn-tp" style="gap:12px;min-height:150px">' + modes + body + "</div>";
     }
+    // Tasks (TasksPage.qml): a month with a dot on days that have something to do, and the list, nearest first.
+    function calGrid(y, m) { // Monday first, 6 rows
+      var first = new Date(y, m, 1), off = (first.getDay() + 6) % 7, out = [];
+      for (var i = 0; i < 42; i++) { var d = new Date(y, m, 1 - off + i); out.push({ d: d.getDate(), m: d.getMonth(), y: d.getFullYear() }); }
+      return out;
+    }
+    function tasksBody(st) {
+      var Y = 2026, M = 9, today = 26, tasks = st.tasks || [], sel = st.day || 0;
+      var marks = {};
+      tasks.forEach(function (t) { if (!t.done && t.day) marks[t.day] = marks[t.day] === "late" || t.state === "late" ? "late" : "on"; });
+      var g = ["M", "T", "W", "T", "F", "S", "S"].map(function (x) { return '<span class="w">' + x + "</span>"; }).join("") + calGrid(Y, M).map(function (c) {
+        var inM = c.m === M, cls = (inM ? "" : "o") + (inM && c.d === today ? " t" : "") + (inM && c.d === sel ? " s" : "");
+        return '<span class="' + cls + '" data-d="' + (inM ? c.d : "") + '"><i></i><em>' + c.d + "</em>" + (inM && marks[c.d] ? '<u class="' + (marks[c.d] === "late" ? "late" : "") + '"></u>' : "") + "</span>";
+      }).join("");
+      var shown = sel ? tasks.filter(function (t) { return t.day === sel; }) : tasks;
+      var late = tasks.filter(function (t) { return t.state === "late" && !t.done; }).length, open = tasks.filter(function (t) { return !t.done; }).length;
+      var rows = shown.length ? shown.map(function (t, i) {
+        var c = t.state === "late" ? T.danger : t.state === "soon" ? T.accent : t.day ? T.info : T.textFaint;
+        return '<div class="rn-trow' + (t.done ? " done" : "") + (t.pop ? " pop" : "") + '" style="--c:' + c + '" data-t="' + i + '"><span class="tx"><b>' + esc(t.t) + "</b>" + (t.sub ? "<span>" + esc(t.sub) + "</span>" : "") +
+          '</span><span class="ck">' + (t.done ? icon("check", 12, onColor(T.accent)) : "") + "</span></div>";
+      }).join("") : '<span class="rn-sub" style="text-align:center;margin-top:24px">Nothing planned for this day.</span>';
+      return '<div class="rn-tk"><div class="rn-cal"><div class="mh"><span>October 2026</span>' + ibtn("chevron") + ibtn("chevron") + '</div><div class="g">' + g + '</div></div>' +
+        '<div class="rn-tl"><div class="th"><b class="' + (sel ? "day" : "") + '">' + (sel ? ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"][((sel - 26) % 7 + 7) % 7] + " " + sel + " Oct" : "UP NEXT") + "</b>" + (sel ? pill("All", { id: "rnAll" }) : "") + pill("New", { icon: "plus", checked: true, id: "rnNew" }) + "</div>" + rows +
+        '<div class="foot"><span' + (late ? ' style="color:#ff453a"' : "") + ">" + open + " open" + (late ? " · " + late + " overdue" : "") + "</span>" + pill("Clear done") + "</div></div>" +
+        (st.modal ? newTaskModal(st.modal) : "") + "</div>";
+    }
+    function newTaskModal(m) {
+      return '<div class="rn-md"><h4><span>New task</span>' + ibtn("close") + '</h4><div class="fld' + (m.title ? "" : " ph") + '">' + (m.title ? esc(m.title) : "What needs doing? e.g. Buy milk fri 17:00") + "</div>" +
+        '<span class="lb">Deadline</span><div class="rn-r" style="gap:6px">' + ["None", "Today", "Tomorrow"].map(function (x) { return pill(x, { checked: m.when === x, id: "rnWhen" + x }); }).join("") + "</div>" +
+        (m.when && m.when !== "None" ? '<div class="tm">Time <strong>' + (m.time || "17:30") + "</strong>" + esc(m.when === "Today" ? "Monday 26 October" : "Tuesday 27 October") + "</div>" : "") +
+        '<div class="acts">' + pill("Cancel") + pill("Add task", { icon: "plus", checked: true, id: "rnAddTask" }) + "</div></div>";
+    }
+    // Clipboard history (ClipboardPage.qml)
+    function clipboardBody(st) {
+      if (st.off)
+        return '<div class="rn-cb"><div class="rn-off"><b>Keep what you copy</b><span>Olyzano Notch can remember the text and pictures you copy, so you can copy them again later. It stays on this computer. Off by default.</span>' +
+          pill("Turn on", { icon: "check", checked: true, id: "rnClipOn" }) + "</div></div>";
+      var rows = (st.clips || []).map(function (c, i) {
+        return '<div class="rn-cbr' + (c.pop ? " pop" : "") + (c.pin ? " pin" : "") + '" data-c="' + i + '"><span class="mk"' + (c.img ? ' style="background-image:url(' + c.img + ')"' : "") + ">" + (c.img ? "" : "Aa") + '</span><span class="tx"><b>' + esc(c.t) +
+          "</b><span>" + esc(c.sub) + "</span></span>" + ibtn("pin", { checked: !!c.pin }) + ibtn("folder") + ibtn("trash") + "</div>";
+      }).join("");
+      return '<div class="rn-cb"><div class="rn-r" style="gap:8px"><span class="rn-in" style="flex:1">Search what you copied</span><span class="rn-sub" style="flex:none">' + (st.clips || []).length + "</span>" + pill("Clear", { icon: "trash" }) + "</div>" + rows + "</div>";
+    }
+    // Search from the notch (SearchPanel.qml): the field, and the apps that match under it.
+    var SEARCH_APPS = [["Firefox", "#e8683a", "Internet"], ["Files", "#3a7de8", "Utilities"], ["Kate", "#5ac36a", "Development"], ["Konsole", "#6a7280", "System"],
+      ["Okular", "#e8b43a", "Office"], ["Spectacle", "#a45be0", "Graphics"], ["LibreOffice Writer", "#3b82f6", "Office"], ["Calculator", "#14b8a6", "Utilities"]];
+    function searchRows(q) {
+      var l = q.toLowerCase();
+      return q === "" ? SEARCH_APPS.slice(0, 5) : SEARCH_APPS.filter(function (a) { return a[0].toLowerCase().indexOf(l) >= 0; }).slice(0, 6);
+    }
+    function searchHeight(st) { var r = searchRows(st.q || "").length, q = st.q || ""; return 12 + 46 + (r > 0 ? 8 + (q === "" ? 20 : 0) + r * 46 : q ? 52 : 0) + 12; }
+    function searchHTML(st) {
+      var q = st.q || "", rows = searchRows(q);
+      return '<div class="rn-srch"><div class="rn-sf">' + icon("search", 22, T.textDim) + (q ? "<span>" + esc(q) + '<i class="cur"></i></span>' : '<span class="ph">Search apps</span>') + "</div>" +
+        (q === "" && rows.length ? '<div class="rn-sh">RECENT</div>' : "") +
+        rows.map(function (a, i) { return '<div class="rn-sr' + (i === 0 ? " on" : "") + '" id="srRow' + i + '"><i style="background:' + a[1] + '"></i><b>' + esc(a[0]) + "</b><span>" + a[2] + "</span><em>" + (i === 0 ? "↵" : "Ctrl+" + (i + 1)) + "</em></div>"; }).join("") +
+        (q && !rows.length ? '<div class="rn-sh" style="font-size:14px;letter-spacing:0;font-weight:400;color:' + T.textDim + ';height:44px;line-height:44px">No app called “' + esc(q) + "”</div>" : "") + "</div>";
+    }
     function openHTML(st) {
       var pg = st.page || "shelf";
       return '<div class="rn-panel">' + header(st) + (st.selected ? "" : actionBar(st)) +
-        (pg === "timer" ? timerBody(st) : pg === "music" ? musicBody(st) : pg === "color" ? colorBody(st) : shelfBody(st)) + "</div>";
+        (pg === "timer" ? timerBody(st) : pg === "music" ? musicBody(st) : pg === "color" ? colorBody(st) : pg === "tasks" ? tasksBody(st) : pg === "clipboard" ? clipboardBody(st) : shelfBody(st)) + "</div>";
     }
 
     // ---- The island ----
@@ -1167,6 +1355,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
         if (st.mode === "peek") set("peek", peekHTML(st));
         if (st.mode === "toast") { set("toast", toastHTML(st)); toastColor = st.color || T.success; }
         if (st.mode === "prompt") set("prompt", promptHTML(st));
+        if (st.mode === "search") set("prompt", searchHTML(st));
         if (st.mode === "open") set("open", openHTML(st));
         var t = target(st);
         tw = t[0];
@@ -1180,7 +1369,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
         L.toast.classList.toggle("on", m === "toast" && h > 30);
         L.peek.classList.toggle("on", m === "peek" && h > 24);
         L.idle.classList.toggle("on", m === "idle" && h > 20);
-        L.prompt.classList.toggle("on", m === "prompt" && h > 70);
+        L.prompt.classList.toggle("on", (m === "prompt" && h > 70) || (m === "search" && h > 50));
         L.open.classList.toggle("on", m === "open");
       }
       function draw() {
@@ -1192,7 +1381,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
         path.setAttribute("fill", T.island);
         path.setAttribute("stroke", st.drag ? T.accent : st.mode === "toast" ? toastColor : T.outline);
         path.setAttribute("stroke-width", st.mode === "toast" ? 1.5 : 1);
-        var pw = st.mode === "open" && st.page === "music" && st.lyrics ? 760 : 540;
+        var pw = st.mode === "open" && st.page === "music" && st.lyrics ? 760 : st.mode === "open" && st.page === "tasks" ? 600 : 540;
         oin.style.width = pw + "px";
         oin.style.left = ((w - 2 * s - pw) / 2) + "px";
       }
@@ -1436,7 +1625,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
   };
   function f(k, extra) { return Object.assign({}, F[k], extra || {}); }
   var CATS = [["Documents", 2], ["Images", 1], ["Screenshots", 0, "camera"]];
-  function N(st) { notch.to(st); nh = st.mode === "open" ? 260 : st.mode === "idle" && st.song ? 38 : ({ idle: 26, peek: 36, toast: 46, prompt: 92 })[st.mode] || 26; dotPlace(); }
+  function N(st) { notch.to(st); nh = st.mode === "open" ? 260 : st.mode === "idle" && st.song ? 38 : ({ idle: 26, peek: 36, toast: 46, prompt: 92, search: 160 })[st.mode] || 26; dotPlace(); }
   function q(sel) { return notch.q(sel); }
   function idleN(o) { N(Object.assign({ mode: "idle", time: "10:17", battery: 76 }, o || {})); }
   function shelfN(o) { N(Object.assign({ mode: "open", files: [f("photo"), f("assets")], cats: CATS }, o || {})); }
@@ -1652,7 +1841,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
 
   // ---------- Scenes ----------
   var scenes = [
-    { id: "shelf", name: "Shelf", dur: 13000, run: async function () {
+    { id: "shelf", name: "Shelf", dur: 16000, run: async function () {
       cap("Rest the pointer on the <b>top edge</b> of the screen…");
       await move(480, 3, 1000);
       await sleep(250);
@@ -1683,6 +1872,10 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       shelfN({ chip: "Documents", files: [f("report"), f("notes"), f("budget")] });
       cap("Categories sort your files; search and drag them back out whenever you need them");
       await sleep(1800);
+      var many = [f("photo"), f("assets"), f("report"), f("notes"), f("budget"), f("part1"), f("part2"), f("merged"), f("photo", { name: "photo-2.jpg" }), f("report", { name: "invoice.pdf" }), f("notes", { name: "todo.txt" }), f("assets", { name: "backup.zip" })];
+      shelfN({ files: many });
+      cap("Lots of files? The shelf grows into <b>rows</b> and scrolls, instead of one long line");
+      await sleep(2200);
       kind("arrow");
       await move(640, 420, 800);
       idleN();
@@ -1794,13 +1987,13 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       shelfN({ media: m, page: "music" });
       cap("A click opens just the <b>Music</b> section: the player, nothing else");
       await sleep(1600);
-      await tap(q("#rnLyrics"), 700);
+      await tap(q("#rnMic"), 700);
       shelfN({ media: m, page: "music", lyrics: true, lyricIdx: 0 });
-      cap("<b>Lyrics</b>: the player on the left, only the words on the right, like Spotify");
+      cap("The <b>lyrics</b> button: the player on the left, only the words on the right, like Spotify");
       for (var i = 1; i <= 3; i++) { await sleep(1000); m.pos += 4000; shelfN({ media: m, page: "music", lyrics: true, lyricIdx: i }); bar.style.setProperty("--p", (34 + i) + "%"); }
-      await tap(q("#rnMic"), 800);
+      await tap(q("#rnSing"), 800);
       m.karaoke = true; shelfN({ media: m, page: "music", lyrics: true, lyricIdx: 3 });
-      cap("The <b>mic</b> button plays your voice through the speakers with the music: karaoke");
+      cap("The <b>mic</b> on the lyrics plays your voice through the speakers with the music: karaoke");
       await sleep(1800);
       shelfN({ media: m, page: "music", lyrics: true, lyricIdx: 4 });
       await sleep(1500);
@@ -1840,6 +2033,104 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       shelfN({ page: "color", colors: cols.concat(["#5b8def"]), newColor: "#5b8def" });
       cap("It is kept here: <b>click a colour</b> to copy it");
       await sleep(2400);
+      kind("arrow");
+      await move(640, 420, 800);
+      idleN();
+    } },
+    { id: "tasks", name: "Tasks & calendar", dur: 21000, run: async function () {
+      var L = [{ t: "Design review", sub: "3:00 PM · overdue 2 h", state: "late", day: 26 }, { t: "Gym", sub: "5:30 PM · in 27 min", state: "soon", day: 26 },
+        { t: "Call Ana", sub: "Tue 27 Oct, 9:00 AM · tomorrow", state: "later", day: 27 }, { t: "Pay rent", sub: "Fri 30 Oct, 9:00 AM · in 4 d", state: "later", day: 30 }, { t: "Read the paper", state: "none" }];
+      function tk(o) { shelfN(Object.assign({ page: "tasks", tasks: L, late: 1, cats: CATS }, o || {})); }
+      cap("Pick <b>Tasks</b>: a month on the left, what is next on the right");
+      await move(480, 3, 900);
+      shelfN();
+      await sleep(700);
+      await tap(q("#rnTabTasks"), 700);
+      tk();
+      await sleep(1500);
+      cap("A <b>dot</b> marks every day with something to do (red when it is late)");
+      await sleep(1300);
+      await tap(q('.rn-cal .g span[data-d="27"]'), 800);
+      tk({ day: 27 });
+      cap("Tap a day to see <b>only that day</b>");
+      await sleep(1500);
+      await tap(q("#rnAll"), 700);
+      tk();
+      await tap(q("#rnNew"), 700);
+      tk({ modal: {} });
+      cap("<b>New</b> opens a small window: a name, a deadline, a time");
+      await sleep(900);
+      var title = "Buy milk";
+      for (var k = 1; k <= title.length; k++) { tk({ modal: { title: title.slice(0, k) } }); await sleep(90); }
+      await tap(q("#rnWhenTomorrow"), 700);
+      tk({ modal: { title: title, when: "Tomorrow", time: "17:00" } });
+      await sleep(1100);
+      await tap(q("#rnAddTask"), 700);
+      L = L.slice(0, 3).concat([{ t: "Buy milk", sub: "5:00 PM · tomorrow", state: "later", day: 27, pop: true }], L.slice(3));
+      tk();
+      sound("drop");
+      cap("It joins the list, and its day gets a dot. Tick it off when it is done");
+      await sleep(1500);
+      await tap(q('.rn-trow[data-t="1"] .ck'), 800);
+      L[1].done = true; L[3].pop = false; L[1].pop = false;
+      tk({ late: 1 });
+      await sleep(1600);
+      kind("arrow");
+      await move(640, 420, 800);
+      idleN();
+    } },
+    { id: "clipboard", name: "Clipboard history", dur: 18500, run: async function () {
+      var C = [];
+      function cb(o) { shelfN(Object.assign({ page: "clipboard", clips: C, cats: CATS }, o || {})); }
+      cap("The <b>Clipboard</b> page remembers what you copy, so you can copy it again");
+      await move(480, 3, 900);
+      shelfN();
+      await sleep(600);
+      await tap(q("#rnTabClip"), 700);
+      cb({ off: true });
+      cap("It is <b>off</b> until you turn it on: a clipboard often holds a password");
+      await sleep(1900);
+      await tap(q("#rnClipOn"), 800);
+      cb();
+      sound("drop");
+      cap("Copy something in any app…");
+      await sleep(1100);
+      C = [{ t: "ssh olyzano@server -p 2222", sub: "now · 25 characters", pop: true }];
+      cb();
+      await sleep(1000);
+      C = [{ t: "Meeting moved to Thursday, 10:00 in room B. Bring the budget and the draft.", sub: "now · 71 characters", pop: true }, { t: "ssh olyzano@server -p 2222", sub: "1 min · 25 characters" }];
+      cb();
+      cap("…and it lands here, newest first");
+      await sleep(1500);
+      C = C.concat([{ t: "Picture", sub: "3 min", img: PHOTO, pop: true }]);
+      cb();
+      cap("Pictures too. <b>Click a row</b> to copy it again, <b>pin</b> it, or keep it in <b>Files</b>");
+      await sleep(1300);
+      await tap(q('.rn-cbr[data-c="1"]'), 800);
+      cap("Copied again: paste it with <b>Ctrl+V</b>");
+      sound("drop");
+      await sleep(1700);
+      kind("arrow");
+      await move(640, 420, 800);
+      idleN();
+    } },
+    { id: "search", name: "Search apps", dur: 15000, run: async function () {
+      idleN();
+      cap("Press <b>Shift + Space</b> anywhere…");
+      await move(480, 120, 700);
+      await sleep(900);
+      N({ mode: "search", q: "" });
+      cap("…and a search drops down from the notch, with the apps you opened lately");
+      await sleep(2200);
+      var word = "fire";
+      for (var k = 1; k <= word.length; k++) { N({ mode: "search", q: word.slice(0, k) }); await sleep(260); }
+      cap("Type a few letters: the best match is under the field, ranked by what you use");
+      await sleep(1800);
+      await tap(q("#srRow0"), 700);
+      toastN("Opening Firefox", "↵", RN.T.accent, "share", "");
+      sound("drop");
+      cap("<b>Enter</b> (or a click) opens it. <b>Ctrl+1…7</b> opens a row at once, <b>Esc</b> closes");
+      await sleep(2000);
       kind("arrow");
       await move(640, 420, 800);
       idleN();
@@ -1986,7 +2277,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
         '<div class="sbc mn" id="sbMenu" style="left:118px;top:40px"><div class="hl">Downloads<span>Ctrl+J</span></div><div>Open history page<span>Ctrl+H</span></div><div>Extensions</div><hr><div>Task manager<span>Shift+Esc</span></div><div>Developer tools<span>Ctrl+Shift+I</span></div></div>' +
         '<div class="sbc" id="sbKdeC" style="right:90px;top:40px;width:300px"><h4>KDE Connect</h4><div class="dv"><span>' + I.phone.replace("<svg", '<svg width="18" height="18"') + '</span><div style="flex:1">XPAD<div class="bt"><i style="width:55%"></i></div></div><span class="btn3">Ping</span></div><div class="dv"><span>' + I.phone.replace("<svg", '<svg width="18" height="18"') + '</span><div style="flex:1">Galaxy A56 5G<div class="bt"><i style="width:32%"></i></div></div><span class="btn3">Ping</span><span class="btn3">Find</span></div></div>' +
         '<div class="sbc cal" id="sbCal" style="right:10px;top:42px"><h4>October 2026</h4><div class="g">' + cal + "</div></div>" +
-        '<div class="sbc" id="sbQs" style="right:10px;top:42px;width:340px"><div class="tl2"><div class="tile2 on" id="qsWifi"><span class="ic2">' + sig(4) + '</span><div><b>Wi-Fi</b><small>olyzano room</small></div></div><div class="tile2 on"><span class="ic2">' + I.bt + '</span><div><b>Bluetooth</b><small>EDIFIER W60</small></div></div></div>' +
+        '<div class="sbc" id="sbQs" style="right:10px;top:42px;width:340px">' + sysMeters() + '<div class="tl2"><div class="tile2 on" id="qsWifi"><span class="ic2">' + sig(4) + '</span><div><b>Wi-Fi</b><small>olyzano room</small></div></div><div class="tile2 on"><span class="ic2">' + I.bt + '</span><div><b>Bluetooth</b><small>EDIFIER W60</small></div></div></div>' +
         '<div class="tl2" style="margin-top:8px"><div class="tile2 on" id="qsEth"><span class="ic2">' + I.eth + '</span><div><b>Ethernet</b><small>100 Mb/s</small></div></div></div>' +
         '<div id="qsList" style="display:none;margin-top:8px"><div class="net hl" id="rowMain">' + sig(4) + '<span>olyzano room</span><span class="sp"></span><em>Connected</em><span class="inf" id="qsInfo">i</span></div><div class="net">' + sig(4) + '<span>dlink-M960-2.4G</span><span class="sp"></span><em>Password</em></div><div class="net">' + sig(2) + '<span>Big-House</span><span class="sp"></span><em>Password</em></div></div>' +
         '<div id="qsDet" style="display:none;margin-top:8px"><div class="facts"><div><span>Signal strength</span>100%</div><div><span>Security</span>WPA2-PSK</div><div><span>Frequency</span>5.745 GHz (Channel 149)</div><div><span>BSSID</span>BC:22:28:42:51:0B</div><div><span>IP address</span>192.168.0.104/24</div><div><span>Gateway</span>192.168.0.1</div></div>' +
@@ -2023,7 +2314,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       // quick settings
       await moveTo($("sbStat"), 800); hv($("sbStat")); await click();
       on("sbQs");
-      cap("<b>Quick Settings</b>: Wi-Fi, Bluetooth, <b>Ethernet</b>, sound, brightness and power");
+      cap("<b>Quick Settings</b>: how busy the computer is, Wi-Fi, Bluetooth, <b>Ethernet</b>, sound, brightness and power");
       await sleep(1800);
       await tap($("qsWifi"), 700);
       $("qsList").style.display = "block";
@@ -2259,7 +2550,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
     var strip = '<div class="sb on"><span class="sb-grid">' + ico.grid + '</span><b>Dolphin</b><span class="sb-m">File</span><span class="sb-m">Edit</span><span class="sb-m">View</span><span class="sb-m">Tools</span><span class="sb-m">Help</span><span class="sp"></span>' +
       '<span class="sb-ti">' + ico.phone + '<u style="text-decoration:none">55%</u></span><span class="sb-ti"><i style="background:#5865f2"></i></span><span class="sb-ti"><i style="background:#2a475e"></i></span>' +
       '<span class="sb-st">' + ico.eth + sig(4) + ico.bt + ico.spk + '</span><span class="sb-clock">10:17<small>Mon 26 Oct</small></span></div>';
-    var qs = '<div class="sbc on" style="right:10px;top:42px;width:340px"><div class="tl2"><div class="tile2 on"><span class="ic2">' + sig(4) + '</span><div><b>Wi-Fi</b><small>olyzano room</small></div></div><div class="tile2 on"><span class="ic2">' + ico.bt + '</span><div><b>Bluetooth</b><small>EDIFIER W60</small></div></div></div>' +
+    var qs = '<div class="sbc on" style="right:10px;top:42px;width:340px">' + sysMeters() + '<div class="tl2"><div class="tile2 on"><span class="ic2">' + sig(4) + '</span><div><b>Wi-Fi</b><small>olyzano room</small></div></div><div class="tile2 on"><span class="ic2">' + ico.bt + '</span><div><b>Bluetooth</b><small>EDIFIER W60</small></div></div></div>' +
       '<div class="tl2" style="margin-top:8px"><div class="tile2 on"><span class="ic2">' + ico.eth + '</span><div><b>Ethernet</b><small>100 Mb/s</small></div></div></div>' +
       '<div style="margin-top:8px"><div class="net hl">' + sig(4) + '<span>olyzano room</span><span class="sp"></span><em>Connected</em><span class="inf">i</span></div><div class="net">' + sig(3) + '<span>dlink-M960-2.4G</span><span class="sp"></span><em>Password</em></div><div class="net">' + sig(2) + '<span>Big-House</span><span class="sp"></span><em>Password</em></div></div>' +
       '<div style="margin-top:10px;font-size:12px;color:#aeb3bd">Volume 48%  ·  Brightness 69%  ·  Battery 80%  ·  Balanced</div></div>';
@@ -2276,7 +2567,13 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       shelf: { crop: [203, 0, 554, 262], build: function (h, o) { o.to({ mode: "open", files: [f("photo"), f("assets"), f("report"), f("notes")], cats: CATS }, true); } },
       share: { crop: [296, 0, 368, 520], build: function (h, o) { o.to({ mode: "idle", time: "10:17", battery: 76 }, true); popup(shareSession(true), h, 310, 54); } },
       nearby: { crop: [296, 0, 368, 520], build: function (h, o) { o.to({ mode: "idle", time: "10:17", battery: 76 }, true); popup(nearbySession("sending", 62), h, 310, 54); } },
-      qs: { crop: [330, 0, 630, 330], build: function (h) { h.insertAdjacentHTML("beforeend", '<div class="sbw">' + strip + qs + "</div>"); } },
+      search: { crop: [203, 0, 554, 300], build: function (h, o) { o.to({ mode: "search", q: "fire" }, true); } },
+      tasks: { crop: [165, 0, 630, 372], build: function (h, o) {
+        o.to({ mode: "open", files: [], page: "tasks", late: 1, cats: CATS, tasks: [{ t: "Design review", sub: "3:00 PM · overdue 2 h", state: "late", day: 26 }, { t: "Gym", sub: "5:30 PM · in 27 min", state: "soon", day: 26 },
+          { t: "Call Ana", sub: "Tue 27 Oct, 9:00 AM · tomorrow", state: "later", day: 27 }, { t: "Pay rent", sub: "Fri 30 Oct, 9:00 AM", state: "later", day: 30 }] }, true); } },
+      clip: { crop: [203, 0, 554, 300], build: function (h, o) {
+        o.to({ mode: "open", files: [], page: "clipboard", cats: CATS, clips: [{ t: "Meeting moved to Thursday, 10:00 in room B.", sub: "now · 71 characters", pin: true }, { t: "ssh olyzano@server -p 2222", sub: "1 min · 25 characters" }, { t: "Picture", sub: "3 min", img: PHOTO }] }, true); } },
+      qs: { crop: [330, 0, 630, 500], build: function (h) { h.insertAdjacentHTML("beforeend", '<div class="sbw">' + strip + qs + "</div>"); } },
       launcher: { crop: [0, 0, 450, 430], build: function (h) { h.insertAdjacentHTML("beforeend", '<div class="sbw">' + strip + launcher + "</div>"); } },
       kde: { crop: [440, 0, 520, 540], build: function (h) { h.insertAdjacentHTML("beforeend", '<div class="sbw">' + strip + kde + "</div>"); } },
       tools: { crop: [250, 0, 370, 520], build: function (h, o) {

@@ -3,6 +3,7 @@ import QtQuick.Controls.Basic
 
 // A round button with a line icon: `primary` fills it with the accent. For the timer's controls.
 AbstractButton {
+    HoverHandler { cursorShape: Qt.PointingHandCursor }
     id: rb
     property string iconName
     property bool primary: false

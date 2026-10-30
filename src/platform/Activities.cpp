@@ -405,6 +405,13 @@ void Activities::pollPrivacy()
 #endif
 }
 
+// m_pactl is destroyed after the members its "finished" slot reads, and QProcess waits for a running child when it goes (which
+// runs that slot): cut the connections first, or the slot reads memory that is already freed (found with AddressSanitizer).
+Activities::~Activities()
+{
+    m_pactl.disconnect(this);
+}
+
 void Activities::readMicOutputs()
 {
     // Lines: the sources (JSON), the recording streams (JSON), then "Mute: yes|no".

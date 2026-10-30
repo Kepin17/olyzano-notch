@@ -90,6 +90,7 @@ Rectangle {
             y: card.grid ? ic.y + ic.height + 3 : 0
             width: card.grid ? tile.width - 8 : tile.width - 52 - 40
             height: card.grid ? 28 : tile.height
+            textFormat: Text.PlainText // a name can look like markup
             text: tile.app.name
             color: theme.text
             font.pixelSize: card.grid ? 11 : 13

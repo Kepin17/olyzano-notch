@@ -15,6 +15,7 @@ Rectangle {
     implicitHeight: content.implicitHeight + 20
 
     readonly property bool hasArt: art.status === Image.Ready
+    readonly property bool software: memtune.running // the software renderer cannot draw blur or mask shaders (see CameraView)
     readonly property bool compact: width < 400
     readonly property color tint: cover.color
     readonly property color fg: hasArt ? "#ffffff" : theme.text
@@ -97,8 +98,8 @@ Rectangle {
     Image { // the picture itself (the cover and the background both look at it)
         id: art
         visible: false
-        source: media.artUrl
-        cache: false // browsers reuse one temp file for every track's cover
+        source: coverCache.cover(media.artUrl) // content-addressed: one decode shared by every cover on screen
+        cache: false // the cover cache does the sharing, keyed by content, not by a reused temp file
         sourceSize: Qt.size(200, 200)
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
@@ -111,21 +112,23 @@ Rectangle {
     Item { // the blurred cover, drawn larger than the card (a blur fades at its edges, and the card clips them away)
         id: backdrop
         anchors.fill: parent
-        anchors.margins: -70
+        anchors.margins: card.software ? 0 : -70 // -70 only gives the blur room; the plain image fills the card exactly
         visible: card.hasArt
         opacity: card.fade
         Image {
             id: bgArt
             anchors.fill: parent
-            visible: false
-            source: media.artUrl
+            visible: card.hasArt && card.software // software mode: no blur shader, the cover itself is the backdrop, a little dimmed
+            opacity: 0.7
+            source: coverCache.cover(media.artUrl)
             cache: false
-            sourceSize: Qt.size(160, 160)
+            sourceSize: Qt.size(200, 200) // same size as the cover: one decode serves both
             fillMode: Image.PreserveAspectCrop
             asynchronous: true
         }
         MultiEffect {
             anchors.fill: parent
+            visible: card.hasArt && !card.software
             source: bgArt
             autoPaddingEnabled: false
             blurEnabled: true
@@ -177,6 +180,7 @@ Rectangle {
     }
 
     component RoundButton: AbstractButton {
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
         id: rb
         implicitWidth: 40
         implicitHeight: 40
@@ -230,9 +234,18 @@ Rectangle {
                         layer.enabled: true
                         Rectangle { anchors.fill: parent; radius: 14 }
                     }
+                    Image { // software mode: no shader for the mask, so the cover is drawn straight (square corners, still the cover)
+                        anchors.fill: parent
+                        visible: card.hasArt && card.software
+                        source: coverCache.cover(media.artUrl)
+                        cache: false
+                        sourceSize: Qt.size(200, 200)
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                    }
                     MultiEffect {
                         anchors.fill: parent
-                        visible: card.hasArt
+                        visible: card.hasArt && !card.software
                         source: art
                         maskEnabled: true
                         maskSource: coverMask
@@ -264,6 +277,7 @@ Rectangle {
                     Layout.fillWidth: true
                     Layout.minimumHeight: titleFont.lineSpacing * (card.compact ? 1 : 2)
                     verticalAlignment: Text.AlignTop
+                    textFormat: Text.PlainText // a name can look like markup
                     text: media.title || media.identity
                     color: card.fg
                     font.pixelSize: card.compact ? 15 : 17
@@ -503,6 +517,7 @@ Rectangle {
                 contentItem: Item { Skip { anchors.centerIn: parent; back: true } }
             }
             AbstractButton {
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
                 id: play
                 implicitWidth: card.compact ? 44 : 50
                 implicitHeight: card.compact ? 44 : 50
@@ -566,29 +581,32 @@ Rectangle {
                 }
             }
             Item { Layout.fillWidth: true }
-            Item { // karaoke: your voice through the speakers or headphones, with the music
+            Item { // the words: shows the lyrics beside the player (karaoke is a button on the lyrics panel)
                 Layout.preferredWidth: 32
                 Layout.preferredHeight: 32
                 Layout.minimumWidth: 32
                 Layout.alignment: Qt.AlignVCenter
                 RoundButton {
-                    id: mic
+                    id: words
                     anchors.centerIn: parent
-                    visible: karaoke.supported
                     implicitWidth: 30
                     implicitHeight: 30
-                    Accessible.name: karaoke.active ? "Stop karaoke" : "Karaoke: sing along"
-                    onClicked: karaoke.toggle()
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
+                    Accessible.name: lyrics.enabled ? "Hide the lyrics" : "Show the lyrics"
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: lyrics.enabled ? "Hide the lyrics" : "Show the lyrics"
+                    onClicked: lyrics.enabled = !lyrics.enabled
                     background: Rectangle {
                         radius: width / 2
-                        color: karaoke.active ? Qt.alpha(card.tint, 0.3) : mic.down ? Qt.rgba(1, 1, 1, 0.22) : mic.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
+                        color: lyrics.enabled ? Qt.alpha(card.tint, 0.3) : words.down ? Qt.rgba(1, 1, 1, 0.22) : words.hovered ? Qt.rgba(1, 1, 1, 0.12) : "transparent"
                     }
                     contentItem: Item {
                         LineIcon {
                             anchors.centerIn: parent
-                            glyph: "mic"
+                            glyph: "lyrics"
                             sourceSize: Qt.size(16, 16)
-                            color: karaoke.active ? card.tint : card.fgDim
+                            color: lyrics.enabled ? card.tint : card.fgDim
                         }
                     }
                 }

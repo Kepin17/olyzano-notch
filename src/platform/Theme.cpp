@@ -90,7 +90,13 @@ Theme::Theme(QObject *parent)
 {
     readAccent();
     qApp->installEventFilter(this); // ApplicationPaletteChange: KDE accent / scheme changed
-    connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, &Theme::changed);
+    // Accent (and dark() when mode follows the system) can move with the desktop scheme.
+    connect(QGuiApplication::styleHints(), &QStyleHints::colorSchemeChanged, this, [this] {
+        readAccent();
+        emit paletteChanged();
+        if (m_mode == QLatin1String("system"))
+            emit modeChanged();
+    });
 }
 
 void Theme::setMode(const QString &mode)
@@ -98,15 +104,20 @@ void Theme::setMode(const QString &mode)
     if (mode == m_mode)
         return;
     m_mode = mode;
-    emit changed();
+    emit modeChanged();
+    emit paletteChanged(); // dark()/light palette changes every colour
+    emit glassChanged();   // glassSheen/glassRim are computed from dark()
 }
 
 void Theme::setStyle(const QString &style)
 {
     if (style == m_style)
         return;
+    const bool washiBefore = washi();
     m_style = style;
-    emit changed();
+    emit paletteChanged();
+    if (washi() != washiBefore)
+        emit metricsChanged(); // radii, chipRadius, displayFont, washi itself
 }
 
 void Theme::setGlass(bool on, int strength, bool blur)
@@ -117,7 +128,8 @@ void Theme::setGlass(bool on, int strength, bool blur)
     m_glass = on;
     m_glassStrength = strength;
     m_blur = blur;
-    emit changed();
+    emit glassChanged();
+    emit paletteChanged(); // island/surface/well/card are lifted when glass is on
 }
 
 bool Theme::dark() const
@@ -140,7 +152,9 @@ bool Theme::eventFilter(QObject *watched, QEvent *event)
 {
     if (watched == qApp && event->type() == QEvent::ApplicationPaletteChange) {
         readAccent();
-        emit changed();
+        emit paletteChanged();
+        if (m_mode == QLatin1String("system"))
+            emit modeChanged();
     }
     return QObject::eventFilter(watched, event);
 }

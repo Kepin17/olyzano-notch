@@ -56,6 +56,7 @@ class Config:
         self.max_total = int(float(env.get("MAX_TOTAL_MB", "20480")) * 1024 * 1024)
         self.max_ttl = int(float(env.get("MAX_TTL_HOURS", "24")) * 3600)
         self.trust_proxy = env.get("TRUST_PROXY", "0") == "1"
+        self.proxy_hops = max(1, int(env.get("PROXY_HOPS", "1")))  # proxies in front: the address is read this many entries from the right
         self.host = env.get("BIND", "0.0.0.0")
         self.port = int(env.get("PORT", "8080"))
         self.public_url = env.get("PUBLIC_URL", "").rstrip("/")  # only used to print invite links
@@ -177,13 +178,14 @@ class Members:
         with self.db() as c:
             row = c.execute("""SELECT i.*, m.name, m.revoked FROM invites i JOIN members m ON m.id = i.member_id
                                WHERE i.token_hash = ? AND i.used = 0 AND i.expires_at > ?""", (sha(token), int(time.time()))).fetchone()
-            if not row or row["revoked"]:
+            # claim it first: of several requests with the same token only the one whose UPDATE changes a row gets a key
+            won = row is not None and c.execute("UPDATE invites SET used = 1 WHERE token_hash = ? AND used = 0", (row["token_hash"],)).rowcount == 1
+            if not won or row["revoked"]:
                 with self.lock:
                     count += 1
                     self.fails[ip] = (0, time.time() + PIN_LOCK_SECONDS) if count >= 10 else (count, 0)
                 return None
             key = secrets.token_hex(32)
-            c.execute("UPDATE invites SET used = 1 WHERE token_hash = ?", (row["token_hash"],))
             hours = c.execute("SELECT access_hours FROM members WHERE id = ?", (row["member_id"],)).fetchone()[0]
             # the access period starts when they join (a new key starts it again); no hours = no end
             c.execute("UPDATE members SET key_hash = ?, expires_at = ? WHERE id = ?",
@@ -201,6 +203,8 @@ class Store:
         self.cfg = cfg
         self.lock = threading.Lock()
         self.fails = {}  # (ip, id) -> (count, locked_until)
+        self.sid_fails = {}  # id -> (count, locked_until): guesses from any address, so a changing address does not reset the count
+        self.reserved = {}  # owner -> bytes of uploads in flight, counted against the quota like stored ones
         shutil.rmtree(self.tmp, ignore_errors=True)
         os.makedirs(self.tmp, exist_ok=True)
 
@@ -241,6 +245,24 @@ class Store:
             if m and (owner is None or m.get("owner", OWNER) == owner):
                 total += m["size"]
         return total
+
+    def claim(self, owner, length, quota, max_total, max_active):
+        """Atomically check the limits against what is stored plus what other uploads in flight hold, and hold `length`
+        for this one: eight parallel uploads cannot each pass a check that only one of them fits. -> None or the refusal."""
+        with self.lock:
+            mine = self.used(owner) + self.reserved.get(owner, 0)
+            if max_active and self.active(owner) >= max_active:
+                return ("too_many", None)
+            if mine + length > quota:
+                return ("quota", mine)
+            if self.used() + sum(self.reserved.values()) + length > max_total:
+                return ("server_full", None)
+            self.reserved[owner] = self.reserved.get(owner, 0) + length
+        return None
+
+    def unclaim(self, owner, length):
+        with self.lock:
+            self.reserved[owner] = max(0, self.reserved.get(owner, 0) - length)
 
     def active(self, owner):
         return sum(1 for sid in os.listdir(self.cfg.data_dir)
@@ -288,17 +310,23 @@ class Store:
             count, locked = self.fails.get(key, (0, 0))
             if locked > time.time():
                 return False
+            total, tlocked = self.sid_fails.get(sid, (0, 0))
+            if tlocked > time.time():
+                return False
             good = hmac.compare_digest(
                 m["pin_hash"], hashlib.pbkdf2_hmac("sha256", pin.encode(), bytes.fromhex(m["pin_salt"]), 100_000).hex())
             if good:
                 self.fails.pop(key, None)
+                self.sid_fails.pop(sid, None)
                 return True
+            total += 1
+            self.sid_fails[sid] = (0, time.time() + PIN_LOCK_SECONDS) if total >= PIN_MAX_FAILS * 6 else (total, 0)
             count += 1
             self.fails[key] = (0, time.time() + PIN_LOCK_SECONDS) if count >= PIN_MAX_FAILS else (count, 0)
             return False
 
     def pin_locked(self, sid, ip):
-        return self.fails.get((ip, sid), (0, 0))[1] > time.time()
+        return max(self.fails.get((ip, sid), (0, 0))[1], self.sid_fails.get(sid, (0, 0))[1]) > time.time()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -306,6 +334,31 @@ class Handler(BaseHTTPRequestHandler):
     server_version = "NotchRelay"
     sys_version = ""
     timeout = 60
+
+    def parse_request(self):
+        """Refuse anything that makes the body's length ambiguous (Transfer-Encoding, two Content-Length): a proxy and
+        this server could read it differently, and the leftover would be taken as the next request (request smuggling)."""
+        if not super().parse_request():
+            return False
+        lens = self.headers.get_all("Content-Length") or []
+        if self.headers.get("Transfer-Encoding") is not None or len(lens) > 1 or (lens and not lens[0].strip().isdigit()):
+            self.close_connection = True
+            self.send_response(400)
+            self.send_header("Content-Length", "0")
+            self.send_header("Connection", "close")
+            self.end_headers()
+            return False
+        self.body_left = int(lens[0]) if lens else 0  # bytes the client has sent that nobody has read yet
+        return True
+
+    def read_body(self, limit=4096):
+        """The whole (small) request body, or None after answering 413. Whatever is read is counted off body_left."""
+        if self.body_left > limit:
+            self.reply(413, {"error": "too_large"})
+            return None
+        data = self.rfile.read(self.body_left) if self.body_left else b""
+        self.body_left -= len(data)
+        return data
 
     def log_message(self, fmt, *args):  # keep tokens out of the logs: log method and status only
         sys.stderr.write("%s %s\n" % (self.command, args[1] if len(args) > 1 else ""))
@@ -317,13 +370,17 @@ class Handler(BaseHTTPRequestHandler):
     def ip(self):
         if self.server.cfg.trust_proxy:
             fwd = self.headers.get("X-Forwarded-For", "")
-            if fwd:
-                return fwd.split(",")[-1].strip()
+            parts = [x.strip() for x in fwd.split(",") if x.strip()]
+            if len(parts) >= self.server.cfg.proxy_hops:  # what the proxy itself wrote, never what the client put on the left
+                return parts[-self.server.cfg.proxy_hops]
         return self.client_address[0]
 
     def reply(self, code, body=b"", ctype="application/json", extra=None):
         if isinstance(body, (dict, list)):
             body = json.dumps(body).encode()
+        if getattr(self, "body_left", 0) > 0:  # answering before the body was read: the connection cannot be reused, or the
+            self.close_connection = True       # unread bytes would be parsed as the next request
+            extra = dict(extra or {}, Connection="close")
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
@@ -350,6 +407,8 @@ class Handler(BaseHTTPRequestHandler):
         return "text/html" in self.headers.get("Accept", "")
 
     def do_GET(self):
+        if self.body_left and self.read_body() is None:
+            return
         path = urlparse(self.path).path
         if path in ("/", "/index.html"):  # someone opened the server's address in a browser
             return self.reply(200, LANDING, "text/html; charset=utf-8", {"Content-Security-Policy": NOTE_CSP})
@@ -467,6 +526,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
+        if path != "/api/v1/shares":  # everything but an upload has a small body: read it before answering, whatever the answer is
+            body = self.read_body()
+            if body is None:
+                return
+            self.body = body
         if path == "/api/v1/join":
             return self.join()
         if path == "/api/v1/members" or re.match(r"^/api/v1/members/[^/]+/invite$", path):
@@ -487,14 +551,21 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(400, {"error": "bad headers"})
         if length > lim["max_file"]:
             return self.refuse(413, "file_too_big", "This server accepts files up to %d MB" % (lim["max_file"] // MB), limit=lim["max_file"])
-        if lim["max_active"] and self.store.active(member["id"]) >= lim["max_active"]:
-            return self.refuse(429, "too_many_shares", "You can have %d shares at once on this server" % lim["max_active"], limit=lim["max_active"])
-        used = self.store.used(member["id"])
-        if used + length > lim["quota"]:
-            return self.refuse(413, "quota", "Your space on this server is full (%d of %d MB used)" % (used // MB, lim["quota"] // MB),
-                               limit=lim["quota"], used=used)
-        if self.store.used() + length > cfg.max_total:
+        refused = self.store.claim(member["id"], length, lim["quota"], cfg.max_total, lim["max_active"])
+        if refused:
+            why, used = refused
+            if why == "too_many":
+                return self.refuse(429, "too_many_shares", "You can have %d shares at once on this server" % lim["max_active"], limit=lim["max_active"])
+            if why == "quota":
+                return self.refuse(413, "quota", "Your space on this server is full (%d of %d MB used)" % (used // MB, lim["quota"] // MB),
+                                   limit=lim["quota"], used=used)
             return self.refuse(413, "server_full", "The server is full right now")
+        try:
+            self.upload(member, length, ttl, max_dl)
+        finally:
+            self.store.unclaim(member["id"], length)  # by now the share is on disk (and counted) or the upload failed
+
+    def upload(self, member, length, ttl, max_dl):
         pin = self.headers.get("X-Pin", "")
         salt = secrets.token_bytes(16)
         sid = secrets.token_urlsafe(16)
@@ -510,6 +581,7 @@ class Handler(BaseHTTPRequestHandler):
                         break
                     f.write(chunk)
                     got += len(chunk)
+            self.body_left = 0
             if got != length:
                 raise OSError("short upload")
             os.makedirs(self.store.path(sid))
@@ -532,7 +604,7 @@ class Handler(BaseHTTPRequestHandler):
     def join(self):
         """Trade an invite token for the member's key (shown once)."""
         try:
-            token = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", "0")), 4096)) or b"{}").get("token", "")
+            token = json.loads(self.body or b"{}").get("token", "")
         except (ValueError, AttributeError):
             token = ""
         got = self.server.members.redeem(str(token), self.ip())
@@ -566,7 +638,7 @@ class Handler(BaseHTTPRequestHandler):
                     for m in page]})
             if method == "POST" and path == "/api/v1/members":
                 try:
-                    body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length", "0")), 4096)) or b"{}")
+                    body = json.loads(self.body or b"{}")
                     name = str(body.get("name", "")).strip()
                     lim = {k: int(body[k]) for k in ("quota_mb", "max_file_mb", "max_ttl_hours", "max_active", "access_hours") if body.get(k)}
                 except (ValueError, AttributeError, TypeError):
@@ -592,6 +664,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(400, {"error": "bad_request", "message": str(e)})
 
     def do_DELETE(self):
+        if self.body_left and self.read_body() is None:
+            return
         if re.match(r"^/api/v1/members/[^/]+$", urlparse(self.path).path):
             return self.members_api("DELETE", urlparse(self.path).path)
         m = re.match(r"^/api/v1/shares/([^/]+)$", urlparse(self.path).path)

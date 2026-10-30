@@ -21,11 +21,18 @@
 #include "platform/AssistantCorpus.h"
 #include "platform/AssistantModel.h"
 #include "platform/GlassModel.h"
+#include "platform/SystemStatsModel.h"
+#include "platform/ClipboardHistoryModel.h"
+#include "platform/BounceModel.h"
+#include "platform/PhotoModel.h"
 #include "platform/UtteranceModel.h"
 #include "platform/KaraokeModel.h"
 #include "platform/CalendarModel.h"
 #include "platform/DoomscrollModel.h"
 #include "platform/TasksModel.h"
+#include "platform/ApiTesterModel.h"
+#include "platform/SshModel.h"
+#include "platform/DbModel.h"
 #include "platform/Cities.h"
 #include "platform/PrayerModel.h"
 #include "platform/ReserveModel.h"
@@ -234,6 +241,170 @@ class TestCore : public QObject
     QString path(const FileItem &item) { return FileService::storedPath(m_files, item.storedName); }
 
 private slots:
+    void photoModel()
+    {
+        using namespace PhotoModel;
+        QCOMPARE(templateOf("strip"), Template::Strip);
+        QCOMPARE(templateOf("nothing"), Template::Single);
+        QCOMPARE(filterOf("vivid"), Filter::Vivid);
+        QCOMPARE(shots(Template::Strip), 4);
+        QCOMPARE(shots(Template::Polaroid), 1);
+
+        // every template: the slots lie inside the canvas, do not overlap, and match the number of shots
+        for (Template t : {Template::Single, Template::Strip, Template::Polaroid, Template::Frame}) {
+            const Layout l = layout(t);
+            QCOMPARE(l.cells.size(), shots(t));
+            for (int i = 0; i < l.cells.size(); ++i) {
+                QVERIFY(QRect(QPoint(0, 0), l.canvas).contains(l.cells.at(i)));
+                for (int j = i + 1; j < l.cells.size(); ++j)
+                    QVERIFY(!l.cells.at(i).intersects(l.cells.at(j)));
+            }
+            if (!l.caption.isEmpty())
+                QVERIFY(QRect(QPoint(0, 0), l.canvas).contains(l.caption));
+        }
+        QVERIFY(layout(Template::Strip).canvas.height() > 3 * layout(Template::Strip).canvas.width()); // tall, like a booth strip
+
+        // the middle of a picture that is too wide / too tall for the slot, never stretched
+        QCOMPARE(coverRect(QSize(1600, 900), QSize(100, 100)), QRect(350, 0, 900, 900));
+        QCOMPARE(coverRect(QSize(900, 1600), QSize(100, 100)), QRect(0, 350, 900, 900));
+        QCOMPARE(coverRect(QSize(400, 300), QSize(400, 300)), QRect(0, 0, 400, 300));
+
+        // filters on a coloured picture
+        QImage red(8, 8, QImage::Format_RGB32);
+        red.fill(QColor(200, 80, 60));
+        const QRgb mono = applyFilter(red, Filter::Mono).pixel(3, 3);
+        QVERIFY(qRed(mono) == qGreen(mono) && qGreen(mono) == qBlue(mono));
+        const QRgb warm = applyFilter(red, Filter::Warm).pixel(3, 3);
+        QVERIFY(qRed(warm) > 200 && qBlue(warm) < 60);
+        QImage soft(8, 8, QImage::Format_RGB32);
+        soft.fill(QColor(150, 120, 110));
+        const QRgb vivid = applyFilter(soft, Filter::Vivid).pixel(3, 3);
+        QVERIFY(QColor(vivid).saturation() > QColor(150, 120, 110).saturation());
+        QCOMPARE(applyFilter(red, Filter::Normal).pixel(1, 1), red.pixel(1, 1));
+
+        // composing: size, a frame in its slot (mirrored: the left half of the source lands on the right), the border colour, a strip's four
+        QImage half(40, 30, QImage::Format_RGB32);
+        half.fill(Qt::blue);
+        QPainter hp(&half);
+        hp.fillRect(0, 0, 20, 30, Qt::red); // left half red
+        hp.end();
+        const QDateTime when(QDate(2026, 10, 28), QTime(14, 30));
+        const QImage single = compose(Template::Single, Filter::Normal, false, {half}, Qt::green, when);
+        QCOMPARE(single.size(), layout(Template::Single).canvas);
+        QCOMPARE(QColor(single.pixel(100, 480)).red(), 255);             // left side red
+        const QImage mirrored = compose(Template::Single, Filter::Normal, true, {half}, Qt::green, when);
+        QCOMPARE(QColor(mirrored.pixel(100, 480)).blue(), 255);         // left side now the blue half
+        const QImage framed = compose(Template::Frame, Filter::Normal, false, {half}, QColor(10, 200, 30), when);
+        QCOMPARE(QColor(framed.pixel(5, 5)), QColor(10, 200, 30));       // the border is the accent
+        const Layout strip = layout(Template::Strip);
+        const QImage tall = compose(Template::Strip, Filter::Mono, false, {half, half, half, half}, Qt::red, when);
+        QCOMPARE(tall.size(), strip.canvas);
+        for (const QRect &slot : strip.cells)                           // every slot is filled (not the paper colour)
+            QVERIFY(QColor(tall.pixel(slot.center())) != QColor(250, 247, 240));
+        const QImage partial = compose(Template::Strip, Filter::Normal, false, {half}, Qt::red, when); // fewer frames than slots: no crash, the rest stay paper
+        QCOMPARE(QColor(partial.pixel(strip.cells.at(3).center())), QColor(250, 247, 240));
+    }
+
+    void bounceModel()
+    {
+        using namespace BounceModel;
+        QCOMPARE(factor(QStringLiteral("normal")), 1.0);
+        QCOMPARE(factor(QStringLiteral("whatever")), 1.0); // anything unknown is "normal"
+        QVERIFY(factor(QStringLiteral("soft")) > 1.0 && factor(QStringLiteral("bouncy")) < 1.0 && factor(QStringLiteral("off")) == 0.0);
+        QCOMPARE(damp(0.32, 1.0), 0.32);                   // normal: untouched
+        QVERIFY(damp(0.32, factor(QStringLiteral("soft"))) > 0.5);
+        QVERIFY(damp(0.32, factor(QStringLiteral("bouncy"))) < 0.2);
+        QCOMPARE(damp(0.32, 0.0), 1.0);                    // off: critically damped, no overshoot
+        QCOMPARE(damp(0.9, 0.0), 1.0);
+        QVERIFY(damp(0.05, 0.55) >= 0.12);                 // never so loose it rings for ever
+        QVERIFY(damp(0.9, 1.7) <= 1.0);                    // nor over-damped past critical
+    }
+
+    void clipboardHistoryModel()
+    {
+        using namespace ClipboardHistoryModel;
+        QList<Entry> list;
+        const QDateTime t0 = QDateTime(QDate(2026, 10, 27), QTime(12, 0), Qt::UTC);
+        const auto text = [&](const QString &s, int minutes) {
+            Entry e;
+            e.id = s;
+            e.text = s;
+            e.hash = s.toUtf8();
+            e.time = t0.addSecs(minutes * 60);
+            return e;
+        };
+        QVERIFY(add(list, text(QStringLiteral("one"), 0), 3));
+        QVERIFY(add(list, text(QStringLiteral("two"), 1), 3));
+        QCOMPARE(list.first().text, QStringLiteral("two")); // newest first
+        QVERIFY(add(list, text(QStringLiteral("one"), 2), 3)); // the same again moves up, not twice
+        QCOMPARE(list.size(), 2);
+        QCOMPARE(list.first().text, QStringLiteral("one"));
+        QVERIFY(!add(list, text(QStringLiteral("  "), 3), 2)); // blank
+        QVERIFY(!add(list, text(QStringLiteral("big"), 3), MaxTextBytes + 1));
+        Entry img;
+        img.id = QStringLiteral("i");
+        img.image = true;
+        img.hash = "img";
+        img.time = t0;
+        QVERIFY(!add(list, img, MaxImageBytes + 1));
+        QVERIFY(add(list, img, 100));
+        QVERIFY(!matches(list.first(), QStringLiteral("x"))); // an image has no text to find
+        QVERIFY(matches(list.at(1), QStringLiteral("ONE")));
+        QVERIFY(matches(list.at(1), QString()));
+
+        list[2].pinned = true; // "two"
+        const QList<Entry> gone = expire(list, 24, t0.addDays(2));
+        QVERIFY(!gone.isEmpty());
+        QCOMPARE(list.size(), 1); // only the pinned one is left
+        QCOMPARE(list.first().text, QStringLiteral("two"));
+        QVERIFY(expire(list, 0, t0.addDays(900)).isEmpty()); // 0 = forever
+
+        QList<Entry> many;
+        for (int i = 0; i < MaxEntries + 10; ++i)
+            QVERIFY(add(many, text(QString::number(i), i), 4));
+        QCOMPARE(many.size(), MaxEntries);
+        QCOMPARE(many.first().text, QString::number(MaxEntries + 9));
+        QCOMPARE(preview(QStringLiteral("a\n  b\t c")), QStringLiteral("a b c"));
+        QVERIFY(preview(QString(500, u'x')).endsWith(QChar(0x2026)));
+        QVERIFY(isSecret("secret\n") && !isSecret(""));
+    }
+
+    void systemStatsParsers()
+    {
+        using namespace SystemStatsModel;
+        const CpuTimes a = parseCpu("cpu  100 0 100 800 0 0 0 0 0 0\ncpu0 1 1 1 1\n");
+        const CpuTimes b = parseCpu("cpu  200 0 200 1600 0 0 0 0 50 0\n");
+        QVERIFY(a.ok && b.ok);
+        QCOMPARE(a.total, quint64(1000));
+        QCOMPARE(cpuPercent(a, b), 20.0); // 400 of 2000 ticks busy (guest columns are not counted twice)
+        QCOMPARE(cpuPercent(b, b), 0.0);
+        QVERIFY(!parseCpu("garbage").ok);
+
+        const Memory m = parseMeminfo("MemTotal:       16000000 kB\nMemFree: 1 kB\nMemAvailable:    4000000 kB\nSwapTotal: 2000 kB\nSwapFree: 500 kB\n");
+        QCOMPARE(m.total, qint64(16000000) * 1024);
+        QCOMPARE(m.used(), qint64(12000000) * 1024);
+        QCOMPARE(m.swapUsed(), qint64(1500) * 1024);
+
+        const Traffic n = parseNetDev("Inter-|   Receive\n face |bytes\n    lo: 999 1 0 0 0 0 0 0 999 1 0 0 0 0 0 0\n"
+                                      "wlan0: 1000 5 0 0 0 0 0 0 400 3 0 0 0 0 0 0\ndocker0: 77 1 0 0 0 0 0 0 77 1 0 0 0 0 0 0\n"
+                                      "enp3s0: 500 5 0 0 0 0 0 0 100 3 0 0 0 0 0 0\n");
+        QCOMPARE(n.in, quint64(1500));
+        QCOMPARE(n.out, quint64(500));
+
+        QVERIFY(isPhysicalDisk(QStringLiteral("nvme0n1")) && isPhysicalDisk(QStringLiteral("sda")) && isPhysicalDisk(QStringLiteral("mmcblk0")));
+        QVERIFY(!isPhysicalDisk(QStringLiteral("nvme0n1p2")) && !isPhysicalDisk(QStringLiteral("sda1")) && !isPhysicalDisk(QStringLiteral("loop0")));
+        const Traffic d = parseDiskstats("   8  0 sda 10 0 100 5 20 0 200 7 0 0 0\n   8  1 sda1 10 0 100 5 20 0 200 7 0 0 0\n 259 0 nvme0n1 1 0 8 1 2 0 16 1 0 0 0\n   7 0 loop0 1 0 8 1 2 0 16 1 0 0 0\n");
+        QCOMPARE(d.in, quint64((100 + 8) * 512));
+        QCOMPARE(d.out, quint64((200 + 16) * 512));
+
+        QCOMPARE(ratePerSecond(1000, 3000, 2000), 1000.0);
+        QCOMPARE(ratePerSecond(5000, 100, 1000), 0.0); // a counter that restarted
+        QCOMPARE(ratePerSecond(0, 100, 0), 0.0);
+        QCOMPARE(formatBytes(512), QStringLiteral("512 B"));
+        QCOMPARE(formatBytes(1536), QStringLiteral("1.50 KB"));
+        QCOMPARE(formatRate(25 * 1024 * 1024), QStringLiteral("25.0 MB/s"));
+    }
+
     void init()
     {
         QVERIFY(m_tmp.isValid());
@@ -596,6 +767,337 @@ private slots:
         QVERIFY(!nextWake(list, now.addSecs(22 * 60)).isValid());
     }
 
+    void apiModelRoundTripCollections()
+    {
+        using namespace ApiTesterModel;
+        Collection c;
+        c.id = newId();
+        c.name = "Round trip";
+        RequestNode folder;
+        folder.type = "folder";
+        folder.id = newId();
+        folder.name = "Nested";
+        RequestNode req;
+        req.type = "request";
+        req.id = newId();
+        req.name = "Ping";
+        req.request.id = req.id;
+        req.request.name = "Ping";
+        req.request.method = "POST";
+        req.request.url = "{{baseUrl}}/api/v1/ping";
+        req.request.headers = {{"Accept", "application/json", true}, {"X-Test", "1", false}};
+        req.request.bodyMode = "json";
+        req.request.body = "{\"a\":1}";
+        req.request.auth.type = "bearer";
+        req.request.auth.token = "{{relayKey}}";
+        req.request.preScript = "env.set(\"x\",\"1\")";
+        req.request.testScript = "test(\"ok\", function(){} )";
+        folder.items << req;
+        c.items << folder;
+
+        const QByteArray bytes = collectionsToJson({c});
+        const auto back = collectionsFromJson(bytes);
+        QCOMPARE(back.size(), 1);
+        QCOMPARE(back[0].name, c.name);
+        QCOMPARE(back[0].items.size(), 1);
+        QCOMPARE(back[0].items[0].type, QStringLiteral("folder"));
+        QCOMPARE(back[0].items[0].items.size(), 1);
+        const auto &r = back[0].items[0].items[0].request;
+        QCOMPARE(r.method, QStringLiteral("POST"));
+        QCOMPARE(r.url, QStringLiteral("{{baseUrl}}/api/v1/ping"));
+        QCOMPARE(r.headers.size(), 2);
+        QVERIFY(r.headers[0].enabled);
+        QVERIFY(!r.headers[1].enabled);
+        QCOMPARE(r.bodyMode, QStringLiteral("json"));
+        QCOMPARE(r.auth.type, QStringLiteral("bearer"));
+        QCOMPARE(r.preScript, QStringLiteral("env.set(\"x\",\"1\")"));
+        QVERIFY(!r.testScript.isEmpty());
+    }
+
+    void apiModelSubstitutesVariables()
+    {
+        using namespace ApiTesterModel;
+        const QVector<KeyValue> vars{{"baseUrl", "http://127.0.0.1:8080", true}, {"off", "no", false}, {"relayKey", "secret", true}};
+        QCOMPARE(substitute("{{baseUrl}}/api/v1/ping", vars), QStringLiteral("http://127.0.0.1:8080/api/v1/ping"));
+        QCOMPARE(substitute("{{ off }}", vars), QStringLiteral("{{ off }}")); // disabled stays literal
+        QCOMPARE(substitute("{{missing}}", vars), QStringLiteral("{{missing}}"));
+        QCOMPARE(substitute("Bearer {{relayKey}}", vars), QStringLiteral("Bearer secret"));
+        QVERIFY(!hasUnresolved("{{baseUrl}}", vars));
+        QVERIFY(hasUnresolved("{{nope}}", vars));
+        // query assembly
+        const QVector<KeyValue> q{{"a", "1", true}, {"b", "x y", true}, {"c", "skip", false}};
+        QCOMPARE(buildUrl("http://h/p", q), QStringLiteral("http://h/p?a=1&b=x%20y"));
+        QCOMPARE(buildUrl("http://h/p?x=1", q), QStringLiteral("http://h/p?x=1&a=1&b=x%20y"));
+    }
+
+    void apiModelHistoryRing()
+    {
+        using namespace ApiTesterModel;
+        QList<HistoryEntry> list;
+        for (int i = 0; i < 60; ++i) {
+            HistoryEntry h;
+            h.method = "GET";
+            h.url = QString::number(i);
+            h.status = 200;
+            historyPush(list, h, 50);
+        }
+        QCOMPARE(list.size(), 50);
+        QCOMPARE(list.first().url, QStringLiteral("59")); // newest first
+        QCOMPARE(list.last().url, QStringLiteral("10"));  // 0..9 dropped
+        const auto bytes = historyToJson(list);
+        const auto back = historyFromJson(bytes);
+        QCOMPARE(back.size(), 50);
+        QCOMPARE(back.first().url, QStringLiteral("59"));
+    }
+
+    void apiModelPrettyJson()
+    {
+        using namespace ApiTesterModel;
+        const QByteArray compact = "{\"a\":1,\"b\":[2,3]}";
+        const QString pretty = prettyJson(compact);
+        QVERIFY(pretty.contains('\n'));
+        QVERIFY(pretty.contains("\"a\": 1"));
+        QCOMPARE(prettyJson("not json"), QStringLiteral("not json"));
+    }
+
+    void apiPostmanImportExport()
+    {
+        using namespace ApiTesterModel;
+        // Built without a raw string literal: moc fails to parse multi-line R"…JSON" here.
+        const QByteArray fixture =
+            QStringLiteral(
+                "{"
+                "\"info\": { \"name\": \"Sample\", \"schema\": \"https://schema.getpostman.com/json/collection/v2.1.0/collection.json\" },"
+                "\"item\": [ {"
+                "  \"name\": \"Group\","
+                "  \"item\": ["
+                "    { \"name\": \"Get ping\","
+                "      \"request\": {"
+                "        \"method\": \"GET\","
+                "        \"url\": { \"raw\": \"http://127.0.0.1:8080/api/v1/ping\", \"protocol\": \"http\","
+                "                 \"host\": [\"127\",\"0\",\"0\",\"1\"], \"path\": [\"api\",\"v1\",\"ping\"] },"
+                "        \"header\": [ { \"key\": \"Accept\", \"value\": \"application/json\" } ]"
+                "      },"
+                "      \"event\": [ { \"listen\": \"test\","
+                "        \"script\": { \"type\": \"text/javascript\", \"exec\": [\"test('ok', function(){} )\"] } } ]"
+                "    },"
+                "    { \"name\": \"Post echo\","
+                "      \"request\": { \"method\": \"POST\", \"url\": \"http://example.com/x\","
+                "        \"body\": { \"mode\": \"raw\", \"raw\": \"{\\\"k\\\":1}\","
+                "          \"options\": { \"raw\": { \"language\": \"json\" } } } }"
+                "    }"
+                "  ]"
+                "} ]"
+                "}")
+                .toUtf8();
+        bool ok = false;
+        const Collection c = collectionFromPostman(fixture, &ok);
+        QVERIFY(ok);
+        QCOMPARE(c.name, QStringLiteral("Sample"));
+        QCOMPARE(c.items.size(), 1);
+        QCOMPARE(c.items[0].type, QStringLiteral("folder"));
+        QCOMPARE(c.items[0].items.size(), 2);
+        const auto &g = c.items[0].items[0].request;
+        QCOMPARE(g.method, QStringLiteral("GET"));
+        QCOMPARE(g.url, QStringLiteral("http://127.0.0.1:8080/api/v1/ping"));
+        QCOMPARE(g.headers.size(), 1);
+        QVERIFY(g.testScript.contains("test('ok'"));
+        const auto &p = c.items[0].items[1].request;
+        QCOMPARE(p.method, QStringLiteral("POST"));
+        QCOMPARE(p.bodyMode, QStringLiteral("json"));
+
+        // export → re-import round trip keeps names/methods
+        const QByteArray exported = collectionToPostman(c);
+        bool ok2 = false;
+        const Collection c2 = collectionFromPostman(exported, &ok2);
+        QVERIFY(ok2);
+        QCOMPARE(c2.name, c.name);
+        QCOMPARE(c2.items[0].items.size(), 2);
+        QCOMPARE(c2.items[0].items[0].request.method, QStringLiteral("GET"));
+        QCOMPARE(c2.items[0].items[1].request.bodyMode, QStringLiteral("json"));
+    }
+
+    void apiEnvironmentPostman()
+    {
+        using namespace ApiTesterModel;
+        const QByteArray env =
+            QStringLiteral(
+                "{"
+                "\"id\": \"abc\", \"name\": \"Local\","
+                "\"values\": ["
+                "  { \"key\": \"baseUrl\", \"value\": \"http://127.0.0.1:8080\", \"enabled\": true },"
+                "  { \"key\": \"k\", \"value\": \"v\", \"enabled\": false }"
+                "],"
+                "\"_postman_variable_scope\": \"environment\""
+                "}")
+                .toUtf8();
+        bool ok = false;
+        const Environment e = environmentFromPostman(env, &ok);
+        QVERIFY(ok);
+        QCOMPARE(e.name, QStringLiteral("Local"));
+        QCOMPARE(e.variables.size(), 2);
+        QVERIFY(e.variables[0].enabled);
+        QVERIFY(!e.variables[1].enabled);
+
+        const QByteArray out = environmentToPostman(e);
+        bool ok2 = false;
+        const Environment e2 = environmentFromPostman(out, &ok2);
+        QVERIFY(ok2);
+        QCOMPARE(e2.variables.size(), 2);
+        QCOMPARE(e2.variables[0].value, QStringLiteral("http://127.0.0.1:8080"));
+    }
+
+    void apiOldTemplatesAreDropped()
+    {
+        using namespace ApiTesterModel;
+        // what older versions saved: built-in read-only collections next to the person's own
+        const QByteArray old = R"({"version":1,"collections":[
+            {"id":"t1","name":"GitHub","readonly":true,"items":[]},
+            {"id":"m1","name":"Mine","items":[{"type":"request","id":"r1","name":"Ping","method":"GET","url":"http://x"}]}]})";
+        const auto cols = collectionsFromJson(old);
+        QCOMPARE(cols.size(), 1);
+        QCOMPARE(cols.first().name, QStringLiteral("Mine"));
+        QVERIFY(!collectionsToJson(cols).contains("readonly"));
+    }
+
+    void sshModelRoundTrip()
+    {
+        using namespace SshModel;
+        Connection c;
+        c.id = newId();
+        c.name = QStringLiteral("prod");
+        c.host = QStringLiteral("10.0.0.5");
+        c.user = QStringLiteral("deploy");
+        c.port = 2222;
+        c.auth = QStringLiteral("key");
+        c.keyPath = QStringLiteral("~/.ssh/id_ed25519");
+        c.defaultCommand = QStringLiteral("uptime");
+        c.savePassword = false;
+
+        const QByteArray bytes = listToJson({c});
+        const auto back = listFromJson(bytes);
+        QCOMPARE(back.size(), 1);
+        QCOMPARE(back[0].name, c.name);
+        QCOMPARE(back[0].host, QStringLiteral("10.0.0.5"));
+        QCOMPARE(back[0].user, QStringLiteral("deploy"));
+        QCOMPARE(back[0].port, 2222);
+        QCOMPARE(back[0].auth, QStringLiteral("key"));
+        QCOMPARE(back[0].keyPath, QStringLiteral("~/.ssh/id_ed25519"));
+        QCOMPARE(back[0].defaultCommand, QStringLiteral("uptime"));
+    }
+
+    void sshModelValidatesHostUserPort()
+    {
+        using namespace SshModel;
+        QVERIFY(validHost(QStringLiteral("example.com")));
+        QVERIFY(validHost(QStringLiteral("10.0.0.1")));
+        QVERIFY(validHost(QStringLiteral("::1")));
+        QVERIFY(!validHost(QStringLiteral("bad host")));
+        QVERIFY(!validHost(QStringLiteral("host;rm -rf")));
+        QVERIFY(validUser(QStringLiteral("deploy")));
+        QVERIFY(validUser(QStringLiteral("user.name")));
+        QVERIFY(!validUser(QStringLiteral("root;id")));
+        QVERIFY(validPort(22));
+        QVERIFY(!validPort(0));
+        QVERIFY(!validPort(70000));
+
+        // incomplete rows (no host/user) are dropped on load
+        const QByteArray bad = R"({"version":1,"connections":[{"id":"x","name":"","host":"","user":"","port":22}]})";
+        QVERIFY(listFromJson(bad).isEmpty());
+    }
+
+    void dbConnectionJsonRoundTrip()
+    {
+        using namespace DbModel;
+        Connection c;
+        c.id = newId();
+        c.name = QStringLiteral("local-mysql");
+        c.driver = QStringLiteral("mysql");
+        c.host = QStringLiteral("127.0.0.1");
+        c.port = 3306;
+        c.user = QStringLiteral("root");
+        c.database = QStringLiteral("app");
+        c.sqlitePath = QString();
+
+        const auto back = listFromJson(listToJson({c}));
+        QCOMPARE(back.size(), 1);
+        QCOMPARE(back[0].driver, QStringLiteral("mysql"));
+        QCOMPARE(back[0].port, 3306);
+        QCOMPARE(back[0].database, QStringLiteral("app"));
+        QCOMPARE(qtDriver(back[0].driver), QStringLiteral("QMYSQL"));
+        QCOMPARE(defaultPort(QStringLiteral("postgres")), 5432);
+        QCOMPARE(defaultPort(QStringLiteral("sqlite")), 0);
+        QCOMPARE(quoteIdent(QStringLiteral("users"), QStringLiteral("mysql")), QStringLiteral("`users`"));
+        QCOMPARE(quoteIdent(QStringLiteral("users"), QStringLiteral("sqlite")), QStringLiteral("\"users\""));
+    }
+
+    void apiTreeCrud()
+    {
+        using namespace ApiTesterModel;
+        QList<Collection> cols;
+        Collection c;
+        c.id = newId();
+        c.name = QStringLiteral("API");
+        cols << c;
+        const QString f1 = addFolder(cols, c.id, QStringLiteral("Users"));
+        const QString f2 = addFolder(cols, f1, QStringLiteral("Admin")); // folders nest
+        const QString r1 = addRequestNode(cols, f2, QStringLiteral("List"));
+        const QString r2 = addRequestNode(cols, c.id, QStringLiteral("Ping"));
+        QVERIFY(!f1.isEmpty() && !f2.isEmpty() && !r1.isEmpty() && !r2.isEmpty());
+        QVERIFY(addFolder(cols, QStringLiteral("nope"), QStringLiteral("x")).isEmpty()); // no such parent
+
+        QVERIFY(renameNode(cols, r1, QStringLiteral("List all")));
+        QCOMPARE(locate(cols, r1).list->at(locate(cols, r1).index).request.name, QStringLiteral("List all"));
+        QVERIFY(!renameNode(cols, r1, QStringLiteral("   "))); // an empty name is refused
+
+        // a copy of a folder carries its children, all with new ids
+        const QString copy = duplicateNode(cols, f1);
+        QVERIFY(!copy.isEmpty() && copy != f1);
+        QVERIFY(!locate(cols, r1).list->isEmpty());
+        QCOMPARE(cols.first().items.size(), 3); // Users, Users copy, Ping (the copy sits right after)
+        QCOMPARE(cols.first().items.at(1).name, QStringLiteral("Users copy"));
+        QVERIFY(cols.first().items.at(1).items.first().items.first().request.id != r1);
+
+        // move: a request into a folder; a folder never into itself or something inside it
+        QVERIFY(moveNode(cols, r2, f2));
+        QCOMPARE(locate(cols, r2).list, &cols.first().items.first().items.first().items);
+        QVERIFY(!moveNode(cols, f1, f2));
+        QVERIFY(!moveNode(cols, f1, f1));
+        QVERIFY(moveNode(cols, r2, c.id, 0)); // back to the collection, first
+        QCOMPARE(nodeId(cols.first().items.first()), r2);
+
+        // duplicate a whole collection
+        const QString cc = duplicateNode(cols, c.id);
+        QCOMPARE(cols.size(), 2);
+        QVERIFY(cols.at(1).id == cc && cols.at(1).name == QStringLiteral("API copy"));
+
+        // delete: a request, a folder (with what is in it), a collection
+        QVERIFY(removeNode(cols, r1));
+        QVERIFY(!locate(cols, r1));
+        QVERIFY(removeNode(cols, f1));
+        QVERIFY(removeNode(cols, cc));
+        QCOMPARE(cols.size(), 1);
+        QVERIFY(!removeNode(cols, QStringLiteral("gone")));
+
+        // and it survives a save and a load
+        const auto back = collectionsFromJson(collectionsToJson(cols));
+        QCOMPARE(back.size(), 1);
+        QCOMPARE(back.first().items.size(), cols.first().items.size());
+    }
+
+    void apiEnvironmentSecretsRoundTrip()
+    {
+        using namespace ApiTesterModel;
+        Environment e;
+        e.id = newId();
+        e.name = QStringLiteral("Dev");
+        e.variables = {{QStringLiteral("baseUrl"), QStringLiteral("http://x"), true, false}, {QStringLiteral("token"), QStringLiteral("s3"), true, true}};
+        const auto list = environmentsFromJson(environmentsToJson({e}, e.id), nullptr);
+        QCOMPARE(list.size(), 1);
+        QVERIFY(!list.first().variables.at(0).secret);
+        QVERIFY(list.first().variables.at(1).secret);
+    }
+
     void widgetGeometry()
     {
         using namespace WidgetModel;
@@ -609,7 +1111,7 @@ private slots:
         const QRectF open = windowRect(Open, 100, 900, screen);
         QCOMPARE(open, QRectF(0, 460, OpenW, OpenH));
         QCOMPARE(islandX(open, 100, 400), 0.0);              // would stick out on the left: pushed in
-        QCOMPARE(islandX(windowRect(Open, 960, 14, screen), 960, 400), 220.0);
+        QCOMPARE(islandX(windowRect(Open, 960, 14, screen), 960, 400), (OpenW - 400) / 2); // centred in the open window
         QCOMPARE(islandY(open, 900, 38), 440.0);             // 900 - 460
         QCOMPARE(islandY(open, 1075, 38), OpenH - 38 - WinMargin); // the card never leaves the window, its edge line stays inside
         // at the bottom of the screen: a bigger card (scaled, or the panel while it opens) keeps its bottom edge and grows upward
@@ -761,6 +1263,36 @@ private slots:
         const QByteArray json = R"([{"login":"Kepin17","type":"User"},{"login":"dependabot[bot]","type":"Bot"},{"login":"helngopidingin","type":"User"}])";
         QCOMPARE(UpdateModel::parseContributors(json), (QStringList{"Kepin17", "helngopidingin"}));
         QVERIFY(UpdateModel::parseContributors("{}").isEmpty());
+
+        // installing from inside the app: which checksum file, what it says, and which hosts may serve the download
+        const QList<QPair<QString, QString>> assets = {{"notch_0.13.1_amd64.deb", "https://github.com/x/releases/download/v0.13.1/notch_0.13.1_amd64.deb"},
+                                                       {"SHA256SUMS-linux.txt", "https://github.com/x/releases/download/v0.13.1/SHA256SUMS-linux.txt"},
+                                                       {"SHA256SUMS-windows.txt", "http://example.com/plain.txt"}};
+        QCOMPARE(UpdateModel::pickChecksums(assets, "linux"), QStringLiteral("https://github.com/x/releases/download/v0.13.1/SHA256SUMS-linux.txt"));
+        QVERIFY(UpdateModel::pickChecksums(assets, "windows").isEmpty()); // not https: never used
+        const QString sums = "ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789  notch_0.13.1_amd64.deb\n"
+                             "1111111111111111111111111111111111111111111111111111111111111111 *Notch-0.13.0-windows-x64-setup.exe\r\n"
+                             "not a checksum line\n";
+        const QHash<QString, QString> h = UpdateModel::parseChecksums(sums);
+        QCOMPARE(h.size(), 2);
+        QCOMPARE(h.value("notch_0.13.1_amd64.deb"), QStringLiteral("abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"));
+        QCOMPARE(h.value("Notch-0.13.0-windows-x64-setup.exe"), QString(64, u'1'));
+        const QByteArray data = "hello";
+        const QByteArray hex = QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex();
+        QVERIFY(UpdateModel::sha256Matches(hex, QString::fromLatin1(hex).toUpper()));
+        QVERIFY(!UpdateModel::sha256Matches(hex, QString(64, u'0')));
+        QVERIFY(!UpdateModel::sha256Matches(hex, QString())); // nothing to compare with is never a match
+        QVERIFY(UpdateModel::trustedHost(QUrl("https://github.com/a/b")));
+        QVERIFY(UpdateModel::trustedHost(QUrl("https://objects.githubusercontent.com/x")));
+        QVERIFY(!UpdateModel::trustedHost(QUrl("http://github.com/a")));
+        QVERIFY(!UpdateModel::trustedHost(QUrl("https://github.com.evil.example/a")));
+        QVERIFY(!UpdateModel::trustedHost(QUrl("https://evilgithubusercontent.com/a")));
+        QVERIFY(UpdateModel::trustedAsset(QUrl("https://github.com/Kepin17/olyzano-notch/releases/download/v1/notch.deb")));
+        QVERIFY(!UpdateModel::trustedAsset(QUrl("https://github.com/evil/olyzano-notch/releases/download/v1/notch.deb")));
+        QVERIFY(!UpdateModel::trustedAsset(QUrl("https://github.com/Kepin17/olyzano-notch-fake/releases/download/v1/notch.deb")));
+        QVERIFY(!UpdateModel::trustedAsset(QUrl("https://github.com/Kepin17/olyzano-notch/releases/download/v1/.hidden")));
+        QCOMPARE(UpdateModel::linuxInstallCommand("/tmp/x.deb").first(), QStringLiteral("pkexec"));
+        QVERIFY(UpdateModel::windowsInstallerArgs().contains("/SILENT") && UpdateModel::windowsInstallerArgs().contains("/NORESTART"));
     }
 
     void discordPipeFrames()
@@ -1140,6 +1672,12 @@ private slots:
         QVERIFY(LauncherModel::score(QStringLiteral("web"), QStringLiteral("Firefox"), QStringLiteral("browser web")) > 0);
         QVERIFY(LauncherModel::score(QStringLiteral("ffx"), QStringLiteral("Firefox"), {}) > 0);
         QCOMPARE(LauncherModel::score(QStringLiteral("zzz"), QStringLiteral("Firefox"), {}), 0);
+        // Multi-token content filter: every word must match; all-in-name ranks above keywords-only.
+        QVERIFY(LauncherModel::score(QStringLiteral("visual studio"), QStringLiteral("Visual Studio 2022"), QStringLiteral("Microsoft IDE")) > 0);
+        QCOMPARE(LauncherModel::score(QStringLiteral("zzz visual"), QStringLiteral("Visual Studio 2022"), {}), 0);
+        QVERIFY(LauncherModel::score(QStringLiteral("windows terminal"), QStringLiteral("Windows Terminal"), {})
+                > LauncherModel::score(QStringLiteral("windows terminal"), QStringLiteral("Terminal"), QStringLiteral("windows console")));
+        QVERIFY(LauncherModel::score(QStringLiteral("fire fox"), QStringLiteral("Firefox"), {}) > 0);
         {
             const QVariantList apps{QVariantMap{{"id", "a"}, {"name", "Konsole"}, {"category", "System"}}, QVariantMap{{"id", "b"}, {"name", "Kate"}, {"category", "Development"}},
                                     QVariantMap{{"id", "c"}, {"name", "Okular Kate Viewer"}, {"category", "Office"}}};
@@ -1405,6 +1943,31 @@ private slots:
         QCOMPARE(spy.size(), 2); // reported once each, old.txt never
     }
 
+#ifndef Q_OS_WIN // QFile::link makes a .lnk shortcut there, not a symbolic link
+    void folderWatcherIgnoresSymlinks()
+    {
+        const QString dir = m_tmp.filePath(QStringLiteral("watched-links"));
+        QDir().mkpath(dir);
+        const QString secret = m_tmp.filePath(QStringLiteral("secret.txt"));
+        QFile f(secret);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("private");
+        f.close();
+        FolderWatcher watcher;
+        watcher.watch(dir, 300);
+        QSignalSpy spy(&watcher, &FolderWatcher::fileReady);
+        QVERIFY(QFile::link(secret, dir + QStringLiteral("/x.png"))); // ln -s: a "download" that is really another file
+        QFile real(dir + QStringLiteral("/real.png"));
+        QVERIFY(real.open(QIODevice::WriteOnly));
+        real.write("png");
+        real.close();
+        QTRY_COMPARE_WITH_TIMEOUT(spy.size(), 1, 5000);
+        QTest::qWait(800);
+        QCOMPARE(spy.size(), 1);
+        QCOMPARE(QFileInfo(spy.first().first().toString()).fileName(), QStringLiteral("real.png"));
+    }
+#endif
+
     void recentlyRemovedLastsADay()
     {
         const QDateTime now = QDateTime::currentDateTimeUtc();
@@ -1508,6 +2071,16 @@ private slots:
         QCOMPARE(merged.error, QString());
         QCOMPARE(DocTools::pdfPageCount(merged.outputs.first().first), 2);
         QCOMPARE(merged.summary, QStringLiteral("Merged 2 PDFs"));
+
+        // a name that tries to leave the work folder stays inside it
+        const DocTools::ToolInput sneaky{png, QStringLiteral("../../escape"), QStringLiteral("card.png")};
+        auto sneakyOut = DocTools::runTool(QStringLiteral("images-pdf"), {sneaky}, {}, work);
+        QCOMPARE(sneakyOut.error, QString());
+        QCOMPARE(QFileInfo(sneakyOut.outputs.first().first).absolutePath(), QFileInfo(work).absoluteFilePath());
+        QVERIFY(!sneakyOut.outputs.first().second.contains(u'/'));
+        auto pages = DocTools::runTool(QStringLiteral("extract"), {doc}, QStringLiteral("1/../../x"), work);
+        for (const auto &o : pages.outputs)
+            QCOMPARE(QFileInfo(o.first).absolutePath(), QFileInfo(work).absoluteFilePath());
 
         auto resized = DocTools::runTool(QStringLiteral("resize"), {card}, QStringLiteral("400"), work);
         QCOMPARE(resized.outputs.first().second, QStringLiteral("card (400px).png"));
@@ -2758,6 +3331,17 @@ private slots:
             QVERIFY(GlassModel::surfaceAlpha(p + 10, false) <= GlassModel::surfaceAlpha(p, false));
         }
         QCOMPARE(GlassModel::islandAlpha(500, true), GlassModel::IslandMinBlur);
+        for (bool dark : {true, false}) { // the glass look only grows with strength and stays gentle
+            for (int p = 0; p < 100; p += 10) {
+                QVERIFY(GlassModel::sheenTop(p + 10, dark) >= GlassModel::sheenTop(p, dark));
+                QVERIFY(GlassModel::rimTop(p + 10, dark) >= GlassModel::rimTop(p, dark));
+            }
+            QVERIFY(GlassModel::sheenTop(100, dark) <= 0.4);
+            QVERIFY(GlassModel::rimTop(100, dark) <= 0.9);
+        }
+        QCOMPARE(GlassModel::lift(0, true), 0.0);
+        QVERIFY(GlassModel::lift(100, true) > 0.0 && GlassModel::lift(100, true) <= 0.06);
+        QCOMPARE(GlassModel::lift(100, false), 0.0);
         QCOMPARE(GlassModel::islandAlpha(-5, true), 0.96);
     }
 

@@ -50,6 +50,7 @@ Popup {
             wrapMode: Text.Wrap
             color: theme.text
             font.pixelSize: 13
+            textFormat: Text.PlainText // a name can look like markup
             text: pop.from + " wants to send you " + pop.files.length + (pop.files.length === 1 ? " file" : " files") + " (" + pop.mb(pop.total) + ")."
         }
         Text {
@@ -65,6 +66,7 @@ Popup {
             delegate: Text {
                 required property var modelData
                 Layout.fillWidth: true
+                textFormat: Text.PlainText // a name can look like markup
                 text: modelData.name
                 color: theme.textDim
                 font.pixelSize: 12

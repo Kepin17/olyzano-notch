@@ -1,4 +1,6 @@
-// OCR with tesseract.js: the engine and the language data are fetched from the CDN the first time, then cached for offline use.
+// OCR with tesseract.js. The worker and the WebAssembly engine are our own files (vendor/ocr), so no code is loaded from a third party at run
+// time; only the language data (plain data, not code) comes from the tesseract.js CDN the first time, then it stays cached in the browser.
+const here = p => new URL(p, document.baseURI).href;
 import { lazyScript } from "../util.js";
 import { decodable } from "./image.js";
 import { openPdf, renderPage } from "./pdf.js";
@@ -8,7 +10,7 @@ export const LANGS = [["eng", "English"], ["ind", "Indonesian"], ["jpn", "Japane
 export async function recognize(file, lang, onProgress = () => {}) {
   await lazyScript("vendor/tesseract.min.js");
   const T = window.Tesseract;
-  const worker = await T.createWorker(lang, 1, { logger: m => { if (m.status === "recognizing text") onProgress(m.progress); else if (m.status) onProgress(null, m.status); } });
+  const worker = await T.createWorker(lang, 1, { workerPath: here("vendor/ocr/worker.min.js"), corePath: here("vendor/ocr/"), logger: m => { if (m.status === "recognizing text") onProgress(m.progress); else if (m.status) onProgress(null, m.status); } });
   try {
     let text = "";
     if (file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")) {

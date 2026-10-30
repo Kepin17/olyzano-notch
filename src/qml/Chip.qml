@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 // Category filter chip. Drop tiles on it to move them in, or files to add them into it.
 AbstractButton {
+    HoverHandler { cursorShape: Qt.PointingHandCursor }
     id: chip
     property string catId
     property int itemCount

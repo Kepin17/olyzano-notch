@@ -1,6 +1,9 @@
 #include "platform/Updates.h"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
+#include <QFile>
+#include <QProcess>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
@@ -251,4 +254,171 @@ QByteArray Updates::report() const
     return QStringLiteral("installed: %1\nlatest: %2\nnewer: %3\nstatus: %4\nfile for this system: %5\npage: %6\n")
         .arg(m_installed, latest().isEmpty() ? QStringLiteral("-") : latest(), newer() ? QStringLiteral("yes") : QStringLiteral("no"), status(),
              assetUrl().isEmpty() ? QStringLiteral("-") : assetUrl(), m_release.url.isEmpty() ? QStringLiteral("-") : m_release.url).toUtf8();
+}
+
+
+// ---- One-click update ----
+
+bool Updates::canInstall() const
+{
+    if (!newer() || assetUrl().isEmpty())
+        return false;
+    if (qEnvironmentVariableIsSet("NOTCH_UPDATE_DRYRUN")) // `notch --install-update`: the download and the check run, the install does not
+        return true;
+#ifdef Q_OS_WIN
+    return assetUrl().endsWith(QLatin1String("setup.exe")); // the portable zip has to be unpacked by hand
+#else
+    // only a copy the package manager put there can be replaced by the package: not a build folder
+    return QCoreApplication::applicationFilePath().startsWith(QLatin1String("/usr/"))
+           && !QStandardPaths::findExecutable(QStringLiteral("pkexec")).isEmpty() && !QStandardPaths::findExecutable(QStringLiteral("apt-get")).isEmpty();
+#endif
+}
+
+void Updates::setStage(const QString &stage, double progress)
+{
+    m_stage = stage;
+    m_progress = progress;
+    emit installChanged();
+}
+
+void Updates::failInstall(const QString &why)
+{
+    m_installing = false;
+    m_stage.clear();
+    m_installError = why;
+    emit installChanged();
+}
+
+void Updates::cancelInstall()
+{
+    if (m_download)
+        m_download->abort(); // its finished() ends the install with "cancelled"
+}
+
+void Updates::installNow()
+{
+    if (m_installing || !canInstall())
+        return;
+    const QString fileUrl = assetUrl();
+#ifdef Q_OS_WIN
+    const QString platform = QStringLiteral("windows");
+#else
+    const QString platform = QStringLiteral("linux");
+#endif
+    const QString sumsUrl = UpdateModel::pickChecksums(m_release.assets, platform);
+    const QString name = QUrl(fileUrl).fileName();
+    m_installError.clear();
+    if (sumsUrl.isEmpty()) {
+        failInstall(tr("This release has no checksum file, so Notch will not install it by itself. Use Download instead."));
+        return;
+    }
+    if (!UpdateModel::trustedAsset(QUrl(fileUrl)) || !UpdateModel::trustedAsset(QUrl(sumsUrl))) {
+        failInstall(tr("The download address is not a GitHub one. Use Download instead."));
+        return;
+    }
+    m_installing = true;
+    setStage(tr("Looking up the checksum…"));
+    QNetworkRequest sumsReq{QUrl(sumsUrl)};
+    sumsReq.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+    sumsReq.setTransferTimeout(30000);
+    QNetworkReply *sums = m_nam.get(sumsReq);
+    connect(sums, &QNetworkReply::finished, this, [this, sums, fileUrl, name] {
+        sums->deleteLater();
+        const QByteArray body = sums->readAll();
+        const QString expected = UpdateModel::parseChecksums(QString::fromUtf8(body)).value(name);
+        if (sums->error() != QNetworkReply::NoError || expected.isEmpty() || !UpdateModel::trustedHost(sums->url())) {
+            failInstall(tr("Could not read the checksum of %1. Use Download instead.").arg(name));
+            return;
+        }
+        QDir dir(QStandardPaths::writableLocation(QStandardPaths::TempLocation) + QStringLiteral("/notch-update"));
+        dir.removeRecursively();
+        dir.mkpath(QStringLiteral("."));
+        const QString path = dir.filePath(name);
+        auto *file = new QFile(path, this);
+        if (!file->open(QIODevice::WriteOnly)) {
+            file->deleteLater();
+            failInstall(tr("Could not write to the temporary folder."));
+            return;
+        }
+        QNetworkRequest req{QUrl(fileUrl)};
+        req.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+        setStage(tr("Downloading %1…").arg(name));
+        m_download = m_nam.get(req);
+        connect(m_download, &QNetworkReply::readyRead, file, [this, file] { file->write(m_download->readAll()); });
+        connect(m_download, &QNetworkReply::downloadProgress, this, [this](qint64 got, qint64 total) {
+            if (total > 0) {
+                m_progress = double(got) / double(total);
+                emit installChanged();
+            }
+        });
+        connect(m_download, &QNetworkReply::finished, this, [this, file, path, expected] {
+            QNetworkReply *r = m_download;
+            m_download = nullptr;
+            r->deleteLater();
+            file->write(r->readAll());
+            file->close();
+            file->deleteLater();
+            if (r->error() == QNetworkReply::OperationCanceledError) {
+                QFile::remove(path);
+                failInstall(tr("Cancelled."));
+            } else if (r->error() != QNetworkReply::NoError || !UpdateModel::trustedHost(r->url())) {
+                QFile::remove(path);
+                failInstall(tr("The download failed (%1). Use Download instead.").arg(r->errorString()));
+            } else {
+                verifyAndRun(path, expected);
+            }
+        });
+    });
+}
+
+void Updates::verifyAndRun(const QString &path, const QString &expectedHex)
+{
+    setStage(tr("Checking the file…"), 1);
+    QFile f(path);
+    QCryptographicHash hash(QCryptographicHash::Sha256);
+    if (!f.open(QIODevice::ReadOnly) || !hash.addData(&f)) {
+        failInstall(tr("Could not read the downloaded file."));
+        return;
+    }
+    if (!UpdateModel::sha256Matches(hash.result().toHex(), expectedHex)) {
+        QFile::remove(path);
+        failInstall(tr("The downloaded file does not match its checksum, so it was not installed. Try again or use Download."));
+        return;
+    }
+    if (qEnvironmentVariableIsSet("NOTCH_UPDATE_DRYRUN")) {
+        QFile::remove(path);
+        m_installing = false;
+        setStage(tr("Checked and ready (dry run: nothing was installed)"), 1);
+        return;
+    }
+    setStage(tr("Installing…"), 1);
+#ifdef Q_OS_WIN
+    // The installer closes Notch itself (CloseApplications) and starts the new one; this copy only has to get out of the way.
+    if (!QProcess::startDetached(path, UpdateModel::windowsInstallerArgs())) {
+        failInstall(tr("Could not start the installer."));
+        return;
+    }
+    QCoreApplication::quit();
+#else
+    const QStringList cmd = UpdateModel::linuxInstallCommand(path);
+    m_installer = new QProcess(this);
+    connect(m_installer, &QProcess::finished, this, [this, path](int code, QProcess::ExitStatus status) {
+        m_installer->deleteLater();
+        m_installer = nullptr;
+        if (status == QProcess::NormalExit && code == 0) {
+            QFile::remove(path);
+            // the package is in place: start the new program once this one has let go of the single-instance lock
+            QProcess::startDetached(QStringLiteral("/bin/sh"), {QStringLiteral("-c"), QStringLiteral("sleep 1; exec \"$0\""), QCoreApplication::applicationFilePath()});
+            QCoreApplication::quit();
+        } else {
+            failInstall(code == 126 || code == 127 ? tr("The password prompt was cancelled, so nothing was installed.")
+                                                   : tr("The installation did not finish (code %1). Use Download instead.").arg(code));
+        }
+    });
+    connect(m_installer, &QProcess::errorOccurred, this, [this](QProcess::ProcessError) {
+        if (m_installer && m_installer->state() == QProcess::NotRunning)
+            failInstall(tr("Could not start the installer."));
+    });
+    m_installer->start(cmd.first(), cmd.mid(1));
+#endif
 }

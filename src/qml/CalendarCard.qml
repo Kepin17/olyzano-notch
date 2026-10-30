@@ -31,6 +31,7 @@ Rectangle {
     readonly property bool onToday: { const n = new Date(); return year === n.getFullYear() && month === n.getMonth() + 1 }
 
     component Nav: AbstractButton {
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
         implicitWidth: 28; implicitHeight: 28
         property real turn: 0
         background: Rectangle { radius: 14; color: parent.hovered ? theme.accentSoft : "transparent" }
@@ -51,6 +52,7 @@ Rectangle {
                 font.weight: Font.DemiBold
             }
             AbstractButton {
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
                 visible: !card.onToday
                 implicitHeight: 26
                 implicitWidth: todayLabel.implicitWidth + 16

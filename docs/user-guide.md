@@ -14,6 +14,10 @@ Start **Olyzano Notch** from the application menu. Turn on *Settings → General
 Update by installing the newer package and restarting the app; your shelf and settings stay.
 Optional extras (OCR, KDE Connect, PDF tools on Windows): [optional components](../README.md#optional-components).
 
+**Updating.** *Settings → About → Updates* says when a newer version is out. **Update now** downloads the installer or package, checks its SHA-256 against the release's checksum file, installs it and starts the new version (Windows: the installer runs silently; Linux: your system asks for your password to install the `.deb`). The portable Windows zip and a copy you built yourself cannot update themselves: use *Download* there.
+
+**Search from the notch.** Press **Shift + Space** (change it in *Settings → General → Search from the notch → Shortcut*), type the name of an app — several words are fine (*visual studio*); each word must match the name or the Start Menu folder — and the matches drop down from the notch; **Enter** opens the highlighted one (arrows move, **Ctrl+1…7** open a row at once, **Esc** closes). On Windows the list also includes Store / UWP apps. With nothing typed it lists the apps you opened lately. On KDE Plasma it is a KWin shortcut called *Search apps (Notch)*, which can also be changed in *System Settings → Shortcuts*. On other Linux desktops bind a key to `qdbus6 org.olyzano.Notch /Launcher openSearch`. *Settings → General → Search from the notch* switches it off.
+
 ## 2. The shelf: your temporary file holder
 
 1. **Open it:** rest the mouse on the top-centre edge, or drag files there. **Pin** keeps it open, **Esc** closes it.
@@ -38,6 +42,8 @@ appear next to the originals.
 - **Another computer running Olyzano Notch:** on the receiver press **Receive**; on the sender choose *Share via QR… → Nearby*,
   pick the computer, check both screens show the same 4-digit number, then **Accept**.
 
+**Your own server.** In *Settings → Sharing & Nearby* the **How to set up a server** button opens a step-by-step guide (domain, `docker compose`, the key, adding it to Notch, and how to give other people their own keys), with the commands one click from your clipboard. The same steps are in `server/README.md`.
+
 ## 5. Focus and wellbeing
 
 - **Timer / stopwatch / Pomodoro:** the clock button in the header; the running one shows in the closed notch.
@@ -54,6 +60,15 @@ appear next to the originals.
 - **Status bar** (*Settings → Panel*, Linux KDE Plasma only): the app in front with its menu on the left, tray and status icons and the
   clock on the right. Click the icons for **Quick Settings** (Wi-Fi, Bluetooth, volume, microphone, brightness, power mode); click the clock for a
   calendar; click the grid button for the **app launcher** (the Windows key can open it).
+
+**Camera: a mirror and a photo booth.** Pick *Camera* in the bar. *Mirror* shows you live (to check yourself before a call); the camera is on only while that page is open, with a red "Camera on" mark, and nothing is sent anywhere. *Photo booth* counts 3-2-1 and takes a *Single* picture, a *Strip of 4*, a *Polaroid* or one in a *Frame* of your theme's colour, with a filter (Normal, Black & white, Warm, Vivid). The picture is saved to Files straight away; **Share (QR)** sends it to your phone, **Retake** starts over. It needs Qt's multimedia module (Debian/Ubuntu: `qml6-module-qtmultimedia`, recommended by the package). In *Low memory mode* the filter shows only in the finished picture.
+
+### Tasks, clipboard, system
+
+- **Tasks.** Pick *Tasks* in the bar at the top of the open panel: a month on the left (a dot under every day with something to do, red when it is late) and the list on the right, nearest first. Tap a day to see only that day. **New** opens a small window for a name, a deadline and a time; a line like `Buy milk fri 17:00` is understood too. The nearest deadline shows in the closed capsule, and a note comes 15 minutes before and at the deadline.
+- **Clipboard history.** Off until you turn it on (*Settings → General → Clipboard*, or the button on the *Clipboard* page), because a clipboard often holds a password. Then the text and pictures you copy are kept on this computer, newest first: click one to copy it again, pin it, or keep it in Files. Copies marked secret by password managers are skipped, and the history forgets after a day, a week or never.
+- **System in Quick Settings.** Open Quick Settings in the status bar: the top of the card shows how busy the computer is (processor with its temperature, memory, graphics card, disk, network); tap a row for details and the busiest programs. *Settings → Panel → Quick Settings* chooses which parts the card has.
+- **Make it yours.** *Settings → Appearance* has *Interface size* (small to extra large), *Corners* (sharp to round), the theme and *Glass*. *Settings → General → Performance → Low memory mode* draws without the graphics card and needs about 90 MB instead of 130 MB (Linux; on Windows it skips the graphics driver, where most of the idle memory goes — measure with `scripts\memcheck.ps1`); restart Notch to apply it.
 
 ## 7. Where things are stored
 
@@ -73,3 +88,36 @@ To remove everything, uninstall and delete those folders. Full table: [Settings 
 | WiFi share cannot be reached from the phone | Same network? Guest WiFi often isolates devices; allow the firewall prompt on Windows. |
 | OCR / PDF tools greyed out | Install Tesseract / Poppler / Ghostscript and restart: [optional components](../README.md#optional-components). |
 | "Windows protected your PC" | The installer is unsigned: *More info → Run anyway*. |
+
+## 9. Dev hub (API · SSH · Database)
+
+Open the notch → **Dev** in the action bar. A top switcher picks **API**, **SSH** or **Database**. The notch **stays open** while you are on this page.
+
+### API tester
+
+Craft an HTTP request (GET, POST, PUT, PATCH, DELETE), pick **Params**, **Headers**, **Body**, **Auth** or **Scripts**, then **Send**. The response shows status, time, body (pretty JSON), headers and test results.
+
+- **Collections** live on the left, and all of them are yours: nothing is built in. Start with **+** (or *New collection* when it is empty); right-click a row or use its **⋯** for *New request*, *New folder*, *Rename*, *Duplicate*, *Move to…*, *Export* and *Delete*. Folders nest and fold shut with their arrow. A request has **Save**, **Duplicate** and **Save as…** above the builder.
+- **Environments** (the *ENV* chip at the top of the sidebar → *Manage environments…*): a list on the left and the chosen one's variables on the right, saved as you type. Write `{{name}}` in a URL, header, query or body; mark a variable as secret to hide its value. There are none until you make one.
+- **Scripts:** a pre-request script can `env.set("token", "…")`; a test script uses `test("name", fn)` and `expect(response.status).toBe(200)` with `response.text()` / `response.json()`.
+- **History** (sidebar tab) keeps the last 50 sends (toggle or clear in the **…** tab). Bodies and headers may include tokens you sent — clear history when you are done.
+- **Ports** (sidebar tab) watches local ports (the share relay, a dev server, docker…). Add a port below the list, then select a row to see if anything is **listening**, which process and PID holds it, **Recheck**, **Stop process** (SIGTERM / taskkill), or **Run a command** (`docker compose stop relay`, `systemctl --user stop myapp`, …). The watched list is kept; each probe’s state is forgotten on restart until you recheck.
+- **Import / export** uses Postman Collection v2.1 and Environment JSON (paste into the dialog, or export to the clipboard).
+
+### SSH
+
+Save the hosts you connect to, run one remote command, or open a system terminal already logged in.
+
+- **+** adds a host (name, host, port, user). Auth is **Key / agent** (preferred — path optional, uses your agent) or **Password**.
+- **Test** runs a non-interactive check (`BatchMode`). **Run** sends one command and shows stdout/stderr in the pane. **Terminal** opens gnome-terminal / konsole / kitty / alacritty (or Windows Terminal) with `ssh user@host`.
+- Host keys use trust-on-first-use (`StrictHostKeyChecking=accept-new`): the first connection to a new host is trusted and remembered by OpenSSH.
+- Passwords are never put on the command line. Prefer keys; if you save a password it lives only in an owner-only file under your config directory.
+
+### Database
+
+Browse tables and run SQL against **SQLite** (always available), **MySQL / MariaDB** or **PostgreSQL** when the matching Qt SQL driver is installed (`libqt6sql6-mysql`, `libqt6sql6-psql`, …).
+
+- **+** adds a connection (driver, host, port, user, database — or a file path for SQLite). A red driver chip means the Qt plugin is missing on this machine.
+- **Connect**, then pick a table to **browse** (first 50 rows) or open **Query** for free-form SQL (`Ctrl+Enter` to run). Results show columns, row count and duration; errors appear under the editor.
+- Free-form SQL runs only on the connection you saved and selected — treat it like phpMyAdmin: you are responsible for what you execute.
+- Passwords (if saved) sit in an owner-only file next to the connection list, never in logs.

@@ -34,11 +34,21 @@ Rectangle {
     visible: opacity > 0
     Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 140 } }
     onOpenChanged: {
+        sysstats.active = open // the figures are read only while the card is open
         if (open) quick.refresh()
         else { askFor = ""; closeDetail(); wifiOpen = false; btOpen = false; ethOpen = false; soundOpen = false; inputOpen = false } // closing the card folds its lists
         syncWatch()
     }
 
+    // Which parts of the card are shown (Settings -> Panel -> Quick Settings): the names hidden there.
+    // 1536 -> "1.5 KB" (the same rule as SystemStatsModel::formatBytes)
+    function sysFmt(b) {
+        const u = ["B", "KB", "MB", "GB", "TB"]
+        let i = 0
+        while (b >= 1024 && i < 4) { b /= 1024; i++ }
+        return b.toFixed(i === 0 || b >= 100 ? 0 : b >= 10 ? 1 : 2) + " " + u[i]
+    }
+    function shows(name) { return topbar.qsHidden.indexOf(name) < 0 }
     readonly property color tileOff: theme.dark ? Qt.rgba(1, 1, 1, 0.07) : Qt.rgba(0, 0, 0, 0.06)
     readonly property color tileOn: theme.accentSoft
 
@@ -62,7 +72,7 @@ Rectangle {
         border.width: on ? 1 : 0
         border.color: theme.accent
         Behavior on color { enabled: activities.animations; ColorAnimation { duration: 120 } }
-        MouseArea { anchors.fill: parent; onClicked: tile.toggled() }
+        MouseArea { cursorShape: Qt.PointingHandCursor; anchors.fill: parent; onClicked: tile.toggled() }
         RowLayout {
             anchors { fill: parent; leftMargin: 10; rightMargin: 6 }
             spacing: 9
@@ -82,6 +92,7 @@ Rectangle {
                 Text { Layout.fillWidth: true; text: tile.subtitle; color: theme.textDim; font.pixelSize: 11; elide: Text.ElideRight }
             }
             AbstractButton {
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
                 implicitWidth: 28; implicitHeight: 28
                 onClicked: tile.expand()
                 contentItem: Item { Chev { anchors.centerIn: parent; rotation: tile.expanded ? 180 : 0; Behavior on rotation { enabled: activities.animations; NumberAnimation { duration: 140 } } } }
@@ -110,6 +121,7 @@ Rectangle {
             Text { text: row.note; color: theme.textDim; font.pixelSize: 11 }
             Rectangle { visible: row.mark; Layout.preferredWidth: 7; Layout.preferredHeight: 7; radius: 3.5; color: theme.accent; Layout.rightMargin: row.hasInfo ? 0 : 6 }
             AbstractButton {
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
                 visible: row.hasInfo
                 implicitWidth: 26; implicitHeight: 26
                 Accessible.name: "Details"
@@ -160,13 +172,91 @@ Rectangle {
         anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14 }
         spacing: 12
 
+        // the System section: how busy the computer is
+        ColumnLayout {
+            id: system
+            visible: card.shows("system")
+            Layout.fillWidth: true
+            spacing: 6
+            property string openRow: "" // the meter whose details are shown
+            onVisibleChanged: sysstats.topWanted = visible && openRow !== ""
+            onOpenRowChanged: sysstats.topWanted = visible && (openRow === "cpu" || openRow === "ram")
+            function pct(v) { return Math.round(v) + "%" }
+            component Meter: ColumnLayout {
+                id: meter
+                property string key
+                property string label
+                property string value
+                property real fill: 0
+                property bool detail: false
+                property var rows: []
+                Layout.fillWidth: true
+                spacing: 3
+                Rectangle {
+                    Layout.fillWidth: true
+                    implicitHeight: 34
+                    radius: 10
+                    color: meterHover.hovered ? card.tileOn : card.tileOff
+                    HoverHandler { id: meterHover; cursorShape: Qt.PointingHandCursor }
+                    TapHandler { onTapped: system.openRow = system.openRow === meter.key ? "" : meter.key }
+                    Rectangle { // the load as a soft fill behind the row
+                        anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
+                        width: parent.width * Math.max(0, Math.min(1, meter.fill))
+                        radius: 10
+                        color: Qt.alpha(meter.fill > 0.9 ? theme.danger : theme.accent, 0.22)
+                        Behavior on width { enabled: activities.animations; NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+                    }
+                    RowLayout {
+                        anchors { fill: parent; leftMargin: 12; rightMargin: 10 }
+                        spacing: 8
+                        Text { text: meter.label; color: theme.text; font.pixelSize: 12; font.weight: Font.DemiBold; Layout.preferredWidth: 38 }
+                        Text { Layout.fillWidth: true; text: meter.value; color: theme.textSoft; font.pixelSize: 12; elide: Text.ElideRight; horizontalAlignment: Text.AlignRight }
+                        Chev { rotation: system.openRow === meter.key ? 180 : 0 }
+                    }
+                }
+                Facts { visible: system.openRow === meter.key && meter.rows.length > 0; rows: meter.rows }
+            }
+            Meter {
+                key: "cpu"; label: "CPU"
+                fill: sysstats.cpu / 100
+                value: system.pct(sysstats.cpu) + (sysstats.cpuTemp > 0 ? " · " + sysstats.cpuTemp + "°C" : "")
+                rows: [["Cores", sysstats.cores]].concat(sysstats.topCpu.map(t => [t.name, Math.round(t.value) + "%"]))
+            }
+            Meter {
+                key: "ram"; label: "RAM"
+                fill: sysstats.ramTotal > 0 ? sysstats.ramUsed / sysstats.ramTotal : 0
+                value: sysstats.ramTotal > 0 ? sysFmt(sysstats.ramUsed) + " of " + sysFmt(sysstats.ramTotal) : ""
+                rows: (sysstats.swapTotal > 0 ? [["Swap", sysFmt(sysstats.swapUsed) + " of " + sysFmt(sysstats.swapTotal)]] : [])
+                      .concat(sysstats.topRam.map(t => [t.name, sysFmt(t.value)]))
+            }
+            Meter {
+                visible: sysstats.gpuAvailable
+                key: "gpu"; label: "GPU"
+                fill: sysstats.gpu / 100
+                value: system.pct(sysstats.gpu) + (sysstats.vramTotal > 0 ? " · " + sysFmt(sysstats.vramUsed) + " of " + sysFmt(sysstats.vramTotal) : "")
+                rows: sysstats.gpuName !== "" ? [["Graphics card", sysstats.gpuName]] : []
+            }
+            Meter {
+                key: "disk"; label: "Disk"
+                fill: sysstats.diskTotal > 0 ? sysstats.diskUsed / sysstats.diskTotal : 0
+                value: sysstats.diskTotal > 0 ? sysFmt(sysstats.diskUsed) + " of " + sysFmt(sysstats.diskTotal) : ""
+                rows: sysstats.diskIoAvailable ? [["Read", sysFmt(sysstats.diskRead) + "/s"], ["Write", sysFmt(sysstats.diskWrite) + "/s"]] : []
+            }
+            Meter {
+                visible: sysstats.netAvailable
+                key: "net"; label: "Net"
+                fill: 0
+                value: "↓ " + sysFmt(sysstats.netDown) + "/s   ↑ " + sysFmt(sysstats.netUp) + "/s"
+            }
+        }
+
         // Wi-Fi and Bluetooth
         RowLayout {
             Layout.fillWidth: true
             spacing: 10
-            visible: quick.wifiAvailable || quick.btAvailable
+            visible: (quick.wifiAvailable && card.shows("wifi")) || (quick.btAvailable && card.shows("bt"))
             Tile {
-                visible: quick.wifiAvailable
+                visible: quick.wifiAvailable && card.shows("wifi")
                 icon: "wifi"
                 signalBars: quick.wifiEnabled ? quick.wifiBars : 0
                 signalOff: !quick.wifiEnabled || quick.wifiName === ""
@@ -178,7 +268,7 @@ Rectangle {
                 onExpand: { card.wifiOpen = !card.wifiOpen; card.btOpen = false; card.ethOpen = false }
             }
             Tile {
-                visible: quick.btAvailable
+                visible: quick.btAvailable && card.shows("bt")
                 icon: "bluetooth"
                 title: "Bluetooth"
                 subtitle: !quick.btEnabled ? "Off" : quick.btConnected !== "" ? quick.btConnected : "On"
@@ -189,7 +279,7 @@ Rectangle {
             }
         }
         RowLayout { // Ethernet
-            visible: quick.ethAvailable
+            visible: quick.ethAvailable && card.shows("eth")
             Layout.fillWidth: true
             spacing: 10
             Tile {
@@ -204,7 +294,7 @@ Rectangle {
             }
         }
         Facts {
-            visible: card.ethOpen && quick.ethAvailable
+            visible: card.ethOpen && quick.ethAvailable && card.shows("eth")
             rows: [["Connection", quick.ethInfo.name], ["Interface", quick.ethInfo.device], ["Speed", quick.ethInfo.speed > 0 ? quick.ethInfo.speed + " Mb/s" : ""],
                    ["IP address", quick.ethInfo.ip], ["Gateway", quick.ethInfo.gateway], ["DNS", quick.ethInfo.dns], ["MAC address", quick.ethInfo.mac]]
         }
@@ -282,6 +372,7 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
                 AbstractButton {
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
                     implicitHeight: 26; implicitWidth: backRow.implicitWidth + 12
                     onClicked: card.closeDetail()
                     background: Rectangle { radius: 13; color: parent.hovered ? card.tileOff : "transparent" }
@@ -407,13 +498,14 @@ Rectangle {
 
         // sound
         ColumnLayout {
-            visible: quick.audioAvailable
+            visible: (quick.audioAvailable) && card.shows("volume")
             Layout.fillWidth: true
             spacing: 6
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
                 AbstractButton {
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
                     implicitWidth: 28; implicitHeight: 28
                     onClicked: quick.toggleMute()
                     contentItem: Item { LineIcon { anchors.centerIn: parent; glyph: quick.muted || quick.volume === 0 ? "volume-off" : "volume"; sourceSize: Qt.size(19, 19); color: quick.muted ? theme.danger : theme.text } }
@@ -422,6 +514,7 @@ Rectangle {
                 Text { Layout.preferredWidth: 34; text: quick.volume + "%"; color: theme.textDim; font.pixelSize: 11; horizontalAlignment: Text.AlignRight }
             }
             AbstractButton {
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
                 Layout.fillWidth: true
                 implicitHeight: 28
                 visible: quick.sinks.length > 1
@@ -446,13 +539,14 @@ Rectangle {
 
         // the microphone: its level, mute, and which one
         ColumnLayout {
-            visible: quick.inputAvailable
+            visible: (quick.inputAvailable) && card.shows("mic")
             Layout.fillWidth: true
             spacing: 6
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
                 AbstractButton {
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
                     implicitWidth: 28; implicitHeight: 28
                     onClicked: quick.toggleInputMute()
                     contentItem: Item { LineIcon { anchors.centerIn: parent; glyph: quick.inputMuted ? "mic-off" : "mic"; sourceSize: Qt.size(19, 19); color: quick.inputMuted ? theme.danger : theme.text } }
@@ -461,6 +555,7 @@ Rectangle {
                 Text { Layout.preferredWidth: 34; text: quick.inputVolume + "%"; color: theme.textDim; font.pixelSize: 11; horizontalAlignment: Text.AlignRight }
             }
             AbstractButton {
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
                 Layout.fillWidth: true
                 implicitHeight: 28
                 visible: quick.sources.length > 1
@@ -485,7 +580,7 @@ Rectangle {
 
         // screen
         RowLayout {
-            visible: quick.brightnessAvailable
+            visible: (quick.brightnessAvailable) && card.shows("brightness")
             Layout.fillWidth: true
             spacing: 10
             Item { implicitWidth: 28; implicitHeight: 28; LineIcon { anchors.centerIn: parent; glyph: "sun"; sourceSize: Qt.size(19, 19); color: theme.text } }
@@ -495,7 +590,7 @@ Rectangle {
 
         // power
         ColumnLayout {
-            visible: systemEvents.batteryLevel >= 0 || quick.profilesAvailable
+            visible: (systemEvents.batteryLevel >= 0 || quick.profilesAvailable) && card.shows("power")
             Layout.fillWidth: true
             spacing: 8
             RowLayout {

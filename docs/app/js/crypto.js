@@ -5,9 +5,11 @@ const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 
 export const newSalt = () => b64(crypto.getRandomValues(new Uint8Array(16)));
 
-export async function deriveKey(password, saltB64) {
+// New locks use KDF_NEW iterations (stored with the category as `kdf`); a category locked before that has no `kdf` and keeps KDF_OLD.
+export const KDF_OLD = 250000, KDF_NEW = 600000;
+export async function deriveKey(password, saltB64, iterations = KDF_OLD) {
   const base = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveKey"]);
-  return crypto.subtle.deriveKey({ name: "PBKDF2", salt: unb64(saltB64), iterations: 250000, hash: "SHA-256" }, base,
+  return crypto.subtle.deriveKey({ name: "PBKDF2", salt: unb64(saltB64), iterations, hash: "SHA-256" }, base,
     { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
 }
 export async function encryptBytes(key, bytes) {

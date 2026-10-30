@@ -1,5 +1,5 @@
 // The Files page: the shelf of files, categories, search, selection and the bin.
-import { h, $, formatBytes, extOf, kindOf, download, toast } from "./util.js";
+import { h, $, formatBytes, extOf, kindOf, download, toast, openType } from "./util.js";
 import { icon } from "./icons.js";
 import * as store from "./store.js";
 import { state, on, emit } from "./app.js";
@@ -56,10 +56,11 @@ const left = rec => {
 export async function openFile(rec) {
   const blob = rec.locked ? await vault.read(rec) : rec.blob;
   if (!blob) return;
-  const url = URL.createObjectURL(blob);
-  if (["image", "pdf", "text", "audio", "video"].includes(kindOf(rec))) {
-    if (kindOf(rec) === "audio") { emit("play", rec); return; }
-    window.open(url, "_blank", "noopener");
+  if (kindOf(rec) === "audio") { emit("play", rec); return; }
+  const type = openType(rec.name);
+  if (type) {
+    const url = URL.createObjectURL(new Blob([blob], { type }));
+    window.open(url, "_blank", "noopener,noreferrer");
     setTimeout(() => URL.revokeObjectURL(url), 60000);
   } else {
     download(blob, rec.name);

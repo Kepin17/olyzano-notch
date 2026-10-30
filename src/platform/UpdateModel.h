@@ -1,6 +1,9 @@
 #pragma once
 
 #include <QByteArray>
+#include <QCryptographicHash>
+#include <QHash>
+#include <QUrl>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -90,5 +93,63 @@ inline QString pickAsset(const QList<QPair<QString, QString>> &assets, const QSt
             return a.second;
     return {};
 }
+
+
+// ---- Installing the update from inside the app ----
+
+// The checksum file of this system in the release: SHA256SUMS-linux.txt / SHA256SUMS-windows.txt.
+inline QString pickChecksums(const QList<QPair<QString, QString>> &assets, const QString &platform)
+{
+    const QString want = platform == QLatin1String("linux") ? QStringLiteral("SHA256SUMS-linux.txt") : QStringLiteral("SHA256SUMS-windows.txt");
+    for (const auto &a : assets)
+        if (a.first == want && a.second.startsWith(QLatin1String("https://")))
+            return a.second;
+    return {};
+}
+
+// "<64 hex>  file name" or "<64 hex> *file name" per line (sha256sum / Get-FileHash style) -> file name -> lower-case hex.
+inline QHash<QString, QString> parseChecksums(const QString &text)
+{
+    static const QRegularExpression line(QStringLiteral(R"(^\s*([0-9a-fA-F]{64})\s+\*?(.+?)\s*$)"));
+    QHash<QString, QString> out;
+    for (const QString &l : text.split(u'\n')) {
+        const QRegularExpressionMatch m = line.match(l);
+        if (m.hasMatch())
+            out.insert(m.captured(2), m.captured(1).toLower());
+    }
+    return out;
+}
+
+inline bool sha256Matches(const QByteArray &hashHex, const QString &expectedHex)
+{
+    return !expectedHex.isEmpty() && QString::fromLatin1(hashHex).compare(expectedHex, Qt::CaseInsensitive) == 0;
+}
+
+// Only GitHub's own release hosts are trusted to serve the file (the address came from the API, but a redirect could lead anywhere).
+inline bool trustedHost(const QUrl &url)
+{
+    if (url.scheme() != QLatin1String("https"))
+        return false;
+    const QString h = url.host().toLower();
+    return h == QLatin1String("github.com") || h.endsWith(QLatin1String(".githubusercontent.com")) || h.endsWith(QLatin1String(".github.com"));
+}
+
+// What the release's own asset links (before any redirect) must look like: GitHub, and when it is github.com itself, this project's repository.
+// (A redirect then goes to GitHub's storage hosts, which trustedHost() allows.) The file name is only a name.
+inline bool trustedAsset(const QUrl &url)
+{
+    if (!trustedHost(url))
+        return false;
+    const QString name = url.fileName();
+    if (name.isEmpty() || name.startsWith(u'.') || name.contains(u'\\'))
+        return false;
+    return url.host().toLower() != QLatin1String("github.com") || url.path().startsWith(QLatin1String("/Kepin17/olyzano-notch/"));
+}
+
+// The arguments of the Windows installer (Inno Setup): no windows, no restart of the PC, close Notch and start it again afterwards.
+inline QStringList windowsInstallerArgs() { return {QStringLiteral("/SILENT"), QStringLiteral("/SUPPRESSMSGBOXES"), QStringLiteral("/NORESTART"), QStringLiteral("/CLOSEAPPLICATIONS"), QStringLiteral("/RESTARTAPPLICATIONS")}; }
+
+// The Linux command that installs the .deb with the system's own privilege prompt (polkit).
+inline QStringList linuxInstallCommand(const QString &debPath) { return {QStringLiteral("pkexec"), QStringLiteral("apt-get"), QStringLiteral("install"), QStringLiteral("-y"), debPath}; }
 
 }

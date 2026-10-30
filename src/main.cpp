@@ -17,6 +17,9 @@
 #include "platform/Doomscroll.h"
 #include "platform/Prayer.h"
 #include "platform/Tasks.h"
+#include "platform/ApiTester.h"
+#include "platform/SshManager.h"
+#include "platform/DatabaseManager.h"
 #include "platform/Assistant.h"
 #include "platform/AssistantCorpus.h"
 #include "platform/Updates.h"
@@ -25,6 +28,14 @@
 #include "platform/Karaoke.h"
 #include "platform/PanelBar.h"
 #include "platform/QuickSettings.h"
+#include "platform/SystemStats.h"
+#include "platform/ClipboardHistory.h"
+#include "platform/MemoryTuner.h"
+#include "services/CoverCache.h"
+#include "platform/PhotoBooth.h"
+#ifdef Q_OS_WIN
+#include "platform/SearchHotkey_win.h"
+#endif
 #include "platform/Lyrics.h"
 #include "platform/MediaPlayers.h"
 #include "platform/SystemEvents.h"
@@ -153,6 +164,7 @@ public:
 
 int main(int argc, char *argv[])
 {
+    MemoryTuner::applyEarly(); // few malloc arenas, and the software renderer if Low memory mode is on
     QQuickWindow::setDefaultAlphaBuffer(true);
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("notch"));
@@ -161,8 +173,19 @@ int main(int argc, char *argv[])
     app.setApplicationVersion(QStringLiteral(NOTCH_VERSION));
     if (app.arguments().contains(QStringLiteral("--check-updates"))) { // works beside a running Notch, too // asks GitHub now and prints what it found (NOTCH_FAKE_VERSION=0.10.0 pretends to be older)
         Updates u;
-        QTimer::singleShot(20000, &app, [&] { fputs("timed out\n", stdout); app.exit(1); });
-        QObject::connect(&u, &Updates::checked, &app, [&] { fputs(u.report().constData(), stdout); app.quit(); });
+        QTimer::singleShot(120000, &app, [&] { fputs("timed out\n", stdout); app.exit(1); });
+        const bool install = app.arguments().contains(QStringLiteral("--install-update")); // NOTCH_UPDATE_DRYRUN=1: download and verify, but do not install
+        QObject::connect(&u, &Updates::checked, &app, [&] {
+            fputs(u.report().constData(), stdout);
+            if (!install) return app.quit();
+            u.installNow();
+            if (!u.installing()) { fprintf(stdout, "install: %s\n", u.installError().toUtf8().constData()); app.quit(); }
+        });
+        QObject::connect(&u, &Updates::installChanged, &app, [&] {
+            if (!install) return;
+            fprintf(stdout, "install: %s %.0f%% %s\n", u.stage().toUtf8().constData(), u.progress() * 100, u.installError().toUtf8().constData());
+            if (!u.installing()) app.quit();
+        });
         u.check();
         return app.exec();
     }
@@ -219,11 +242,21 @@ int main(int argc, char *argv[])
     GamingMode gaming;
     PanelBar panelBar;
     QuickSettings quick;
+    SystemStats sysstats;
+    ClipboardHistory clipboardHistory;
+    MemoryTuner memtune;
+    PhotoBooth photoBooth(&controller);
+    QObject::connect(&clipboardHistory, &ClipboardHistory::keepRequested, &controller, [&](const QString &name, const QString &mime, const QByteArray &bytes) {
+        controller.keepBytes(name, mime, bytes, QObject::tr("Clipboard"));
+    });
     AppMenu appMenu;
     TrayHost trayHost;
     Launcher launcher(&dock);
     Doomscroll doomscroll(&dock, &media, &wellbeing);
     Tasks tasks;
+    ApiTester apiTester;
+    SshManager sshManager;
+    DatabaseManager dbManager;
     Prayer prayer;
     Updates updates;
     Assistant assistant(&launcher, &tasks, &quick, &media, &activities, &controller);
@@ -335,15 +368,22 @@ int main(int argc, char *argv[])
         else if (kind == QLatin1String("lowbattery"))
             sounds.play(QStringLiteral("warning"));
     });
-    const auto applyGlass = [&] { theme.setGlass(activities.glass(), activities.glassStrength(), desktop.canBlur()); };
+    const auto applyGlass = [&] {
+        theme.setGlass(activities.glass(), activities.glassStrength(), desktop.canBlur());
+        theme.setCorners(activities.cornerScale());
+    };
     applyGlass();
     QObject::connect(&activities, &Activities::settingsChanged, &theme, applyGlass);
     theme.setMode(controller.themeMode());
     theme.setStyle(controller.uiStyle());
-    QObject::connect(&controller, &NotchController::uiStyleChanged, &theme, [&] { theme.setStyle(controller.uiStyle()); });
+    QObject::connect(&controller, &NotchController::uiStyleChanged, &theme, [&] {
+        theme.setStyle(controller.uiStyle());
+    });
     QObject::connect(&controller, &NotchController::themeModeChanged, &theme, [&] { theme.setMode(controller.themeMode()); });
     QObject::connect(&kdeconnect, &KdeConnect::received, &controller, &NotchController::addReceived);
     QQmlApplicationEngine engine;
+    CoverCache coverCache; // one decode per cover, shared by the capsule, the toast and the card (services/CoverCache.h)
+    engine.addImageProvider(QStringLiteral("cover"), CoverCache::makeProvider(&coverCache));
     engine.addImageProvider(QStringLiteral("mime"), new MimeIconProvider);
     engine.addImageProvider(QStringLiteral("tray"), new TrayIconProvider(&trayHost));
     engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider);
@@ -361,6 +401,11 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("colorPicker"), &colorPicker);
     engine.rootContext()->setContextProperty(QStringLiteral("dock"), &dock);
     engine.rootContext()->setContextProperty(QStringLiteral("activities"), &activities);
+    engine.rootContext()->setContextProperty(QStringLiteral("sysstats"), &sysstats);
+    engine.rootContext()->setContextProperty(QStringLiteral("clipboardHistory"), &clipboardHistory);
+    engine.rootContext()->setContextProperty(QStringLiteral("memtune"), &memtune);
+    engine.rootContext()->setContextProperty(QStringLiteral("coverCache"), &coverCache);
+    engine.rootContext()->setContextProperty(QStringLiteral("photoBooth"), &photoBooth);
     engine.rootContext()->setContextProperty(QStringLiteral("wellbeing"), &wellbeing);
     engine.rootContext()->setContextProperty(QStringLiteral("sounds"), &sounds);
     engine.rootContext()->setContextProperty(QStringLiteral("lyrics"), &lyrics);
@@ -375,6 +420,9 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("updates"), &updates);
     engine.rootContext()->setContextProperty(QStringLiteral("assistant"), &assistant);
     engine.rootContext()->setContextProperty(QStringLiteral("tasks"), &tasks);
+    engine.rootContext()->setContextProperty(QStringLiteral("apiTester"), &apiTester);
+    engine.rootContext()->setContextProperty(QStringLiteral("sshManager"), &sshManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("dbManager"), &dbManager);
     engine.rootContext()->setContextProperty(QStringLiteral("prayer"), &prayer);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
 
@@ -408,6 +456,25 @@ int main(int argc, char *argv[])
                 target = it.value();
         if (target)
             QMetaObject::invokeMethod(target, "toggleLauncher");
+    });
+#ifdef Q_OS_WIN
+    SearchHotkey searchHotkey; // Shift + Space
+    const auto applySearchKey = [&] {
+        const bool ok = searchHotkey.setKey(launcher.searchKey(), launcher.searchEnabled());
+        launcher.setSearchNote(ok ? QString() : QObject::tr("Another program (or Windows itself) already uses %1, so it cannot open the search. Pick another key.").arg(launcher.searchKeyLabel()));
+    };
+    QObject::connect(&searchHotkey, &SearchHotkey::pressed, &launcher, &Launcher::openSearch);
+    QObject::connect(&launcher, &Launcher::searchEnabledChanged, &launcher, applySearchKey);
+    applySearchKey();
+#endif
+    QObject::connect(&launcher, &Launcher::searchRequested, &app, [&windows] { // Shift + Space: the search drops down from the notch on the screen the pointer is on
+        QQuickWindow *target = nullptr;
+        const QScreen *at = QGuiApplication::screenAt(QCursor::pos());
+        for (auto it = windows.cbegin(); it != windows.cend(); ++it)
+            if (it.key() == at || !target)
+                target = it.value();
+        if (target)
+            QMetaObject::invokeMethod(target, "openSearch");
     });
     auto addScreen = [&](QScreen *screen) {
         if (auto *bar = qobject_cast<QQuickWindow *>(barWindow.create())) {
@@ -444,6 +511,17 @@ int main(int argc, char *argv[])
                     desktop.setAboveBar(window, true);
             });
             keepAbove->start();
+            // Windows especially: a Tool window can lose topmost or vanish behind peers after the shell re-sorts
+            // z-order or an app restores. Bring it back; menus must stay reachable (raise when they open, not here).
+            auto *notchGuard = new QTimer(window);
+            notchGuard->setInterval(2000);
+            QObject::connect(notchGuard, &QTimer::timeout, window, [window, &desktop] {
+                if (!window->isVisible())
+                    window->show(); // nothing legitimate hides it; syncScreens rebuilds only after a screen change
+                if (!window->property("anyMenu").toBool())
+                    desktop.raiseOnTop(window);
+            });
+            notchGuard->start();
         }
 
         auto *dockView = qobject_cast<QQuickWindow *>(dockWindow.create());
@@ -461,18 +539,52 @@ int main(int argc, char *argv[])
             desktop.moveDock(dockView, dock.position());
             dockView->setVisible(dock.enabled());
         }, Qt::QueuedConnection);
+        if (!QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
+            // Same drift as the notch on Windows: keep the dock on top and shown while it is enabled.
+            auto *dockGuard = new QTimer(dockView);
+            dockGuard->setInterval(2000);
+            QObject::connect(dockGuard, &QTimer::timeout, dockView, [dockView, &dock, &desktop] {
+                if (dock.enabled() && !dockView->isVisible())
+                    dockView->show();
+                if (dockView->isVisible())
+                    desktop.raiseOnTop(dockView);
+            });
+            dockGuard->start();
+        }
         docks.insert(screen, dockView);
     };
     for (QScreen *screen : app.screens())
         addScreen(screen);
     if (windows.isEmpty())
         return 1;
-    QObject::connect(&app, &QGuiApplication::screenAdded, addScreen);
-    QObject::connect(&app, &QGuiApplication::screenRemoved, [&](QScreen *screen) {
+    // Plugging or unplugging a monitor makes the compositor re-lay the outputs, and the notch on one that was already there can end up
+    // on the wrong output or unmapped. So after every change (once the outputs settle) each screen is checked: it needs its own
+    // visible notch window; one that is missing, hidden or tied to another screen is made again.
+    auto dropScreen = [&](QScreen *screen) {
         delete windows.take(screen);
         delete docks.take(screen);
         delete bars.take(screen);
-    });
+    };
+    auto syncScreens = [&] {
+        const QList<QScreen *> screens = app.screens();
+        for (QScreen *s : windows.keys())
+            if (!screens.contains(s))
+                dropScreen(s);
+        for (QScreen *s : screens) {
+            const QQuickWindow *w = windows.value(s);
+            if (!w || w->screen() != s || !w->isVisible()) {
+                dropScreen(s);
+                addScreen(s);
+            }
+        }
+    };
+    auto *screenSettle = new QTimer(&app);
+    screenSettle->setSingleShot(true);
+    screenSettle->setInterval(600);
+    QObject::connect(screenSettle, &QTimer::timeout, &app, syncScreens);
+    QObject::connect(&app, &QGuiApplication::screenAdded, &app, [&](QScreen *) { syncScreens(); screenSettle->start(); });
+    QObject::connect(&app, &QGuiApplication::screenRemoved, &app, [&](QScreen *) { syncScreens(); screenSettle->start(); });
+    QObject::connect(&app, &QGuiApplication::primaryScreenChanged, &app, [&](QScreen *) { screenSettle->start(); });
 
     // `notch --shot file.png` (offscreen, software rendering): the status bar with Quick Settings open, saved as a picture,
     // to see the layout where nobody is looking at a screen.
@@ -537,6 +649,18 @@ int main(int argc, char *argv[])
             }
             w->setProperty("page", page.startsWith(QLatin1String("timer")) ? QStringLiteral("timer") : page);
             QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 1500, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+        });
+    }
+    // `notch --shot-search file.png [text]`: the search open with that text typed in, the same way.
+    if (const int i = app.arguments().indexOf(QStringLiteral("--shot-search")); i >= 0 && i + 1 < app.arguments().size()) {
+        const QString path = app.arguments().at(i + 1);
+        const QString text = i + 2 < app.arguments().size() && !app.arguments().at(i + 2).startsWith(QLatin1String("--")) ? app.arguments().at(i + 2) : QString();
+        QTimer::singleShot(1500, &app, [&windows, &app, path, text] {
+            QQuickWindow *w = windows.isEmpty() ? nullptr : windows.constBegin().value();
+            if (!w)
+                return app.quit();
+            QMetaObject::invokeMethod(w, "debugSearch", Q_ARG(QVariant, text));
+            QTimer::singleShot(1500, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
         });
     }
     // `notch --shot-settings file.png [section]`: the open Settings page, the same way.

@@ -118,6 +118,7 @@ Window {
 
         // far left: the app launcher
         AbstractButton {
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
             id: launchButton
             visible: topbar.launcher
             x: 8
@@ -298,7 +299,7 @@ Window {
                 Text {
                     Layout.alignment: Qt.AlignRight
                     text: topbar.showSeconds ? Qt.formatTime(root.now, "hh:mm:ss") : Qt.formatTime(root.now, Qt.locale().timeFormat(Locale.ShortFormat))
-                    color: theme.text
+                    color: activities.clockAccent ? theme.accent : theme.text
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
                 }
@@ -306,7 +307,8 @@ Window {
                     visible: topbar.showDate
                     Layout.alignment: Qt.AlignRight
                     text: Qt.formatDate(root.now, "ddd d MMM")
-                    color: theme.textDim
+                    color: activities.clockAccent ? theme.accent : theme.textDim
+                    opacity: activities.clockAccent ? 0.75 : 1
                     font.pixelSize: 10
                 }
             }
@@ -377,7 +379,7 @@ Window {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 2
-                            Text { Layout.fillWidth: true; text: dev.modelData.name; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium; elide: Text.ElideRight }
+                            Text { Layout.fillWidth: true; textFormat: Text.PlainText; text: dev.modelData.name; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium; elide: Text.ElideRight }
                             RowLayout {
                                 spacing: 6
                                 Rectangle { // battery bar
@@ -431,6 +433,7 @@ Window {
         }
         Rectangle { visible: ti.modelData.status === "NeedsAttention"; x: 15; y: 3; width: 6; height: 6; radius: 3; color: theme.danger }
         MouseArea {
+            HoverHandler { cursorShape: Qt.PointingHandCursor }
             anchors.fill: parent
             acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
             onClicked: mouse => {
@@ -442,6 +445,7 @@ Window {
         }
     }
     component TrayButton: AbstractButton {
+        HoverHandler { cursorShape: Qt.PointingHandCursor }
         implicitWidth: 20; implicitHeight: 24
         contentItem: Item { LineIcon { anchors.centerIn: parent; glyph: "chevron"; sourceSize: Qt.size(13, 13); color: theme.textDim; rotation: -90 } }
     }

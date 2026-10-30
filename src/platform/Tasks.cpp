@@ -48,7 +48,8 @@ void Tasks::refresh()
     for (const Task &t : sorted(m_tasks)) {
         const DueState s = dueState(t, now);
         view << QVariantMap{{QStringLiteral("id"), t.id}, {QStringLiteral("title"), t.title}, {QStringLiteral("done"), t.done},
-                            {QStringLiteral("hasDue"), t.due.isValid()}, {QStringLiteral("remaining"), remaining(t.due, now)},
+                            {QStringLiteral("hasDue"), t.due.isValid()},
+                            {QStringLiteral("dueMs"), t.due.isValid() ? t.due.toMSecsSinceEpoch() : qint64(0)}, {QStringLiteral("remaining"), remaining(t.due, now)},
                             {QStringLiteral("state"), s == DueState::Overdue ? QStringLiteral("overdue") : s == DueState::Soon ? QStringLiteral("soon")
                                                       : s == DueState::Later ? QStringLiteral("later") : QStringLiteral("none")}};
     }
