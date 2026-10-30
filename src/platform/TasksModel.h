@@ -19,16 +19,18 @@ namespace TasksModel {
 
 struct Task {
     QString id, title;
-    QDateTime due;              // invalid: no deadline
+    QString course;              // free-text course / subject ("" = none)
+    QDateTime due;               // invalid: no deadline
     bool done = false;
-    bool warned = false;        // the "soon" reminder was shown
-    bool notified = false;      // the "now" reminder was shown
+    bool warned = false;         // the "soon" reminder was shown
+    bool notified = false;       // the "now" reminder was shown
 };
 
 constexpr int SoonMinutes = 15;  // the warning comes this long before the deadline
 constexpr int StaleHours = 1;    // a deadline missed by more than this while Notch was closed is not announced
+constexpr int CriticalHours = 3; // a deadline this close is shown as critical (red) before the 15-minute heads-up
 
-enum class DueState { None, Later, Soon, Overdue };
+enum class DueState { None, Later, Critical, Soon, Overdue };
 
 // "17:30", "tomorrow", "tomorrow 9:00", "today 18:00", "fri", "fri 17:00", "12 nov", "12/11 17:00", "2026-11-02 09:00", "in 30m", "in 2h", "in 3d".
 // A date without a time means 09:00; a bare time that has already passed today means tomorrow. Invalid when unclear.
@@ -112,7 +114,11 @@ inline DueState dueState(const Task &t, const QDateTime &now)
         return DueState::None;
     if (t.due <= now)
         return DueState::Overdue;
-    return t.due <= now.addSecs(SoonMinutes * 60) ? DueState::Soon : DueState::Later;
+    if (t.due <= now.addSecs(SoonMinutes * 60))
+        return DueState::Soon;
+    if (t.due <= now.addSecs(CriticalHours * 3600))
+        return DueState::Critical;
+    return DueState::Later;
 }
 
 // Open tasks first, nearest deadline first, those without one after them; done ones last.
@@ -218,6 +224,7 @@ inline QByteArray toJson(const QList<Task> &list)
     QJsonArray a;
     for (const Task &t : list)
         a.append(QJsonObject{{QStringLiteral("id"), t.id}, {QStringLiteral("title"), t.title},
+                             {QStringLiteral("course"), t.course},
                              {QStringLiteral("due"), t.due.isValid() ? t.due.toString(Qt::ISODate) : QString()},
                              {QStringLiteral("done"), t.done}, {QStringLiteral("warned"), t.warned},
                              {QStringLiteral("notified"), t.notified}});
@@ -232,6 +239,7 @@ inline QList<Task> fromJson(const QByteArray &json)
         Task t;
         t.id = o.value(QStringLiteral("id")).toString();
         t.title = o.value(QStringLiteral("title")).toString();
+        t.course = o.value(QStringLiteral("course")).toString(); // older files: ""
         t.due = QDateTime::fromString(o.value(QStringLiteral("due")).toString(), Qt::ISODate);
         t.done = o.value(QStringLiteral("done")).toBool();
         t.warned = o.value(QStringLiteral("warned")).toBool();

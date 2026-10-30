@@ -2,6 +2,9 @@
 
 Windows: the notch opens again with Low memory mode (performance) on.
 
+### New
+- **Tasks: deadline radar + course.** Each task can carry a free-text course/subject (chip suggestions from courses you already used); filter the list by course. A deadline within 3 hours is shown as critical (red) in the list, calendar and capsule. The idle capsule ticker shows up to three next deadlines on one line (`CS101 Essay · 2h · MATH Quiz · 5h`).
+
 ### Improved
 - **Windows search finds more apps.** Store / UWP apps join the Start Menu shortcuts; a multi-word query (“visual studio”) must match every word against the name and the Start Menu folders (content filter).
 

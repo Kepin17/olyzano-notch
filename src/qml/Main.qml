@@ -432,6 +432,8 @@ Window {
     // plain idle clock gives way to a window that reaches the top edge.
     readonly property bool idleShown: capsuleMode === "capsule" || capsuleMode === "widget" || (activities.idleClock && !idleCovered)
     readonly property bool taskShown: activities.taskInCapsule && tasks.hasNext
+    // How many open deadlines feed the capsule ticker (0 = no task slate).
+    readonly property int taskRadarCount: tasks.list.filter(t => t.hasDue && !t.done).length
     readonly property bool prayerShown: prayer.enabled && prayer.ready && prayer.inCapsule && prayer.hasNext
     readonly property bool infoShown: taskShown || prayerShown
     // With a task and a prayer both to show, the capsule says one, then the other, every 8 seconds.
@@ -1165,7 +1167,9 @@ Window {
         // Where the island is heading; width and height follow it with the springs below.
         readonly property real targetWidth: root.mode === "open" ? root.panelWidth : root.mode === "search" ? 560 : root.mode === "prompt" ? 440 : root.mode === "toast" ? 400
              : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
-             : root.mode === "idle" ? (root.musicShown ? root.capWidth : root.infoShown ? 390 : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
+             : root.mode === "idle" ? (root.musicShown ? root.capWidth
+                                       : root.infoShown ? (root.taskRadarCount > 1 ? 460 : 390) // room for the 3-deadline ticker
+                                       : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
         readonly property real targetHeight: root.mode === "open" ? Math.max(panel.implicitHeight + (root.dragOver ? 8 : 0), root.shareNeed)
               : root.mode === "search" ? (searchPanelLoader.item ? searchPanelLoader.item.wantedHeight : 0) : root.mode === "prompt" ? 92 : root.mode === "toast" ? 56 : root.mode === "peek" ? 36 : root.mode === "idle" ? 48 : 0
         width: targetWidth
@@ -1642,14 +1646,21 @@ Window {
                 font.pixelSize: 12
                 font.weight: Font.DemiBold
             }
-            Text { // the next task and what is left to it, or the next prayer
+            Text { // the next tasks as a one-line radar (up to 3), or the next prayer
                 visible: root.infoShown
                 Layout.fillWidth: true
                 Layout.leftMargin: 6
-                text: root.showPrayer ? prayer.nextName + " " + prayer.nextTime + " · " + prayer.nextRemaining
-                                      : "• " + tasks.nextTitle + " · " + tasks.nextRemaining
+                text: {
+                    if (root.showPrayer)
+                        return prayer.nextName + " " + prayer.nextTime + " · " + prayer.nextRemaining
+                    const radar = tasks.list.filter(t => t.hasDue && !t.done).slice(0, 3)
+                    if (radar.length === 0)
+                        return "• " + tasks.nextTitle + " · " + tasks.nextRemaining
+                    return radar.map(t => (t.course ? t.course + " " : "") + t.title + " · " + t.remaining).join("  ·  ")
+                }
                 color: root.showPrayer ? (prayer.soon ? theme.accent : root.textSecondary)
-                       : tasks.nextState === "overdue" ? theme.danger : tasks.nextState === "soon" ? theme.accent : root.textSecondary
+                       : tasks.nextState === "overdue" || tasks.nextState === "critical" ? theme.danger
+                       : tasks.nextState === "soon" ? theme.accent : root.textSecondary
                 font.pixelSize: 11
                 elide: Text.ElideRight
             }

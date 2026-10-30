@@ -41,17 +41,30 @@ void Tasks::tick()
         emit e.now ? taskDue(e.title) : taskWarning(e.title);
 }
 
+QString Tasks::stateString(DueState s)
+{
+    switch (s) {
+    case DueState::Overdue: return QStringLiteral("overdue");
+    case DueState::Soon: return QStringLiteral("soon");
+    case DueState::Critical: return QStringLiteral("critical");
+    case DueState::Later: return QStringLiteral("later");
+    case DueState::None: break;
+    }
+    return QStringLiteral("none");
+}
+
 void Tasks::refresh()
 {
     const QDateTime now = QDateTime::currentDateTime();
     QVariantList view;
     for (const Task &t : sorted(m_tasks)) {
         const DueState s = dueState(t, now);
-        view << QVariantMap{{QStringLiteral("id"), t.id}, {QStringLiteral("title"), t.title}, {QStringLiteral("done"), t.done},
+        view << QVariantMap{{QStringLiteral("id"), t.id}, {QStringLiteral("title"), t.title},
+                            {QStringLiteral("course"), t.course}, {QStringLiteral("done"), t.done},
                             {QStringLiteral("hasDue"), t.due.isValid()},
-                            {QStringLiteral("dueMs"), t.due.isValid() ? t.due.toMSecsSinceEpoch() : qint64(0)}, {QStringLiteral("remaining"), remaining(t.due, now)},
-                            {QStringLiteral("state"), s == DueState::Overdue ? QStringLiteral("overdue") : s == DueState::Soon ? QStringLiteral("soon")
-                                                      : s == DueState::Later ? QStringLiteral("later") : QStringLiteral("none")}};
+                            {QStringLiteral("dueMs"), t.due.isValid() ? t.due.toMSecsSinceEpoch() : qint64(0)},
+                            {QStringLiteral("remaining"), remaining(t.due, now)},
+                            {QStringLiteral("state"), stateString(s)}};
     }
     m_view = view;
     emit changed();
@@ -82,16 +95,55 @@ QString Tasks::nextState() const
     const int i = nextOpen(m_tasks);
     if (i < 0)
         return QStringLiteral("none");
-    const DueState s = dueState(m_tasks[i], QDateTime::currentDateTime());
-    return s == DueState::Overdue ? QStringLiteral("overdue") : s == DueState::Soon ? QStringLiteral("soon") : QStringLiteral("later");
+    return stateString(dueState(m_tasks[i], QDateTime::currentDateTime()));
 }
 
-bool Tasks::add(const QString &title, const QString &dueIso)
+QStringList Tasks::courseSuggestions() const
 {
+    QHash<QString, int> counts;
+    for (const Task &t : m_tasks) {
+        const QString c = t.course.trimmed();
+        if (!c.isEmpty())
+            ++counts[c];
+    }
+    QList<QPair<int, QString>> ranked; // count desc, then A-Z (stable for ties)
+    for (auto it = counts.cbegin(); it != counts.cend(); ++it)
+        ranked << qMakePair(it.value(), it.key());
+    std::sort(ranked.begin(), ranked.end(), [](const QPair<int, QString> &a, const QPair<int, QString> &b) {
+        return a.first != b.first ? a.first > b.first : a.second.compare(b.second, Qt::CaseInsensitive) < 0;
+    });
+    QStringList out;
+    for (const auto &r : ranked)
+        out << r.second;
+    return out;
+}
+
+bool Tasks::add(const QString &title, const QString &dueIso, const QString &course)
+{
+    const QString c = course.trimmed();
     const QDateTime due = QDateTime::fromString(dueIso, Qt::ISODate).toLocalTime(); // from the picker (UTC "Z" form)
-    if (!due.isValid())
-        return addQuick(title);
-    return addQuick(title + QStringLiteral(" @ ") + due.toString(QStringLiteral("yyyy-MM-dd HH:mm")));
+    if (!due.isValid()) {
+        // No hand-picked deadline: same natural-language parse as the quick field.
+        if (!addQuick(title))
+            return false;
+        if (!c.isEmpty() && !m_tasks.isEmpty()) {
+            m_tasks.last().course = c;
+            save();
+            refresh();
+        }
+        return true;
+    }
+    if (title.trimmed().isEmpty())
+        return false;
+    Task t;
+    t.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
+    t.title = title.trimmed();
+    t.course = c;
+    t.due = due;
+    m_tasks << t;
+    save();
+    tick();
+    return true;
 }
 
 bool Tasks::addQuick(const QString &line)
@@ -137,6 +189,17 @@ void Tasks::remove(const QString &id)
 void Tasks::clearDone()
 {
     m_tasks.removeIf([](const Task &t) { return t.done; });
+    save();
+    refresh();
+}
+
+void Tasks::setCourse(const QString &id, const QString &course)
+{
+    for (Task &t : m_tasks)
+        if (t.id == id) {
+            t.course = course.trimmed();
+            break;
+        }
     save();
     refresh();
 }

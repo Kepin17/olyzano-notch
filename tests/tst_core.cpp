@@ -730,7 +730,8 @@ private slots:
         QCOMPARE(parseQuick("Call Ana @ in 45m", now).title, QStringLiteral("Call Ana"));
         QVERIFY(!parseQuick("Water the plants", now).due.isValid());
         QCOMPARE(parseQuick("Read 17:30", now).title, QStringLiteral("Read"));
-        Task a{"a", "late", now.addSecs(7200)}, b{"b", "none", {}}, c{"c", "soon", now.addSecs(600)}, d{"d", "done", now.addSecs(60)};
+        Task a{"a", "late", {}, now.addSecs(7200)}, b{"b", "none", {}, {}}, c{"c", "soon", {}, now.addSecs(600)},
+            d{"d", "done", {}, now.addSecs(60)};
         d.done = true;
         const QList<Task> s = sorted({a, b, c, d});
         QCOMPARE(s[0].id, QStringLiteral("c"));
@@ -739,20 +740,30 @@ private slots:
         QCOMPARE(s[3].id, QStringLiteral("d"));
         QCOMPARE(nextOpen({a, b, c, d}), 2);
         QCOMPARE(int(dueState(c, now)), int(DueState::Soon));
-        QCOMPARE(int(dueState(a, now)), int(DueState::Later));
+        QCOMPARE(int(dueState(a, now)), int(DueState::Critical)); // 2 h = within CriticalHours, outside SoonMinutes
         QCOMPARE(int(dueState(d, now)), int(DueState::None));
         QCOMPARE(remaining(now.addSecs(1500), now), QStringLiteral("in 25 min"));
         QCOMPARE(remaining(now.addSecs(-7200), now), QStringLiteral("overdue 2 h"));
         QCOMPARE(remaining(QDateTime(QDate(2026, 11, 3), QTime(9, 0)), now), QStringLiteral("tomorrow 09:00"));
         QCOMPARE(fromJson(toJson({a, b})).size(), 2);
         QCOMPARE(fromJson(toJson({a})).first().due, a.due);
+        // Course travels through JSON; older files without it load as empty.
+        Task withCourse = a;
+        withCourse.course = QStringLiteral("CS101");
+        QCOMPARE(fromJson(toJson({withCourse})).first().course, QStringLiteral("CS101"));
+        QCOMPARE(fromJson(R"([{"id":"x","title":"old","due":"","done":false,"warned":false,"notified":false}])").first().course, QString());
+        // H-3 band: critical before the 15-minute heads-up, soon closer in.
+        QCOMPARE(int(dueState(Task{"k", "crit", {}, now.addSecs(2 * 3600)}, now)), int(DueState::Critical));
+        QCOMPARE(int(dueState(Task{"f", "far", {}, now.addSecs(4 * 3600)}, now)), int(DueState::Later));
+        QCOMPARE(int(dueState(Task{"o", "past", {}, now.addSecs(-60)}, now)), int(DueState::Overdue));
+        QCOMPARE(int(dueState(Task{"n", "no due", {}, {}}, now)), int(DueState::None));
     }
 
     void tasksRemindOnce()
     {
         using namespace TasksModel;
         const QDateTime now(QDate(2026, 11, 2), QTime(10, 0));
-        QList<Task> list{Task{"a", "report", now.addSecs(20 * 60)}, Task{"old", "ancient", now.addDays(-3)}};
+        QList<Task> list{Task{"a", "report", {}, now.addSecs(20 * 60)}, Task{"old", "ancient", {}, now.addDays(-3)}};
         QVERIFY(fire(list, now).size() == 0 + 0); // the old one is settled quietly, the other is 20 minutes away
         QVERIFY(list[1].notified);
         QCOMPARE(nextWake(list, now), now.addSecs(5 * 60)); // 15 minutes before

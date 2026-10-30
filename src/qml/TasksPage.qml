@@ -17,10 +17,11 @@ RowLayout {
     Layout.minimumHeight: 300
     spacing: 18
 
-    // the month on show (1-12) and the day picked to filter by (null: all)
+    // the month on show (1-12), the day picked to filter by (null: all), and the course picked ("" = all)
     property int viewYear: new Date().getFullYear()
     property int viewMonth: new Date().getMonth() + 1
     property var selectedDay: null
+    property string selectedCourse: ""
     function key(y, m, d) { return y * 10000 + m * 100 + d }
     function stepMonth(by) {
         const m = viewMonth - 1 + by
@@ -45,13 +46,20 @@ RowLayout {
             const k = key(d.getFullYear(), d.getMonth() + 1, d.getDate())
             const e = m[k] || (m[k] = { n: 0, late: false })
             e.n++
-            if (t.state === "overdue")
+            if (t.state === "overdue" || t.state === "critical")
                 e.late = true
         }
         return m
     }
-    // what the list shows
-    readonly property var shown: selectedDay ? tasks.list.filter(t => t.hasDue && sameDay(new Date(t.dueMs), selectedDay)) : tasks.list
+    // what the list shows: day filter AND course filter
+    readonly property var shown: {
+        let out = tasks.list
+        if (selectedDay)
+            out = out.filter(t => t.hasDue && sameDay(new Date(t.dueMs), selectedDay))
+        if (selectedCourse !== "")
+            out = out.filter(t => t.course === selectedCourse)
+        return out
+    }
 
     // ---- the calendar ----
     ColumnLayout {
@@ -152,6 +160,23 @@ RowLayout {
             PillButton { text: "New"; iconName: "plus"; checked: true; onClicked: newTask.openFor(page.selectedDay) }
         }
 
+        // Course filter: All + every course already used (free-text on the tasks).
+        Flow {
+            visible: tasks.courseSuggestions.length > 0
+            Layout.fillWidth: true
+            spacing: 6
+            PillButton { text: "All courses"; checked: page.selectedCourse === ""; onClicked: page.selectedCourse = "" }
+            Repeater {
+                model: tasks.courseSuggestions
+                delegate: PillButton {
+                    required property string modelData
+                    text: modelData
+                    checked: page.selectedCourse === modelData
+                    onClicked: page.selectedCourse = page.selectedCourse === modelData ? "" : modelData
+                }
+            }
+        }
+
         Text {
             visible: page.shown.length === 0
             Layout.fillWidth: true
@@ -180,7 +205,8 @@ RowLayout {
                     delegate: Rectangle {
                         id: row
                         required property var modelData
-                        readonly property color tint: modelData.state === "overdue" ? theme.danger : modelData.state === "soon" ? theme.accent
+                        readonly property color tint: modelData.state === "overdue" ? theme.danger : modelData.state === "critical" ? theme.danger
+                                                       : modelData.state === "soon" ? theme.accent
                                                        : modelData.hasDue ? theme.info : theme.textFaint
                         readonly property date due: new Date(modelData.dueMs)
                         Layout.fillWidth: true
@@ -201,14 +227,35 @@ RowLayout {
                                 Layout.fillWidth: true
                                 Layout.minimumWidth: 0
                                 spacing: 1
-                                Text {
+                                RowLayout {
+                                    spacing: 6
                                     Layout.fillWidth: true
-                                    text: row.modelData.title
-                                    color: row.modelData.done ? theme.textFaint : shell.textPrimary
-                                    font.pixelSize: 13
-                                    font.weight: Font.DemiBold
-                                    font.strikeout: row.modelData.done
-                                    elide: Text.ElideRight
+                                    Rectangle { // course chip, free-text
+                                        visible: row.modelData.course !== ""
+                                        Layout.maximumWidth: 120
+                                        implicitHeight: 18
+                                        radius: 9
+                                        color: Qt.tint(theme.surface, Qt.rgba(shell.accent.r, shell.accent.g, shell.accent.b, 0.22))
+                                        Text {
+                                            anchors.centerIn: parent
+                                            anchors.margins: 1
+                                            text: row.modelData.course
+                                            color: shell.accent
+                                            font.pixelSize: 10
+                                            font.weight: Font.DemiBold
+                                            elide: Text.ElideRight
+                                            width: parent.width - 4
+                                        }
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: row.modelData.title
+                                        color: row.modelData.done ? theme.textFaint : shell.textPrimary
+                                        font.pixelSize: 13
+                                        font.weight: Font.DemiBold
+                                        font.strikeout: row.modelData.done
+                                        elide: Text.ElideRight
+                                    }
                                 }
                                 Text {
                                     visible: row.modelData.hasDue
@@ -272,6 +319,7 @@ RowLayout {
         function openFor(selected) {
             day = selected
             titleField.text = ""
+            courseField.text = ""
             const h = new Date(Math.ceil(Date.now() / 3600000) * 3600000)
             hourTumbler.currentIndex = h.getHours()
             minuteTumbler.currentIndex = 0
@@ -288,7 +336,7 @@ RowLayout {
         function submit() {
             if (titleField.text.trim() === "")
                 return
-            if (tasks.add(titleField.text, newTask.due ? newTask.due.toISOString() : ""))
+            if (tasks.add(titleField.text, newTask.due ? newTask.due.toISOString() : "", courseField.text))
                 close()
         }
         onOpened: titleField.forceActiveFocus()
@@ -379,6 +427,35 @@ RowLayout {
                 color: theme.textDim
                 font.pixelSize: 11
                 elide: Text.ElideRight
+            }
+            SectionLabel { text: "Course (optional)" }
+            Flow {
+                visible: tasks.courseSuggestions.length > 0
+                Layout.fillWidth: true
+                spacing: 6
+                Repeater {
+                    model: tasks.courseSuggestions
+                    delegate: PillButton {
+                        required property string modelData
+                        text: modelData
+                        checked: courseField.text === modelData
+                        onClicked: courseField.text = courseField.text === modelData ? "" : modelData
+                    }
+                }
+            }
+            TextField {
+                id: courseField
+                Layout.fillWidth: true
+                implicitHeight: 30
+                leftPadding: 12
+                placeholderText: "e.g. CS101, Algoritma…"
+                placeholderTextColor: theme.placeholder
+                color: shell.textPrimary
+                selectionColor: shell.accent
+                font.pixelSize: 12
+                background: Rectangle { radius: theme.radiusMd; color: theme.well; border.width: 1; border.color: courseField.activeFocus ? shell.accent : theme.hairline }
+                onAccepted: newTask.submit()
+                Keys.onEscapePressed: newTask.close()
             }
             RowLayout {
                 Layout.fillWidth: true
