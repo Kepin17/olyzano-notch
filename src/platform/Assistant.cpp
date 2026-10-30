@@ -1,3 +1,4 @@
+#include "platform/NotchPaths.h"
 #include "Assistant.h"
 
 #include "app/NotchController.h"
@@ -37,7 +38,7 @@ const ModelInfo &info(const QString &id)
 
 QString configPath()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/assistant.conf");
+    return NotchPaths::conf(QStringLiteral("assistant"));
 }
 
 QString duration(int seconds)

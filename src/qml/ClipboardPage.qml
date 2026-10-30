@@ -19,10 +19,8 @@ ColumnLayout {
         return m < 1 ? "now" : m < 60 ? m + " min" : m < 1440 ? Math.floor(m / 60) + " h" : Math.floor(m / 1440) + " d"
     }
     function say(text) {
-        shell.infoText = text
-        infoResetter.restart()
+        shell.say(text, 1400)
     }
-    Timer { id: infoResetter; interval: 1400; onTriggered: { if (shell.infoText === "Copied again" || shell.infoText === "Kept in Files") shell.infoText = "" } }
 
     // Off: say what turning it on means.
     Rectangle {

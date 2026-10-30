@@ -1,3 +1,4 @@
+#include "platform/NotchPaths.h"
 #include "ApiTester.h"
 
 #include <QDir>
@@ -84,7 +85,7 @@ QString ApiTester::dataDir() const
 
 QString ApiTester::configPath() const
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/apitester.conf");
+    return NotchPaths::conf(QStringLiteral("apitester"));
 }
 
 void ApiTester::load()

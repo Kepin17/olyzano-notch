@@ -1,3 +1,4 @@
+#include "platform/NotchPaths.h"
 #include "platform/Sounds.h"
 
 #include "models/FileItem.h"
@@ -22,7 +23,7 @@
 namespace {
 QString configPath()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/sounds.conf");
+    return NotchPaths::conf(QStringLiteral("sounds"));
 }
 
 #ifdef Q_OS_WIN

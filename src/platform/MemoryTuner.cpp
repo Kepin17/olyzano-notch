@@ -1,3 +1,4 @@
+#include "platform/NotchPaths.h"
 #include "MemoryTuner.h"
 
 #include <QCoreApplication>
@@ -15,7 +16,7 @@
 #endif
 
 namespace {
-QString choiceFile() { return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/perf.conf"); }
+QString choiceFile() { return NotchPaths::conf(QStringLiteral("perf")); }
 }
 
 MemoryTuner::MemoryTuner(QObject *parent) : QObject(parent)

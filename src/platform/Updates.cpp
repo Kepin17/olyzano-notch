@@ -1,3 +1,4 @@
+#include "platform/NotchPaths.h"
 #include "platform/Updates.h"
 
 #include <QCoreApplication>
@@ -23,7 +24,7 @@ constexpr qint64 DaySecs = 86400;
 
 Updates::Updates(QObject *parent)
     : QObject(parent)
-    , m_settings(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/updates.conf"), QSettings::IniFormat)
+    , m_settings(NotchPaths::conf(QStringLiteral("updates")), QSettings::IniFormat)
 {
     const QByteArray fake = qgetenv("NOTCH_FAKE_VERSION"); // for trying the notice without waiting for a release
     m_installed = !fake.isEmpty() ? QString::fromUtf8(fake) : QCoreApplication::applicationVersion();

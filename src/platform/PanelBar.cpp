@@ -1,3 +1,4 @@
+#include "platform/NotchPaths.h"
 #include "platform/PanelBar.h"
 
 #include "platform/CalendarModel.h"
@@ -7,7 +8,7 @@
 
 PanelBar::PanelBar(QObject *parent)
     : QObject(parent)
-    , m_settings(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/panel.conf"), QSettings::IniFormat)
+    , m_settings(NotchPaths::conf(QStringLiteral("panel")), QSettings::IniFormat)
 {
 }
 

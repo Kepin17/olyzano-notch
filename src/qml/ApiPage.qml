@@ -64,10 +64,8 @@ ColumnLayout {
     }
 
     function say(text) {
-        shell.infoText = text
-        infoTimer.restart()
+        shell.say(text, 1600)
     }
-    Timer { id: infoTimer; interval: 1600; onTriggered: { if (shell.infoText.indexOf("API") === 0 || shell.infoText.indexOf("Import") === 0) shell.infoText = "" } }
 
     function loadRequest(id) {
         const m = apiTester.requestById(id)

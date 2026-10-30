@@ -1,5 +1,9 @@
 #include "DatabaseManager.h"
 
+#include "platform/NotchPaths.h"
+#include "platform/SecureFiles.h"
+#include "platform/SecretsStore.h"
+
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
@@ -15,18 +19,8 @@
 
 namespace {
 
-QString ownerOnlyPath(const QString &dir, const QString &file)
-{
-    QDir().mkpath(dir);
-    const QString path = dir + QLatin1Char('/') + file;
-    if (!QFile::exists(path)) {
-        QFile f(path);
-        if (f.open(QIODevice::WriteOnly))
-            f.close();
-    }
-    QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-    return path;
-}
+// secrets.json section key for this manager
+constexpr auto kSecretsSection = "db";
 
 QStringList knownDrivers()
 {
@@ -48,14 +42,12 @@ DatabaseManager::~DatabaseManager()
 
 QString DatabaseManager::configPath() const
 {
-    return ownerOnlyPath(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/dev"),
-                         QStringLiteral("db-connections.json"));
+    return SecureFiles::ownerOnlyPath(NotchPaths::devDir(), QStringLiteral("db-connections.json"));
 }
 
 QString DatabaseManager::secretsPath() const
 {
-    return ownerOnlyPath(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/dev"),
-                         QStringLiteral("secrets.json"));
+    return SecretsStore::secretsPath();
 }
 
 void DatabaseManager::load()
@@ -97,33 +89,12 @@ const DbModel::Connection *DatabaseManager::find(const QString &id) const
 
 QString DatabaseManager::passwordFor(const QString &id) const
 {
-    QFile f(secretsPath());
-    if (!f.open(QIODevice::ReadOnly))
-        return {};
-    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
-    return root.value(QStringLiteral("db")).toObject().value(id).toString();
+    return SecretsStore::get(QString::fromLatin1(kSecretsSection), id);
 }
 
 void DatabaseManager::storePassword(const QString &id, const QString &password)
 {
-    QJsonObject root;
-    {
-        QFile f(secretsPath());
-        if (f.open(QIODevice::ReadOnly))
-            root = QJsonDocument::fromJson(f.readAll()).object();
-    }
-    QJsonObject db = root.value(QStringLiteral("db")).toObject();
-    if (password.isEmpty())
-        db.remove(id);
-    else
-        db.insert(id, password);
-    root.insert(QStringLiteral("db"), db);
-    QSaveFile f(secretsPath());
-    if (f.open(QIODevice::WriteOnly)) {
-        f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
-        f.commit();
-    }
-    QFile::setPermissions(secretsPath(), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    SecretsStore::set(QString::fromLatin1(kSecretsSection), id, password);
 }
 
 void DatabaseManager::dropPassword(const QString &id)

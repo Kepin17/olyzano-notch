@@ -109,15 +109,16 @@ Craft an HTTP request (GET, POST, PUT, PATCH, DELETE), pick **Params**, **Header
 Save the hosts you connect to, run one remote command, or open a system terminal already logged in.
 
 - **+** adds a host (name, host, port, user). Auth is **Key / agent** (preferred — path optional, uses your agent) or **Password**.
-- **Test** runs a non-interactive check (`BatchMode`). **Run** sends one command and shows stdout/stderr in the pane. **Terminal** opens gnome-terminal / konsole / kitty / alacritty (or Windows Terminal) with `ssh user@host`.
+- **Test** runs a non-interactive check (`BatchMode` for keys). **Run** sends one command and shows stdout/stderr in the pane. **Terminal** opens gnome-terminal / konsole / kitty / alacritty (or Windows Terminal) with `ssh user@host`.
 - Host keys use trust-on-first-use (`StrictHostKeyChecking=accept-new`): the first connection to a new host is trusted and remembered by OpenSSH.
-- Passwords are never put on the command line. Prefer keys; if you save a password it lives only in an owner-only file under your config directory.
+- Passwords are never put on the command line. Prefer keys; if you save a password it lives only in an owner-only file under your config directory. On Windows the OpenSSH *Client* optional feature must be installed (*Settings → Apps → Optional features*); Notch also looks in `C:\Windows\System32\OpenSSH` when `ssh` is not on `PATH`.
 
 ### Database
 
-Browse tables and run SQL against **SQLite** (always available), **MySQL / MariaDB** or **PostgreSQL** when the matching Qt SQL driver is installed (`libqt6sql6-mysql`, `libqt6sql6-psql`, …).
+Browse tables and run SQL against **SQLite** (always available), **MySQL / MariaDB** or **PostgreSQL** when the matching Qt SQL driver is installed.
 
-- **+** adds a connection (driver, host, port, user, database — or a file path for SQLite). A red driver chip means the Qt plugin is missing on this machine.
+- **+** adds a connection (driver, host, port, user, database — or a file path for SQLite; **Browse…** opens a file picker). A red note under the driver switcher means the Qt plugin is missing on this machine.
 - **Connect**, then pick a table to **browse** (first 50 rows) or open **Query** for free-form SQL (`Ctrl+Enter` to run). Results show columns, row count and duration; errors appear under the editor.
 - Free-form SQL runs only on the connection you saved and selected — treat it like phpMyAdmin: you are responsible for what you execute.
 - Passwords (if saved) sit in an owner-only file next to the connection list, never in logs.
+- **Linux:** install the plugins with `sudo apt install libqt6sql6-mysql libqt6sql6-psql` (package names vary by distro). **Windows:** the portable/installer build ships SQLite only — MySQL and PostgreSQL need the `QMYSQL` / `QPSQL` Qt plugins (and their client DLLs) beside `notch.exe` if you build them yourself.

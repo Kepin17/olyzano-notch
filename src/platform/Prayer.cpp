@@ -1,3 +1,4 @@
+#include "platform/NotchPaths.h"
 #include "platform/Prayer.h"
 
 #include "platform/Cities.h"
@@ -23,7 +24,7 @@ QString span(qint64 minutes)
 
 Prayer::Prayer(QObject *parent)
     : QObject(parent)
-    , m_settings(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/prayer.conf"), QSettings::IniFormat)
+    , m_settings(NotchPaths::conf(QStringLiteral("prayer")), QSettings::IniFormat)
 {
     const QByteArray fake = qgetenv("NOTCH_FAKE_NOW"); // for trying the reminders without waiting for noon
     if (!fake.isEmpty()) {

@@ -21,8 +21,7 @@ ColumnLayout {
         return { id: "", name: "", host: "", user: "", port: 22, auth: "key", keyPath: "", defaultCommand: "", savePassword: false }
     }
     function say(msg) {
-        shell.infoText = msg
-        shell.restartInfo()
+        shell.say(msg)
     }
     function openForm(id) {
         if (id) {
@@ -134,53 +133,6 @@ ColumnLayout {
             termFlick.contentY = Math.max(0, termOutput.height - termFlick.height)
         })
         select("")
-    }
-
-    component Field: ColumnLayout {
-        id: fl
-        property string label: ""
-        property string placeholder: ""
-        property string value: ""
-        property bool mono: false
-        property bool show: true
-        property int echoMode: TextInput.Normal
-        // live text always available for save, even if the draft binding lags
-        readonly property alias text: tf.text
-        signal edited(string text)
-        visible: show
-        Layout.fillWidth: true
-        spacing: 4
-        Text {
-            text: fl.label
-            color: theme.textDim
-            font.pixelSize: 11
-            font.weight: Font.Medium
-        }
-        TextField {
-            id: tf
-            Layout.fillWidth: true
-            Layout.preferredHeight: 32
-            text: fl.value
-            placeholderText: fl.placeholder
-            placeholderTextColor: theme.textFaint
-            color: theme.text
-            echoMode: fl.echoMode
-            font.family: fl.mono ? "monospace" : ""
-            font.pixelSize: 12
-            leftPadding: 10
-            rightPadding: 10
-            background: Rectangle {
-                radius: 8
-                color: theme.well
-                border.width: 1
-                border.color: tf.activeFocus ? Qt.alpha(theme.accent, 0.45) : theme.hairline
-            }
-            onTextChanged: {
-                // keep the draft in sync on every change (not only textEdited — paste/autofill too)
-                if (text !== fl.value)
-                    fl.edited(text)
-            }
-        }
     }
 
     RowLayout {
@@ -635,56 +587,17 @@ ColumnLayout {
         }
     }
 
-    Popup {
+    ConfirmDialog {
         id: deleteDialog
-        parent: Overlay.overlay
-        x: Math.max(12, (Overlay.overlay.width - width) / 2)
-        y: Math.max(48, (Overlay.overlay.height - height) / 2)
-        width: 320
-        padding: 16
-        modal: true
-        dim: false
-        Overlay.modal: Item {}
-        focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        background: Rectangle {
-            radius: theme.radiusLg
-            color: theme.surface
-            border.width: 1
-            border.color: theme.outline
-        }
-        contentItem: ColumnLayout {
-            spacing: 12
-            Text {
-                text: "Delete connection?"
-                color: theme.text
-                font.pixelSize: 14
-                font.weight: Font.DemiBold
-            }
-            Text {
-                Layout.fillWidth: true
-                text: "The host is removed from the list. Saved password (if any) is dropped too."
-                wrapMode: Text.Wrap
-                color: theme.textDim
-                font.pixelSize: 12
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                PillButton { text: "Cancel"; onClicked: deleteDialog.close() }
-                PillButton {
-                    text: "Delete"
-                    checked: true
-                    onClicked: {
-                        const wasSelected = selectedId === tab.selectedId
-                        sshManager.removeConnection(selectedId)
-                        if (wasSelected)
-                            tab.select("")
-                        tab.say("SSH — deleted")
-                        deleteDialog.close()
-                    }
-                }
-            }
+        title: "Delete connection?"
+        body: "The host is removed from the list. Saved password (if any) is dropped too."
+        confirmText: "Delete"
+        onConfirmed: {
+            const wasSelected = selectedId === tab.selectedId
+            sshManager.removeConnection(selectedId)
+            if (wasSelected)
+                tab.select("")
+            tab.say("SSH — deleted")
         }
     }
 }

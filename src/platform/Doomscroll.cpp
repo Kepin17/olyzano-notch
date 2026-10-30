@@ -1,3 +1,4 @@
+#include "platform/NotchPaths.h"
 #include "platform/Doomscroll.h"
 
 #include "platform/AppDock.h"
@@ -14,7 +15,7 @@ Doomscroll::Doomscroll(AppDock *dock, MediaPlayers *media, Wellbeing *wellbeing,
     , m_dock(dock)
     , m_media(media)
     , m_wellbeing(wellbeing)
-    , m_settings(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/doomscroll.conf"), QSettings::IniFormat)
+    , m_settings(NotchPaths::conf(QStringLiteral("doomscroll")), QSettings::IniFormat)
 {
     applySettings();
     rollDay();

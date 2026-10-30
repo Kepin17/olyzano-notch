@@ -1,3 +1,4 @@
+#include "platform/NotchPaths.h"
 #include "platform/Lyrics.h"
 
 #include "platform/LyricsQuery.h"
@@ -18,7 +19,7 @@
 namespace {
 QString defaultSettingsPath()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/lyrics.conf");
+    return NotchPaths::conf(QStringLiteral("lyrics"));
 }
 QString defaultCacheDir()
 {

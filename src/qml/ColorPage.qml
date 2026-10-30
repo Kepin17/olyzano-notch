@@ -23,11 +23,9 @@ ColumnLayout {
         notch.copyText(colorPicker.format(hex, kind))
         copied = hex
         copiedTimer.restart()
-        shell.infoText = "Copied " + colorPicker.format(hex, kind)
-        infoResetter.restart()
+        shell.say("Copied " + colorPicker.format(hex, kind), 1400)
     }
     Timer { id: copiedTimer; interval: 1400; onTriggered: page.copied = "" }
-    Timer { id: infoResetter; interval: 1400; onTriggered: { if (shell.infoText.indexOf("Copied") === 0) shell.infoText = "" } }
 
     // ---- the last one picked: a big swatch, and its three formats as rows (a click copies that one) ----
     Rectangle {

@@ -1,5 +1,9 @@
 #include "SshManager.h"
 
+#include "platform/NotchPaths.h"
+#include "platform/SecureFiles.h"
+#include "platform/SecretsStore.h"
+
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDir>
@@ -8,6 +12,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QProcessEnvironment>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QTimer>
@@ -16,18 +21,8 @@
 
 namespace {
 
-QString ownerOnlyPath(const QString &dir, const QString &file)
-{
-    QDir().mkpath(dir);
-    const QString path = dir + QLatin1Char('/') + file;
-    if (!QFile::exists(path)) {
-        QFile f(path);
-        if (f.open(QIODevice::WriteOnly))
-            f.close();
-    }
-    QFile::setPermissions(path, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
-    return path;
-}
+// secrets.json section key for this manager
+constexpr auto kSecretsSection = "ssh";
 
 } // namespace
 
@@ -37,16 +32,19 @@ SshManager::SshManager(QObject *parent)
     load();
 }
 
+SshManager::~SshManager()
+{
+    removeAskPass(m_shellAskPass);
+}
+
 QString SshManager::configPath() const
 {
-    return ownerOnlyPath(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/dev"),
-                         QStringLiteral("ssh-connections.json"));
+    return SecureFiles::ownerOnlyPath(NotchPaths::devDir(), QStringLiteral("ssh-connections.json"));
 }
 
 QString SshManager::secretsPath() const
 {
-    return ownerOnlyPath(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/dev"),
-                         QStringLiteral("secrets.json"));
+    return SecretsStore::secretsPath();
 }
 
 void SshManager::load()
@@ -71,6 +69,107 @@ QString SshManager::expandTilde(const QString &path)
     if (path.startsWith(QLatin1Char('~')))
         return QDir::homePath() + path.mid(1);
     return path;
+}
+
+QString SshManager::findSsh()
+{
+    const QString onPath = QStandardPaths::findExecutable(QStringLiteral("ssh"));
+    if (!onPath.isEmpty())
+        return onPath;
+#ifdef Q_OS_WIN
+    // GUI apps often miss System32 when OpenSSH is the optional feature (not always on the
+    // inherited PATH). Prefer the well-known install when `ssh` is not resolvable.
+    const QString root = QProcessEnvironment::systemEnvironment().value(QStringLiteral("SystemRoot"),
+                                                                         QStringLiteral("C:\\Windows"));
+    const QString wellKnown = root + QStringLiteral("\\System32\\OpenSSH\\ssh.exe");
+    if (QFileInfo::exists(wellKnown))
+        return wellKnown;
+#endif
+    return {};
+}
+
+QProcessEnvironment SshManager::sshEnvironment(const SshModel::Connection &c, QString *askPassDir)
+{
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    if (askPassDir)
+        askPassDir->clear();
+    if (c.auth != QLatin1String("password") || !c.savePassword)
+        return env;
+    const QString pw = passwordFor(c.id);
+    if (pw.isEmpty())
+        return env;
+
+    // Unique per process so an overlapping Test / Run / shell does not delete a live helper.
+    const QString dir = QDir::tempPath() + QStringLiteral("/notch-ssh-askpass-")
+                        + QString::number(QCoreApplication::applicationPid()) + QLatin1Char('-')
+                        + QString::number(QDateTime::currentMSecsSinceEpoch());
+    if (!QDir().mkpath(dir)) {
+        emit statusMessage(QStringLiteral("SSH — cannot create askpass helper dir"));
+        return env;
+    }
+    // Helper prints the password with no trailing newline. On Windows the password lives in a
+    // sibling file so the .bat does not have to escape special characters via `echo`.
+    const QString pwFile = dir + QStringLiteral("/pw");
+    {
+        QFile f(pwFile);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            emit statusMessage(QStringLiteral("SSH — cannot write askpass helper"));
+            removeAskPass(dir);
+            return env;
+        }
+        f.write(pw.toUtf8());
+        f.close();
+        QFile::setPermissions(pwFile, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    }
+#ifdef Q_OS_WIN
+    const QString helper = dir + QStringLiteral("/askpass.bat");
+    QFile f(helper);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        removeAskPass(dir);
+        return env;
+    }
+    // `type` copies the file bytes as-is; avoid `echo` (caret/percent mangling).
+    f.write("@echo off\r\ntype \"");
+    f.write(QDir::toNativeSeparators(pwFile).toUtf8());
+    f.write("\"\r\n");
+    f.close();
+    QFile::setPermissions(helper, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    env.insert(QStringLiteral("SSH_ASKPASS"), helper);
+    // OpenSSH 8.6+ on Windows: use askpass even when a console exists (QProcess has none).
+    env.insert(QStringLiteral("SSH_ASKPASS_REQUIRE"), QStringLiteral("force"));
+#else
+    const QString helper = dir + QStringLiteral("/askpass");
+    QFile f(helper);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        removeAskPass(dir);
+        return env;
+    }
+    f.write("#!/bin/sh\nexec cat '");
+    f.write(pwFile.toUtf8());
+    f.write("'\n");
+    f.close();
+    QFile::setPermissions(helper, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner);
+    env.insert(QStringLiteral("SSH_ASKPASS"), helper);
+    env.insert(QStringLiteral("SSH_ASKPASS_REQUIRE"), QStringLiteral("force"));
+    // Without a display some ssh builds skip askpass entirely.
+    if (!env.contains(QStringLiteral("DISPLAY")))
+        env.insert(QStringLiteral("DISPLAY"), QStringLiteral(":0"));
+#endif
+    if (askPassDir)
+        *askPassDir = dir;
+    else
+        removeAskPass(dir); // no owner — do not leave a password file behind
+    return env;
+}
+
+void SshManager::removeAskPass(const QString &dir)
+{
+    if (dir.isEmpty())
+        return;
+    QFile::remove(dir + QStringLiteral("/pw"));
+    QFile::remove(dir + QStringLiteral("/askpass"));
+    QFile::remove(dir + QStringLiteral("/askpass.bat"));
+    QDir(dir).removeRecursively();
 }
 
 SshModel::Connection *SshManager::find(const QString &id)
@@ -188,33 +287,12 @@ QString SshManager::duplicateConnection(const QString &id)
 // secrets.json: { "ssh": { "<id>": "password" } } — opt-in, owner-only file, never on argv.
 QString SshManager::passwordFor(const QString &id) const
 {
-    QFile f(secretsPath());
-    if (!f.open(QIODevice::ReadOnly))
-        return {};
-    const QJsonObject root = QJsonDocument::fromJson(f.readAll()).object();
-    return root.value(QStringLiteral("ssh")).toObject().value(id).toString();
+    return SecretsStore::get(QString::fromLatin1(kSecretsSection), id);
 }
 
 void SshManager::storePassword(const QString &id, const QString &password)
 {
-    QJsonObject root;
-    {
-        QFile f(secretsPath());
-        if (f.open(QIODevice::ReadOnly))
-            root = QJsonDocument::fromJson(f.readAll()).object();
-    }
-    QJsonObject ssh = root.value(QStringLiteral("ssh")).toObject();
-    if (password.isEmpty())
-        ssh.remove(id);
-    else
-        ssh.insert(id, password);
-    root.insert(QStringLiteral("ssh"), ssh);
-    QSaveFile f(secretsPath());
-    if (f.open(QIODevice::WriteOnly)) {
-        f.write(QJsonDocument(root).toJson(QJsonDocument::Compact));
-        f.commit();
-    }
-    QFile::setPermissions(secretsPath(), QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    SecretsStore::set(QString::fromLatin1(kSecretsSection), id, password);
 }
 
 void SshManager::dropPassword(const QString &id)
@@ -225,7 +303,10 @@ void SshManager::dropPassword(const QString &id)
 SshManager::SshProcessSpec SshManager::buildSsh(const SshModel::Connection &c, const QString &command, bool batchMode) const
 {
     SshProcessSpec s;
-    s.program = QStringLiteral("ssh");
+    // Absolute path when known: QProcess then fails with a precise "not found" on Windows
+    // instead of silently depending on a PATH the GUI process may not inherit.
+    const QString bin = findSsh();
+    s.program = bin.isEmpty() ? QStringLiteral("ssh") : bin;
     // interactive shell: force a remote TTY so the session behaves like a normal ssh login
     if (command.trimmed().isEmpty())
         s.args << QStringLiteral("-tt");
@@ -259,24 +340,30 @@ void SshManager::testConnection(const QString &id)
 
     m_test = new QProcess(this);
     // BatchMode: never prompts; fails fast when the key/agent cannot authenticate.
-    const auto spec = buildSsh(c, QStringLiteral("true"), true);
+    // Password + saved secret uses askpass instead (no real TTY under QProcess), so skip BatchMode.
+    const bool useAskPass = c.auth == QLatin1String("password") && c.savePassword && !passwordFor(c.id).isEmpty();
+    const auto spec = buildSsh(c, QStringLiteral("true"), !useAskPass);
+    QString askDir;
+    m_test->setProcessEnvironment(sshEnvironment(c, &askDir));
     const qint64 startedAt = QDateTime::currentMSecsSinceEpoch();
-    connect(m_test, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this, id, startedAt](int code, QProcess::ExitStatus st) {
+    connect(m_test, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this, id, startedAt, askDir](int code, QProcess::ExitStatus st) {
         const QString err = QString::fromLocal8Bit(m_test ? m_test->readAllStandardError() : QByteArray()).trimmed();
         const bool ok = st == QProcess::NormalExit && code == 0;
         if (m_test) {
             m_test->deleteLater();
             m_test = nullptr;
         }
+        removeAskPass(askDir);
         m_busy = false;
         emit busyChanged();
         finishTest(id, ok, ok ? QString() : (err.isEmpty() ? QStringLiteral("connection failed") : err),
                    QDateTime::currentMSecsSinceEpoch() - startedAt);
     });
-    connect(m_test, &QProcess::errorOccurred, this, [this, id, startedAt](QProcess::ProcessError e) {
+    connect(m_test, &QProcess::errorOccurred, this, [this, id, startedAt, askDir](QProcess::ProcessError e) {
         if (e != QProcess::FailedToStart)
             return;
-        const QString msg = QStringLiteral("ssh binary not found");
+        const QString msg = QStringLiteral("ssh binary not found (install OpenSSH on Windows: Settings → Optional features)");
+        removeAskPass(askDir);
         if (m_test) {
             m_test->deleteLater();
             m_test = nullptr;
@@ -310,7 +397,11 @@ void SshManager::runCommand(const QString &id, const QString &command)
     m_lastOutput.clear();
     emit outputChanged();
     m_cmd = new QProcess(this);
-    const auto spec = buildSsh(c, command, c.auth != QLatin1String("password"));
+    const bool useAskPass = c.auth == QLatin1String("password") && c.savePassword && !passwordFor(c.id).isEmpty();
+    // Password without a saved secret still needs an interactive prompt (open a terminal for that).
+    const auto spec = buildSsh(c, command, c.auth != QLatin1String("password") || !useAskPass);
+    QString askDir;
+    m_cmd->setProcessEnvironment(sshEnvironment(c, &askDir));
     connect(m_cmd, &QProcess::readyReadStandardOutput, this, [this] {
         m_lastOutput += QString::fromLocal8Bit(m_cmd->readAllStandardOutput());
         emit outputChanged();
@@ -319,13 +410,14 @@ void SshManager::runCommand(const QString &id, const QString &command)
         m_lastOutput += QString::fromLocal8Bit(m_cmd->readAllStandardError());
         emit outputChanged();
     });
-    connect(m_cmd, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this, command](int code, QProcess::ExitStatus st) {
+    connect(m_cmd, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this, command, askDir](int code, QProcess::ExitStatus st) {
         m_lastOutput += QString::fromLocal8Bit(m_cmd->readAllStandardOutput()) + QString::fromLocal8Bit(m_cmd->readAllStandardError());
         const bool ok = st == QProcess::NormalExit && code == 0;
         if (m_cmd) {
             m_cmd->deleteLater();
             m_cmd = nullptr;
         }
+        removeAskPass(askDir);
         emit commandRunningChanged();
         emit outputChanged();
         emit commandFinished(QVariantMap{{QStringLiteral("ok"), ok},
@@ -334,7 +426,7 @@ void SshManager::runCommand(const QString &id, const QString &command)
                                          {QStringLiteral("command"), command}});
         emit statusMessage(ok ? QStringLiteral("SSH — command finished") : QStringLiteral("SSH — command failed (") + QString::number(code) + QStringLiteral(")"));
     });
-    connect(m_cmd, &QProcess::errorOccurred, this, [this, command](QProcess::ProcessError e) {
+    connect(m_cmd, &QProcess::errorOccurred, this, [this, command, askDir](QProcess::ProcessError e) {
         if (e != QProcess::FailedToStart)
             return;
         m_lastOutput = QStringLiteral("Failed to start ssh");
@@ -342,13 +434,14 @@ void SshManager::runCommand(const QString &id, const QString &command)
             m_cmd->deleteLater();
             m_cmd = nullptr;
         }
+        removeAskPass(askDir);
         emit commandRunningChanged();
         emit outputChanged();
         emit commandFinished(QVariantMap{{QStringLiteral("ok"), false},
                                          {QStringLiteral("exitCode"), -1},
                                          {QStringLiteral("output"), m_lastOutput},
                                          {QStringLiteral("command"), command}});
-        emit statusMessage(QStringLiteral("SSH — ssh binary not found"));
+        emit statusMessage(QStringLiteral("SSH — ssh binary not found (install OpenSSH on Windows: Settings → Optional features)"));
     });
     emit commandRunningChanged();
     m_cmd->start(spec.program, spec.args);
@@ -375,6 +468,8 @@ void SshManager::teardownShell(const QString &note)
     }
     m_shell->deleteLater();
     m_shell = nullptr;
+    removeAskPass(m_shellAskPass);
+    m_shellAskPass.clear();
     m_shellHost.clear();
     emit shellStateChanged();
     if (!note.isEmpty())
@@ -401,6 +496,8 @@ void SshManager::openShell(const QString &id)
     m_shell->setProcessChannelMode(QProcess::MergedChannels);
     // -tt + no BatchMode: interactive login shell; key path still passed when set
     const auto spec = buildSsh(c, {}, false);
+    m_shellAskPass.clear();
+    m_shell->setProcessEnvironment(sshEnvironment(c, &m_shellAskPass));
     connect(m_shell, &QProcess::readyReadStandardOutput, this, [this] {
         const QString chunk = QString::fromLocal8Bit(m_shell->readAllStandardOutput());
         m_lastOutput += chunk;
@@ -413,6 +510,8 @@ void SshManager::openShell(const QString &id)
             m_shell->deleteLater();
             m_shell = nullptr;
         }
+        removeAskPass(m_shellAskPass);
+        m_shellAskPass.clear();
         m_shellHost.clear();
         emit shellStateChanged();
         emit outputChanged();
@@ -426,10 +525,12 @@ void SshManager::openShell(const QString &id)
             m_shell->deleteLater();
             m_shell = nullptr;
         }
+        removeAskPass(m_shellAskPass);
+        m_shellAskPass.clear();
         m_shellHost.clear();
         emit shellStateChanged();
         emit outputChanged();
-        emit statusMessage(QStringLiteral("SSH — ssh binary not found"));
+        emit statusMessage(QStringLiteral("SSH — ssh binary not found (install OpenSSH on Windows: Settings → Optional features)"));
     });
     m_shellHost = QStringLiteral("%1@%2:%3").arg(c.user, c.host).arg(c.port);
     m_shell->start(spec.program, spec.args);
@@ -475,16 +576,24 @@ void SshManager::openTerminal(const QString &id)
                                  QStringLiteral("kitty"), QStringLiteral("alacritty"), QStringLiteral("foot")};
     Term term;
 #ifdef Q_OS_WIN
-    // wt.exe preferred; fall back to the classic console host.
+    // wt.exe preferred; fall back to the classic console host. Windows Terminal takes the
+    // remote command as trailing argv — omit the bare "ssh" token and the window dies instantly.
     if (QStandardPaths::findExecutable(QStringLiteral("wt.exe")).isEmpty()) {
         term.program = QStringLiteral("cmd");
-        term.args = {QStringLiteral("/c"), QStringLiteral("start"), QStringLiteral("\"\""), QStringLiteral("ssh")};
+        term.args = {QStringLiteral("/c"), QStringLiteral("start"), QStringLiteral("\"\""), ssh.program};
         term.args << ssh.args;
         term.ok = true;
     } else {
         term.program = QStringLiteral("wt.exe");
-        term.args = ssh.args;
+        term.args = QStringList{QStringLiteral("ssh")} << ssh.args;
+        // Prefer the resolved binary when we have one (System32 OpenSSH); keep the bare name otherwise.
+        if (ssh.program != QLatin1String("ssh"))
+            term.args[0] = ssh.program;
         term.ok = true;
+    }
+    if (findSsh().isEmpty()) {
+        emit statusMessage(QStringLiteral("SSH — OpenSSH client not found (Settings → Apps → Optional features → OpenSSH Client)"));
+        return;
     }
 #else
     for (const QString &name : candidates) {
@@ -505,7 +614,11 @@ void SshManager::openTerminal(const QString &id)
     }
 #endif
     if (!term.ok) {
+#ifdef Q_OS_WIN
+        emit statusMessage(QStringLiteral("SSH — no terminal found (install Windows Terminal)"));
+#else
         emit statusMessage(QStringLiteral("SSH — no terminal found (try gnome-terminal or konsole)"));
+#endif
         return;
     }
     QProcess::startDetached(term.program, term.args);

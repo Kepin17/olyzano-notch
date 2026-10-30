@@ -21,6 +21,7 @@ class SshManager : public QObject
 
 public:
     explicit SshManager(QObject *parent = nullptr);
+    ~SshManager() override;
 
     QVariantList connections() const;
     bool busy() const { return m_busy; }
@@ -71,6 +72,14 @@ private:
     void dropPassword(const QString &id);
     SshProcessSpec buildSsh(const SshModel::Connection &c, const QString &command, bool batchMode) const;
     static QString expandTilde(const QString &path);
+    // Absolute path to the OpenSSH client, or "" when none is on PATH / the Windows system location.
+    static QString findSsh();
+    // When auth is password and a secret is saved, point SSH_ASKPASS at a private temp helper so
+    // Test / Run / the embedded shell can authenticate without a real TTY (Windows especially).
+    // Returns system env (unchanged) when no saved password applies. On success *askPassDir is the
+    // unique temp dir the caller must remove after the process finishes (removeAskPass).
+    QProcessEnvironment sshEnvironment(const SshModel::Connection &c, QString *askPassDir);
+    static void removeAskPass(const QString &dir);
     void finishTest(const QString &id, bool ok, const QString &error, qint64 ms);
     void teardownShell(const QString &note);
 
@@ -80,5 +89,6 @@ private:
     QProcess *m_shell = nullptr;
     QString m_shellHost;
     QString m_lastOutput;
+    QString m_shellAskPass; // temp dir for the live shell's askpass helper ("" = none)
     bool m_busy = false;
 };

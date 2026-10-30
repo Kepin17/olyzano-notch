@@ -1,3 +1,4 @@
+#include "platform/NotchPaths.h"
 #include "platform/Launcher.h"
 
 #include <QCoreApplication>
@@ -42,7 +43,7 @@ void writeKwinMeta(const QString &value) // empty: back to KWin's own default (P
 Launcher::Launcher(AppDock *dock, QObject *parent)
     : QObject(parent)
     , m_dock(dock)
-    , m_settings(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/launcher.conf"), QSettings::IniFormat)
+    , m_settings(NotchPaths::conf(QStringLiteral("launcher")), QSettings::IniFormat)
 {
     m_pinned = m_settings.value(QStringLiteral("pinned")).toStringList();
     m_recent = m_settings.value(QStringLiteral("recent")).toStringList();

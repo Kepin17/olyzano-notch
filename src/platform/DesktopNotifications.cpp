@@ -1,3 +1,4 @@
+#include "platform/NotchPaths.h"
 #include "platform/DesktopNotifications.h"
 
 #include "models/FileItem.h"
@@ -8,7 +9,7 @@
 namespace {
 QString configPath()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/notifications.conf");
+    return NotchPaths::conf(QStringLiteral("notifications"));
 }
 }
 

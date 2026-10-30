@@ -226,6 +226,15 @@ Window {
     property bool dragLive: false
     property string infoText: ""        // short confirmation shown in the panel (saved, zip ready)
     Timer { id: infoTimer; interval: 3500; onTriggered: root.infoText = "" }
+    // Single owner of the status banner timeout. Pages call shell.say(msg) or shell.say(msg, ttlMs).
+    function say(msg, ttlMs) {
+        infoText = msg
+        if (ttlMs !== undefined && ttlMs > 0)
+            infoTimer.interval = ttlMs
+        else
+            infoTimer.interval = 3500
+        infoTimer.restart()
+    }
     readonly property bool selecting: page === "shelf" && selection.length > 0
     readonly property bool inRemoved: notch.categoryFilter === "__removed__" // Recently removed view
     readonly property bool anyMenu: menu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible
@@ -3281,35 +3290,13 @@ Window {
         }
     }
 
-    Popup {
+    ConfirmDialog {
         id: confirmDelete
         property var ids: []
-        x: (root.width - width) / 2
-        y: 64
-        width: 320
-        padding: 16
-        background: Rectangle { radius: 16; color: theme.surface; border.color: theme.outline }
-        contentItem: ColumnLayout {
-            spacing: 10
-            SectionLabel { text: "Delete permanently?" }
-            Caption {
-                Layout.fillWidth: true
-                text: "Locked files skip Recently removed, so this can't be undone."
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                PillButton { text: "Cancel"; onClicked: confirmDelete.close() }
-                PillButton {
-                    text: "Delete"
-                    checked: true
-                    onClicked: {
-                        notch.removeItems(confirmDelete.ids)
-                        confirmDelete.close()
-                    }
-                }
-            }
-        }
+        title: "Delete permanently?"
+        body: "Locked files skip Recently removed, so this can't be undone."
+        confirmText: "Delete"
+        onConfirmed: notch.removeItems(confirmDelete.ids)
     }
 
     DarkMenu {

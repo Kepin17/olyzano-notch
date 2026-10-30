@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtQuick.Dialogs
 import QtQuick.Layouts
+import QtCore
 
 // Database tab: connections on the left; form when offline, browse/query when connected.
 ColumnLayout {
@@ -10,7 +12,7 @@ ColumnLayout {
     Layout.fillHeight: true
     spacing: 0
 
-    readonly property bool modalOpen: deleteDialog.visible
+    readonly property bool modalOpen: deleteDialog.visible || sqliteDialog.visible
     property string selectedId: ""
     property var draft: ({})
     property bool editing: false
@@ -27,8 +29,7 @@ ColumnLayout {
         }
     }
     function say(msg) {
-        shell.infoText = msg
-        shell.restartInfo()
+        shell.say(msg)
     }
     function select(id) {
         selectedId = id
@@ -123,47 +124,6 @@ ColumnLayout {
             const list = dbManager.tables(browseSchema)
             for (let i = 0; i < list.length; ++i)
                 append({ name: list[i].name, schema: list[i].schema })
-        }
-    }
-
-    component Field: ColumnLayout {
-        id: fl
-        property string label: ""
-        property string placeholder: ""
-        property string value: ""
-        property bool mono: false
-        property bool show: true
-        property int echoMode: TextInput.Normal
-        signal edited(string text)
-        visible: show
-        Layout.fillWidth: true
-        spacing: 4
-        Text {
-            text: fl.label
-            color: theme.textDim
-            font.pixelSize: 11
-            font.weight: Font.Medium
-        }
-        TextField {
-            id: tf
-            Layout.fillWidth: true
-            Layout.preferredHeight: 32
-            text: fl.value
-            placeholderText: fl.placeholder
-            placeholderTextColor: theme.textFaint
-            color: theme.text
-            echoMode: fl.echoMode
-            font.family: fl.mono ? "monospace" : ""
-            font.pixelSize: 12
-            leftPadding: 10
-            rightPadding: 10
-            background: Rectangle {
-                radius: 8
-                color: theme.well
-                border.width: 1
-                border.color: tf.activeFocus ? Qt.alpha(theme.accent, 0.45) : theme.hairline
-            }
-            onTextEdited: fl.edited(text)
         }
     }
 
@@ -398,9 +358,13 @@ ColumnLayout {
                                 }
                                 Text {
                                     visible: draft.driver !== "sqlite" && !driversHas(draft.driver)
-                                    text: "Qt SQL driver not installed"
+                                    text: Qt.platform.os === "windows"
+                                          ? "Qt SQL driver not in this build — SQLite works out of the box; MySQL/PostgreSQL need the QMYSQL/QPSQL plugin beside notch.exe"
+                                          : "Qt SQL driver not installed (libqt6sql6-mysql / libqt6sql6-psql)"
                                     color: theme.danger
                                     font.pixelSize: 10
+                                    wrapMode: Text.Wrap
+                                    Layout.fillWidth: true
                                 }
                             }
 
@@ -464,13 +428,23 @@ ColumnLayout {
                                 echoMode: TextInput.Password
                                 onEdited: t => draft.password = t
                             }
-                            Field {
-                                label: "File path"
-                                placeholder: "/path/to/app.db"
-                                value: draft.sqlitePath || ""
-                                mono: true
-                                show: draft.driver === "sqlite"
-                                onEdited: t => draft.sqlitePath = t
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 6
+                                visible: draft.driver === "sqlite"
+
+                                Field {
+                                    Layout.fillWidth: true
+                                    label: "File path"
+                                    placeholder: Qt.platform.os === "windows" ? "C:\\data\\app.db" : "/path/to/app.db"
+                                    value: draft.sqlitePath || ""
+                                    mono: true
+                                    onEdited: t => draft.sqlitePath = t
+                                }
+                                PillButton {
+                                    text: "Browse…"
+                                    onClicked: sqliteDialog.open()
+                                }
                             }
                         }
                     }
@@ -935,60 +909,35 @@ ColumnLayout {
         }
     }
 
-    // Themed confirm — Popup + PillButton (no system Dialog chrome)
-    Popup {
+    // Themed confirm — shared ConfirmDialog (Popup + PillButton, no system Dialog chrome)
+    ConfirmDialog {
         id: deleteDialog
-        parent: Overlay.overlay
-        x: Math.max(12, (Overlay.overlay.width - width) / 2)
-        y: Math.max(48, (Overlay.overlay.height - height) / 2)
-        width: 320
-        padding: 16
-        modal: true
-        dim: false
-        Overlay.modal: Item {}
-        focus: true
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        background: Rectangle {
-            radius: theme.radiusLg
-            color: theme.surface
-            border.width: 1
-            border.color: theme.outline
+        title: "Delete connection?"
+        body: "The connection is removed from the list. Saved password (if any) is dropped too."
+        confirmText: "Delete"
+        onConfirmed: {
+            const wasSelected = selectedId === tab.selectedId
+            dbManager.removeConnection(selectedId)
+            if (wasSelected)
+                tab.select("")
+            tab.say("DB — deleted")
         }
-        contentItem: ColumnLayout {
-            spacing: 12
-            Text {
-                text: "Delete connection?"
-                color: theme.text
-                font.pixelSize: 14
-                font.weight: Font.DemiBold
-            }
-            Text {
-                Layout.fillWidth: true
-                text: "The connection is removed from the list. Saved password (if any) is dropped too."
-                wrapMode: Text.Wrap
-                color: theme.textDim
-                font.pixelSize: 12
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                PillButton {
-                    text: "Cancel"
-                    onClicked: deleteDialog.close()
-                }
-                PillButton {
-                    text: "Delete"
-                    checked: true
-                    onClicked: {
-                        const wasSelected = selectedId === tab.selectedId
-                        dbManager.removeConnection(selectedId)
-                        if (wasSelected)
-                            tab.select("")
-                        tab.say("DB — deleted")
-                        deleteDialog.close()
-                    }
-                }
-            }
+    }
+
+    // SQLite file picker — typing a Windows path by hand is miserable.
+    FileDialog {
+        id: sqliteDialog
+        title: "Pick a SQLite database"
+        fileMode: FileDialog.OpenFile
+        currentFolder: StandardPaths.writableLocation(StandardPaths.HomeLocation)
+        nameFilters: ["SQLite databases (*.db *.sqlite *.sqlite3)", "All files (*)"]
+        onAccepted: {
+            // url → local path for the connection form (expandTilde still applies in C++)
+            let p = decodeURIComponent(selectedFile.toString())
+            p = p.replace(/^file:\/\//, "")
+            if (Qt.platform.os === "windows" && p.startsWith("/"))
+                p = p.slice(1) // file:///C:/… → C:/…
+            draft.sqlitePath = p
         }
     }
 }

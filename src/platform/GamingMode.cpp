@@ -1,3 +1,4 @@
+#include "platform/NotchPaths.h"
 #include "platform/GamingMode.h"
 
 #include "models/FileItem.h"
@@ -12,7 +13,7 @@
 namespace {
 QString configPath()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/gaming.conf");
+    return NotchPaths::conf(QStringLiteral("gaming"));
 }
 }
 

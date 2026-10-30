@@ -1,3 +1,4 @@
+#include "platform/NotchPaths.h"
 #include "platform/AppDock.h"
 
 #include <QKeySequence>
@@ -47,7 +48,7 @@ static QString homeTrash()
 
 static QString configPath()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/dock.conf");
+    return NotchPaths::conf(QStringLiteral("dock"));
 }
 
 AppDock::AppDock(QObject *parent)

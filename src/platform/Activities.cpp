@@ -1,3 +1,4 @@
+#include "platform/NotchPaths.h"
 #include "platform/Activities.h"
 
 #include <QCoreApplication>
@@ -15,7 +16,7 @@
 
 static QString configPath()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/activities.conf");
+    return NotchPaths::conf(QStringLiteral("activities"));
 }
 
 // What browsers name a file while they're still writing it.

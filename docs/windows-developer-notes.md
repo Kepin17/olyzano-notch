@@ -18,6 +18,17 @@ worth porting. Everything here comes from this working tree; nothing is committe
 **Careful when testing:** on Windows `QStandardPaths` ignores the `LOCALAPPDATA` environment variable, so a "throwaway profile" through
 that variable does not work. Test runs use the real `%LOCALAPPDATA%\notch`. (Linux honours `XDG_DATA_HOME` / `XDG_CONFIG_HOME`.)
 
+## 1b. Dev hub on Windows (SSH · Database)
+
+Shared code; the Windows-only bits that made the hub actually usable:
+
+| Piece | Behaviour on Windows |
+|---|---|
+| `ssh` discovery | `SshManager::findSsh()` — PATH first, then `%SystemRoot%\System32\OpenSSH\ssh.exe` (the optional feature often is not on a GUI process PATH). Test / Run / shell use the absolute path when found. |
+| Open external terminal | `wt.exe ssh …` (argv includes `ssh` — omitting it made the window die instantly). Fallback: `cmd /c start "" <ssh> …`. |
+| Password auth without a TTY | Saved password → `SSH_ASKPASS` helper (a private temp dir under `%TEMP%\notch-ssh-askpass-*` with a `.bat` that `type`s the password file; `SSH_ASKPASS_REQUIRE=force`). Removed when the process finishes. Without a saved secret, open the external terminal and type the password there. |
+| Database drivers | Portable/installer ships **SQLite only**. `QMYSQL`/`QPSQL` are not in the aqt binary package; building them needs MySQL Connector/C + libpq and a matching qtbase plugin build. UI shows a Windows-specific “plugin missing” note and still offers SQLite with a **Browse…** file picker. |
+
 ## 2. Changes that apply to every platform (needs a check on Linux)
 
 These are in shared code, so Linux gets them too. They were verified on Windows only.

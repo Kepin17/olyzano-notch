@@ -1,3 +1,4 @@
+#include "platform/NotchPaths.h"
 #include "platform/Wellbeing.h"
 
 #include <QDate>
@@ -18,7 +19,7 @@
 
 static QString configPath()
 {
-    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/wellbeing.conf");
+    return NotchPaths::conf(QStringLiteral("wellbeing"));
 }
 
 Wellbeing::Wellbeing(QObject *parent)

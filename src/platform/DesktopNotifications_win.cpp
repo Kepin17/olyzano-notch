@@ -6,6 +6,7 @@
 #include <winrt/Windows.UI.Notifications.Management.h>
 
 #include "platform/DesktopNotifications.h"
+#include "platform/NotchPaths.h"
 
 #include "models/FileItem.h"
 
@@ -98,7 +99,7 @@ struct DesktopNotifications::Listener {
 
 DesktopNotifications::DesktopNotifications(QObject *parent)
     : QObject(parent)
-    , m_settings(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + QStringLiteral("/notch/notifications.conf"),
+    , m_settings(NotchPaths::conf(QStringLiteral("notifications")),
                  QSettings::IniFormat)
 {
     if (enabled())
