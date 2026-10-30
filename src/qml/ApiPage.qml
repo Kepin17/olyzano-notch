@@ -930,7 +930,7 @@ ColumnLayout {
                             leftPadding: 10
                             rightPadding: 10
                             background: Rectangle {
-                                radius: 8
+                                radius: theme.radiusSm
                                 color: theme.well
                                 border.width: 1
                                 border.color: cmdField.activeFocus ? Qt.alpha(theme.accent, 0.45) : theme.hairline
@@ -1328,7 +1328,7 @@ ColumnLayout {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         visible: page.draft.bodyMode !== "none"
-                        radius: 8
+                        radius: theme.radiusSm
                         color: theme.well
                         border.width: 1
                         border.color: theme.hairline
@@ -1393,7 +1393,7 @@ ColumnLayout {
                         font.pixelSize: 12
                         leftPadding: 10; rightPadding: 10
                         background: Rectangle {
-                            radius: 8
+                            radius: theme.radiusSm
                             color: theme.well
                             border.width: 1
                             border.color: parent.activeFocus ? Qt.alpha(theme.accent, 0.45) : theme.hairline
@@ -1411,7 +1411,7 @@ ColumnLayout {
                             placeholderTextColor: theme.textFaint
                             color: theme.text
                             leftPadding: 10
-                            background: Rectangle { radius: 8; color: theme.well; border.color: theme.hairline; border.width: 1 }
+                            background: Rectangle { radius: theme.radiusSm; color: theme.well; border.color: theme.hairline; border.width: 1 }
                             onEditingFinished: page.setDraft({ authUser: text })
                         }
                         TextField {
@@ -1423,7 +1423,7 @@ ColumnLayout {
                             color: theme.text
                             echoMode: TextInput.Password
                             leftPadding: 10
-                            background: Rectangle { radius: 8; color: theme.well; border.color: theme.hairline; border.width: 1 }
+                            background: Rectangle { radius: theme.radiusSm; color: theme.well; border.color: theme.hairline; border.width: 1 }
                             onEditingFinished: page.setDraft({ authPassword: text })
                         }
                     }
@@ -1960,7 +1960,7 @@ ColumnLayout {
                 leftPadding: 10
                 rightPadding: 10
                 background: Rectangle {
-                    radius: 8
+                    radius: theme.radiusSm
                     color: theme.well
                     border.width: 1
                     border.color: renameArea.activeFocus ? Qt.alpha(theme.accent, 0.5) : theme.hairline
@@ -2180,7 +2180,7 @@ ColumnLayout {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                radius: 8
+                radius: theme.radiusSm
                 color: theme.well
                 border.width: 1
                 border.color: theme.hairline

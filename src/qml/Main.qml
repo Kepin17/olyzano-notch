@@ -1738,7 +1738,7 @@ Window {
                 Layout.preferredHeight: 30
                 Layout.alignment: Qt.AlignVCenter
                 source: root.shownArt
-                radius: 8
+                radius: theme.radiusSm
                 opacity: 1 - Math.abs(root.capRoll)
                 transform: Translate { y: root.capRoll * 12 }
             }
@@ -2089,7 +2089,7 @@ Window {
                             anchors.margins: -4
                             width: Math.max(16, trashCount.implicitWidth + 8)
                             height: 16
-                            radius: 8
+                            radius: theme.radiusSm
                             color: theme.danger
                             Text {
                                 id: trashCount
@@ -3388,7 +3388,7 @@ Window {
                     verticalAlignment: Text.AlignVCenter
                     leftPadding: 4
                 }
-                background: Rectangle { radius: 8; color: sortItem.highlighted ? theme.surfaceHover : "transparent" }
+                background: Rectangle { radius: theme.radiusSm; color: sortItem.highlighted ? theme.surfaceHover : "transparent" }
             }
         }
     }

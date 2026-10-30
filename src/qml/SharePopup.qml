@@ -455,7 +455,7 @@ Popup {
                         Layout.alignment: Qt.AlignHCenter | Qt.AlignTop
                         implicitWidth: 188
                         implicitHeight: 188
-                        radius: 12
+                        radius: theme.radiusMd
                         color: rd.status === "ready" ? "white" : theme.well
                         border.width: rd.status === "ready" ? 0 : 1
                         border.color: theme.outline

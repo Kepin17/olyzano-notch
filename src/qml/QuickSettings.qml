@@ -112,7 +112,7 @@ Rectangle {
         signal infoClicked()
         Layout.fillWidth: true
         implicitHeight: 30
-        background: Rectangle { radius: 8; color: row.hovered ? card.tileOff : "transparent" }
+        background: Rectangle { radius: theme.radiusSm; color: row.hovered ? card.tileOff : "transparent" }
         contentItem: RowLayout {
             spacing: 8
             LineIcon { visible: row.glyph !== "" && row.bars < 0; Layout.leftMargin: 6; glyph: row.glyph; opacity: row.glyphOpacity; sourceSize: Qt.size(15, 15); color: theme.text }
@@ -161,7 +161,7 @@ Rectangle {
         }
         handle: Rectangle {
             x: s.leftPadding + s.visualPosition * (s.availableWidth - width); y: s.topPadding + (s.availableHeight - height) / 2
-            width: 16; height: 16; radius: 8
+            width: 16; height: 16; radius: theme.radiusSm
             color: "white"
             border.width: 1; border.color: Qt.rgba(0, 0, 0, 0.25)
         }
@@ -345,7 +345,7 @@ Rectangle {
                                 color: theme.text
                                 onVisibleChanged: if (visible) forceActiveFocus(); else text = ""
                                 onAccepted: join.clicked()
-                                background: Rectangle { radius: 8; color: card.tileOff; border.width: pass.activeFocus ? 1 : 0; border.color: theme.accent }
+                                background: Rectangle { radius: theme.radiusSm; color: card.tileOff; border.width: pass.activeFocus ? 1 : 0; border.color: theme.accent }
                             }
                             Button {
                                 id: join

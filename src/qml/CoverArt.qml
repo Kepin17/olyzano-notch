@@ -5,7 +5,7 @@ import QtQuick.Effects
 Item {
     id: c
     property url source
-    property real radius: 8
+    property real radius: theme.radiusSm
     readonly property bool ready: img.status === Image.Ready
     readonly property bool software: memtune.running // the software renderer cannot draw the mask (see CameraView)
     clip: c.software // the direct cover below is square; keep it inside the rounded backdrop

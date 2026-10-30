@@ -19,7 +19,7 @@ Rectangle {
 
     width: 300
     height: Math.min(col.height + 12, maxH)
-    radius: 12
+    radius: theme.radiusMd
     color: theme.dark ? Qt.rgba(0.09, 0.09, 0.10, Math.min(1, topbar.opacity + 0.25)) : Qt.rgba(1, 1, 1, Math.min(1, topbar.opacity + 0.25))
     border.width: 1
     border.color: theme.dark ? Qt.rgba(1, 1, 1, 0.12) : Qt.rgba(0, 0, 0, 0.12)
@@ -57,7 +57,7 @@ Rectangle {
                     Rectangle {
                         visible: !row.modelData.separator
                         anchors { fill: parent; leftMargin: 5; rightMargin: 5 }
-                        radius: 8
+                        radius: theme.radiusSm
                         color: rowHover.hovered && row.modelData.enabled || pop.openSub === row.index ? theme.accentSoft : "transparent"
                         Text { // check / radio
                             x: 9; anchors.verticalCenter: parent.verticalCenter

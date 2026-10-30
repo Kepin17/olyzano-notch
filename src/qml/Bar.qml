@@ -126,7 +126,7 @@ Window {
             width: 30; height: 26
             Accessible.name: "Applications"
             onClicked: root.launcherOpen = !root.launcherOpen
-            background: Rectangle { radius: 8; color: root.launcherOpen ? theme.accentSoft : parent.hovered ? theme.surfaceHover : "transparent" }
+            background: Rectangle { radius: theme.radiusSm; color: root.launcherOpen ? theme.accentSoft : parent.hovered ? theme.surfaceHover : "transparent" }
             contentItem: Item { LineIcon { anchors.centerIn: parent; glyph: "grid"; sourceSize: Qt.size(16, 16); color: root.launcherOpen ? theme.accent : theme.text } }
         }
 
@@ -469,7 +469,7 @@ Window {
         height: moreFlow.implicitHeight + 16
         x: Math.max(4, root.width - width - 160)
         y: root.stripH + 2
-        radius: 12
+        radius: theme.radiusMd
         visible: root.trayMore && root.shown
         color: theme.dark ? Qt.rgba(0.09, 0.09, 0.10, Math.min(1, topbar.opacity + 0.25)) : Qt.rgba(1, 1, 1, Math.min(1, topbar.opacity + 0.25))
         border.width: 1

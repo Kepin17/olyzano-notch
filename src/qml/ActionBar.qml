@@ -114,7 +114,7 @@ RowLayout {
                             anchors.verticalCenter: parent.verticalCenter
                             width: Math.max(16, badgeText.implicitWidth + 8)
                             height: 16
-                            radius: 8
+                            radius: theme.radiusSm
                             color: theme.danger
                             Text { id: badgeText; anchors.centerIn: parent; text: part.modelData.badge; color: theme.onColor(theme.danger); font.pixelSize: 10; font.weight: Font.DemiBold }
                         }

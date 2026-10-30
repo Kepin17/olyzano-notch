@@ -21,7 +21,7 @@ AbstractButton {
             x: tg.checked ? parent.width - width - 3 : 3
             width: 16
             height: 16
-            radius: 8
+            radius: theme.radiusSm
             color: tg.checked ? theme.onColor(theme.accent) : theme.textSoft
             Behavior on x { enabled: activities.animations; NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
         }

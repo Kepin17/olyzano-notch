@@ -479,7 +479,7 @@ ColumnLayout {
                                 rightPadding: 8
                                 validator: IntValidator { bottom: 1; top: 65535 }
                                 background: Rectangle {
-                                    radius: 8
+                                    radius: theme.radiusSm
                                     color: theme.well
                                     border.width: 1
                                     border.color: portField.activeFocus ? Qt.alpha(theme.accent, 0.45) : theme.hairline

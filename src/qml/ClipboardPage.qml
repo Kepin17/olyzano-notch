@@ -114,7 +114,7 @@ ColumnLayout {
                 Rectangle { // a picture's thumbnail, or a text mark
                     Layout.preferredWidth: 34
                     Layout.preferredHeight: 34
-                    radius: 8
+                    radius: theme.radiusSm
                     color: Qt.alpha(theme.accent, 0.12)
                     clip: true
                     Image { visible: row.isImage; anchors.fill: parent; source: row.isImage ? row.url : ""; sourceSize: Qt.size(68, 68); fillMode: Image.PreserveAspectCrop; asynchronous: true }

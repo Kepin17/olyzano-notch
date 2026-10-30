@@ -413,7 +413,7 @@ Window {
                             visible: root.dropTargetIndex === slot.index
                             x: icon.x - 4; y: icon.y - 4
                             width: icon.size + 8; height: icon.size + 8
-                            radius: 12
+                            radius: theme.radiusMd
                             color: Qt.rgba(theme.accent.r, theme.accent.g, theme.accent.b, 0.18)
                             border.width: 2
                             border.color: theme.accent
@@ -748,7 +748,7 @@ Window {
                     required property var modelData
                     width: listColumn.width
                     height: 30
-                    radius: 8
+                    radius: theme.radiusSm
                     color: rowArea.containsMouse ? theme.surfaceHover : "transparent"
                     Text {
                         anchors.fill: parent
@@ -792,7 +792,7 @@ Window {
         height: stackColumn.implicitHeight + 24
         x: root.popupX(Math.max(0, root.stackIndex), width)
         y: root.popupY(Math.max(0, root.stackIndex), height)
-        radius: 18
+        radius: theme.radiusLg
         color: theme.surface
         border.color: theme.outline
         focus: visible
@@ -1019,7 +1019,7 @@ Window {
                         modelData.pinned ? dock.unpin(modelData.id) : dock.pin(modelData.id)
                         apps.revision++
                     }
-                    background: Rectangle { radius: 8; color: entry.hovered ? theme.surfaceHover : "transparent" }
+                    background: Rectangle { radius: theme.radiusSm; color: entry.hovered ? theme.surfaceHover : "transparent" }
                     contentItem: RowLayout {
                         spacing: 10
                         Image {

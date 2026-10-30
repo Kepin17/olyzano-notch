@@ -70,7 +70,7 @@ target_link_libraries(notch_core PUBLIC Qt6::Core Qt6::Gui Qt6::Sql Qt6::Network
 
 qt_add_executable(notch
     src/main.cpp
-    src/app/NotchController.h src/app/NotchController.cpp
+    src/app/NotchController.h src/app/NotchController.cpp src/app/FileFilter.h src/app/FileFilter.cpp
     src/app/ShareController.h src/app/ShareController.cpp
     src/app/ShareSession.h src/app/ShareSession.cpp
     src/app/NearbyController.h src/app/NearbyController.cpp

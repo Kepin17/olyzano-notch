@@ -122,7 +122,7 @@ Popup {
                 font.pixelSize: 14
                 font.weight: Font.DemiBold
                 leftPadding: 10; rightPadding: 10
-                background: Rectangle { radius: 8; color: theme.well; border.width: 1; border.color: parent.activeFocus ? Qt.alpha(theme.accent, 0.5) : theme.hairline }
+                background: Rectangle { radius: theme.radiusSm; color: theme.well; border.width: 1; border.color: parent.activeFocus ? Qt.alpha(theme.accent, 0.5) : theme.hairline }
                 onEditingFinished: { if (text.trim() !== "" && text !== ed.envName) { ed.envName = text.trim(); ed.save() } }
             }
 

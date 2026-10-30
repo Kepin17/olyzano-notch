@@ -1068,7 +1068,7 @@ RowLayout {
                                 modelData.pinned ? dock.unpin(modelData.id) : dock.pin(modelData.id)
                                 dockApps.revision++
                             }
-                            background: Rectangle { radius: 8; color: appEntry.hovered ? theme.surfaceHover : "transparent" }
+                            background: Rectangle { radius: theme.radiusSm; color: appEntry.hovered ? theme.surfaceHover : "transparent" }
                             contentItem: RowLayout {
                                 spacing: 10
                                 Image {
@@ -2161,7 +2161,7 @@ RowLayout {
                             Layout.fillWidth: true
                             Layout.leftMargin: 32
                             implicitHeight: cmdText.implicitHeight + 16
-                            radius: 8
+                            radius: theme.radiusSm
                             color: theme.well
                             border.width: 1
                             border.color: theme.hairline
