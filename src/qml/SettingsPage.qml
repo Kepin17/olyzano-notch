@@ -39,7 +39,7 @@ RowLayout {
     readonly property var index: [
         ["about", "Updates", "update upgrade new version release check download latest github notify"], ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
         ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Search from the notch", "search apps launcher spotlight shortcut win space meta keyboard open app"], ["general", "Low memory mode", "memory ram performance software renderer gpu graphics lower usage"], ["general", "Clipboard history", "clipboard copy paste history remember klipper"], ["general", "Sounds", "sound effects volume quiet mute"],
-        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Voice assistant", "voice assistant commands speech microphone whisper offline say listen"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["appearance", "Capsule shape", "capsule shape notch pill rounded dynamic island edge look widget"],["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"], ["appearance", "Glass", "glass glassmorphism translucent transparent blur frosted see-through"], ["appearance", "Border matches my system accent", "border outline edge accent windows color capsule widget"], ["appearance", "Clock follows theme colour", "clock time hour accent colour colour color theme status bar idle"], ["appearance", "Bounce", "bounce overshoot spring elastic animation capsule panel soft bouncy"], ["appearance", "Animations and transitions", "animation animations transition motion reduce disable off smooth instant bounce spring"],
+        ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Voice assistant", "voice assistant commands speech microphone whisper offline say listen"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["appearance", "Capsule shape", "capsule shape notch pill rounded dynamic island edge look widget"],["about", "Report a bug", "bug report issue problem crash broken feedback github"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"], ["appearance", "Glass", "glass glassmorphism translucent transparent blur frosted see-through"], ["appearance", "Border matches my system accent", "border outline edge accent windows color capsule widget"], ["appearance", "Clock follows theme colour", "clock time hour accent colour colour color theme status bar idle"], ["appearance", "Bounce", "bounce overshoot spring elastic animation capsule panel soft bouncy"], ["appearance", "Animations and transitions", "animation animations transition motion reduce disable off smooth instant bounce spring"],
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
         ["panel", "Transparency and blur", "glass opacity bar"], ["panel", "What the bar shows", "app name date seconds battery percentage"],
         ["panel", "Quick Settings", "wifi bluetooth volume brightness power click hover system cpu ram memory gpu disk network monitor usage"],
@@ -1480,15 +1480,49 @@ RowLayout {
                 }
 
                 SettingCard {
-                    title: "Problems?"
-                    RowLayout {
+                    id: bugCard
+                    title: "Report a bug"
+                    readonly property string details: "Olyzano Notch " + Qt.application.version + " · " + Qt.platform.os + " · " + Qt.platform.pluginName
+                    Caption { Layout.fillWidth: true; text: "Say what went wrong. Send opens a new GitHub issue with this filled in, plus the version and system details; you check it and submit it there." }
+                    TextField {
+                        id: bugTitle
                         Layout.fillWidth: true
-                        Caption { Layout.fillWidth: true; text: "Copy the version and system details to paste into a bug report." }
+                        implicitHeight: 30
+                        leftPadding: 12
+                        placeholderText: "Title, e.g. Music card freezes after sleep"
+                        placeholderTextColor: theme.placeholder
+                        color: theme.text
+                        selectionColor: theme.accent
+                        font.pixelSize: 13
+                        background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: bugTitle.activeFocus ? theme.accent : theme.outline }
+                    }
+                    TextArea {
+                        id: bugBody
+                        Layout.fillWidth: true
+                        Layout.minimumHeight: 90
+                        leftPadding: 12
+                        topPadding: 8
+                        wrapMode: TextEdit.Wrap
+                        placeholderText: "What happened, what you expected, and the steps to make it happen again"
+                        placeholderTextColor: theme.placeholder
+                        color: theme.text
+                        selectionColor: theme.accent
+                        font.pixelSize: 13
+                        background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: bugBody.activeFocus ? theme.accent : theme.outline }
+                    }
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 6
                         PillButton {
-                            text: "Copy details"
-                            iconName: "copy"
-                            onClicked: notch.copyText("Olyzano Notch " + Qt.application.version + " · " + Qt.platform.os + " · " + Qt.platform.pluginName)
+                            text: "Send on GitHub"
+                            iconName: "external"
+                            checked: true
+                            enabled: bugTitle.text.trim() !== ""
+                            onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/issues/new?labels=bug&title="
+                                                            + encodeURIComponent(bugTitle.text.trim())
+                                                            + "&body=" + encodeURIComponent(bugBody.text.trim() + "\n\n---\n" + bugCard.details))
                         }
+                        PillButton { text: "Copy details"; iconName: "copy"; onClicked: notch.copyText(bugCard.details) }
                     }
                 }
             }

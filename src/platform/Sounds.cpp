@@ -7,6 +7,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QProcess>
+#include <QRandomGenerator>
 #include <QStandardPaths>
 #include <QtEndian>
 
@@ -110,7 +111,13 @@ void Sounds::play(const QString &name)
     if (!SoundsModel::shouldPlay(name, s))
         return;
     m_last[name].start();
-    output(name);
+    // Secret: one notification in a thousand neighs. Prayer times have their own name so the adhan never does.
+    if (name == QLatin1String("prayer"))
+        output(QStringLiteral("notify"));
+    else if (name == QLatin1String("notify") && QRandomGenerator::global()->bounded(1000) == 0)
+        output(QStringLiteral("neigh"));
+    else
+        output(name);
 }
 
 void Sounds::preview(const QString &name)

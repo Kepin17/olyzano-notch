@@ -1362,6 +1362,7 @@ private slots:
         QCOMPARE(groupOf(QStringLiteral("drop")), Shelf);
         QCOMPARE(groupOf(QStringLiteral("break-over")), Timer);
         QCOMPARE(groupOf(QStringLiteral("ring")), Phone);
+        QCOMPARE(groupOf(QStringLiteral("prayer")), Phone); // plays notify.wav, never the neigh
         QCOMPARE(groupOf(QStringLiteral("plug-out")), System);
         QCOMPARE(groupOf(QStringLiteral("nope")), Unknown);
 

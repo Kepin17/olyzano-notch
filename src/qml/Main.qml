@@ -385,7 +385,7 @@ Window {
     // ---- Prayer times: a note when one comes, and a heads-up before ----
     Connections {
         target: prayer
-        function onPrayerTime(name, time) { root.showToast("prayer", name, "It is time · " + time, "notifications", 9000); sounds.play("notify") }
+        function onPrayerTime(name, time) { root.showToast("prayer", name, "It is time · " + time, "notifications", 9000); sounds.play("prayer") }
         function onPrayerSoon(name, minutes) { root.showToast("prayer", name, "In " + minutes + " minute" + (minutes === 1 ? "" : "s"), "notifications", 6000) }
         function onPlaceNote(text) { root.showToast("prayer", "Prayer times", text, "notifications", 7000) }
     }

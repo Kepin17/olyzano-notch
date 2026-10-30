@@ -12,7 +12,7 @@ inline Group groupOf(const QString &name)
     static const struct { const char *name; Group group; } table[] = {
         {"drop", Shelf},       {"trash", Shelf},     {"pick", Shelf},
         {"timer", Timer},      {"stretch", Timer},   {"break-over", Timer},
-        {"ring", Phone},       {"notify", Phone},    {"receive", Phone},  {"send", Phone},
+        {"ring", Phone},       {"notify", Phone},    {"receive", Phone},  {"send", Phone},  {"prayer", Phone},
         {"plug-in", System},   {"plug-out", System}, {"device", System},  {"warning", System},
     };
     for (const auto &e : table)
