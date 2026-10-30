@@ -44,16 +44,34 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 Filename: "{app}\notch.exe"; Description: "Start Olyzano Notch"; Flags: nowait postinstall skipifsilent
 
 [Code]
-// RivaTuner (RTSS / MSI Afterburner) treats any GPU-drawing app as a game; say once how to tell it to ignore Notch.
-function RtssInstalled: Boolean;
+// RivaTuner (RTSS / MSI Afterburner) treats any GPU-drawing app as a game; give it a notch.exe profile with
+// detection off (what its Shift + Add does). Profiles sits in Program Files, so a per-user install falls back to the guide.
+function RtssDir: String;
 begin
-  Result := RegKeyExists(HKLM32, 'SOFTWARE\Unwinder\RTSS') or RegKeyExists(HKLM, 'SOFTWARE\Unwinder\RTSS')
-         or DirExists(ExpandConstant('{commonpf32}\RivaTuner Statistics Server'));
+  if not (RegQueryStringValue(HKLM32, 'SOFTWARE\Unwinder\RTSS', 'InstallDir', Result)
+          or RegQueryStringValue(HKLM, 'SOFTWARE\Unwinder\RTSS', 'InstallDir', Result)) then
+    Result := ExpandConstant('{commonpf32}\RivaTuner Statistics Server');
+  if not DirExists(Result + '\Profiles') then
+    Result := '';
+end;
+
+function RtssIgnoresNotch(Dir: String): Boolean;
+var
+  Cfg: String;
+begin
+  Cfg := Dir + '\Profiles\notch.exe.cfg';
+  // Keep a profile the user already made.
+  Result := FileExists(Cfg) or SaveStringToFile(Cfg, '[Hooking]' + #13#10 + 'EnableHooking=0' + #13#10, False);
 end;
 
 procedure CurStepChanged(CurStep: TSetupStep);
+var
+  Dir: String;
 begin
-  if (CurStep = ssPostInstall) and (not WizardSilent) and RtssInstalled then
+  if CurStep <> ssPostInstall then
+    exit;
+  Dir := RtssDir;
+  if (Dir <> '') and not RtssIgnoresNotch(Dir) and not WizardSilent then
     MsgBox('RivaTuner Statistics Server is installed. If its overlay shows on Olyzano Notch:' + #13#10#13#10 +
            '1. Open RivaTuner and click the + button.' + #13#10 +
            '2. Pick ' + ExpandConstant('{app}\notch.exe') + #13#10 +

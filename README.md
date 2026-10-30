@@ -517,7 +517,8 @@ from inside; RTSS has to be told once to ignore it:
 2. Pick `notch.exe` (*Settings → About → RivaTuner* in Notch copies its path for you).
 3. Select it in the list and set **Application detection level** to **None**.
 
-The installer reminds you of this when RTSS is installed.
+The installer does this for you (it writes `Profiles\notch.exe.cfg` with hooking off) when it runs as administrator
+("for all users"); otherwise it shows these steps. Restart RTSS for the profile to take effect.
 
 ## Settings and storage
 
