@@ -638,6 +638,37 @@ Window {
     // Settings and the share window are built the first time they are needed, not at start-up (memory).
     function settingsPage() { settingsLoader.active = true; return settingsLoader.item }
     function sharePopup() { shareLoader.active = true; return shareLoader.item }
+    // `notch --ui-check`: what must hold on every page once it has settled. Each rule comes from a layout bug that really happened.
+    // -> a list of problems (empty: fine).
+    function uiCheck() {
+        const out = []
+        const layers = [toastRow, liveRow, idleRow, capRow, searchLayer, promptLayer, openLayer]
+        if (!island.transitioning) {
+            const shown = layers.filter(l => l.visible && l.opacity > 0.02)
+            if (shown.length > 1)
+                out.push("several island layers are visible at once (" + shown.length + "): the old one did not fade out")
+        }
+        if (mode === "open" && !island.transitioning && panel.implicitHeight > island.height + 2)
+            out.push("the page is taller than the island (" + Math.round(panel.implicitHeight) + " > " + Math.round(island.height) + "): part of it is cut off")
+        let seen = 0
+        const walk = (it, path) => {
+            if (!it || !it.visible || seen > 4000)
+                return
+            ++seen
+            const isLoader = it.sourceComponent !== undefined && it.status !== undefined
+            if (isLoader && it.active === false && it.parent && it.parent.spacing !== undefined)
+                out.push("a Loader that is not loaded is still visible inside a layout, so it takes room and spacing (y=" + Math.round(it.y) + ", in " + path + ")")
+            if (isLoader && it.active === true && it.status === Loader.Ready && it.item && it.item.visible
+                && it.item.implicitHeight <= 0 && it.item.height <= 0 && it.height <= 0)
+                out.push("a loaded section has no height (y=" + Math.round(it.y) + ", in " + path + ")")
+            for (let i = 0; i < it.children.length; ++i)
+                walk(it.children[i], path + "/" + (it.children[i].objectName || it.children[i].toString().replace(/\(0x[0-9a-f]+\)/, "").replace(/_QML_\d+/, "")))
+        }
+        if (mode === "open")
+            walk(panel, "panel")
+        return out
+    }
+
     function debugSettings(section) { // "general" or "general:300" (scrolled down by that much)
         const parts = section.split(":")
         settingsPage().category = parts[0]
@@ -1646,6 +1677,7 @@ Window {
             anchors.leftMargin: island.shoulder + 14
             anchors.rightMargin: island.shoulder + 14
             spacing: 8
+            id: idleRow
             opacity: root.musicShown ? 0 : island.fade("idle")
             visible: opacity > 0
             Behavior on opacity { enabled: activities.animations && !island.transitioning; NumberAnimation { duration: 140 } }
@@ -1830,6 +1862,7 @@ Window {
             anchors.topMargin: 12
             anchors.bottomMargin: 12
             clip: true
+            id: searchLayer
             opacity: island.fade("search")
             visible: opacity > 0
             Loader {
@@ -1854,6 +1887,7 @@ Window {
             anchors.topMargin: 10
             anchors.bottomMargin: 12
             spacing: 8
+            id: promptLayer
             opacity: island.fade("prompt")
             visible: opacity > 0
             RowLayout {
@@ -1898,6 +1932,7 @@ Window {
             width: Math.max(0, island.width - 2 * island.shoulder)
             height: Math.max(0, island.height)
             clip: true
+            id: openLayer
             opacity: island.fade("open")
             visible: opacity > 0
 

@@ -38,6 +38,7 @@ qt_add_library(notch_core STATIC
     src/services/DocTools.h src/services/DocTools.cpp
     src/services/Vault.h src/services/Vault.cpp
     src/services/ShareCrypto.h src/services/ShareCrypto.cpp
+    src/services/Signature.h src/services/Signature.cpp
     src/services/QrImage.h src/services/QrImage.cpp
     src/services/ShareServer.h src/services/ShareServer.cpp
     src/services/Invite.h src/services/Invite.cpp
@@ -163,6 +164,19 @@ if(NOTCH_DISCORD_CLIENT_ID AND NOTCH_DISCORD_CLIENT_SECRET)
 endif()
 file(WRITE "${CMAKE_BINARY_DIR}/generated/notch_discord_app.h"
      "#pragma once\n#define NOTCH_DISCORD_CLIENT_ID \"${_discord_id}\"\n#define NOTCH_DISCORD_CLIENT_SECRET \"${_discord_secret}\"\n")
+# The key that signs the releases' checksum files (public: 64 hex characters of an Ed25519 key, made by scripts/gen-update-key.sh and
+# committed as packaging/update-pubkey.hex). Without the file the program cannot check an update itself and says so.
+set(_update_key "")
+if(EXISTS "${CMAKE_SOURCE_DIR}/packaging/update-pubkey.hex")
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/packaging/update-pubkey.hex")
+    file(READ "${CMAKE_SOURCE_DIR}/packaging/update-pubkey.hex" _update_key)
+    string(STRIP "${_update_key}" _update_key)
+    if(NOT _update_key MATCHES "^[0-9a-fA-F]{64}$")
+        message(WARNING "packaging/update-pubkey.hex is not 64 hex characters: updates cannot be checked by this build")
+        set(_update_key "")
+    endif()
+endif()
+file(WRITE "${CMAKE_BINARY_DIR}/generated/notch_update_key.h" "#pragma once\n#define NOTCH_UPDATE_PUBKEY_HEX \"${_update_key}\"\n")
 target_include_directories(notch PRIVATE "${CMAKE_BINARY_DIR}/generated")
 qt_add_qml_module(notch
     URI Notch
@@ -174,7 +188,7 @@ qt_add_qml_module(notch
         src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkSeparator.qml
         src/qml/SettingToggle.qml src/qml/Chip.qml src/qml/WheelScroller.qml
         src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml src/qml/ActionBar.qml src/qml/Bar.qml src/qml/Segmented.qml src/qml/GlassLayer.qml src/qml/Launcher.qml src/qml/SignalIcon.qml src/qml/CircleAction.qml src/qml/ColorPage.qml src/qml/AppMenuPopup.qml src/qml/CalendarCard.qml src/qml/QuickSettings.qml src/qml/ClipboardPage.qml src/qml/SearchPanel.qml src/qml/CameraPage.qml src/qml/CameraView.qml src/qml/LyricsPanel.qml
-        src/qml/Dock.qml src/qml/TimerPage.qml src/qml/TasksPage.qml src/qml/ArtColor.qml src/qml/MarqueeText.qml src/qml/CoverArt.qml src/qml/DiscordBadge.qml src/qml/DevPage.qml src/qml/ApiPage.qml src/qml/ApiEnvEditor.qml src/qml/SshTab.qml src/qml/DbTab.qml src/qml/Field.qml src/qml/ConfirmDialog.qml src/qml/EmptyState.qml src/qml/Card.qml src/qml/SelectableRow.qml
+        src/qml/Dock.qml src/qml/TimerPage.qml src/qml/TasksPage.qml src/qml/ArtColor.qml src/qml/MarqueeText.qml src/qml/CoverArt.qml src/qml/DiscordBadge.qml src/qml/DevPage.qml src/qml/ApiPage.qml src/qml/ApiEnvEditor.qml src/qml/ApiRunPanel.qml src/qml/SshTab.qml src/qml/DbTab.qml src/qml/Field.qml src/qml/ConfirmDialog.qml src/qml/EmptyState.qml src/qml/Card.qml src/qml/SelectableRow.qml
     RESOURCES
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg
         src/qml/images/traktir.jpeg src/qml/icons/info.svg src/qml/icons/grid.svg src/qml/icons/ethernet.svg src/qml/icons/eye.svg src/qml/icons/eye-off.svg src/qml/icons/external.svg src/qml/icons/undo.svg src/qml/icons/play.svg src/qml/icons/pause.svg src/qml/icons/stop.svg src/qml/icons/minus.svg src/qml/icons/check.svg src/qml/icons/copy.svg src/qml/icons/pin.svg src/qml/icons/image.svg src/qml/icons/eyedropper.svg src/qml/icons/unlock.svg src/qml/icons/trash.svg src/qml/icons/palette.svg src/qml/icons/pen.svg
@@ -299,6 +313,16 @@ qt_add_executable(tst_core tests/tst_core.cpp)
 target_compile_definitions(tst_core PRIVATE NOTCH_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_link_libraries(tst_core PRIVATE notch_core Qt6::Test)
 add_test(NAME tst_core COMMAND tst_core)
+# The layout of every page and every Settings section, checked in a throwaway profile on Qt's offscreen platform (see `notch --ui-check`).
+# Not on Windows: its config and data folders are not the XDG ones this test points elsewhere.
+if(NOT WIN32)
+    set(NOTCH_UI_CHECK_HOME "${CMAKE_BINARY_DIR}/ui-check-home")
+    add_test(NAME ui_check_clean COMMAND ${CMAKE_COMMAND} -E remove_directory "${NOTCH_UI_CHECK_HOME}")
+    add_test(NAME ui_check COMMAND notch --ui-check)
+    set_tests_properties(ui_check_clean PROPERTIES FIXTURES_SETUP ui_check_home)
+    set_tests_properties(ui_check PROPERTIES FIXTURES_REQUIRED ui_check_home TIMEOUT 240
+        ENVIRONMENT "QT_QPA_PLATFORM=offscreen;XDG_CONFIG_HOME=${NOTCH_UI_CHECK_HOME}/config;XDG_DATA_HOME=${NOTCH_UI_CHECK_HOME}/data")
+endif()
 
 if(UNIX AND NOT APPLE)
 set(CPACK_GENERATOR DEB)

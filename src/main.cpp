@@ -48,6 +48,9 @@
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QTimer>
+#include <QJSValue>
+#include <functional>
+#include <memory>
 #include <QApplication>
 #include <QFile>
 #include <QIcon>
@@ -162,11 +165,30 @@ public:
     }
 };
 
+// `notch --ui-check` listens to what QML complains about while pages load: a binding that fails, a property that is not there.
+static QStringList g_uiComplaints;
+static QtMessageHandler g_uiPrevHandler = nullptr;
+static void uiCheckHandler(QtMsgType type, const QMessageLogContext &ctx, const QString &msg)
+{
+    static const QStringList bad = {QStringLiteral("TypeError"), QStringLiteral("ReferenceError"), QStringLiteral("Unable to assign"),
+                                    QStringLiteral("non-existent property"), QStringLiteral("is not defined"), QStringLiteral("Binding loop"),
+                                    QStringLiteral("managed by a layout"), QStringLiteral("Cannot anchor"), QStringLiteral("is not a function")};
+    for (const QString &b : bad)
+        if (msg.contains(b)) {
+            g_uiComplaints << msg;
+            break;
+        }
+    if (g_uiPrevHandler)
+        g_uiPrevHandler(type, ctx, msg);
+}
+
 int main(int argc, char *argv[])
 {
     MemoryTuner::applyEarly(); // few malloc arenas, and the software renderer if Low memory mode is on
     QQuickWindow::setDefaultAlphaBuffer(true);
     QApplication app(argc, argv);
+    if (QCoreApplication::arguments().contains(QStringLiteral("--ui-check")))
+        g_uiPrevHandler = qInstallMessageHandler(uiCheckHandler);
     app.setApplicationName(QStringLiteral("notch"));
     app.setDesktopFileName(QStringLiteral("notch"));
     app.setWindowIcon(QIcon(QStringLiteral(":/qt/qml/Notch/src/qml/icons/notch.png")));
@@ -326,6 +348,12 @@ int main(int argc, char *argv[])
     // Sound effects: wired here, once, rather than in each screen's notch.
     // A game (or any app) in full screen keeps its keys: the search shortcut is let go while one is in front, taken back after.
     QObject::connect(&dock, &AppDock::fullScreenChanged, &launcher, [&] { launcher.setSearchSuspended(dock.fullScreenActive()); });
+    // A watched port with an alert went up or down: a toast in the notch (not while gaming mode keeps it away: toasts are held back then).
+    QObject::connect(&apiTester, &ApiTester::portStateChanged, &controller, [&](int port, bool open, const QString &process) {
+        controller.notice(open ? QObject::tr("Port :%1 is up").arg(port) : QObject::tr("Port :%1 went down").arg(port),
+                          open ? (process.isEmpty() ? QObject::tr("Something is listening again") : process) : QObject::tr("Nothing is listening on it any more"),
+                          QStringLiteral("server"), QString());
+    });
     sounds.setSilencer([&] { return gaming.active(); });
     sounds.setBusyChecks([&] { return !activities.micApps().isEmpty(); }, [&] { return dock.fullScreenActive(); });
     auto play = [&](const char *name) { return [&sounds, name] { sounds.play(QString::fromLatin1(name)); }; };
@@ -679,6 +707,59 @@ int main(int argc, char *argv[])
                 QMetaObject::invokeMethod(w, "debugSettings", Q_ARG(QVariant, section));
             QTimer::singleShot(1500, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
         });
+    }
+    // `notch --ui-check`: open every page (and every Settings section) in turn, let it settle, and ask the window whether the layout holds
+    // (Main.qml uiCheck). Prints one line per page; exits 1 if a page has a problem or QML complained. Run it with a throwaway
+    // XDG_CONFIG_HOME / XDG_DATA_HOME, as the ctest entry does.
+    if (app.arguments().contains(QStringLiteral("--ui-check"))) {
+        struct Step { QString label, page, section; };
+        auto steps = std::make_shared<QList<Step>>();
+        for (const QString &pg : {QStringLiteral("shelf"), QStringLiteral("timer"), QStringLiteral("tasks"), QStringLiteral("color"), QStringLiteral("clipboard"), QStringLiteral("dev")})
+            steps->append({pg, pg, QString()});
+        for (const QString &sec : {QStringLiteral("general"), QStringLiteral("appearance"), QStringLiteral("panel"), QStringLiteral("dock"), QStringLiteral("alerts"),
+                                   QStringLiteral("files"), QStringLiteral("sharing"), QStringLiteral("wellbeing"), QStringLiteral("about")})
+            steps->append({QStringLiteral("settings/") + sec, QStringLiteral("settings"), sec});
+        auto index = std::make_shared<int>(-1);
+        auto failed = std::make_shared<int>(0);
+        auto next = std::make_shared<std::function<void()>>();
+        *next = [&windows, &app, steps, index, failed, next] {
+            QQuickWindow *w = windows.isEmpty() ? nullptr : windows.constBegin().value();
+            if (!w) {
+                fputs("ui-check: no window\n", stderr);
+                return app.exit(2);
+            }
+            if (*index >= 0) { // judge the page that has had time to settle
+                const Step &st = steps->at(*index);
+                QVariant ret;
+                QMetaObject::invokeMethod(w, "uiCheck", Q_RETURN_ARG(QVariant, ret));
+                QStringList problems;
+                for (const QVariant &v : ret.value<QJSValue>().toVariant().toList())
+                    problems << v.toString();
+                problems << g_uiComplaints;
+                g_uiComplaints.clear();
+                problems.removeDuplicates();
+                if (problems.isEmpty()) {
+                    printf("ui-check  ok    %s\n", qPrintable(st.label));
+                } else {
+                    ++*failed;
+                    printf("ui-check  FAIL  %s\n", qPrintable(st.label));
+                    for (const QString &p : std::as_const(problems))
+                        printf("            - %s\n", qPrintable(p));
+                }
+                fflush(stdout);
+            }
+            if (++*index >= steps->size()) {
+                printf("ui-check: %d page(s) checked, %d with problems\n", int(steps->size()), *failed);
+                return app.exit(*failed ? 1 : 0);
+            }
+            const Step &st = steps->at(*index);
+            w->setProperty("pinned", true);
+            w->setProperty("page", st.page);
+            if (!st.section.isEmpty())
+                QMetaObject::invokeMethod(w, "debugSettings", Q_ARG(QVariant, st.section));
+            QTimer::singleShot(1100, &app, *next);
+        };
+        QTimer::singleShot(2500, &app, *next);
     }
     engine.loadFromModule("Notch", "Tray");
     const int rc = app.exec();

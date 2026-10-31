@@ -45,8 +45,8 @@ ColumnLayout {
         }
         return out
     }
-    readonly property bool modalOpen: nodeMenu.visible || envMenu.visible || importMenu.visible || exportMenu.visible || methodMenu.visible
-                                      || renameDialog.visible || deleteDialog.visible || importDialog.visible || pickDialog.visible || envEditor.visible
+    readonly property bool modalOpen: nodeMenu.visible || curlMenu.visible || envMenu.visible || importMenu.visible || exportMenu.visible || methodMenu.visible
+                                      || renameDialog.visible || deleteDialog.visible || importDialog.visible || pickDialog.visible || envEditor.visible || runPanel.visible
     property var draft: ({ method: "GET", url: "", headers: [], query: [], bodyMode: "none", body: "",
                            authType: "none", authToken: "", authUser: "", authPassword: "",
                            preScript: "", testScript: "", name: "New request" })
@@ -479,6 +479,11 @@ ColumnLayout {
                             ok: !!modelData.open
                             bad: !modelData.open && modelData.checkedAt !== ""
                         }
+                        Rectangle {
+                            visible: !!modelData.alert
+                            width: 6; height: 6; radius: 3
+                            color: theme.accent
+                        }
                         Text {
                             text: ":" + modelData.port
                             color: theme.text
@@ -787,6 +792,14 @@ ColumnLayout {
                     font.weight: Font.DemiBold
                 }
 
+                RowLayout {
+                    spacing: 6
+                    Text { text: "Check ports with an alert every"; color: theme.textDim; font.pixelSize: 11 }
+                    Repeater {
+                        model: [5, 10, 30, 60]
+                        PillButton { required property int modelData; text: modelData + " s"; checked: apiTester.portInterval === modelData; onClicked: apiTester.portInterval = modelData }
+                    }
+                }
                 Text {
                     visible: page.selectedPort < 0
                     Layout.fillWidth: true
@@ -871,6 +884,14 @@ ColumnLayout {
                                     page.portResult = {}
                                     apiTester.checkPort(page.selectedPort)
                                 }
+                            }
+                            PillButton {
+                                text: "Alert me"
+                                iconName: "notifications"
+                                checked: !!portsPanel.entry && portsPanel.entry.alert
+                                onClicked: apiTester.setPortAlert(page.selectedPort, !(portsPanel.entry && portsPanel.entry.alert))
+                                ToolTip.visible: hovered
+                                ToolTip.text: "Tell me in the notch when this port goes up or down (checked in the background)"
                             }
                             PillButton {
                                 text: "Stop process"
@@ -1008,8 +1029,19 @@ ColumnLayout {
                         rightPadding: 0
                         background: null
                         onTextChanged: {
-                            if (page.draft.url !== text)
-                                page.setDraft({ url: text })
+                            if (page.draft.url === text)
+                                return
+                            if (/^\s*curl\s/i.test(text)) { // a curl command pasted here becomes the request
+                                const parsed = apiTester.parseCurl(text)
+                                if (parsed.ok) {
+                                    page.draft = Object.assign({}, page.draft, parsed.request, { id: page.draft.id, name: page.draft.name })
+                                    page.dirty = true
+                                    page.say("API — curl command read")
+                                    return
+                                }
+                                page.say("API — " + parsed.error)
+                            }
+                            page.setDraft({ url: text })
                         }
                         Keys.onReturnPressed: if (event.modifiers & Qt.ControlModifier) page.sendDraft()
                         Keys.onEnterPressed: if (event.modifiers & Qt.ControlModifier) page.sendDraft()
@@ -1138,6 +1170,19 @@ ColumnLayout {
                         page.dirty = false
                         page.say("API — request saved")
                     }
+                }
+                PillButton {
+                    visible: page.selectedKind === "collection" || page.selectedKind === "folder"
+                    text: "Run"
+                    iconName: "play"
+                    onClicked: page.runNode(page.selectedId, page.selectedName)
+                }
+                PillButton {
+                    visible: page.selectedKind === "request"
+                    text: "cURL"
+                    onClicked: curlMenu.popup()
+                    ToolTip.visible: hovered
+                    ToolTip.text: "Copy this request as a curl command"
                 }
                 PillButton {
                     visible: page.selectedKind === "request"
@@ -1778,6 +1823,12 @@ ColumnLayout {
         NodeItem {
             visible: page.menuKind === "collection" || page.menuKind === "folder"
             height: visible ? implicitHeight : 0
+            text: "Run all requests…"
+            onTriggered: page.runNode(page.menuId, page.menuName)
+        }
+        NodeItem {
+            visible: page.menuKind === "collection" || page.menuKind === "folder"
+            height: visible ? implicitHeight : 0
             text: "New request"
             onTriggered: page.newRequestIn(page.menuId)
         }
@@ -1854,7 +1905,27 @@ ColumnLayout {
     }
 
     DarkMenu {
+        id: curlMenu
+        NodeItem {
+            text: "Copy as cURL (keep {{variables}})"
+            onTriggered: { shell.copyText(apiTester.copyAsCurl(page.draft, false)); page.say("API — curl command copied") }
+        }
+        NodeItem {
+            text: "Copy as cURL (variables filled in)"
+            onTriggered: { shell.copyText(apiTester.copyAsCurl(page.draft, true)); page.say("API — curl command copied") }
+        }
+    }
+
+    DarkMenu {
         id: importMenu
+        NodeItem {
+            text: "Paste a cURL command…"
+            onTriggered: {
+                importArea.text = ""
+                importDialog.mode = "curl"
+                importDialog.open()
+            }
+        }
         NodeItem {
             text: "Paste JSON to import…"
             onTriggered: {
@@ -2059,6 +2130,13 @@ ColumnLayout {
     }
 
     ApiEnvEditor { id: envEditor }
+    ApiRunPanel { id: runPanel }
+    function runNode(id, name) {
+        runPanel.targetId = id
+        runPanel.targetName = name || ""
+        runPanel.open()
+        runPanel.start()
+    }
 
     // ---- where to: Move to… and Save as… ----
     Popup {
@@ -2172,7 +2250,7 @@ ColumnLayout {
             anchors.fill: parent
             spacing: 10
             Text {
-                text: importDialog.mode === "environment" ? "Paste a Postman Environment" : "Paste a Postman Collection or native JSON"
+                text: importDialog.mode === "environment" ? "Paste a Postman Environment" : importDialog.mode === "curl" ? "Paste a cURL command" : "Paste a Postman Collection or native JSON"
                 color: theme.text
                 font.pixelSize: 13
                 font.weight: Font.DemiBold
@@ -2212,7 +2290,27 @@ ColumnLayout {
                     enabled: importArea.text.trim().length > 0
                     onClicked: {
                         let err = ""
-                        if (importDialog.mode === "environment")
+                        if (importDialog.mode === "curl") {
+                            let parent = ""
+                            if (page.selectedKind === "collection" || page.selectedKind === "folder")
+                                parent = page.selectedId
+                            else if (page.selectedKind === "request")
+                                parent = (apiTester.collections.find(r => r.id === page.selectedId) || {}).parentId || ""
+                            if (parent === "") {
+                                for (const c of apiTester.collections)
+                                    if (c.kind === "collection") { parent = c.id; break }
+                            }
+                            if (parent === "")
+                                parent = apiTester.newCollection("Collection 1")
+                            const id = apiTester.importCurl(importArea.text, parent)
+                            if (id) {
+                                page.unfold(parent)
+                                page.loadRequest(id)
+                                page.say("Imported the curl command")
+                                importDialog.close()
+                            }
+                            return
+                        } else if (importDialog.mode === "environment")
                             err = apiTester.importEnvironment(importArea.text)
                         else {
                             err = apiTester.importPostmanCollection(importArea.text)

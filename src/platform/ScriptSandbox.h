@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QString>
@@ -34,12 +35,13 @@ inline QString commonPrelude(const QJsonObject &varsObject)
 // response / test / expect helpers — only for isTest scripts.
 inline QString testPrelude(const QVariantMap &response)
 {
-    const QString bodyJson =
-        QString::fromUtf8(QJsonDocument(QJsonObject{{QStringLiteral("b"), QJsonValue::fromVariant(response.value(QStringLiteral("body")))}})
-                              .toJson(QJsonDocument::Compact));
-    const QString hdrJson =
-        QString::fromUtf8(QJsonDocument(QJsonObject{{QStringLiteral("h"), QJsonValue::fromVariant(response.value(QStringLiteral("headers")))}})
-                              .toJson(QJsonDocument::Compact));
+    // the value alone as JSON text ("..." or [...]), not wrapped in an object: the script reads __b as the body text and __h as the header list
+    const auto literal = [](const QVariant &v) {
+        const QByteArray arr = QJsonDocument(QJsonArray{QJsonValue::fromVariant(v)}).toJson(QJsonDocument::Compact);
+        return QString::fromUtf8(arr.mid(1, arr.size() - 2));
+    };
+    const QString bodyJson = literal(response.value(QStringLiteral("body")));
+    const QString hdrJson = literal(response.value(QStringLiteral("headers")));
     return QStringLiteral(
                "var __b = %1;\n"
                "var __h = %2;\n"

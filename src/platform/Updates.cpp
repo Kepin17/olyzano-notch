@@ -1,3 +1,6 @@
+#include "services/Signature.h"
+#include "notch_update_key.h"
+#include <memory>
 #include "platform/NotchPaths.h"
 #include "platform/Updates.h"
 
@@ -317,15 +320,40 @@ void Updates::installNow()
         failInstall(tr("The download address is not a GitHub one. Use Download instead."));
         return;
     }
+    const QByteArray publicKey = Signature::publicKeyFromHex(QStringLiteral(NOTCH_UPDATE_PUBKEY_HEX));
+    if (publicKey.isEmpty()) {
+        failInstall(tr("This build has no key to check updates with, so it will not install one by itself. Use Download instead."));
+        return;
+    }
+    const QString sigUrl = UpdateModel::pickSignature(m_release.assets, platform);
+    if (sigUrl.isEmpty() || !UpdateModel::trustedAsset(QUrl(sigUrl))) {
+        failInstall(tr("This release is not signed, so Notch will not install it by itself. Use Download instead."));
+        return;
+    }
     m_installing = true;
     setStage(tr("Looking up the checksum…"));
-    QNetworkRequest sumsReq{QUrl(sumsUrl)};
-    sumsReq.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
-    sumsReq.setTransferTimeout(30000);
-    QNetworkReply *sums = m_nam.get(sumsReq);
-    connect(sums, &QNetworkReply::finished, this, [this, sums, fileUrl, name] {
+    // the checksum file and its signature: both are read first, and the checksums are trusted only if the signature is good
+    auto fetch = [this](const QUrl &url) {
+        QNetworkRequest rq{url};
+        rq.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+        rq.setTransferTimeout(30000);
+        return m_nam.get(rq);
+    };
+    QNetworkReply *sums = fetch(QUrl(sumsUrl));
+    QNetworkReply *sig = fetch(QUrl(sigUrl));
+    auto pending = std::make_shared<int>(2);
+    auto onBoth = [this, sums, sig, pending, fileUrl, name, publicKey] {
+        if (--*pending > 0)
+            return;
         sums->deleteLater();
+        sig->deleteLater();
         const QByteArray body = sums->readAll();
+        const QByteArray signature = Signature::decodeSignatureFile(sig->readAll());
+        if (sig->error() != QNetworkReply::NoError || !UpdateModel::trustedHost(sig->url()) || signature.isEmpty()
+            || !Signature::verifyEd25519(publicKey, body, signature)) {
+            failInstall(tr("The checksum file is not signed by Olyzano Notch's key, so nothing was installed. Use Download instead."));
+            return;
+        }
         const QString expected = UpdateModel::parseChecksums(QString::fromUtf8(body)).value(name);
         if (sums->error() != QNetworkReply::NoError || expected.isEmpty() || !UpdateModel::trustedHost(sums->url())) {
             failInstall(tr("Could not read the checksum of %1. Use Download instead.").arg(name));
@@ -369,7 +397,9 @@ void Updates::installNow()
                 verifyAndRun(path, expected);
             }
         });
-    });
+    };
+    connect(sums, &QNetworkReply::finished, this, onBoth);
+    connect(sig, &QNetworkReply::finished, this, onBoth);
 }
 
 void Updates::verifyAndRun(const QString &path, const QString &expectedHex)

@@ -2,6 +2,7 @@
 #include "platform/ProcessRunner.h"
 #include "platform/ScriptSandbox.h"
 #include "ApiTester.h"
+#include "platform/CurlModel.h"
 
 #include <QDir>
 #include <QElapsedTimer>
@@ -68,6 +69,9 @@ ApiTester::ApiTester(QObject *parent)
     , m_settings(configPath(), QSettings::IniFormat)
 {
     load();
+    connect(this, &ApiTester::responseChanged, this, &ApiTester::onRunResponse);
+    connect(&m_portTimer, &QTimer::timeout, this, &ApiTester::probeAlertPorts);
+    updatePortTimer();
     // Nothing is made up: a new install has no collections and no environments; they are the person's own.
     if (m_migrated)
         saveCollections(); // the templates older versions saved are gone from disk too
@@ -116,9 +120,13 @@ void ApiTester::load()
     // watched ports: "8080,3000" in conf — last probe state starts unknown
     for (const QString &s : m_settings.value(QStringLiteral("ports")).toStringList()) {
         bool ok = false;
-        const int p = s.toInt(&ok);
-        if (ok && p > 0 && p < 65536)
-            m_ports << PortEntry{p, false, -1, {}, {}, {}};
+        const auto spec = ApiTesterModel::parsePortSpec(s);
+        if (spec.port > 0) {
+            PortEntry e;
+            e.port = spec.port;
+            e.alert = spec.alert;
+            m_ports << e;
+        }
     }
 }
 
@@ -384,6 +392,42 @@ bool ApiTester::moveNode(const QString &id, const QString &parentId, int index)
 }
 
 // A request the person built in the builder (or took from the history) kept in a collection or folder. -> the new request's id
+QString ApiTester::copyAsCurl(const QVariantMap &draft, bool resolved) const
+{
+    ApiTesterModel::RequestSpec spec;
+    spec.method = draft.value(QStringLiteral("method"), QStringLiteral("GET")).toString();
+    applyDraftTo(spec, draft);
+    return CurlModel::toCurl(spec, activeVars(), resolved);
+}
+
+QVariantMap ApiTester::parseCurl(const QString &command) const
+{
+    const auto parsed = CurlModel::fromCurl(command);
+    if (!parsed.error.isEmpty())
+        return {{QStringLiteral("ok"), false}, {QStringLiteral("error"), parsed.error}};
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("error"), QString()}, {QStringLiteral("request"), specToMap(parsed.request)}};
+}
+
+QString ApiTester::importCurl(const QString &command, const QString &parentId)
+{
+    const auto parsed = CurlModel::fromCurl(command);
+    if (!parsed.error.isEmpty()) {
+        emit statusMessage(QStringLiteral("API — ") + parsed.error);
+        return {};
+    }
+    const QString id = ApiTesterModel::addRequestNode(m_collections, parentId, parsed.request.name);
+    if (id.isEmpty())
+        return {};
+    if (auto *n = findNode(id)) {
+        const QString name = n->request.name;
+        n->request = parsed.request;
+        n->request.id = id;
+        n->request.name = name;
+    }
+    commit();
+    return id;
+}
+
 QString ApiTester::saveRequestAs(const QVariantMap &draft, const QString &parentId, const QString &name)
 {
     const QString id = ApiTesterModel::addRequestNode(m_collections, parentId, name);
@@ -517,7 +561,7 @@ void ApiTester::savePorts() const
 {
     QStringList list;
     for (const auto &p : m_ports)
-        list << QString::number(p.port);
+        list << ApiTesterModel::portSpecText({p.port, p.alert});
     m_settings.setValue(QStringLiteral("ports"), list);
 }
 
@@ -530,7 +574,8 @@ QVariantList ApiTester::ports() const
                            {QStringLiteral("pid"), p.pid},
                            {QStringLiteral("process"), p.process},
                            {QStringLiteral("checkedAt"), p.checkedAt},
-                           {QStringLiteral("error"), p.error}};
+                           {QStringLiteral("error"), p.error},
+                           {QStringLiteral("alert"), p.alert}};
     return out;
 }
 
@@ -555,6 +600,7 @@ void ApiTester::removePort(int port)
     for (int i = 0; i < m_ports.size(); ++i)
         if (m_ports[i].port == port) {
             m_ports.removeAt(i);
+            updatePortTimer();
             savePorts();
             emit portsChanged();
             return;
@@ -627,34 +673,43 @@ int ApiTester::findListenerPid(int port, QString *process) const
 
 void ApiTester::checkPort(int port)
 {
+    bool known = false;
+    for (const auto &p : std::as_const(m_ports))
+        known = known || p.port == port;
+    if (!known)
+        m_ports << PortEntry{port, false, -1, {}, {}, {}};
+    QTcpSocket sock;
+    sock.connectToHost(QHostAddress::LocalHost, ushort(port));
+    const bool open = sock.waitForConnected(400);
+    sock.abort();
+    applyProbe(port, open);
+}
+
+// What a probe found, kept and, for a port with an alert, told when it changed.
+void ApiTester::applyProbe(int port, bool open)
+{
     PortEntry *entry = nullptr;
     for (auto &p : m_ports)
         if (p.port == port) {
             entry = &p;
             break;
         }
-    if (!entry) {
-        m_ports << PortEntry{port, false, -1, {}, {}, {}};
-        entry = &m_ports.last();
-    }
-
-    QTcpSocket sock;
-    sock.connectToHost(QHostAddress::LocalHost, ushort(port));
-    const bool open = sock.waitForConnected(400);
+    if (!entry)
+        return; // unwatched while the probe was out
+    const auto change = ApiTesterModel::portTransition(entry->known, open);
+    entry->known = open ? 1 : 0;
     entry->open = open;
     entry->error.clear();
     entry->checkedAt = QTime::currentTime().toString(QStringLiteral("HH:mm:ss"));
-    entry->pid = -1;
-    entry->process.clear();
-    if (open) {
+    if (open && (change == ApiTesterModel::PortChange::Up || entry->pid < 0 || entry->process.isEmpty())) {
         QString name;
         entry->pid = findListenerPid(port, &name);
         entry->process = name;
-        sock.abort();
-    } else {
+    } else if (!open) {
+        entry->pid = -1;
+        entry->process.clear();
         entry->error = QStringLiteral("no listener");
     }
-
     savePorts();
     emit portsChanged();
     emit portChecked(QVariantMap{{QStringLiteral("port"), port},
@@ -663,6 +718,67 @@ void ApiTester::checkPort(int port)
                                  {QStringLiteral("process"), entry->process},
                                  {QStringLiteral("error"), entry->error},
                                  {QStringLiteral("checkedAt"), entry->checkedAt}});
+    if (entry->alert && change != ApiTesterModel::PortChange::None)
+        emit portStateChanged(port, open, entry->process);
+}
+
+// ---- background checks: asynchronous, so the notch never waits for a closed port ----
+
+void ApiTester::setPortAlert(int port, bool on)
+{
+    for (auto &p : m_ports)
+        if (p.port == port) {
+            p.alert = on;
+            if (on && p.known < 0)
+                checkPort(port); // learn the state now, so the first change after this is a real one
+            break;
+        }
+    savePorts();
+    emit portsChanged();
+    updatePortTimer();
+}
+
+void ApiTester::setPortInterval(int seconds)
+{
+    m_settings.setValue(QStringLiteral("portInterval"), qBound(3, seconds, 600));
+    updatePortTimer();
+    emit settingsChanged();
+}
+
+void ApiTester::updatePortTimer()
+{
+    bool any = false;
+    for (const auto &p : std::as_const(m_ports))
+        any = any || p.alert;
+    m_portTimer.setInterval(portInterval() * 1000);
+    if (any && !m_portTimer.isActive())
+        m_portTimer.start();
+    else if (!any)
+        m_portTimer.stop();
+}
+
+void ApiTester::probeAlertPorts()
+{
+    for (const auto &p : std::as_const(m_ports)) {
+        if (!p.alert)
+            continue;
+        const int port = p.port;
+        auto *sock = new QTcpSocket(this);
+        auto *limit = new QTimer(sock);
+        limit->setSingleShot(true);
+        auto done = [this, sock, port](bool open) {
+            if (!sock->property("done").toBool()) {
+                sock->setProperty("done", true);
+                applyProbe(port, open);
+                sock->deleteLater();
+            }
+        };
+        connect(sock, &QTcpSocket::connected, sock, [done] { done(true); });
+        connect(sock, &QTcpSocket::errorOccurred, sock, [done] { done(false); });
+        connect(limit, &QTimer::timeout, sock, [done] { done(false); });
+        limit->start(700);
+        sock->connectToHost(QHostAddress::LocalHost, ushort(port));
+    }
 }
 
 void ApiTester::checkAllPorts()
@@ -939,6 +1055,123 @@ void ApiTester::send(const QVariantMap &draft)
             emit changed();
         }
     });
+}
+
+// ---- run a collection ----
+
+QVariantList ApiTester::runItems() const
+{
+    QVariantList out;
+    for (const auto &i : m_runItems)
+        out << QVariantMap{{QStringLiteral("id"), i.id}, {QStringLiteral("name"), i.name}, {QStringLiteral("method"), i.method},
+                           {QStringLiteral("url"), i.url}, {QStringLiteral("state"), i.state}, {QStringLiteral("status"), i.status},
+                           {QStringLiteral("durationMs"), i.durationMs}, {QStringLiteral("testsPassed"), i.testsPassed},
+                           {QStringLiteral("testsTotal"), i.testsTotal}, {QStringLiteral("error"), i.error}};
+    return out;
+}
+
+QVariantMap ApiTester::runSummary() const
+{
+    const auto s = ApiTesterModel::summarizeRun(m_runItems);
+    return {{QStringLiteral("passed"), s.passed}, {QStringLiteral("failed"), s.failed}, {QStringLiteral("pending"), s.pending},
+            {QStringLiteral("totalMs"), s.totalMs}, {QStringLiteral("total"), int(m_runItems.size())}};
+}
+
+QVariantMap ApiTester::runResponse(int index) const
+{
+    return index >= 0 && index < m_runResponses.size() ? m_runResponses.at(index) : QVariantMap{};
+}
+
+void ApiTester::runCollection(const QString &id, bool stopOnFailure)
+{
+    if (m_running)
+        return;
+    if (m_busy) {
+        emit statusMessage(QStringLiteral("API — wait for the request that is running"));
+        return;
+    }
+    m_runQueue = ApiTesterModel::requestsIn(m_collections, id);
+    if (m_runQueue.isEmpty()) {
+        emit statusMessage(QStringLiteral("API — nothing to run: no requests in there"));
+        return;
+    }
+    m_runItems.clear();
+    m_runResponses.clear();
+    for (const auto &r : std::as_const(m_runQueue)) {
+        ApiTesterModel::RunItem it;
+        it.id = r.id;
+        it.name = r.name;
+        it.method = r.method;
+        it.url = r.url;
+        m_runItems << it;
+        m_runResponses << QVariantMap{};
+    }
+    m_runStopOnFail = stopOnFailure;
+    m_runIndex = -1;
+    m_running = true;
+    emit runChanged();
+    runNext();
+}
+
+void ApiTester::runNext()
+{
+    if (!m_running)
+        return;
+    ++m_runIndex;
+    if (m_runIndex >= m_runQueue.size()) {
+        m_running = false;
+        emit runChanged();
+        return;
+    }
+    m_runItems[m_runIndex].state = QStringLiteral("running");
+    emit runChanged();
+    send(specToMap(m_runQueue.at(m_runIndex)));
+}
+
+void ApiTester::onRunResponse()
+{
+    if (!m_running || m_runIndex < 0 || m_runIndex >= m_runItems.size())
+        return;
+    auto &it = m_runItems[m_runIndex];
+    if (it.state != QLatin1String("running"))
+        return;
+    const QVariantMap &resp = m_last;
+    it.status = resp.value(QStringLiteral("status")).toInt();
+    it.durationMs = resp.value(QStringLiteral("durationMs")).toLongLong();
+    it.error = resp.value(QStringLiteral("error")).toString();
+    for (const QVariant &t : resp.value(QStringLiteral("tests")).toList()) {
+        ++it.testsTotal;
+        if (t.toMap().value(QStringLiteral("passed")).toBool())
+            ++it.testsPassed;
+    }
+    const bool failed = ApiTesterModel::runFailed(it.status, it.error, it.testsPassed, it.testsTotal);
+    it.state = failed ? QStringLiteral("fail") : QStringLiteral("pass");
+    QVariantMap kept = resp; // a long body is cut: a run of many requests must not hold them all
+    const QString body = kept.value(QStringLiteral("bodyPretty")).toString();
+    if (body.size() > 32 * 1024)
+        kept.insert(QStringLiteral("bodyPretty"), body.left(32 * 1024) + QStringLiteral("\n… cut"));
+    kept.insert(QStringLiteral("body"), kept.value(QStringLiteral("bodyPretty")));
+    m_runResponses[m_runIndex] = kept;
+    emit runChanged();
+    if (failed && m_runStopOnFail) {
+        m_running = false;
+        emit runChanged();
+        return;
+    }
+    QTimer::singleShot(0, this, &ApiTester::runNext); // out of the signal that brought us here
+}
+
+void ApiTester::cancelRun()
+{
+    if (!m_running)
+        return;
+    m_running = false;
+    if (m_busy)
+        cancel();
+    for (auto &it : m_runItems)
+        if (it.state == QLatin1String("running"))
+            it.state = QStringLiteral("pending");
+    emit runChanged();
 }
 
 void ApiTester::cancel()

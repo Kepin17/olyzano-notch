@@ -31,6 +31,9 @@
 #include "platform/DoomscrollModel.h"
 #include "platform/TasksModel.h"
 #include "platform/ApiTesterModel.h"
+#include "platform/CurlModel.h"
+#include "platform/ScriptSandbox.h"
+#include "services/Signature.h"
 #include "platform/SshModel.h"
 #include "platform/DbModel.h"
 #include "platform/Cities.h"
@@ -958,6 +961,233 @@ private slots:
         QCOMPARE(e2.variables[0].value, QStringLiteral("http://127.0.0.1:8080"));
     }
 
+    void curlOut()
+    {
+        using namespace ApiTesterModel;
+        RequestSpec r;
+        r.method = QStringLiteral("POST");
+        r.url = QStringLiteral("{{baseUrl}}/users");
+        r.query = {{QStringLiteral("page"), QStringLiteral("2"), true}, {QStringLiteral("off"), QStringLiteral("x"), false}};
+        r.headers = {{QStringLiteral("Accept"), QStringLiteral("application/json"), true}, {QStringLiteral("X-Off"), QStringLiteral("1"), false}};
+        r.auth.type = QStringLiteral("bearer");
+        r.auth.token = QStringLiteral("{{token}}");
+        r.bodyMode = QStringLiteral("json");
+        r.body = QStringLiteral("{\"name\": \"O'Neil\"}");
+        const QVector<KeyValue> vars = {{QStringLiteral("baseUrl"), QStringLiteral("http://h"), true}, {QStringLiteral("token"), QStringLiteral("T0K"), true}};
+        const QString kept = CurlModel::toCurl(r, vars, false);
+        QVERIFY(kept.contains(QLatin1String("'{{baseUrl}}/users?page=2'")));
+        QVERIFY(kept.contains(QLatin1String("-X POST")));
+        QVERIFY(kept.contains(QLatin1String("'Authorization: Bearer {{token}}'")));
+        QVERIFY(kept.contains(QLatin1String("'Content-Type: application/json'")));
+        QVERIFY(!kept.contains(QLatin1String("X-Off"))); // a disabled header is not sent
+        QVERIFY(kept.contains(QLatin1String("O'\\''Neil"))); // the quote is closed, escaped, reopened
+        const QString filled = CurlModel::toCurl(r, vars, true);
+        QVERIFY(filled.contains(QLatin1String("'http://h/users?page=2'")));
+        QVERIFY(filled.contains(QLatin1String("Bearer T0K")));
+        QVERIFY(!filled.contains(QLatin1String("{{")));
+        RequestSpec g; // a plain GET is just the URL
+        g.url = QStringLiteral("http://x/y");
+        QCOMPARE(CurlModel::toCurl(g, {}, false), QStringLiteral("curl \\\n  'http://x/y'"));
+    }
+
+    void curlIn()
+    {
+        using namespace ApiTesterModel;
+        auto p = CurlModel::fromCurl(QStringLiteral("curl -sSL -X PUT 'https://api.test/items/7?a=1' \\\n  -H 'Accept: application/json' \\\n  -H \"X-Name: a b\" -d '{\"n\":1}' -u bob:pw"));
+        QCOMPARE(p.error, QString());
+        QCOMPARE(p.request.method, QStringLiteral("PUT"));
+        QCOMPARE(p.request.url, QStringLiteral("https://api.test/items/7?a=1"));
+        QCOMPARE(p.request.headers.size(), 2);
+        QCOMPARE(p.request.headers.at(1).value, QStringLiteral("a b"));
+        QCOMPARE(p.request.bodyMode, QStringLiteral("json"));
+        QCOMPARE(p.request.body, QStringLiteral("{\"n\":1}"));
+        QCOMPARE(p.request.auth.type, QStringLiteral("basic"));
+        QCOMPARE(p.request.auth.user, QStringLiteral("bob"));
+        QCOMPARE(p.request.auth.password, QStringLiteral("pw"));
+        QCOMPARE(p.request.name, QStringLiteral("PUT 7"));
+
+        p = CurlModel::fromCurl(QStringLiteral("curl https://x.test/login -d a=1 -d b=2 --data-urlencode 'c=d e'")); // data without -X: a POST, a form
+        QCOMPARE(p.request.method, QStringLiteral("POST"));
+        QCOMPARE(p.request.bodyMode, QStringLiteral("form"));
+        QCOMPARE(p.request.body, QStringLiteral("a=1&b=2&c=d%20e"));
+
+        p = CurlModel::fromCurl(QStringLiteral("curl -XDELETE -H'Authorization: Bearer abc' https://x.test/a"));
+        QCOMPARE(p.request.method, QStringLiteral("DELETE"));
+        QCOMPARE(p.request.headers.first().key, QStringLiteral("Authorization"));
+
+        p = CurlModel::fromCurl(QStringLiteral("curl -G https://x.test/s -d q=hi -d n=2")); // -G: the data is the query
+        QCOMPARE(p.request.method, QStringLiteral("GET"));
+        QCOMPARE(p.request.url, QStringLiteral("https://x.test/s?q=hi&n=2"));
+        QVERIFY(p.request.body.isEmpty());
+
+        p = CurlModel::fromCurl(QStringLiteral("curl $'https://x.test/a' -d $'line1\\nline2' | jq .")); // $'..' and a pipe ends it
+        QCOMPARE(p.request.body, QStringLiteral("line1\nline2"));
+        QCOMPARE(p.request.bodyMode, QStringLiteral("raw"));
+
+        QVERIFY(!CurlModel::fromCurl(QStringLiteral("wget https://x")).error.isEmpty());
+        QVERIFY(!CurlModel::fromCurl(QStringLiteral("curl -F file=@a.png https://x")).error.isEmpty());
+        QVERIFY(!CurlModel::fromCurl(QStringLiteral("curl https://x -d @body.json")).error.isEmpty());
+        QVERIFY(!CurlModel::fromCurl(QStringLiteral("curl -s")).error.isEmpty()); // no URL
+    }
+
+    void curlRoundTrip()
+    {
+        using namespace ApiTesterModel;
+        RequestSpec r;
+        r.method = QStringLiteral("PATCH");
+        r.url = QStringLiteral("http://h/a b?x=1&y=it's");
+        r.headers = {{QStringLiteral("Accept"), QStringLiteral("text/html; q=0.9"), true}, {QStringLiteral("X-Two"), QStringLiteral("a:b"), true}};
+        r.bodyMode = QStringLiteral("json");
+        r.body = QStringLiteral("{\"k\": [1, 2, \"it's\"]}");
+        const auto back = CurlModel::fromCurl(CurlModel::toCurl(r, {}, false));
+        QCOMPARE(back.error, QString());
+        QCOMPARE(back.request.method, r.method);
+        QCOMPARE(back.request.url, r.url);
+        QCOMPARE(back.request.body, r.body);
+        QCOMPARE(back.request.bodyMode, r.bodyMode);
+        QCOMPARE(back.request.headers.size(), r.headers.size());
+        QCOMPARE(back.request.headers.at(1).value, QStringLiteral("a:b"));
+        // and the command made from the copy is the same command
+        QCOMPARE(CurlModel::toCurl(back.request, {}, false), CurlModel::toCurl(r, {}, false));
+    }
+
+    void apiRunOrderAndSummary()
+    {
+        using namespace ApiTesterModel;
+        QList<Collection> cols;
+        Collection c;
+        c.id = newId();
+        c.name = QStringLiteral("Shop");
+        cols << c;
+        const QString a = addRequestNode(cols, c.id, QStringLiteral("A"));
+        const QString f = addFolder(cols, c.id, QStringLiteral("Users"));
+        const QString b = addRequestNode(cols, f, QStringLiteral("B"));
+        const QString f2 = addFolder(cols, f, QStringLiteral("Admin"));
+        const QString d = addRequestNode(cols, f2, QStringLiteral("D"));
+        const QString e = addRequestNode(cols, c.id, QStringLiteral("E"));
+        // the whole collection: depth first, as the tree shows it
+        const auto all = requestsIn(cols, c.id);
+        QStringList names;
+        for (const auto &r : all) names << r.name;
+        QCOMPARE(names, (QStringList{QStringLiteral("A"), QStringLiteral("B"), QStringLiteral("D"), QStringLiteral("E")}));
+        QCOMPARE(requestsIn(cols, f).size(), 2);      // a folder: what is in it, nested too
+        QCOMPARE(requestsIn(cols, e).size(), 1);      // one request: itself
+        QVERIFY(requestsIn(cols, QStringLiteral("nope")).isEmpty());
+        Q_UNUSED(a); Q_UNUSED(b); Q_UNUSED(d);
+
+        // pass / fail: no answer or a failed test fails; with no tests the status decides
+        QVERIFY(runFailed(0, QStringLiteral("timeout"), 0, 0));
+        QVERIFY(runFailed(200, QString(), 1, 2));
+        QVERIFY(!runFailed(200, QString(), 2, 2));
+        QVERIFY(!runFailed(404, QString(), 1, 1)); // a test said it is fine
+        QVERIFY(runFailed(500, QString(), 0, 0));
+        QVERIFY(!runFailed(204, QString(), 0, 0));
+
+        QList<RunItem> items(4);
+        items[0].state = QStringLiteral("pass"); items[0].durationMs = 100;
+        items[1].state = QStringLiteral("fail"); items[1].durationMs = 250;
+        items[2].state = QStringLiteral("pass"); items[2].durationMs = 50;
+        const auto sum = summarizeRun(items); // items[3] has not run
+        QCOMPARE(sum.passed, 2);
+        QCOMPARE(sum.failed, 1);
+        QCOMPARE(sum.pending, 1);
+        QCOMPARE(sum.totalMs, qint64(400));
+    }
+
+    void testScriptSeesTheBodyAndHeaders()
+    {
+        // response.text() / .json() and headers.get() read __b and __h: they must be the body text and the header list themselves
+        QVariantMap resp{{QStringLiteral("status"), 200}, {QStringLiteral("durationMs"), 5}, {QStringLiteral("body"), QStringLiteral("{\"ok\":true}\n")},
+                         {QStringLiteral("headers"), QVariantList{QVariantMap{{QStringLiteral("key"), QStringLiteral("X-A")}, {QStringLiteral("value"), QStringLiteral("1")}}}}};
+        const QString js = ScriptSandbox::testPrelude(resp);
+        QVERIFY2(js.contains(QLatin1String("var __b = \"{\\\"ok\\\":true}\\n\";")), qPrintable(js.left(200)));
+        QVERIFY(js.contains(QLatin1String("var __h = [{")));
+    }
+
+    void apiPortSpecsAndTransitions()
+    {
+        using namespace ApiTesterModel;
+        QCOMPARE(parsePortSpec(QStringLiteral("8080")).port, 8080);
+        QVERIFY(!parsePortSpec(QStringLiteral("8080")).alert);          // an older file: no alert
+        QVERIFY(parsePortSpec(QStringLiteral("3000:1")).alert);
+        QVERIFY(!parsePortSpec(QStringLiteral("3000:0")).alert);
+        QCOMPARE(parsePortSpec(QStringLiteral("abc")).port, 0);
+        QCOMPARE(parsePortSpec(QStringLiteral("70000")).port, 0);
+        QCOMPARE(portSpecText({3000, true}), QStringLiteral("3000:1"));
+        QCOMPARE(portSpecText({3000, false}), QStringLiteral("3000"));
+        QCOMPARE(parsePortSpec(portSpecText({5432, true})).port, 5432);
+
+        QVERIFY(portTransition(-1, true) == PortChange::None);   // the first probe only learns
+        QVERIFY(portTransition(-1, false) == PortChange::None);
+        QVERIFY(portTransition(0, true) == PortChange::Up);
+        QVERIFY(portTransition(1, false) == PortChange::Down);
+        QVERIFY(portTransition(1, true) == PortChange::None);    // still up: nothing to say
+        QVERIFY(portTransition(0, false) == PortChange::None);
+    }
+
+    void signatureRfc8032Vectors()
+    {
+        const auto hex = [](const char *h) { return QByteArray::fromHex(h); };
+        // RFC 8032 section 7.1, tests 1 (empty message) and 2 (one byte)
+        const QByteArray pub1 = hex("d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
+        const QByteArray sig1 = hex("e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e06522490155"
+                                    "5fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b");
+        QVERIFY(Signature::verifyEd25519(pub1, QByteArray(), sig1));
+        QVERIFY(!Signature::verifyEd25519(pub1, QByteArray("x"), sig1));            // a changed message
+        const QByteArray pub2 = hex("3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c");
+        const QByteArray sig2 = hex("92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da"
+                                    "085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00");
+        QVERIFY(Signature::verifyEd25519(pub2, hex("72"), sig2));
+        QVERIFY(!Signature::verifyEd25519(pub1, hex("72"), sig2));                  // another key
+        QByteArray bad = sig2;
+        bad[10] = char(bad[10] ^ 1);
+        QVERIFY(!Signature::verifyEd25519(pub2, hex("72"), bad));                   // a damaged signature
+        QVERIFY(!Signature::verifyEd25519(pub2, hex("72"), sig2.left(63)));         // wrong lengths
+        QVERIFY(!Signature::verifyEd25519(pub2.left(31), hex("72"), sig2));
+        QVERIFY(!Signature::verifyEd25519(QByteArray(), hex("72"), QByteArray()));
+
+        QCOMPARE(Signature::decodeSignatureFile(sig2), sig2);                       // raw
+        QCOMPARE(Signature::decodeSignatureFile(sig2.toBase64() + "\n"), sig2);     // base64 text
+        QVERIFY(Signature::decodeSignatureFile("not a signature").isEmpty());
+        QCOMPARE(Signature::publicKeyFromHex(QString::fromLatin1(pub2.toHex())), pub2);
+        QVERIFY(Signature::publicKeyFromHex(QStringLiteral("abcd")).isEmpty());
+    }
+
+    void signatureMadeByOpensslCli()
+    {
+        // the recipe the release workflows use: openssl pkeyutl -sign -rawin, then the program checks it
+        const QString openssl = QStandardPaths::findExecutable(QStringLiteral("openssl"));
+        if (openssl.isEmpty())
+            QSKIP("openssl is not installed");
+        const QString key = m_tmp.filePath(QStringLiteral("sign.pem")), sums = m_tmp.filePath(QStringLiteral("SHA256SUMS-linux.txt")),
+                      sigFile = sums + QStringLiteral(".sig");
+        QFile f(sums);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  notch_0.14.0_amd64.deb\n");
+        f.close();
+        const auto run = [&](const QStringList &args, QByteArray *out = nullptr) {
+            QProcess p;
+            p.start(openssl, args);
+            const bool ok = p.waitForFinished(10000) && p.exitCode() == 0;
+            if (out)
+                *out = p.readAllStandardOutput();
+            return ok;
+        };
+        QVERIFY(run({QStringLiteral("genpkey"), QStringLiteral("-algorithm"), QStringLiteral("ed25519"), QStringLiteral("-out"), key}));
+        QVERIFY(run({QStringLiteral("pkeyutl"), QStringLiteral("-sign"), QStringLiteral("-rawin"), QStringLiteral("-inkey"), key,
+                     QStringLiteral("-in"), sums, QStringLiteral("-out"), sigFile}));
+        QByteArray der;
+        QVERIFY(run({QStringLiteral("pkey"), QStringLiteral("-in"), key, QStringLiteral("-pubout"), QStringLiteral("-outform"), QStringLiteral("DER")}, &der));
+        const QByteArray pub = der.right(32); // the raw key is the last 32 bytes of the SubjectPublicKeyInfo
+        QFile s(sigFile), m(sums);
+        QVERIFY(s.open(QIODevice::ReadOnly) && m.open(QIODevice::ReadOnly));
+        const QByteArray sig = Signature::decodeSignatureFile(s.readAll());
+        const QByteArray msg = m.readAll();
+        QCOMPARE(sig.size(), 64);
+        QVERIFY(Signature::verifyEd25519(pub, msg, sig));
+        QVERIFY(!Signature::verifyEd25519(pub, msg + "x", sig));
+    }
+
     void apiOldTemplatesAreDropped()
     {
         using namespace ApiTesterModel;
@@ -1281,6 +1511,11 @@ private slots:
                                                        {"SHA256SUMS-windows.txt", "http://example.com/plain.txt"}};
         QCOMPARE(UpdateModel::pickChecksums(assets, "linux"), QStringLiteral("https://github.com/x/releases/download/v0.13.1/SHA256SUMS-linux.txt"));
         QVERIFY(UpdateModel::pickChecksums(assets, "windows").isEmpty()); // not https: never used
+        QList<QPair<QString, QString>> signed_ = assets;
+        signed_ << qMakePair(QStringLiteral("SHA256SUMS-linux.txt.sig"), QStringLiteral("https://github.com/x/releases/download/v0.13.1/SHA256SUMS-linux.txt.sig"));
+        QCOMPARE(UpdateModel::pickSignature(signed_, "linux"), QStringLiteral("https://github.com/x/releases/download/v0.13.1/SHA256SUMS-linux.txt.sig"));
+        QVERIFY(UpdateModel::pickSignature(assets, "linux").isEmpty());    // an unsigned release
+        QVERIFY(UpdateModel::pickSignature(signed_, "windows").isEmpty()); // the other system's signature is not ours
         const QString sums = "ABCDEF0123456789abcdef0123456789abcdef0123456789abcdef0123456789  notch_0.13.1_amd64.deb\n"
                              "1111111111111111111111111111111111111111111111111111111111111111 *Notch-0.13.0-windows-x64-setup.exe\r\n"
                              "not a checksum line\n";

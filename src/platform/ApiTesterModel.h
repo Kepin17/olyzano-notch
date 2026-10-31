@@ -351,6 +351,108 @@ inline bool moveNode(QList<Collection> &cols, const QString &id, const QString &
     return true;
 }
 
+// ---- running a whole collection or folder: the requests in order, and how it went ----
+
+// Every request under a collection or folder id (or just the one when the id is a request), depth first, in the order the tree shows.
+inline void collectRequests(const RequestNode &n, QList<RequestSpec> &out)
+{
+    if (n.type == QLatin1String("request"))
+        out.push_back(n.request);
+    for (const RequestNode &c : n.items)
+        collectRequests(c, out);
+}
+
+inline QList<RequestSpec> requestsIn(const QList<Collection> &cols, const QString &id)
+{
+    QList<RequestSpec> out;
+    for (const Collection &c : cols) {
+        if (c.id == id) {
+            for (const RequestNode &n : c.items)
+                collectRequests(n, out);
+            return out;
+        }
+    }
+    QList<Collection> copy = cols; // locate() wants to hand out mutable lists; the tree is small
+    const Spot s = locate(copy, id);
+    if (s)
+        collectRequests((*s.list)[s.index], out);
+    return out;
+}
+
+struct RunItem {
+    QString id, name, method, url;
+    QString state = QStringLiteral("pending"); // pending | running | pass | fail
+    int status = 0;
+    qint64 durationMs = 0;
+    int testsPassed = 0, testsTotal = 0;
+    QString error;
+};
+
+// A request counts as failed when it did not get an answer, a test failed, or (with no tests to judge by) the server answered 4xx/5xx.
+inline bool runFailed(int status, const QString &error, int testsPassed, int testsTotal)
+{
+    if (!error.isEmpty() || status == 0)
+        return true;
+    if (testsTotal > 0)
+        return testsPassed < testsTotal;
+    return status >= 400;
+}
+
+struct RunSummary {
+    int passed = 0, failed = 0, pending = 0;
+    qint64 totalMs = 0;
+};
+
+inline RunSummary summarizeRun(const QList<RunItem> &items)
+{
+    RunSummary s;
+    for (const RunItem &i : items) {
+        if (i.state == QLatin1String("pass")) ++s.passed;
+        else if (i.state == QLatin1String("fail")) ++s.failed;
+        else ++s.pending;
+        s.totalMs += i.durationMs;
+    }
+    return s;
+}
+
+// ---- watched local ports: how they are kept, and when a change is worth telling ----
+
+struct PortSpec {
+    int port = 0;
+    bool alert = false; // tell me when it goes up or down
+};
+
+// "8080" (older files) or "8080:1" (alert on). port 0: not a port.
+inline PortSpec parsePortSpec(const QString &text)
+{
+    PortSpec p;
+    const QStringList parts = text.trimmed().split(QLatin1Char(':'));
+    bool ok = false;
+    const int n = parts.value(0).toInt(&ok);
+    if (!ok || n <= 0 || n >= 65536)
+        return p;
+    p.port = n;
+    p.alert = parts.size() > 1 && parts.at(1) == QLatin1String("1");
+    return p;
+}
+
+inline QString portSpecText(const PortSpec &p) { return p.alert ? QString::number(p.port) + QStringLiteral(":1") : QString::number(p.port); }
+
+enum class PortChange { None, Up, Down };
+
+// `known`: what the last probe said (-1 none yet, 0 closed, 1 open). The first probe only learns the state: nobody is told that a port was
+// "already" like that.
+inline PortChange portTransition(int known, bool nowOpen)
+{
+    if (known < 0)
+        return PortChange::None;
+    if (known == 0 && nowOpen)
+        return PortChange::Up;
+    if (known == 1 && !nowOpen)
+        return PortChange::Down;
+    return PortChange::None;
+}
+
 // ---- JSON (de)serialization ----
 
 inline QJsonValue kvToJson(const QVector<KeyValue> &list)

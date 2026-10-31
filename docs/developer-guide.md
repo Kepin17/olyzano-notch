@@ -18,7 +18,7 @@ sudo apt install cmake ninja-build g++ libssl-dev qt6-base-dev qt6-base-private-
 
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure   # what CI runs
+QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure   # what CI runs: tst_core, and ui_check (below)
 ./build/notch
 cd build && cpack                                                       # notch_<version>_amd64.deb
 ```
@@ -107,6 +107,12 @@ Run `notch` with:
 The `--shot*` flags render offscreen, so they work where nobody is looking at a screen. `src/main.cpp` is the source of truth for these.
 
 ## 6. Tests
+
+**Layout check (`ui_check`).** `notch --ui-check` (run by ctest in a throwaway profile on Qt's offscreen platform) opens every page and every Settings
+section in turn and asks `Main.qml` (`uiCheck()`) whether the layout holds: one island layer visible at rest, the page not taller than the island,
+no visible-but-unloaded `Loader` taking space in a layout, no loaded section with no height, and no QML warning (a failed binding, a missing
+property). Each rule comes from a bug that did happen. Add a rule there when a new kind of layout bug shows up. The Camera page is left out (it needs
+a camera and Qt Multimedia).
 
 One QtTest binary, [tests/tst_core.cpp](../tests/tst_core.cpp), linked to `notch_core`. Each test is a `private slot` using a temporary
 folder and database, so nothing touches your real shelf. Header-only models and helpers (`WellbeingModel.h`, `DoomscrollModel.h`,

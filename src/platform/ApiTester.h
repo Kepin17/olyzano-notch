@@ -7,6 +7,7 @@
 #include <QObject>
 #include <QProcess>
 #include <QSettings>
+#include <QTimer>
 #include <QVariantList>
 
 // The API tester as `apiTester` in QML: craft HTTP requests (local or internet), keep collections /
@@ -20,6 +21,9 @@ class ApiTester : public QObject
     Q_PROPERTY(QVariantList history READ history NOTIFY changed)
     Q_PROPERTY(QVariantList ports READ ports NOTIFY portsChanged)         // watched local ports + last probe
     Q_PROPERTY(QString activeEnvId READ activeEnvId WRITE setActiveEnvId NOTIFY changed)
+    Q_PROPERTY(QVariantList runItems READ runItems NOTIFY runChanged)  // the requests of the run in progress or just done
+    Q_PROPERTY(bool running READ running NOTIFY runChanged)
+    Q_PROPERTY(QVariantMap runSummary READ runSummary NOTIFY runChanged) // {passed, failed, pending, totalMs, total}
     Q_PROPERTY(bool busy READ busy NOTIFY busyChanged)
     Q_PROPERTY(QVariantMap lastResponse READ lastResponse NOTIFY responseChanged)
     Q_PROPERTY(bool historyEnabled READ historyEnabled WRITE setHistoryEnabled NOTIFY settingsChanged)
@@ -27,6 +31,7 @@ class ApiTester : public QObject
     Q_PROPERTY(bool prettyJson READ prettyJson WRITE setPrettyJson NOTIFY settingsChanged)
     Q_PROPERTY(bool followRedirects READ followRedirects WRITE setFollowRedirects NOTIFY settingsChanged)
     Q_PROPERTY(int timeoutMs READ timeoutMs WRITE setTimeoutMs NOTIFY settingsChanged)
+    Q_PROPERTY(int portInterval READ portInterval WRITE setPortInterval NOTIFY settingsChanged) // seconds between background checks of the ports with an alert
     Q_PROPERTY(bool commandRunning READ commandRunning NOTIFY commandRunningChanged)
 
 public:
@@ -54,7 +59,14 @@ public:
 
     // Draft comes from the builder: method, url, headers[], query[], bodyMode, body, auth{...}, preScript, testScript.
     Q_INVOKABLE void send(const QVariantMap &draft);
-    Q_INVOKABLE void cancel(); // drops the in-flight reply (response becomes a cancelled error)
+    Q_INVOKABLE void cancel();
+    // Run every request under a collection or folder (or one request), one after the other, and judge each by its tests (or its status).
+    Q_INVOKABLE void runCollection(const QString &id, bool stopOnFailure = false);
+    Q_INVOKABLE void cancelRun();
+    Q_INVOKABLE QVariantMap runResponse(int index) const; // the full response of one finished item of the run
+    QVariantList runItems() const;
+    bool running() const { return m_running; }
+    QVariantMap runSummary() const; // drops the in-flight reply (response becomes a cancelled error)
 
     Q_INVOKABLE QVariantMap requestById(const QString &id) const; // full RequestSpec as a map for the builder
     // The tree: every collection, folder and request is the person's own, so all of it can be added, renamed, copied, moved and deleted.
@@ -63,6 +75,10 @@ public:
     Q_INVOKABLE QString addFolder(const QString &parentId, const QString &name = QString());
     Q_INVOKABLE QString duplicateNode(const QString &id); // a collection, folder or request; -> the copy's id
     Q_INVOKABLE bool moveNode(const QString &id, const QString &parentId, int index = -1);
+    // curl: a request as a command (variables kept, or filled from the active environment), and a command as a new request in `parentId`.
+    Q_INVOKABLE QString copyAsCurl(const QVariantMap &draft, bool resolved) const;
+    Q_INVOKABLE QString importCurl(const QString &command, const QString &parentId); // -> the new request's id; "" and a status message when it is not understood
+    Q_INVOKABLE QVariantMap parseCurl(const QString &command) const;                  // {ok, error, request:{…builder map…}} without adding anything
     Q_INVOKABLE QString saveRequestAs(const QVariantMap &draft, const QString &parentId, const QString &name);
     Q_INVOKABLE void updateRequest(const QString &id, const QVariantMap &fields);
     Q_INVOKABLE void renameNode(const QString &id, const QString &name);
@@ -89,6 +105,9 @@ public:
     Q_INVOKABLE void removePort(int port);
     Q_INVOKABLE void checkPort(int port);   // sync probe (localhost, 400 ms) → portChecked + portsChanged
     Q_INVOKABLE void checkAllPorts();
+    Q_INVOKABLE void setPortAlert(int port, bool on); // watch it in the background and tell when it goes up or down
+    int portInterval() const { return m_settings.value(QStringLiteral("portInterval"), 10).toInt(); }
+    void setPortInterval(int seconds);
     Q_INVOKABLE QString stopService(int port); // SIGTERM / taskkill on the listening PID; returns a status line
     Q_INVOKABLE void runServiceCommand(const QString &cmd); // e.g. "docker compose stop relay"; async → serviceCommandFinished
     bool commandRunning() const { return m_cmdRunning; }
@@ -98,10 +117,12 @@ public:
 signals:
     void changed();
     void busyChanged();
+    void runChanged();
     void responseChanged();
     void settingsChanged();
     void statusMessage(const QString &text); // import/export/save toasts
     void portsChanged();
+    void portStateChanged(int port, bool open, const QString &process); // a port with an alert went up or down
     void portChecked(const QVariantMap &info); // {port, open, pid, process, error}
     void serviceCommandFinished(const QVariantMap &result); // {ok, output, exitCode, command}
     void commandRunningChanged();
@@ -115,6 +136,8 @@ private:
 
     void load();
     void commit(); // save the collections and tell QML
+    void runNext();
+    void onRunResponse();
     void saveCollections() const;
     void saveEnvironments() const;
     void saveHistory() const;
@@ -139,7 +162,12 @@ private:
         QString process;
         QString checkedAt; // local time HH:mm:ss of last probe
         QString error;
+        bool alert = false; // tell me when it goes up or down
+        int known = -1;     // what the last probe said: -1 none yet, 0 closed, 1 open
     };
+    void applyProbe(int port, bool open);
+    void probeAlertPorts();
+    void updatePortTimer();
 
     QNetworkAccessManager m_nam;
     QNetworkReply *m_reply = nullptr;
@@ -148,8 +176,14 @@ private:
     QList<ApiTesterModel::Environment> m_environments;
     QList<ApiTesterModel::HistoryEntry> m_history;
     QList<PortEntry> m_ports;
+    QTimer m_portTimer;
     QString m_activeEnvId;
     bool m_busy = false;
+    bool m_running = false, m_runStopOnFail = false;
+    QList<ApiTesterModel::RequestSpec> m_runQueue;
+    QList<ApiTesterModel::RunItem> m_runItems;
+    QList<QVariantMap> m_runResponses;
+    int m_runIndex = -1;
     bool m_cmdRunning = false;
     QVariantMap m_last;
     QStringList m_scriptLog;

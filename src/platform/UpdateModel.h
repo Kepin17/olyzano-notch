@@ -107,6 +107,16 @@ inline QString pickChecksums(const QList<QPair<QString, QString>> &assets, const
     return {};
 }
 
+// Its signature: SHA256SUMS-linux.txt.sig / SHA256SUMS-windows.txt.sig (Ed25519, made with the maintainer's key).
+inline QString pickSignature(const QList<QPair<QString, QString>> &assets, const QString &platform)
+{
+    const QString want = (platform == QLatin1String("linux") ? QStringLiteral("SHA256SUMS-linux.txt") : QStringLiteral("SHA256SUMS-windows.txt")) + QStringLiteral(".sig");
+    for (const auto &a : assets)
+        if (a.first == want && a.second.startsWith(QLatin1String("https://")))
+            return a.second;
+    return {};
+}
+
 // "<64 hex>  file name" or "<64 hex> *file name" per line (sha256sum / Get-FileHash style) -> file name -> lower-case hex.
 inline QHash<QString, QString> parseChecksums(const QString &text)
 {
