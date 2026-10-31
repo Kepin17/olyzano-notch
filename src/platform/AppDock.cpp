@@ -280,6 +280,14 @@ void AppDock::setWatching(bool watching)
         m_timer.start();
 }
 
+#ifdef Q_OS_WIN
+// A Store / UWP app is named by its AUMID ("PackageFamilyName!AppId"): that "!" never appears in a classic app's id.
+static bool isUwpId(const QString &id)
+{
+    return id.contains(u'!');
+}
+#endif
+
 void AppDock::launchNew(const QString &id)
 {
     const DockApp app = m_catalog.contains(id) ? m_catalog.value(id) : m_seenRunning.value(id);
@@ -288,7 +296,7 @@ void AppDock::launchNew(const QString &id)
         // Store / UWP: ActivateApplication by AUMID (no .exe to startDetached).
         CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
         IApplicationActivationManager *activator = nullptr;
-        if (SUCCEEDED(CoCreateInstance(CLSID_ApplicationActivationManager, nullptr, CLSCTX_INPROC_SERVER,
+        if (SUCCEEDED(CoCreateInstance(__uuidof(ApplicationActivationManager), nullptr, CLSCTX_INPROC_SERVER, // __uuidof: no uuid.lib needed to link
                                        IID_PPV_ARGS(&activator)))
             && activator) {
             const QString aumid = app.id.contains(u'!') ? app.id : id;
@@ -875,21 +883,16 @@ bool loadUwpCatalog(QHash<QString, DockApp> &catalog)
     PIDLIST_ABSOLUTE pidl = nullptr;
     if (FAILED(SHParseDisplayName(L"shell:AppsFolder", nullptr, &pidl, 0, nullptr)) || !pidl)
         return false;
-    IShellItem *folder = nullptr;
-    const HRESULT hrBind = SHCreateItemFromIDList(pidl, IID_PPV_ARGS(&folder));
-    CoTaskMemFree(pidl);
-    if (FAILED(hrBind) || !folder)
+    IShellFolder *folder = nullptr;
+    if (FAILED(SHBindToObject(nullptr, pidl, nullptr, IID_PPV_ARGS(&folder))) || !folder) {
+        CoTaskMemFree(pidl);
         return false;
-
-    IShellItemFolder *folderItem = nullptr;
+    }
     IEnumIDList *items = nullptr;
-    if (SUCCEEDED(folder->QueryInterface(IID_PPV_ARGS(&folderItem))) && folderItem)
-        folderItem->EnumObjects(nullptr, SHCONTF_NONFOLDERS, &items);
-    folder->Release();
-
+    folder->EnumObjects(nullptr, SHCONTF_NONFOLDERS, &items);
     if (!items) {
-        if (folderItem)
-            folderItem->Release();
+        folder->Release();
+        CoTaskMemFree(pidl);
         return false;
     }
 
@@ -897,10 +900,10 @@ bool loadUwpCatalog(QHash<QString, DockApp> &catalog)
     for (const DockApp &app : std::as_const(catalog))
         names.insert(app.name.toLower());
 
-    PIDLIST_ABSOLUTE child = nullptr;
+    PITEMID_CHILD child = nullptr;
     while (items->Next(1, &child, nullptr) == S_OK && child) {
         IShellItem *item = nullptr;
-        if (SUCCEEDED(SHCreateItemFromIDList(child, IID_PPV_ARGS(&item))) && item) {
+        if (SUCCEEDED(SHCreateItemWithParent(pidl, folder, child, IID_PPV_ARGS(&item))) && item) {
             PWSTR display = nullptr;
             PWSTR parsing = nullptr;
             item->GetDisplayName(SIGDN_NORMALDISPLAY, &display);
@@ -931,14 +934,9 @@ bool loadUwpCatalog(QHash<QString, DockApp> &catalog)
         child = nullptr;
     }
     items->Release();
-    if (folderItem)
-        folderItem->Release();
+    folder->Release();
+    CoTaskMemFree(pidl);
     return true;
-}
-
-bool isUwpId(const QString &id)
-{
-    return id.contains(u'!');
 }
 
 } // namespace

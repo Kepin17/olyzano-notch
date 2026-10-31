@@ -904,7 +904,7 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       </div>
       <ol>
         <li>Run the installer. It installs for your user and needs no administrator rights.</li>
-        <li>The build is not code-signed yet, so Windows SmartScreen may warn you (the app is new to Microsoft, nothing was found in it). Choose <b>More info</b>, then <b>Run anyway</b>. To check the file, compare its SHA-256 with <code>SHA256SUMS-windows.txt</code> on the <a href="https://github.com/Kepin17/olyzano-notch/releases/latest">release page</a>.</li>
+        <li>The build is not code-signed yet, so Windows SmartScreen may warn you (the app is new to Microsoft, nothing was found in it). Choose <b>More info</b>, then <b>Run anyway</b>. To check the file, compare its SHA-256 with <code>SHA256SUMS-windows.txt</code> on the <a href="https://github.com/Kepin17/olyzano-notch/releases/latest">release page</a> (the checksum file is signed too: <code>SHA256SUMS-windows.txt.sig</code>, which Update now checks for you).</li>
         <li>Start Olyzano Notch from the Start menu.</li>
       </ol>
       <details><summary>Notes</summary>
@@ -931,9 +931,9 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="padding:5px 11px;border-radius:13px;background:#3daee9;color:#111;font-weight:650">Mirror</span><span style="padding:5px 11px;border-radius:13px;background:#1c1c1e">Photo booth</span></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Single</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e;box-shadow:inset 0 0 0 1px #3daee9;color:#3daee9">Strip of 4</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Polaroid</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Frame</span></div>
       <div style="display:flex;gap:6px;flex-wrap:wrap"><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Normal</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Black &amp; white</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Warm</span><span style="padding:4px 10px;border-radius:12px;background:#1c1c1e">Vivid</span></div></div>
-      <h3>A mirror and a photo booth</h3><p>See yourself before a call, or take a picture with a 3-2-1 countdown: single, a strip of four, a polaroid or a framed one, with a filter. It lands on the shelf; share it to your phone with a QR code. The camera is on only while the page is open.</p></article>
+      <h3>A mirror and a photo booth</h3><p>See yourself before a call, or take a picture with a 3-2-1 countdown: single, a strip of four, a polaroid or a framed one, with a filter. It lands on the shelf; share it to your phone with a QR code. The camera is on only while the page is open. With more than one camera, pick one from a dropdown.</p></article>
     <article class="bc"><span class="tag">New</span><div class="mini" data-mini="search"></div>
-      <h3>Search apps from the notch</h3><p>Press Shift + Space, type a few letters, and the matches drop down from the notch. Enter opens one. Ranked by what you use; nothing leaves the computer.</p></article>
+      <h3>Search apps from the notch</h3><p>Press Shift + Space, type a few letters, and the matches drop down from the notch. Enter opens one. Ranked by what you use; nothing leaves the computer. It steps aside while an app or game is full screen, so it never takes a key the game uses.</p></article>
     <article class="bc"><span class="tag">New</span><div class="mini" data-mini="clip"></div>
       <h3>Clipboard history</h3><p>Turn it on and the text and pictures you copy are kept on this computer, newest first. Click to copy again, pin, or keep one in Files. Off by default; things marked secret are skipped.</p></article>
     <article class="bc"><span class="tag">New</span><div class="mini" data-mini="launcher"></div>
@@ -946,6 +946,18 @@ cmake --build build &amp;&amp; ./build/notch</code></pre>
       <h3>Share by QR code</h3><p>Hand a file to a phone over your WiFi, or through a server you run (the host makes a key for each person, with their own space and how long it lasts), with a PIN or password and an expiry. A pill in the notch brings the session back.</p></article>
     <article class="bc"><div class="mini" data-mini="nearby"></div>
       <h3>Send to another computer</h3><p>Nearby finds other Olyzano Notch computers on the network. Both screens show the same four digits; the receiver accepts.</p></article>
+    <article class="bc w4"><span class="tag">New</span><div class="viz dk" style="padding:16px;display:flex;flex-direction:column;gap:7px;justify-content:center;font-size:12px;color:#cfd3da">
+      <div style="display:flex;gap:8px;align-items:center;background:#1c1c1e;border-radius:10px;padding:8px 10px"><b style="color:#2fb36a;font-size:11px">GET</b><span style="font-family:monospace;color:#9aa0aa;flex:1">{{baseUrl}}/users</span><span style="padding:4px 12px;border-radius:8px;background:#3daee9;color:#111;font-weight:650">Send</span></div>
+      <div style="display:flex;gap:10px;padding:2px 6px"><span style="color:#2fb36a;font-weight:700">&#10003;</span><span style="flex:1">List users</span><span style="color:#9aa0aa;font-family:monospace">200 &middot; 12 ms</span></div>
+      <div style="display:flex;gap:10px;padding:2px 6px"><span style="color:#2fb36a;font-weight:700">&#10003;</span><span style="flex:1">Create user</span><span style="color:#9aa0aa;font-family:monospace">201 &middot; 31 ms</span></div>
+      <div style="display:flex;gap:10px;padding:2px 6px"><span style="color:#e5484d;font-weight:700">&#10007;</span><span style="flex:1">Delete user</span><span style="color:#e5484d;font-family:monospace">404 &middot; 9 ms</span></div>
+      <div style="padding:2px 6px;color:#e5484d;font-weight:650">2 passed &middot; 1 failed</div></div>
+      <h3>A small API workbench</h3><p>Send a request without leaving the notch. Keep them in collections and folders, use environments with <code>{{variables}}</code> (secret ones stay hidden), copy a request as <code>curl</code> or paste a <code>curl</code> command to make one, and run a whole collection to see what passed. The same Dev page can watch local ports and tell you in the notch when one goes up or down.</p></article>
+    <article class="bc"><span class="tag">New</span><div class="viz dk" style="padding:16px;display:flex;flex-direction:column;gap:9px;justify-content:center;font-size:12px;color:#cfd3da">
+      <div style="display:flex;gap:8px;align-items:center"><span style="color:#2fb36a;font-weight:700">&#10003;</span> SHA256SUMS signed</div>
+      <div style="display:flex;gap:8px;align-items:center"><span style="color:#2fb36a;font-weight:700">&#10003;</span> File matches its checksum</div>
+      <div style="display:flex;gap:8px;align-items:center"><span style="color:#2fb36a;font-weight:700">&#10003;</span> Installing&hellip;</div></div>
+      <h3>Updates you can trust</h3><p>Update now checks that the release's checksum file carries a signature made with Olyzano Notch's own key, then that the file matches it, before anything is installed. A release that is not signed is never installed by the app; you can still download it by hand.</p></article>
     <article class="bc"><div class="mini" data-mini="tools"></div>
       <h3>Everyday tools</h3><p>Merge and split PDFs, convert and resize images, extract text with OCR, make zip archives. Right on the shelf, from the file's menu.</p></article>
     <article class="bc w4"><span class="tag">New</span><div class="viz dk"><div class="sws">
