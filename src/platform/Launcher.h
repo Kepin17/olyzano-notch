@@ -20,6 +20,7 @@ class Launcher : public QObject
     Q_PROPERTY(QString searchKey READ searchKey WRITE setSearchKey NOTIFY searchEnabledChanged)       // "Shift+Space": Qt's portable text, Meta is the Windows key
     Q_PROPERTY(QString searchKeyLabel READ searchKeyLabel NOTIFY searchEnabledChanged)                // "Shift + Space", for the screen
     Q_PROPERTY(bool searchKeyIsDefault READ searchKeyIsDefault NOTIFY searchEnabledChanged)
+    Q_PROPERTY(bool searchSuspended READ searchSuspended NOTIFY searchEnabledChanged) // an app is full screen: the shortcut is let go so a game keeps its keys
     Q_PROPERTY(QString searchNote READ searchNote NOTIFY searchEnabledChanged) // "" or why the shortcut does not work (Windows: another program has Shift + Space)
     Q_PROPERTY(QStringList pinned READ pinned NOTIFY changed)
     Q_PROPERTY(QStringList categories READ categories NOTIFY changed) // the groups that have apps, in a fixed order
@@ -42,6 +43,8 @@ public:
     bool searchKeyIsDefault() const { return searchKey() == QLatin1String("Shift+Space"); }
     Q_INVOKABLE QString describeKey(int key, int modifiers) const; // a key press as text for setSearchKey; "" when it cannot be a shortcut (no modifier, or only a modifier)
     Q_INVOKABLE void resetSearchKey() { setSearchKey(QStringLiteral("Shift+Space")); }
+    bool searchSuspended() const { return m_suspended; }
+    void setSearchSuspended(bool on); // while true the key is not taken from anyone (set from main.cpp when an app is full screen)
     QString searchNote() const { return m_searchNote; }
     void setSearchNote(const QString &note) { if (note != m_searchNote) { m_searchNote = note; emit searchEnabledChanged(); } }
     bool superKeyAvailable() const;
@@ -61,7 +64,7 @@ public slots:
     // org.olyzano.Notch /Launcher toggle: what KWin calls on the Super key, and what a script can call too.
     Q_SCRIPTABLE void toggle() { emit toggleRequested(); }
     // org.olyzano.Notch /Launcher openSearch: the shortcut's call; the search drops down from the notch.
-    Q_SCRIPTABLE void openSearch() { if (searchEnabled()) emit searchRequested(); }
+    Q_SCRIPTABLE void openSearch() { if (searchEnabled() && !m_suspended) emit searchRequested(); }
 
 signals:
     void changed();
@@ -78,5 +81,7 @@ private:
     QStringList m_pinned;
     QHash<QString, int> m_uses;
     QStringList m_recent; // newest first
+    void applyShortcut(); // the KWin shortcut on when the search is on and nothing is full screen
+    bool m_suspended = false;
     QString m_searchNote;
 };

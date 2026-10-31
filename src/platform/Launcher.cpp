@@ -56,8 +56,7 @@ Launcher::Launcher(AppDock *dock, QObject *parent)
     QDBusConnection bus = QDBusConnection::sessionBus();
     if (bus.isConnected() && bus.registerService(QStringLiteral("org.olyzano.Notch")))
         bus.registerObject(QStringLiteral("/Launcher"), this, QDBusConnection::ExportScriptableSlots);
-    if (searchEnabled())
-        m_dock->setSearchShortcut(true, searchKey());
+    applyShortcut();
     connect(qApp, &QCoreApplication::aboutToQuit, this, [this] { m_dock->setSearchShortcut(false, QString()); }); // the shortcut goes with the program
 #endif
 }
@@ -67,10 +66,24 @@ void Launcher::setSearchEnabled(bool on)
     if (on == searchEnabled())
         return;
     m_settings.setValue(QStringLiteral("searchEnabled"), on);
-#ifdef NOTCH_HAVE_DBUS
-    m_dock->setSearchShortcut(on, searchKey());
-#endif
+    applyShortcut();
     emit searchEnabledChanged();
+}
+
+void Launcher::applyShortcut()
+{
+#ifdef NOTCH_HAVE_DBUS
+    m_dock->setSearchShortcut(searchEnabled() && !m_suspended, searchKey());
+#endif
+}
+
+void Launcher::setSearchSuspended(bool on)
+{
+    if (on == m_suspended)
+        return;
+    m_suspended = on;
+    applyShortcut();
+    emit searchEnabledChanged(); // the Windows hot key follows this too
 }
 
 // One key combination, as Qt writes it ("Shift+Space", "Ctrl+Alt+K"); anything that is not exactly one falls back to the default.
@@ -86,10 +99,7 @@ void Launcher::setSearchKey(const QString &key)
     if (k.count() != 1 || k.toString(QKeySequence::PortableText) == searchKey())
         return;
     m_settings.setValue(QStringLiteral("searchKey"), k.toString(QKeySequence::PortableText));
-#ifdef NOTCH_HAVE_DBUS
-    if (searchEnabled())
-        m_dock->setSearchShortcut(true, searchKey());
-#endif
+    applyShortcut();
     emit searchEnabledChanged();
 }
 

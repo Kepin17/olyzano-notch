@@ -269,6 +269,7 @@ RowLayout {
                     }
                     Caption { visible: keyRow.hint !== ""; Layout.fillWidth: true; text: keyRow.hint; color: theme.warn }
                     Caption { visible: keyRow.visible && Qt.platform.os !== "windows" && launcher.superKeyAvailable; Layout.fillWidth: true; text: "On KDE it can also be changed in System Settings \u2192 Shortcuts \u2192 KWin \u2192 Search apps (Notch)." }
+                    Caption { visible: launcher.searchEnabled; Layout.fillWidth: true; text: launcher.searchSuspended ? "Paused right now: an app is full screen, so the key is left to it." : "Pauses by itself while an app or game is full screen, so it never takes a key the game uses." }
                     Caption { visible: launcher.searchNote !== ""; Layout.fillWidth: true; text: launcher.searchNote; color: theme.danger }
                     PillButton { visible: launcher.searchEnabled; text: "Open it now"; iconName: "search"; onClicked: shell.openSearch() }
                 }

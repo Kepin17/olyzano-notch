@@ -324,6 +324,8 @@ int main(int argc, char *argv[])
     QObject::connect(&colorPicker, &ColorPicker::picked, &controller, &NotchController::addColor);
 
     // Sound effects: wired here, once, rather than in each screen's notch.
+    // A game (or any app) in full screen keeps its keys: the search shortcut is let go while one is in front, taken back after.
+    QObject::connect(&dock, &AppDock::fullScreenChanged, &launcher, [&] { launcher.setSearchSuspended(dock.fullScreenActive()); });
     sounds.setSilencer([&] { return gaming.active(); });
     sounds.setBusyChecks([&] { return !activities.micApps().isEmpty(); }, [&] { return dock.fullScreenActive(); });
     auto play = [&](const char *name) { return [&sounds, name] { sounds.play(QString::fromLatin1(name)); }; };
@@ -460,7 +462,7 @@ int main(int argc, char *argv[])
 #ifdef Q_OS_WIN
     SearchHotkey searchHotkey; // Shift + Space
     const auto applySearchKey = [&] {
-        const bool ok = searchHotkey.setKey(launcher.searchKey(), launcher.searchEnabled());
+        const bool ok = searchHotkey.setKey(launcher.searchKey(), launcher.searchEnabled() && !launcher.searchSuspended());
         launcher.setSearchNote(ok ? QString() : QObject::tr("Another program (or Windows itself) already uses %1, so it cannot open the search. Pick another key.").arg(launcher.searchKeyLabel()));
     };
     QObject::connect(&searchHotkey, &SearchHotkey::pressed, &launcher, &Launcher::openSearch);

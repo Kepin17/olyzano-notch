@@ -137,7 +137,58 @@ ColumnLayout {
             onPicked: (v) => { root.mode = v; root.reset() }
         }
         Item { Layout.fillWidth: true }
-        PillButton { visible: devices.videoInputs.length > 1; text: "Switch camera"; onClicked: root.nextCamera() }
+        Rectangle { // the cameras, as a dropdown (only when there is more than one)
+            id: camPick
+            visible: devices.videoInputs.length > 1
+            Layout.preferredWidth: Math.min(220, camLabel.implicitWidth + 52)
+            implicitHeight: 30
+            radius: theme.washi ? theme.chipRadius : 15
+            color: camHover.hovered || camMenu.visible ? theme.hoverFill : "transparent"
+            border.width: 1
+            border.color: camMenu.visible ? Qt.alpha(theme.accent, 0.45) : theme.hairline
+            HoverHandler { id: camHover; cursorShape: Qt.PointingHandCursor }
+            TapHandler { onTapped: camMenu.visible ? camMenu.close() : camMenu.popup(camPick, 0, camPick.height + 4) }
+            Accessible.name: "Choose the camera"
+            RowLayout {
+                anchors { fill: parent; leftMargin: 12; rightMargin: 10 }
+                spacing: 6
+                LineIcon { glyph: "camera"; sourceSize: Qt.size(13, 13); color: theme.textDim }
+                Text {
+                    id: camLabel
+                    Layout.fillWidth: true
+                    text: camera.cameraDevice && camera.cameraDevice.description ? camera.cameraDevice.description : "Camera"
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    color: theme.text
+                    font.pixelSize: 12
+                }
+                LineIcon { glyph: "chevron"; sourceSize: Qt.size(11, 11); color: theme.textDim; rotation: camMenu.visible ? 180 : 0 }
+            }
+            DarkMenu {
+                id: camMenu
+                Repeater {
+                    model: devices.videoInputs
+                    delegate: MenuItem {
+                        id: camItem
+                        required property var modelData
+                        readonly property bool current: camera.cameraDevice && camera.cameraDevice.id === modelData.id
+                        implicitHeight: 30
+                        text: modelData.description
+                        onTriggered: camera.cameraDevice = modelData
+                        contentItem: Text {
+                            text: (camItem.current ? "✓  " : "     ") + camItem.text
+                            textFormat: Text.PlainText
+                            color: theme.text
+                            font.pixelSize: 12
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
+                            leftPadding: 4
+                        }
+                        background: Rectangle { radius: theme.radiusSm; color: camItem.highlighted ? theme.surfaceHover : "transparent" }
+                    }
+                }
+            }
+        }
         PillButton { text: "Flip"; iconName: "undo"; checked: root.mirror; onClicked: root.mirror = !root.mirror; ToolTip.visible: hovered; ToolTip.text: "Mirror the picture left to right" }
     }
 
@@ -192,13 +243,6 @@ ColumnLayout {
     function reset() {
         tick.stop(); pause.stop()
         count = 0; busy = false; frames = []; resultPath = ""; savedId = ""; problem = ""
-    }
-    function nextCamera() {
-        const list = devices.videoInputs
-        let i = 0
-        for (let k = 0; k < list.length; ++k)
-            if (list[k].id === camera.cameraDevice.id) i = k
-        camera.cameraDevice = list[(i + 1) % list.length]
     }
     function start() {
         reset()
