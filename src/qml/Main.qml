@@ -9,10 +9,23 @@ import QtQuick.Shapes
 Window {
     id: root
     width: 1040 // the widest panel (Dev → Database, 980) and a margin; the rest of the window is click-through
-    height: 620
+    height: windowH
     visible: false
     color: "transparent"
     title: "Olyzano Notch"
+
+    // Dev → Agent is a chat and wants the height: on Wayland (layer shell) the window grows to nearly the screen's height while
+    // that tab is open, and goes back to 620 once the panel has closed or left it. The panel sizes itself from this window's
+    // height, so if the compositor keeps the old size the panel simply stays as it was. Windows and X11 keep 620.
+    readonly property bool tallPanel: mode === "open" && page === "dev" && !!devPageLoader.item && devPageLoader.item.tab === "agent"
+                                      && desktop.layerShell && !geoWidget
+    property int windowH: 620
+    onTallPanelChanged: {
+        if (tallPanel) { shrinkWindow.stop(); windowH = Math.max(620, Math.min(Math.round(desktop.screenSize(root).height) - 80, 900)) }
+        else shrinkWindow.restart()
+    }
+    onHeightChanged: updateMask()
+    Timer { id: shrinkWindow; interval: 600; onTriggered: if (!root.tallPanel) root.windowH = 620 }
 
     readonly property color accent: theme.accent
     readonly property color textPrimary: theme.text
@@ -650,6 +663,8 @@ Window {
         }
         if (mode === "open" && !island.transitioning && panel.implicitHeight > island.height + 2)
             out.push("the page is taller than the island (" + Math.round(panel.implicitHeight) + " > " + Math.round(island.height) + "): part of it is cut off")
+        if (mode === "open" && !island.transitioning && island.y + island.height * island.scale > root.height + 1)
+            out.push("the open panel runs past the bottom of the window (" + Math.round(island.y + island.height * island.scale) + " > " + Math.round(root.height) + "): the lowest part is cut off")
         let seen = 0
         const walk = (it, path) => {
             if (!it || !it.visible || seen > 4000)
@@ -669,6 +684,14 @@ Window {
         return out
     }
 
+    function debugDev(section) {
+        Qt.callLater(() => {
+            if (!devPageLoader.item) return
+            devPageLoader.item.tab = "agent"
+            if (section === "agent-config")
+                Qt.callLater(() => devPageLoader.item.debugAgentConfig())
+        })
+    }
     function debugSettings(section) { // "general" or "general:300" (scrolled down by that much)
         const parts = section.split(":")
         settingsPage().category = parts[0]

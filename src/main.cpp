@@ -20,6 +20,7 @@
 #include "platform/ApiTester.h"
 #include "platform/SshManager.h"
 #include "platform/DatabaseManager.h"
+#include "platform/CodingAgent.h"
 #include "platform/Assistant.h"
 #include "platform/AssistantCorpus.h"
 #include "platform/Updates.h"
@@ -279,6 +280,7 @@ int main(int argc, char *argv[])
     ApiTester apiTester;
     SshManager sshManager;
     DatabaseManager dbManager;
+    CodingAgent codingAgent;
     Prayer prayer;
     Updates updates;
     Assistant assistant(&launcher, &tasks, &quick, &media, &activities, &controller);
@@ -453,12 +455,26 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("apiTester"), &apiTester);
     engine.rootContext()->setContextProperty(QStringLiteral("sshManager"), &sshManager);
     engine.rootContext()->setContextProperty(QStringLiteral("dbManager"), &dbManager);
+    engine.rootContext()->setContextProperty(QStringLiteral("codingAgent"), &codingAgent);
     engine.rootContext()->setContextProperty(QStringLiteral("prayer"), &prayer);
     engine.rootContext()->setContextProperty(QStringLiteral("desktopNotifications"), &desktopNotifications);
 
     // One Notch per monitor, following hotplug.
     QQmlComponent notchWindow(&engine, "Notch", "Main");
     QHash<QScreen *, QQuickWindow *> windows;
+    // The agent finished, needs an Apply / Run, wrote a plan or hit an error: a toast in the notch, unless Dev is open in front of you.
+    QObject::connect(&codingAgent, &CodingAgent::agentEvent, &controller, [&](const QString &, const QString &title, const QString &detail, const QString &icon) {
+        const QWindow *w = windows.isEmpty() ? nullptr : windows.constBegin().value();
+        if (w && w->property("mode").toString() == QLatin1String("open") && w->property("page").toString() == QLatin1String("dev")) return;
+        controller.notice(title, detail, icon, QString());
+    });
+    // A command the person ran with ! in Dev -> Agent finished while the panel was closed (or on another page): a toast says how it went.
+    QObject::connect(&codingAgent, &CodingAgent::shellFinished, &controller, [&](const QString &command, int code) {
+        const QWindow *w = windows.isEmpty() ? nullptr : windows.constBegin().value();
+        if (w && w->property("mode").toString() == QLatin1String("open") && w->property("page").toString() == QLatin1String("dev")) return;
+        controller.notice(code == 0 ? QObject::tr("Command finished") : QObject::tr("Command failed (exit %1)").arg(code), command.left(80),
+                          QStringLiteral("server"), QString());
+    });
     // And one app dock per monitor on the edge chosen in Settings, shown while the dock is switched on.
     QQmlComponent dockWindow(&engine, "Notch", "Dock");
     QHash<QScreen *, QQuickWindow *> docks;
@@ -677,6 +693,11 @@ int main(int argc, char *argv[])
                 QMetaObject::invokeMethod(w, "debugShare");
                 return QTimer::singleShot(1200, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
             }
+            if (page.startsWith(QLatin1String("dev-"))) { // a Dev tab: dev-agent | dev-agent-config
+                w->setProperty("page", QStringLiteral("dev"));
+                QMetaObject::invokeMethod(w, "debugDev", Q_ARG(QVariant, page.mid(4)));
+                return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 2000, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+            }
             w->setProperty("page", page.startsWith(QLatin1String("timer")) ? QStringLiteral("timer") : page);
             QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 1500, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
         });
@@ -719,6 +740,8 @@ int main(int argc, char *argv[])
         for (const QString &sec : {QStringLiteral("general"), QStringLiteral("appearance"), QStringLiteral("panel"), QStringLiteral("dock"), QStringLiteral("alerts"),
                                    QStringLiteral("files"), QStringLiteral("sharing"), QStringLiteral("wellbeing"), QStringLiteral("about")})
             steps->append({QStringLiteral("settings/") + sec, QStringLiteral("settings"), sec});
+        steps->append({QStringLiteral("dev/agent"), QStringLiteral("dev"), QStringLiteral("agent")});
+        steps->append({QStringLiteral("dev/agent-config"), QStringLiteral("dev"), QStringLiteral("agent-config")});
         auto index = std::make_shared<int>(-1);
         auto failed = std::make_shared<int>(0);
         auto next = std::make_shared<std::function<void()>>();
@@ -756,7 +779,7 @@ int main(int argc, char *argv[])
             w->setProperty("pinned", true);
             w->setProperty("page", st.page);
             if (!st.section.isEmpty())
-                QMetaObject::invokeMethod(w, "debugSettings", Q_ARG(QVariant, st.section));
+                QMetaObject::invokeMethod(w, st.page == QLatin1String("dev") ? "debugDev" : "debugSettings", Q_ARG(QVariant, st.section));
             QTimer::singleShot(1100, &app, *next);
         };
         QTimer::singleShot(2500, &app, *next);

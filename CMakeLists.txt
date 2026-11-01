@@ -97,6 +97,7 @@ qt_add_executable(notch
     src/platform/AppMenu.h src/platform/AppMenu.cpp src/platform/DbusMenuModel.h src/platform/CalendarModel.h src/platform/Prayer.h src/platform/Prayer.cpp src/platform/PrayerModel.h src/platform/Cities.h src/platform/Tasks.h src/platform/Tasks.cpp src/platform/TasksModel.h src/platform/Updates.h src/platform/Updates.cpp src/platform/UpdateModel.h src/platform/Doomscroll.h src/platform/Doomscroll.cpp src/platform/DoomscrollModel.h src/platform/Launcher.h src/platform/Launcher.cpp src/platform/LauncherModel.h src/platform/ColorFormat.h src/platform/TrayHost.h src/platform/TrayHost.cpp src/platform/ApiTester.h src/platform/ApiTester.cpp src/platform/ApiTesterModel.h
     src/platform/SshManager.h src/platform/SshManager.cpp src/platform/SshModel.h
     src/platform/DatabaseManager.h src/platform/DatabaseManager.cpp src/platform/DbModel.h
+    src/platform/CodingAgent.h src/platform/CodingAgent.cpp src/platform/CodingAgentModel.h
     src/platform/SecureFiles.h src/platform/SecretsStore.h src/platform/NotchPaths.h src/platform/ProcessRunner.h src/platform/ScriptSandbox.h
     src/platform/DesktopNotifications.h src/platform/DesktopNotifications.cpp src/platform/NotificationFilter.h
 )
@@ -183,6 +184,7 @@ qt_add_qml_module(notch
     VERSION 1.0
     QML_FILES
         src/qml/Main.qml src/qml/FileItemDelegate.qml src/qml/Tray.qml src/qml/MediaCard.qml src/qml/Equalizer.qml
+        src/qml/AgentTab.qml src/qml/AgentBadge.qml src/qml/AgentSuggest.qml src/qml/AgentActivity.qml src/qml/FolderPicker.qml
         # shared controls
         src/qml/PillButton.qml src/qml/IconButton.qml src/qml/Toggle.qml src/qml/PulseDot.qml
         src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkSeparator.qml
@@ -283,7 +285,13 @@ if(NOTCH_VOICE)
             set(GGML_FMA ON CACHE BOOL "" FORCE)
             set(GGML_F16C ON CACHE BOOL "" FORCE)
         endif()
-        FetchContent_Declare(whisper GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git GIT_TAG v1.9.5 GIT_SHALLOW ON)
+        # whisper.cpp is linked into notch statically; its own install rules (headers, .a files, cmake and pkg-config files) must
+        # not end up in the .deb or the installer (EXCLUDE_FROM_ALL for FetchContent needs CMake 3.28; older ones ship the extras).
+        if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.28)
+            FetchContent_Declare(whisper GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git GIT_TAG v1.9.5 GIT_SHALLOW ON EXCLUDE_FROM_ALL)
+        else()
+            FetchContent_Declare(whisper GIT_REPOSITORY https://github.com/ggml-org/whisper.cpp.git GIT_TAG v1.9.5 GIT_SHALLOW ON)
+        endif()
         FetchContent_MakeAvailable(whisper)
         # The recognizer is all arithmetic: unoptimised (a Debug build) it takes half a minute for one command, so it is always built
         # with optimisation (MSVC Debug cannot mix it with its run-time checks; the Windows CI builds Release).
@@ -313,6 +321,10 @@ qt_add_executable(tst_core tests/tst_core.cpp)
 target_compile_definitions(tst_core PRIVATE NOTCH_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_link_libraries(tst_core PRIVATE notch_core Qt6::Test)
 add_test(NAME tst_core COMMAND tst_core)
+qt_add_executable(tst_codingagent tests/tst_codingagent.cpp src/platform/CodingAgent.h src/platform/CodingAgent.cpp)
+target_include_directories(tst_codingagent PRIVATE src)
+target_link_libraries(tst_codingagent PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Test)
+add_test(NAME tst_codingagent COMMAND tst_codingagent)
 # The layout of every page and every Settings section, checked in a throwaway profile on Qt's offscreen platform (see `notch --ui-check`).
 # Not on Windows: its config and data folders are not the XDG ones this test points elsewhere.
 if(NOT WIN32)

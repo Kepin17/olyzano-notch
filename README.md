@@ -46,6 +46,7 @@ Then move the mouse to the top-centre of the screen. Full steps, updates, and re
 | **Tools for files** | Merge, split, and compress PDFs. Images to PDF. Convert, resize, OCR, zip, QR codes |
 | **Share** | QR code to a phone over WiFi or your own encrypted server. Send to another computer (Nearby) or a phone (KDE Connect) |
 | **Live activities** | Timer, Pomodoro, downloads, now-playing with a real equalizer, calls, Discord mute / deafen |
+| **Coding assistant (desktop)** | Dev → Agent: MiMo, DeepSeek, Claude, OpenAI and custom providers; Plan, Manual and Auto modes, with [Karpathy-style working principles](#credits), `@` files, `!` commands, `/` commands, a to-do list and context auto-compact. [Setup and safety](docs/coding-assistant.md) |
 | **Dock and launcher** | A dock with pinned and running apps. An app launcher on Super / Windows |
 | **Wellbeing** | Stretch reminder that counts real work time. Doomscrolling nudge |
 | **Private** | Locked categories encrypted on disk. Shares are end-to-end encrypted. The only network call by default is a once-a-day update check |
@@ -705,6 +706,11 @@ If you fork this repository, ship a derivative, or use it as a base for another 
 a line in your `README`, About page, or equivalent is enough:
 
 > Based on [Olyzano Notch](https://github.com/Kepin17/olyzano-notch) by Kepin17 (MIT).
+
+The coding assistant's working principles (think before coding, simplicity first, surgical changes, goal-driven
+execution) are adapted from the [karpathy-guidelines skill](https://github.com/multica-ai/andrej-karpathy-skills)
+by multica-ai (MIT), which distills [Andrej Karpathy's observations](https://x.com/karpathy/status/2015883857489522876)
+on common LLM coding mistakes. The wording in Notch is paraphrased and shortened.
 
 Third-party libraries this project depends on keep their own licenses (Qt, whisper.cpp, qrcodegen, and the
 optional system tools listed under [optional components](#optional-components)). The full license text is in
