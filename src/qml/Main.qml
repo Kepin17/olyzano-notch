@@ -278,7 +278,7 @@ Window {
     }
     readonly property bool engaged: !gaming.active && (pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt" && mode !== "search" && !floating)
                                     || dragOver || anyMenu || (dragging && mode === "open")
-                                    || (open && page === "dev") // the Dev hub (API tester) stays open while you work in it; back or another page lets it close
+                                    // (the Dev hub closes like every page when the pointer leaves; a dialog or menu in it, or Pin, keeps it open)
                                     || saveDialog.visible || addDialog.visible)
     // hidden: only the top-edge strip is live. peek: copy in progress. open: full panel.
     // toast: a short system alert (charger, Bluetooth). Shown even while hidden, like Dynamic Island.
@@ -989,7 +989,12 @@ Window {
     onVisibleChanged: { updateMask(); applyReserve() }
     onModeChanged: { applyGeometry(); updateMask(); updateBlur(); if (mode === "idle" || mode === "hidden") trimTimer.restart() }
     // A little after the panel has closed, freed memory goes back to the system.
-    Timer { id: trimTimer; interval: 15000; onTriggered: memtune.trim() }
+    Timer { id: trimTimer; interval: 15000; onTriggered: { if (codingAgent.busy) restart(); else { if (memtune.freeWhenIdle) codingAgent.releaseIdle(); memtune.trim() } } }
+    // The agent finished while the panel was closed: what its work built up goes back too.
+    Connections {
+        target: codingAgent
+        function onBusyChanged() { if (!codingAgent.busy && (root.mode === "idle" || root.mode === "hidden")) trimTimer.restart() }
+    }
     // Settings and the share dialog are built when first wanted; a minute or two after they are closed they go again (they are
     // some 20 MB), and are built anew the next time.
     property string settingsCategory: "general" // which Settings section was open, kept while the page is unloaded
@@ -1334,6 +1339,10 @@ Window {
                     quickLookCard.show(list.hoveredId) // held Space: Quick Look until released
                 e.accepted = true
             } else if (e.key === Qt.Key_Space || e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
+                // Enter in a text field (a name, a path, a filter) reaches this handler too, because a text field does not keep
+                // it: that used to pin the panel without anyone asking, so it never closed when the pointer left. Typing is not a pin.
+                const f = root.activeFocusItem
+                if (f && f.cursorPosition !== undefined) { e.accepted = false; return }
                 root.pinned = root.capsuleMode === "open" || !root.pinned
                 e.accepted = true
             } else if (e.key === Qt.Key_Escape) {

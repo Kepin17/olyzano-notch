@@ -7,6 +7,7 @@
 #include <QNetworkReply>
 #include <QObject>
 #include <QProcess>
+#include <QSet>
 #include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
@@ -93,7 +94,7 @@ public:
     QString activeSessionId() const { return m_activeSessionId; }
     QVariantList messages() const;
 
-    bool busy() const { return m_resumeQueued || m_reply != nullptr || m_testReply != nullptr || m_proc != nullptr || m_compactReply != nullptr || m_retryTimer.isActive(); }
+    bool busy() const { return m_resumeQueued || m_reply != nullptr || m_proc != nullptr || m_compactReply != nullptr || m_retryTimer.isActive(); }
     bool streaming() const { return m_reply != nullptr; }
     bool commandRunning() const { return m_proc != nullptr; }
     bool hasPendingApprovals() const;
@@ -107,9 +108,7 @@ public:
     Q_INVOKABLE QString addProvider(const QVariantMap &fields);
     Q_INVOKABLE bool updateProvider(const QString &id, const QVariantMap &fields);
     Q_INVOKABLE bool removeProvider(const QString &id);
-    Q_INVOKABLE void resetProviderDefaults(const QString &id);
     Q_INVOKABLE void refreshModels(); // asks the active provider which models this key can use (only when called: nothing is sent at startup)
-    Q_INVOKABLE void testProvider(const QString &id, const QVariantMap &overrides = {});
 
     // Session CRUD
     Q_INVOKABLE QString newSession(const QString &title = {});
@@ -121,6 +120,9 @@ public:
     // Prompt & Agent Loop
     Q_INVOKABLE void sendPrompt(const QString &prompt, const QVariantList &attachedFiles = {});
     Q_INVOKABLE void stop();
+    void flush();                          // write what changed now (also at quit and when the agent is destroyed)
+    Q_INVOKABLE void releaseIdle();                   // let go of what the idle app does not need (other tasks' messages, caches)
+    static void setSaveDelay(int ms);      // tests: 0 writes at every save()
 
     // Folders (projects): tasks are grouped by workspace folder, and a new task in a folder needs no picking again
     Q_INVOKABLE bool openFolder(const QString &path);                               // make it the workspace and start (or reuse) an empty task in it
@@ -143,6 +145,7 @@ public:
     Q_INVOKABLE QString forkSession();                                               // copy of this task, now active
     Q_INVOKABLE bool exportSession(const QString &path) const;                       // Markdown file
     Q_INVOKABLE QString lastAnswer() const;
+    Q_INVOKABLE bool openLink(const QString &url) const; // opens a link from an answer, but only web and mail ones
     Q_INVOKABLE QString fullText(const QString &messageId, const QString &toolCallId = {}) const; // what the chat only shows the end of (long command output)
     Q_INVOKABLE QString renderMarkdown(const QString &markdown, const QString &family, int px, const QString &code, const QString &codeBg, const QString &link, const QString &border) const; // HTML for the plan reader
     Q_INVOKABLE void addNote(const QString &text);                                   // a divider line in the chat (never sent)
@@ -180,13 +183,13 @@ signals:
     void streamChunkChanged();
     void errorChanged();
     void statusMessage(const QString &text);
-    void testFinished(const QVariantMap &result); // {id, ok, message, models, latencyMs}
 
 private:
     void load();
+    static void settleLoaded(CodingAgentModel::Session &s);
+    void restore(CodingAgentModel::Session &s) const;
     void clearError();
-    void save() const;
-    QString configPath() const;
+    void save(const QString &id = {});
 
     CodingAgentModel::ProviderConfig *findProvider(const QString &id);
     const CodingAgentModel::ProviderConfig *findProvider(const QString &id) const;
@@ -204,6 +207,7 @@ private:
     bool shouldCompact(const CodingAgentModel::Session &s, const CodingAgentModel::ProviderConfig &p, qint64 payloadBytes) const;
     void rebuildFileIndex();
     void clearRetry();
+    void removePlanDir(const QString &sessionId) const;
     void scheduleSoon(const QString &status, int delayMs = 50); // the next try goes out in a moment, with this line shown meanwhile
     int boostedMaxTokens(const CodingAgentModel::ProviderConfig &p, int level) const;
     void rejectPendingApprovals(const QString &reason);
@@ -218,16 +222,12 @@ private:
     void resumeAfterToolCompletion();
 
     // Workspace tools
-    QString execListFiles(const QJsonObject &args, QString *summaryOut) const;
-    QString execReadFile(const QJsonObject &args, QString *summaryOut) const;
-    QString execSearchFiles(const QJsonObject &args, QString *summaryOut) const;
-    void prepareProposeEdit(CodingAgentModel::ToolCall &tc, const QJsonObject &args) const;
     QString applyProposedEdit(CodingAgentModel::ToolCall &tc);
     void startShellCommand(const QString &messageId, const QString &toolCallId, const QString &command, bool userInitiated = false);
     void appendToolResultMessage(CodingAgentModel::Session &s, const QString &toolCallId, const QString &toolName, const QString &resultText);
 
     QList<CodingAgentModel::ProviderConfig> m_providers;
-    QList<CodingAgentModel::Session> m_sessions;
+    mutable QList<CodingAgentModel::Session> m_sessions; // mutable: a task that was let go is read back by a const lookup
     QString m_activeProviderId = QStringLiteral("mimo");
     QString m_activeSessionId;
     QStringList m_folders;                   // folders the person added, so one with no task yet stays listed
@@ -241,9 +241,13 @@ private:
 
     QNetworkAccessManager m_nam;
     QNetworkReply *m_reply = nullptr;
-    QNetworkReply *m_testReply = nullptr;
     QNetworkReply *m_modelsReply = nullptr;
     QNetworkReply *m_compactReply = nullptr;
+    mutable QHash<QString, QString> m_keys; // API keys, read once from the secrets file
+    mutable bool m_keysLoaded = false;
+    QTimer m_saveTimer;
+    QSet<QString> m_dirty;                        // tasks changed since the last write
+    static int s_saveDelay;
     QTimer m_messagesTimer;
     QTimer m_chunkTimer;                          // the streaming text is redrawn about sixteen times a second, not at every network read
     mutable QVariantList m_messagesCache;         // the chat as QML wants it, rebuilt only when something in it changed

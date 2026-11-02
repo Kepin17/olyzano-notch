@@ -23,6 +23,12 @@ inline QString get(const QString &section, const QString &id)
     return SecureFiles::readJsonObject(secretsPath()).value(section).toObject().value(id).toString();
 }
 
+// Everything saved in one section, read once (a caller that asks for many ids keeps the result instead of reading the file each time).
+inline QJsonObject section(const QString &name)
+{
+    return SecureFiles::readJsonObject(secretsPath()).value(name).toObject();
+}
+
 // Empty password removes the entry. Atomic write + owner-only permissions.
 inline void set(const QString &section, const QString &id, const QString &password)
 {

@@ -97,7 +97,7 @@ qt_add_executable(notch
     src/platform/AppMenu.h src/platform/AppMenu.cpp src/platform/DbusMenuModel.h src/platform/CalendarModel.h src/platform/Prayer.h src/platform/Prayer.cpp src/platform/PrayerModel.h src/platform/Cities.h src/platform/Tasks.h src/platform/Tasks.cpp src/platform/TasksModel.h src/platform/Updates.h src/platform/Updates.cpp src/platform/UpdateModel.h src/platform/Doomscroll.h src/platform/Doomscroll.cpp src/platform/DoomscrollModel.h src/platform/Launcher.h src/platform/Launcher.cpp src/platform/LauncherModel.h src/platform/ColorFormat.h src/platform/TrayHost.h src/platform/TrayHost.cpp src/platform/ApiTester.h src/platform/ApiTester.cpp src/platform/ApiTesterModel.h
     src/platform/SshManager.h src/platform/SshManager.cpp src/platform/SshModel.h
     src/platform/DatabaseManager.h src/platform/DatabaseManager.cpp src/platform/DbModel.h
-    src/platform/CodingAgent.h src/platform/CodingAgent.cpp src/platform/CodingAgentModel.h
+    src/platform/CodingAgent.h src/platform/CodingAgent.cpp src/platform/CodingAgentModel.h src/platform/AgentStore.h src/platform/AgentStore.cpp src/platform/AgentTools.h
     src/platform/SecureFiles.h src/platform/SecretsStore.h src/platform/NotchPaths.h src/platform/ProcessRunner.h src/platform/ScriptSandbox.h
     src/platform/DesktopNotifications.h src/platform/DesktopNotifications.cpp src/platform/NotificationFilter.h
 )
@@ -184,7 +184,7 @@ qt_add_qml_module(notch
     VERSION 1.0
     QML_FILES
         src/qml/Main.qml src/qml/FileItemDelegate.qml src/qml/Tray.qml src/qml/MediaCard.qml src/qml/Equalizer.qml
-        src/qml/AgentTab.qml src/qml/AgentBadge.qml src/qml/AgentSuggest.qml src/qml/AgentActivity.qml src/qml/FolderPicker.qml
+        src/qml/AgentTab.qml src/qml/AgentSidebar.qml src/qml/AgentTodoCard.qml src/qml/AgentPlanCard.qml src/qml/AgentProviderEditor.qml src/qml/AgentChoice.qml src/qml/AgentCopyText.qml src/qml/AgentStep.qml src/qml/AgentBadge.qml src/qml/AgentSuggest.qml src/qml/AgentActivity.qml src/qml/FolderPicker.qml
         # shared controls
         src/qml/PillButton.qml src/qml/IconButton.qml src/qml/Toggle.qml src/qml/PulseDot.qml
         src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkSeparator.qml
@@ -321,7 +321,7 @@ qt_add_executable(tst_core tests/tst_core.cpp)
 target_compile_definitions(tst_core PRIVATE NOTCH_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_link_libraries(tst_core PRIVATE notch_core Qt6::Test)
 add_test(NAME tst_core COMMAND tst_core)
-qt_add_executable(tst_codingagent tests/tst_codingagent.cpp src/platform/CodingAgent.h src/platform/CodingAgent.cpp)
+qt_add_executable(tst_codingagent tests/tst_codingagent.cpp src/platform/CodingAgent.h src/platform/CodingAgent.cpp src/platform/AgentStore.h src/platform/AgentStore.cpp src/platform/AgentTools.h)
 target_include_directories(tst_codingagent PRIVATE src)
 target_link_libraries(tst_codingagent PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Test)
 add_test(NAME tst_codingagent COMMAND tst_codingagent)

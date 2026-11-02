@@ -66,6 +66,9 @@ Assistant::Assistant(Launcher *launcher, Tasks *tasks, QuickSettings *quick, Med
     : QObject(parent), m_launcher(launcher), m_tasks(tasks), m_quick(quick), m_media(media), m_activities(activities), m_notch(notch),
       m_settings(configPath(), QSettings::IniFormat)
 {
+    m_unloadTimer.setSingleShot(true);
+    m_unloadTimer.setInterval(60000); // the model (and its working buffers) goes a minute after the last command; the next one loads it again
+    connect(&m_unloadTimer, &QTimer::timeout, this, &Assistant::releaseIdle);
     m_idleTimer.setSingleShot(true);
     m_idleTimer.setInterval(3500);
     connect(&m_idleTimer, &QTimer::timeout, this, [this] { if (m_state == QLatin1String("done") || m_state == QLatin1String("error")) setState(QStringLiteral("idle")); });
@@ -77,6 +80,7 @@ Assistant::Assistant(Launcher *launcher, Tasks *tasks, QuickSettings *quick, Med
             finish(QStringLiteral("error"), QString(), why);
     });
     connect(&m_watcher, &QFutureWatcher<Whisper::Transcript>::finished, this, [this] {
+        m_unloadTimer.start();
         const Whisper::Transcript t = m_watcher.result();
         if (m_state != QLatin1String("thinking"))
             return; // cancelled meanwhile
@@ -136,6 +140,15 @@ QString Assistant::modelSizeText() const
 QString Assistant::modelState() const
 {
     return m_reply ? QStringLiteral("downloading") : m_modelReady ? QStringLiteral("ready") : QStringLiteral("missing");
+}
+
+void Assistant::releaseIdle()
+{
+    if (m_watcher.isRunning() || m_state == QLatin1String("listening") || m_state == QLatin1String("thinking")) return;
+    std::unique_lock<std::mutex> lock(m_whisperMutex, std::try_to_lock);
+    if (!lock.owns_lock()) return;
+    m_whisper.unload();
+    m_loadedModel.clear();
 }
 
 void Assistant::checkModel()
@@ -275,6 +288,7 @@ QString Assistant::transcribeFile(const QString &wavPath)
     m_loadedModel = model();
     const Whisper::Transcript t = m_whisper.hear(samples, language(), vocabulary());
     m_confidence = t.confidence;
+    m_unloadTimer.start();
     return t.text;
 }
 

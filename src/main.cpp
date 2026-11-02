@@ -435,6 +435,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("activities"), &activities);
     engine.rootContext()->setContextProperty(QStringLiteral("sysstats"), &sysstats);
     engine.rootContext()->setContextProperty(QStringLiteral("clipboardHistory"), &clipboardHistory);
+    memtune.setEngine(&engine);
     engine.rootContext()->setContextProperty(QStringLiteral("memtune"), &memtune);
     engine.rootContext()->setContextProperty(QStringLiteral("coverCache"), &coverCache);
     engine.rootContext()->setContextProperty(QStringLiteral("photoBooth"), &photoBooth);

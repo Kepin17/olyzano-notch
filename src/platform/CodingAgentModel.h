@@ -174,11 +174,28 @@ struct Session {
     QString summary;       // what the compacted (older) messages said
     int compactedUpTo = 0; // messages before this index are summarized and no longer sent
     int lastPromptTokens = 0; // what the provider said the last request held (0 = not reported)
+    bool evicted = false;     // the messages were let go to save memory; they are read from the task's file when it is needed again
 };
 
 inline QString newId()
 {
     return QUuid::createUuid().toString(QUuid::WithoutBraces);
+}
+
+// Ids end up in file names (a task's file, its plan folder) and as keys of saved secrets, and they come from a file that can
+// be edited or synced: only plain names pass, never "../..", a path, or an empty string.
+inline bool isSafeId(const QString &id)
+{
+    static const QRegularExpression re(QStringLiteral("^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"));
+    return re.match(id).hasMatch() && !id.contains(QLatin1String(".."));
+}
+
+// A link in an answer that may be opened: the model writes the text, so only the web and mail, never file: or an app's scheme.
+inline bool isSafeLink(const QString &url)
+{
+    const QUrl u(url.trimmed());
+    const QString scheme = u.scheme().toLower();
+    return u.isValid() && (scheme == QLatin1String("http") || scheme == QLatin1String("https") || scheme == QLatin1String("mailto"));
 }
 
 // A command the person ran with `!`, as the agent sees it in its history (the output is cut to keep the context small).
@@ -608,14 +625,20 @@ inline QString systemPromptFor(const QString &mode, const QString &workspace, co
             "- Read-only tools (`list_files`, `read_file`, `search_files`) run immediately.\n"
             "- Use `propose_edit` to create or modify files, and `run_command` for build/test commands; the user will review the diff or command and click Apply/Run.\n"
             "- For a task with three or more steps, call `todo_write` first with the steps, keep exactly one item `in_progress`, and update the list as you finish each step. Skip it for simple requests.\n"
-            "- When you finish work that changed files or ran commands, end with a short conclusion in plain words: what changed and why, how you checked it, and what is left or worth knowing. Two to six lines, no code. For a plain question just answer; no summary.\n");
+            "- When you finish work that changed files or ran commands, end with a conclusion that is easy to scan, in the language the person used. "
+            "First one bold line with the result. Then short labelled parts, each a bold label on its own line followed by two to four bullets, with a blank line between parts: "
+            "**Changed** (what and why; file paths in `backticks`), **Checked** (what you ran or looked at and what it showed), and **Left** or **Good to know** (only if something is). "
+            "No long paragraphs, no code blocks. For a plain question just answer; no summary.\n");
     } else {
         prompt += QStringLiteral(
             "CURRENT MODE: AUTO APPROVAL.\n"
             "- Tools (`list_files`, `read_file`, `search_files`, `propose_edit`, `run_command`) execute automatically in the workspace.\n"
             "- Make surgical, well-tested changes and verify your work.\n"
             "- For a task with three or more steps, call `todo_write` first with the steps, keep exactly one item `in_progress`, and update the list as you finish each step. Skip it for simple requests.\n"
-            "- When you finish work that changed files or ran commands, end with a short conclusion in plain words: what changed and why, how you checked it, and what is left or worth knowing. Two to six lines, no code. For a plain question just answer; no summary.\n");
+            "- When you finish work that changed files or ran commands, end with a conclusion that is easy to scan, in the language the person used. "
+            "First one bold line with the result. Then short labelled parts, each a bold label on its own line followed by two to four bullets, with a blank line between parts: "
+            "**Changed** (what and why; file paths in `backticks`), **Checked** (what you ran or looked at and what it showed), and **Left** or **Good to know** (only if something is). "
+            "No long paragraphs, no code blocks. For a plain question just answer; no summary.\n");
     }
     if (!customInstructions.trimmed().isEmpty())
         prompt += QStringLiteral("\nAdditional instructions:\n") + customInstructions.trimmed() + QLatin1Char('\n');
@@ -1305,7 +1328,8 @@ inline QJsonObject sessionToJson(const Session &s)
 inline Session sessionFromJson(const QJsonObject &o)
 {
     Session s;
-    s.id = o.value(QStringLiteral("id")).toString(newId());
+    s.id = o.value(QStringLiteral("id")).toString();
+    if (!isSafeId(s.id)) s.id = newId();
     s.title = o.value(QStringLiteral("title")).toString(QStringLiteral("New task"));
     s.workspace = o.value(QStringLiteral("workspace")).toString();
     s.mode = normalizeMode(o.value(QStringLiteral("mode")).toString(QStringLiteral("manual")));
@@ -1324,6 +1348,26 @@ inline Session sessionFromJson(const QJsonObject &o)
     if (s.planStatus != QLatin1String("pending") && s.planStatus != QLatin1String("accepted") && s.planStatus != QLatin1String("rejected")) s.planStatus.clear();
     if (s.plan.isEmpty()) s.planStatus.clear();
     return s;
+}
+
+// A provider the agent may talk to: a plain id, https (http only for this machine), sane limits, well-formed extra JSON and headers.
+inline bool validConfig(const ProviderConfig &p)
+{
+    if (!isSafeId(p.id)) return false;
+    const QUrl u(p.baseUrl);
+    if (!u.isValid() || u.host().isEmpty() || !u.userInfo().isEmpty() || u.hasQuery() || u.hasFragment()
+        || (u.scheme() != "https" && !(u.scheme() == "http" && (u.host() == "localhost" || u.host() == "127.0.0.1" || u.host() == "::1")))
+        || p.name.isEmpty() || p.modelId.isEmpty() || p.maxTokens < 256 || p.maxTokens > 1000000
+        || p.temperature < -1 || p.temperature > 2) return false;
+    for (const QString &s : {p.extraBodyJson, p.customHeadersJson}) {
+        if (!s.trimmed().isEmpty() && !QJsonDocument::fromJson(s.toUtf8()).isObject()) return false;
+    }
+    const QJsonObject headers = QJsonDocument::fromJson(p.customHeadersJson.toUtf8()).object();
+    static const QRegularExpression headerName(QStringLiteral("^[A-Za-z0-9-]+$"));
+    for (auto it = headers.begin(); it != headers.end(); ++it)
+        if (!headerName.match(it.key()).hasMatch() || !it.value().isString() || it.value().toString().contains('\r') || it.value().toString().contains('\n')) return false;
+    if (p.maxTokensParameter != "max_tokens" && p.maxTokensParameter != "max_completion_tokens") return false;
+    return p.authHeader == "Bearer" || p.authHeader == "api-key" || p.authHeader == "x-api-key" || p.authHeader == "none";
 }
 
 } // namespace CodingAgentModel

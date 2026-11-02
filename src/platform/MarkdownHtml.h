@@ -25,6 +25,7 @@ struct Style {
     QColor code = QColor(QStringLiteral("#ff8a80"));   // inline code text
     QColor codeBg = QColor(255, 255, 255, 22);          // inline code chip and code blocks
     QColor link = QColor(QStringLiteral("#4da3ff"));
+    QColor muted = QColor(QStringLiteral("#8e8e93"));   // what looked like a link but is not one
     QColor border = QColor(255, 255, 255, 50);          // table borders
 };
 
@@ -36,11 +37,13 @@ inline QString render(const QString &markdown, const Style &st)
     if (!st.family.isEmpty()) base.setFamily(st.family);
     base.setPixelSize(st.px);
     doc.setDefaultFont(base);
-    doc.setMarkdown(markdown, QTextDocument::MarkdownDialectGitHub);
+    // No raw HTML (an <img> or <a> written by the model), and below: no images, links only to the web and mail.
+    doc.setMarkdown(markdown, QTextDocument::MarkdownFeatures(QTextDocument::MarkdownDialectGitHub | QTextDocument::MarkdownNoHTML));
 
     struct Edit { int from, to; QTextCharFormat fmt; };
     QList<Edit> edits;
     QList<QPair<int, QTextBlockFormat>> blocks;
+    QList<QPair<int, QString>> images;
     for (QTextBlock b = doc.begin(); b.isValid(); b = b.next()) {
         QTextBlockFormat bf = b.blockFormat();
         const int level = bf.headingLevel();
@@ -71,7 +74,16 @@ inline QString render(const QString &markdown, const Style &st)
             const QTextFragment fr = it.fragment();
             const QTextCharFormat cf = fr.charFormat();
             QTextCharFormat extra;
-            if (cf.isAnchor()) { extra.setForeground(st.link); extra.setFontUnderline(true); }
+            if (cf.isImageFormat()) { // a picture would be fetched by the view: any address in it is a way out for data. Say that it was there instead.
+                const QString alt = cf.toolTip().simplified().left(60);
+                images.append({fr.position(), QStringLiteral("[image") + (alt.isEmpty() ? QString() : QStringLiteral(": ") + alt) + QStringLiteral("]")});
+                continue;
+            }
+            if (cf.isAnchor()) {
+                const QString scheme = QUrl(cf.anchorHref()).scheme().toLower();
+                if (scheme == QLatin1String("http") || scheme == QLatin1String("https") || scheme == QLatin1String("mailto")) { extra.setForeground(st.link); extra.setFontUnderline(true); }
+                else { extra.setAnchor(false); extra.setAnchorHref(QString()); extra.setForeground(st.muted); extra.setFontUnderline(false); } // file:, smb:, an app's own scheme: text, not a link
+            }
             else if (cf.fontFixedPitch() && !wholeBlockMono) {
                 extra.setForeground(st.code); extra.setBackground(st.codeBg);
                 QFont mono(QStringLiteral("monospace")); mono.setStyleHint(QFont::Monospace); mono.setPixelSize(qMax(10, st.px - 1));
@@ -81,6 +93,10 @@ inline QString render(const QString &markdown, const Style &st)
         }
     }
     for (const Edit &e : edits) { QTextCursor c(&doc); c.setPosition(e.from); c.setPosition(e.to, QTextCursor::KeepAnchor); c.mergeCharFormat(e.fmt); }
+    for (int i = int(images.size()) - 1; i >= 0; --i) { // last first: positions before it stay valid
+        QTextCursor c(&doc); c.setPosition(images.at(i).first); c.setPosition(images.at(i).first + 1, QTextCursor::KeepAnchor);
+        c.removeSelectedText(); c.insertText(images.at(i).second, QTextCharFormat());
+    }
     for (const auto &b : blocks) { QTextCursor c(&doc); c.setPosition(b.first); c.setBlockFormat(b.second); }
     // tables: thin borders, air inside the cells
     for (QTextFrame *frame : doc.rootFrame()->childFrames())

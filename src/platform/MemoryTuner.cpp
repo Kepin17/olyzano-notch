@@ -2,6 +2,13 @@
 #include "MemoryTuner.h"
 
 #include <QCoreApplication>
+#include <QFile>
+#include <QFileInfo>
+#include <cstdio>
+#include <QPixmapCache>
+#include <QQmlEngine>
+#include <QQuickWindow>
+#include <QGuiApplication>
 #include <QDir>
 #include <QSettings>
 #include <QStandardPaths>
@@ -22,6 +29,44 @@ QString choiceFile() { return NotchPaths::conf(QStringLiteral("perf")); }
 MemoryTuner::MemoryTuner(QObject *parent) : QObject(parent)
 {
     QThreadPool::globalInstance()->setMaxThreadCount(4); // QtConcurrent jobs (copying, encrypting, speech): a few at a time is plenty
+    if (qEnvironmentVariableIntValue("NOTCH_MEMLOG") > 0) {
+        m_log.setInterval(30000);
+        connect(&m_log, &QTimer::timeout, this, [this] { report("tick"); });
+        m_log.start();
+        report("start");
+    }
+}
+
+bool MemoryTuner::freeWhenIdle() const { return QSettings(choiceFile(), QSettings::IniFormat).value(QStringLiteral("freeWhenIdle"), true).toBool(); }
+
+void MemoryTuner::setFreeWhenIdle(bool on)
+{
+    if (on == freeWhenIdle())
+        return;
+    QDir().mkpath(QFileInfo(choiceFile()).absolutePath());
+    QSettings s(choiceFile(), QSettings::IniFormat);
+    s.setValue(QStringLiteral("freeWhenIdle"), on);
+    s.sync();
+    emit changed();
+}
+
+void MemoryTuner::report(const char *why) const
+{
+#ifdef Q_OS_LINUX
+    QFile f(QStringLiteral("/proc/self/status"));
+    qint64 rss = 0, anon = 0, file = 0;
+    if (f.open(QIODevice::ReadOnly))
+        for (const QByteArray &line : f.readAll().split('\n')) {
+            const QList<QByteArray> p = line.simplified().split(' ');
+            if (p.size() < 2) continue;
+            if (p[0] == "VmRSS:") rss = p[1].toLongLong();
+            else if (p[0] == "RssAnon:") anon = p[1].toLongLong();
+            else if (p[0] == "RssFile:") file = p[1].toLongLong();
+        }
+    fprintf(stderr, "notch-mem %s rss=%lld MB anon=%lld MB file=%lld MB\n", why, rss / 1024, anon / 1024, file / 1024);
+#else
+    Q_UNUSED(why)
+#endif
 }
 
 void MemoryTuner::applyEarly()
@@ -68,11 +113,19 @@ bool MemoryTuner::running() const { return qgetenv("QT_QUICK_BACKEND") == "softw
 
 void MemoryTuner::trim()
 {
+    if (qEnvironmentVariableIntValue("NOTCH_MEMLOG") > 0) report("before trim");
+    if (freeWhenIdle()) { // what QML still holds after a page was unloaded: its heap, the compiled components nothing uses, the pictures
+        if (m_engine) { m_engine->collectGarbage(); m_engine->trimComponentCache(); }
+        QPixmapCache::clear();
+        for (QWindow *w : QGuiApplication::allWindows())
+            if (auto *q = qobject_cast<QQuickWindow *>(w)) q->releaseResources();
+    }
 #ifdef Q_OS_LINUX
     malloc_trim(0);
 #elif defined(Q_OS_WIN)
     SetProcessWorkingSetSize(GetCurrentProcess(), (SIZE_T)-1, (SIZE_T)-1); // pages the working set back out; faults in again on use
 #endif
+    if (qEnvironmentVariableIntValue("NOTCH_MEMLOG") > 0) report("after trim");
 }
 
 void MemoryTuner::restart()

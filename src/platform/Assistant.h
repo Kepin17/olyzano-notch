@@ -102,6 +102,7 @@ private:
     QString vocabulary() const; // names that may come up (installed apps, the sites), for the recognizer
     QString run(const AssistantModel::Intent &in);
     void checkModel();
+    void releaseIdle(); // unload the speech model when it has not been used for a while
     void downloadChunk();
     void downloadDone();
 
@@ -120,7 +121,7 @@ private:
     QString m_state = QStringLiteral("idle");
     qreal m_level = 0;
     QString m_heard, m_result;
-    QTimer m_idleTimer, m_hintTimer;
+    QTimer m_idleTimer, m_hintTimer, m_unloadTimer;
     int m_hint = 0;
 
     std::mutex m_whisperMutex; // one recognition at a time; the model stays loaded between commands

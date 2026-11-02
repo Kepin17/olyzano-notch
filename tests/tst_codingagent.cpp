@@ -1,4 +1,9 @@
 #include "platform/AgentCommands.h"
+#include "platform/AgentStore.h"
+#ifdef Q_OS_LINUX
+#include <malloc.h>
+#endif
+#include "platform/AgentTools.h"
 #include "platform/CodingAgent.h"
 #include "platform/MarkdownHtml.h"
 
@@ -169,6 +174,7 @@ private slots:
         QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation), testHome().path() + "/config");
         QCOMPARE(QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation), testHome().path() + "/data");
         QNetworkProxy::setApplicationProxy(QNetworkProxy::NoProxy);
+        CodingAgent::setSaveDelay(0); // writes at every save(): restore tests stay deterministic; the delay has its own test
     }
 
     void init()
@@ -1459,6 +1465,239 @@ private slots:
         QVERIFY(agent.messages().last().toMap().value("toolCalls").toList().first().toMap().value("output").toString().startsWith("short"));
     }
 
+    void idsFromTheFileNeverReachThePathOfAnotherFolder()
+    {
+        for (const QString id : {QString("../.."), QString("../../x"), QString("/etc"), QString("a/b"), QString(""), QString(".."), QString("a..b"), QString(".hidden"), QString(64 + 1, 'a')})
+            QVERIFY2(!isSafeId(id), qPrintable(id));
+        for (const QString id : {QString("s1"), newId(), QString("mimo"), QString("deepseek-2"), QString("a.b_c-d")})
+            QVERIFY2(isSafeId(id), qPrintable(id));
+        // a task whose id in agent.json is a path gets a new, plain id when loaded, and deleting it touches nothing else
+        QTemporaryDir outside;
+        QVERIFY(outside.isValid());
+        QVERIFY(writeBytes(outside.filePath("precious.txt"), "keep me"));
+        const QString dir = testHome().path() + "/config/notch/dev";
+        QDir().mkpath(dir);
+        const QString evil = "../../../../../.." + QFileInfo(outside.path()).absoluteFilePath();
+        QJsonObject session{{"id", evil}, {"title", "evil"}, {"workspace", ""}, {"mode", "manual"}, {"messages", QJsonArray{}}, {"plan", "# p"}, {"planStatus", "pending"}};
+        QVERIFY(writeBytes(dir + "/agent.json", QJsonDocument(QJsonObject{{"version", 1}, {"providers", QJsonArray{}}, {"sessions", QJsonArray{session}}, {"sessionId", evil}}).toJson()));
+        CodingAgent agent;
+        QCOMPARE(agent.sessions().size(), 1);
+        const QString id = agent.sessions().first().toMap().value("id").toString();
+        QVERIFY(isSafeId(id));
+        QVERIFY(id != evil);
+        agent.deleteSession(id);
+        QVERIFY(QFile::exists(outside.filePath("precious.txt")));
+        QVERIFY(QDir(outside.path()).exists());
+        // an unsafe provider id is not kept either (it would name a saved key)
+        ProviderConfig p;
+        p.id = "../x"; p.name = "n"; p.baseUrl = "https://x.test"; p.modelId = "m";
+        QVERIFY(!providerFromJson(providerToJson(p)).id.isEmpty());
+        QVERIFY(!isSafeId(providerFromJson(providerToJson(p)).id));
+    }
+
+    void answersCannotLoadPicturesOrOpenOddLinks()
+    {
+        MarkdownHtml::Style st;
+        const QString html = MarkdownHtml::render("Look ![chart](http://evil.test/p.png?d=secret) and [file](file:///etc/passwd), "
+                                                  "[app](vscode://x/y), [ok](https://ok.test/a) and <img src=\"http://evil.test/raw\"> <a href=\"http://evil.test\">raw</a>.", st);
+        QVERIFY(!html.contains("<img"));
+        QVERIFY(!html.contains("evil.test/p.png"));
+        QVERIFY(html.contains("[image"));
+        QVERIFY(!html.contains("file:///etc/passwd"));
+        QVERIFY(!html.contains("vscode://"));
+        QVERIFY(html.contains("https://ok.test/a"));
+        QVERIFY(!html.contains("href=\"http://evil.test\""));
+        QVERIFY(!html.contains("#0000ff")); // what is not a link does not look like one
+        QVERIFY(isSafeLink("https://example.test/x"));
+        QVERIFY(isSafeLink("http://example.test"));
+        QVERIFY(isSafeLink("mailto:a@b.test"));
+        for (const char *bad : {"file:///etc/passwd", "smb://host/share", "javascript:alert(1)", "vscode://x", "data:text/html,x", "", "ftp://x.test", "//evil.test"})
+            QVERIFY2(!isSafeLink(bad), bad);
+        CodingAgent agent;
+        QVERIFY(!agent.openLink("file:///etc/passwd")); // refused before anything is launched
+    }
+
+    void keysAreReadOnceAndStayCurrent()
+    {
+        FakeServer server;
+        QVERIFY(server.listen());
+        CodingAgent agent;
+        auto fields = customProvider(server.baseUrl());
+        fields.insert("apiKey", "sk-one");
+        const auto id = agent.addProvider(fields);
+        QVERIFY(agent.providerById(id).value("hasApiKey").toBool());
+        const QString secrets = testHome().path() + "/config/notch/dev/secrets.json";
+        QVERIFY(readBytes(secrets).contains("sk-one"));
+        // reading the providers does not read the file: it still works with the file gone
+        QVERIFY(QFile::remove(secrets));
+        for (int i = 0; i < 50; ++i) QVERIFY(agent.providers().size() >= 1);
+        QVERIFY(agent.providerById(id).value("hasApiKey").toBool());
+        // a change goes to the file and to what is kept
+        QVERIFY(agent.updateProvider(id, {{"apiKey", "sk-two"}}));
+        QVERIFY(readBytes(secrets).contains("sk-two"));
+        QVERIFY(agent.updateProvider(id, {{"apiKey", ""}}));
+        QVERIFY(!agent.providerById(id).value("hasApiKey").toBool());
+        QVERIFY(!readBytes(secrets).contains("sk-two"));
+        { CodingAgent other; QVERIFY(!other.providerById(id).value("hasApiKey").toBool()); }
+    }
+
+    void savingStaysCheap()
+    {
+        // 200 tasks of 100 messages (some with long command output): what one small change costs, and what is written for it
+        QJsonArray sessions;
+        for (int i = 0; i < 200; ++i) {
+            QJsonArray msgs;
+            for (int j = 0; j < 100; ++j) {
+                QJsonObject m{{"id", QString("m%1-%2").arg(i).arg(j)}, {"role", j % 2 ? "assistant" : "user"}, {"content", QString("message %1 ").repeated(40)}, {"toolCalls", QJsonArray{}}};
+                if (j % 10 == 5) m.insert("toolCalls", QJsonArray{QJsonObject{{"id", QString("t%1-%2").arg(i).arg(j)}, {"name", "run_command"}, {"status", "completed"}, {"output", QString("line of output\n").repeated(2000)}}});
+                msgs.append(m);
+            }
+            sessions.append(QJsonObject{{"id", QString("s%1").arg(i)}, {"title", QString("task %1").arg(i)}, {"workspace", QString()}, {"mode", "manual"}, {"messages", msgs}});
+        }
+        const QString dir = testHome().path() + "/config/notch/dev";
+        QDir().mkpath(dir);
+        QVERIFY(writeBytes(dir + "/agent.json", QJsonDocument(QJsonObject{{"version", 1}, {"providers", QJsonArray{}}, {"sessions", sessions}, {"sessionId", "s0"}}).toJson(QJsonDocument::Compact)));
+        QElapsedTimer clock;
+        clock.start();
+        CodingAgent agent;
+        const qint64 loadMs = clock.elapsed();
+        QCOMPARE(agent.sessions().size(), 200);
+        clock.restart();
+        for (int i = 0; i < 20; ++i) agent.renameSession("s7", QString("renamed %1").arg(i));
+        const qint64 saveMs = clock.elapsed();
+        qInfo() << "BENCH load ms" << loadMs << "20 small changes ms" << saveMs << "agent.json bytes" << QFileInfo(dir + "/agent.json").size();
+        QVERIFY(saveMs < 2000); // was ~6400 ms when every change rewrote all 76 MB
+        // Linux only: 0 elsewhere
+        auto rssMb = [] { QFile f("/proc/self/status"); f.open(QIODevice::ReadOnly); const QByteArray all = f.readAll(); const int at = all.indexOf("VmRSS:"); return at < 0 ? 0 : all.mid(at + 6, 12).simplified().split(' ').first().toInt() / 1024; };
+        agent.flush();
+        const int before = rssMb();
+        agent.releaseIdle();
+        const int afterRelease = rssMb();
+#ifdef Q_OS_LINUX
+        malloc_trim(0);
+#endif
+        qInfo() << "BENCH rss MB before idle" << before << "after release" << afterRelease << "after trim" << rssMb();
+    }
+
+    void storageKeepsOneFilePerTask()
+    {
+        const QString dir = testHome().path() + "/config/notch/dev";
+        QDir().mkpath(dir);
+        auto task = [](const QString &id, const QString &title) {
+            return QJsonObject{{"id", id}, {"title", title}, {"workspace", QString()}, {"mode", "manual"},
+                {"messages", QJsonArray{QJsonObject{{"id", "m1"}, {"role", "user"}, {"content", "hello " + title}, {"toolCalls", QJsonArray{}}}}}};
+        };
+        // an old all-in-one file is split once; the old file stays as a backup and nothing is lost
+        QVERIFY(writeBytes(dir + "/agent.json", QJsonDocument(QJsonObject{{"version", 1}, {"providers", QJsonArray{}},
+            {"sessions", QJsonArray{task("a1", "first"), task("b2", "second")}}, {"sessionId", "b2"}}).toJson()));
+        {
+            CodingAgent agent;
+            QCOMPARE(agent.sessions().size(), 2);
+            QCOMPARE(agent.activeSessionId(), QStringLiteral("b2"));
+        }
+        QVERIFY(QFile::exists(dir + "/sessions/a1.json") && QFile::exists(dir + "/sessions/b2.json"));
+        QVERIFY(QFile::exists(dir + "/agent.json.v1.bak"));
+        QVERIFY(!readBytes(dir + "/agent.json").contains("hello first")); // the settings file no longer holds the tasks
+        QCOMPARE(QFileInfo(dir + "/sessions/a1.json").permissions() & (QFileDevice::ReadGroup | QFileDevice::ReadOther | QFileDevice::WriteGroup | QFileDevice::WriteOther), QFileDevice::Permissions());
+        {
+            CodingAgent again; // the new layout loads back the same
+            QCOMPARE(again.sessions().size(), 2);
+            QVERIFY(readBytes(dir + "/sessions/a1.json").contains("hello first"));
+        }
+        // a change writes the changed task only
+        const QDateTime before = QFileInfo(dir + "/sessions/a1.json").lastModified();
+        QTest::qWait(1100);
+        {
+            CodingAgent agent;
+            agent.renameSession("b2", "renamed");
+            QCOMPARE(QFileInfo(dir + "/sessions/a1.json").lastModified(), before);
+            QVERIFY(readBytes(dir + "/sessions/b2.json").contains("renamed"));
+        }
+        // deferred: many changes, no write until the delay (or flush, or the destructor)
+        CodingAgent::setSaveDelay(200);
+        {
+            CodingAgent agent;
+            for (int i = 0; i < 5; ++i) agent.renameSession("a1", QString("late %1").arg(i));
+            QVERIFY(!readBytes(dir + "/sessions/a1.json").contains("late 4"));
+            QTRY_VERIFY_WITH_TIMEOUT(readBytes(dir + "/sessions/a1.json").contains("late 4"), 3000);
+            agent.renameSession("a1", "by flush");
+            agent.flush();
+            QVERIFY(readBytes(dir + "/sessions/a1.json").contains("by flush"));
+            agent.renameSession("a1", "by destructor");
+        }
+        QVERIFY(readBytes(dir + "/sessions/a1.json").contains("by destructor"));
+        CodingAgent::setSaveDelay(0);
+        // deleting a task removes its file; an id in the order list that is a path is ignored
+        {
+            CodingAgent agent;
+            agent.deleteSession("a1");
+        }
+        QVERIFY(!QFile::exists(dir + "/sessions/a1.json"));
+        auto settings = QJsonDocument::fromJson(readBytes(dir + "/agent.json")).object();
+        settings.insert("sessionOrder", QJsonArray{"../agent", "b2"});
+        QVERIFY(writeBytes(dir + "/agent.json", QJsonDocument(settings).toJson()));
+        {
+            CodingAgent agent;
+            QCOMPARE(agent.sessions().size(), 1);
+        }
+        // a task file over the limit is left alone
+        QVERIFY(writeBytes(dir + "/sessions/b2.json", QByteArray(AgentStore::MaxTaskFile + 1, ' ')));
+        QCOMPARE(AgentStore::load().sessions.size(), 0);
+    }
+
+    void idleLetsGoOfOtherTasksAndTheyComeBack()
+    {
+        const QString dir = testHome().path() + "/config/notch/dev";
+        QDir().mkpath(dir);
+        auto task = [](const QString &id) {
+            return QJsonObject{{"id", id}, {"title", "t " + id}, {"workspace", QString()}, {"mode", "manual"},
+                {"messages", QJsonArray{QJsonObject{{"id", "m1"}, {"role", "user"}, {"content", "hello " + id}, {"toolCalls", QJsonArray{}}}}}};
+        };
+        QVERIFY(writeBytes(dir + "/agent.json", QJsonDocument(QJsonObject{{"version", 1}, {"providers", QJsonArray{}},
+            {"sessions", QJsonArray{task("a1"), task("b2")}}, {"sessionId", "a1"}}).toJson()));
+        CodingAgent agent;
+        agent.releaseIdle();
+        QCOMPARE(agent.messageCount(), 1);                      // the task in use stays whole
+        agent.selectSession("b2");
+        QCOMPARE(agent.messageCount(), 1);                      // the other one is read back from its file
+        QCOMPARE(agent.messages().first().toMap().value("content").toString(), QStringLiteral("hello b2"));
+        agent.releaseIdle();
+        agent.renameSession("a1", "renamed while let go");      // changing a let-go task reads it back first, so nothing is lost
+        agent.selectSession("a1");
+        QCOMPARE(agent.messageCount(), 1);
+        agent.flush();
+        QVERIFY(readBytes(dir + "/sessions/a1.json").contains("hello a1"));
+        QVERIFY(readBytes(dir + "/sessions/b2.json").contains("hello b2"));
+    }
+
+    void workspaceToolsStayInsideTheFolder()
+    {
+        QTemporaryDir ws;
+        QVERIFY(ws.isValid());
+        QVERIFY(writeBytes(ws.path() + "/a.txt", "one\ntwo\n"));
+        QVERIFY(writeBytes(ws.path() + "/.env", "SECRET=1"));
+        QVERIFY(writeBytes(ws.path() + "/bin.dat", QByteArray("x\0y", 3)));
+        QVERIFY(writeBytes(ws.path() + "/big.txt", QByteArray(AgentTools::FileLimit + 1, 'a')));
+        QString summary;
+        QVERIFY(AgentTools::readFile(ws.path(), {{"path", "a.txt"}}, &summary).contains("2\ttwo"));
+        for (const char *bad : {".env", "../outside", "/etc/passwd", "bin.dat", "big.txt"})
+            QVERIFY2(AgentTools::readFile(ws.path(), {{"path", bad}}, &summary).startsWith("Error:"), bad);
+        QVERIFY(!AgentTools::listFiles(ws.path(), {}, &summary).contains(".env"));
+        QVERIFY(!AgentTools::searchFiles(ws.path(), {{"pattern", "SECRET"}}, &summary).contains(".env:"));
+        QVERIFY(AgentTools::fileIndex(ws.path()).contains("a.txt") && !AgentTools::fileIndex(ws.path()).contains(".env"));
+        ToolCall tc;
+        AgentTools::proposeEdit(ws.path(), tc, {{"path", "a.txt"}, {"old_text", "two"}, {"new_text", "2"}});
+        QVERIFY(tc.status != "error");
+        QVERIFY(writeBytes(ws.path() + "/a.txt", "changed behind our back"));
+        QVERIFY(AgentTools::applyEdit(ws.path(), tc).startsWith("Error: file changed"));
+        AgentTools::proposeEdit(ws.path(), tc, {{"path", "a.txt"}, {"old_text", "changed"}, {"new_text", "kept"}});
+        QCOMPARE(AgentTools::applyEdit(ws.path(), tc), QStringLiteral("Applied a.txt"));
+        QCOMPARE(readBytes(ws.path() + "/a.txt"), QByteArray("kept behind our back"));
+        ToolCall escape;
+        AgentTools::proposeEdit(ws.path(), escape, {{"path", "../x.txt"}, {"new_text", "no"}});
+        QCOMPARE(escape.status, QStringLiteral("error"));
+    }
+
     void toolCallsReadAsOneLine()
     {
         auto call = [](const QString &name, const QString &args, const QString &status) { ToolCall t; t.name = name; t.argumentsJson = args; t.status = status; return t; };
@@ -1532,9 +1771,9 @@ private slots:
         QVERIFY(!summarizeRun(QList<ChatMessage>{msg("user", "just a question"), msg("assistant", "an answer")}).any());
         QVERIFY(!summarizeRun({}).any());
         // the agent is also told to close with a few words about it
-        QVERIFY(systemPromptFor("manual", "/w").contains("short conclusion"));
-        QVERIFY(systemPromptFor("auto", "/w").contains("short conclusion"));
-        QVERIFY(!systemPromptFor("plan", "/w").contains("short conclusion"));
+        QVERIFY(systemPromptFor("manual", "/w").contains("easy to scan"));
+        QVERIFY(systemPromptFor("auto", "/w").contains("**Changed**"));
+        QVERIFY(!systemPromptFor("plan", "/w").contains("easy to scan"));
     }
 
     void detailLevelIsRememberedAndLinesComeWithMessages()
@@ -1895,7 +2134,7 @@ private slots:
             QVERIFY(restored.updateProvider(id, {{"apiKey", ""}}));
             QVERIFY(!restored.providerById(id).value("hasApiKey").toBool());
         }
-        QVERIFY(!agent.providerById(id).value("hasApiKey").toBool());
+        { CodingAgent fresh; QVERIFY(!fresh.providerById(id).value("hasApiKey").toBool()); } // one running agent keeps its own copy of the keys
         QVERIFY(agent.updateProvider(id, {{"apiKey", key}}));
         QVERIFY(agent.removeProvider(id));
         QVERIFY(agent.providerById(id).isEmpty());

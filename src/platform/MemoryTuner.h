@@ -1,6 +1,9 @@
 #pragma once
 
 #include <QObject>
+#include <QTimer>
+
+class QQmlEngine;
 
 // Keeping the memory down: on Linux glibc is told to use few malloc arenas (each thread otherwise gets its own 64 MB one that is
 // never given back) and freed memory is returned after the panel has closed; on Windows the working set is handed back the same
@@ -12,9 +15,11 @@ class MemoryTuner : public QObject
     Q_PROPERTY(bool available READ available CONSTANT)                     // Linux and Windows
     Q_PROPERTY(bool lowMemory READ lowMemory WRITE setLowMemory NOTIFY changed) // the choice (next start)
     Q_PROPERTY(bool running READ running CONSTANT)                         // what this run is doing
+    Q_PROPERTY(bool freeWhenIdle READ freeWhenIdle WRITE setFreeWhenIdle NOTIFY changed) // let go of what the panel built, a while after it closed
 
 public:
     explicit MemoryTuner(QObject *parent = nullptr);
+    void setEngine(QQmlEngine *engine) { m_engine = engine; }
 
     // Before QGuiApplication exists: arena limit (Linux), and the renderer from the saved choice (Linux and Windows).
     static void applyEarly();
@@ -23,10 +28,18 @@ public:
     bool lowMemory() const;
     void setLowMemory(bool on);
     bool running() const;
+    bool freeWhenIdle() const;
+    void setFreeWhenIdle(bool on);
 
-    Q_INVOKABLE void trim();    // hands freed memory back to the system
+    Q_INVOKABLE void trim();    // hands freed memory back to the system: the QML heap, unused components and pictures first, then malloc
     Q_INVOKABLE void restart(); // starts a new Notch and quits this one
 
 signals:
     void changed();
+
+private:
+    void report(const char *why) const; // NOTCH_MEMLOG=1: one line of numbers, to find what holds memory
+
+    QQmlEngine *m_engine = nullptr;
+    QTimer m_log;
 };

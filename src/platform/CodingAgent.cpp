@@ -1,4 +1,6 @@
 #include "CodingAgent.h"
+#include "platform/AgentStore.h"
+#include "platform/AgentTools.h"
 #include "platform/AgentCommands.h"
 #include "platform/MarkdownHtml.h"
 #include "platform/NotchPaths.h"
@@ -6,6 +8,7 @@
 #include "platform/SecureFiles.h"
 
 #include <QCryptographicHash>
+#include <QDesktopServices>
 #include <QDateTime>
 #include <QDirIterator>
 #include <QFile>
@@ -19,7 +22,9 @@
 
 using namespace CodingAgentModel;
 namespace {
-constexpr qint64 FileLimit = 256 * 1024;
+using AgentTools::FileLimit;
+using AgentTools::readText;
+using AgentTools::privatePath;
 void killCommand(QProcess *process)
 {
 #ifdef Q_OS_UNIX
@@ -32,38 +37,6 @@ void killCommand(QProcess *process)
 #endif
     process->kill();
 }
-QString readText(const QString &path, bool *ok = nullptr)
-{
-    QFile f(path);
-    const bool good = QFileInfo(path).isFile() && f.open(QIODevice::ReadOnly) && f.size() <= FileLimit;
-    const QByteArray bytes = good ? f.read(FileLimit + 1) : QByteArray();
-    if (ok) *ok = good && bytes.size() <= FileLimit && !bytes.contains('\0');
-    return good ? QString::fromUtf8(bytes) : QString();
-}
-bool validConfig(const ProviderConfig &p)
-{
-    const QUrl u(p.baseUrl);
-    if (!u.isValid() || u.host().isEmpty() || !u.userInfo().isEmpty() || u.hasQuery() || u.hasFragment()
-        || (u.scheme() != "https" && !(u.scheme() == "http" && (u.host() == "localhost" || u.host() == "127.0.0.1" || u.host() == "::1")))
-        || p.name.isEmpty() || p.modelId.isEmpty() || p.maxTokens < 256 || p.maxTokens > 1000000
-        || p.temperature < -1 || p.temperature > 2) return false;
-    for (const QString &s : {p.extraBodyJson, p.customHeadersJson}) {
-        if (!s.trimmed().isEmpty() && !QJsonDocument::fromJson(s.toUtf8()).isObject()) return false;
-    }
-    const QJsonObject headers = QJsonDocument::fromJson(p.customHeadersJson.toUtf8()).object();
-    static const QRegularExpression headerName(QStringLiteral("^[A-Za-z0-9-]+$"));
-    for (auto it = headers.begin(); it != headers.end(); ++it)
-        if (!headerName.match(it.key()).hasMatch() || !it.value().isString() || it.value().toString().contains('\r') || it.value().toString().contains('\n')) return false;
-    if (p.maxTokensParameter != "max_tokens" && p.maxTokensParameter != "max_completion_tokens") return false;
-    return p.authHeader == "Bearer" || p.authHeader == "api-key" || p.authHeader == "x-api-key" || p.authHeader == "none";
-}
-bool privatePath(const QString &relative)
-{
-    const QStringList parts = relative.split('/');
-    for (const QString &p : parts)
-        if (p == ".git" || p == "node_modules" || p == ".ssh" || p == ".env" || p.startsWith(".env.") || p == "secrets.json") return true;
-    return false;
-}
 ToolCall *toolIn(Session *s, const QString &msg, const QString &id)
 {
     if (s) for (ChatMessage &m : s->messages) if (m.id == msg)
@@ -75,6 +48,9 @@ ToolCall *toolIn(Session *s, const QString &msg, const QString &id)
 CodingAgent::CodingAgent(QObject *parent) : QObject(parent)
 {
     load();
+    m_saveTimer.setSingleShot(true);
+    connect(&m_saveTimer, &QTimer::timeout, this, &CodingAgent::flush);
+    if (qApp) connect(qApp, &QCoreApplication::aboutToQuit, this, &CodingAgent::flush);
     m_chunkTimer.setSingleShot(true);
     m_chunkTimer.setInterval(60);
     connect(&m_chunkTimer, &QTimer::timeout, this, [this] { emit streamChunkChanged(); });
@@ -89,26 +65,53 @@ CodingAgent::CodingAgent(QObject *parent) : QObject(parent)
     connect(this, &CodingAgent::providersChanged, this, &CodingAgent::contextChanged);
     connect(this, &CodingAgent::providersChanged, this, &CodingAgent::modelsChanged); // another provider or model: another list
 }
-CodingAgent::~CodingAgent() { stop(); }
-QString CodingAgent::configPath() const { return NotchPaths::devDir() + "/agent.json"; }
+CodingAgent::~CodingAgent() { stop(); flush(); }
+// What a task read from its file may not be: Elevated consent never survives a restart, and an interrupted tool turn is discarded
+// rather than replaying approved operations.
+void CodingAgent::settleLoaded(Session &s)
+{
+    s.mode = "manual";
+    int cut = -1;
+    for (int i = 0; i < s.messages.size() && cut < 0; ++i)
+        for (const auto &tc : s.messages[i].toolCalls)
+            if (tc.status == "pending" || tc.status == "running" || tc.status == "awaiting_approval") { cut = i; break; }
+    if (cut >= 0) s.messages = s.messages.mid(0, cut);
+    s.compactedUpTo = qMin(s.compactedUpTo, int(s.messages.size()));
+}
+// Only the task in use keeps its messages in memory when the app has been idle a while; the rest come back from their files.
+void CodingAgent::releaseIdle()
+{
+    if (busy() || hasPendingApprovals()) return;
+    m_messagesCache.clear(); m_messagesCacheSession.clear(); m_messagesCacheStamp = 0;
+    m_estimateCache = -1; m_fileIndex.clear(); m_fileIndexWorkspace.clear();
+    flush(); // what is waiting is on disk before anything is let go
+    for (auto &s : m_sessions)
+        if (s.id != m_activeSessionId && !s.evicted && !s.messages.isEmpty() && QFile::exists(AgentStore::sessionPath(s.id))) {
+            s.messages.clear(); s.messages.squeeze(); s.evicted = true;
+        }
+}
+void CodingAgent::restore(Session &s) const
+{
+    const auto obj = AgentStore::readSession(s.id);
+    s.evicted = false;
+    if (obj.isEmpty()) return;
+    auto back = sessionFromJson(obj);
+    settleLoaded(back);
+    s.messages = back.messages;
+    s.compactedUpTo = qMin(s.compactedUpTo, int(s.messages.size()));
+}
 void CodingAgent::load()
 {
-    const QJsonObject root = SecureFiles::readJsonObject(configPath());
+    const AgentStore::Loaded stored = AgentStore::load();
+    const QJsonObject &root = stored.settings;
     for (const auto &v : root.value("providers").toArray()) {
         auto p = providerFromJson(v.toObject());
         if (validConfig(p) && !findProvider(p.id)) m_providers.append(p);
     }
     if (m_providers.isEmpty()) m_providers = defaultProviders();
-    for (const auto &v : root.value("sessions").toArray()) {
-        auto s = sessionFromJson(v.toObject());
-        s.mode = "manual"; // Elevated consent never survives an application restart.
-        // Interrupted tool turns are discarded rather than replaying approved operations.
-        int cut = -1;
-        for (int i = 0; i < s.messages.size(); ++i)
-            for (const auto &tc : s.messages[i].toolCalls)
-                if (tc.status == "pending" || tc.status == "running" || tc.status == "awaiting_approval") { cut = i; break; }
-        if (cut >= 0) s.messages = s.messages.mid(0, cut);
-        s.compactedUpTo = qMin(s.compactedUpTo, int(s.messages.size()));
+    for (const QJsonObject &obj : stored.sessions) {
+        auto s = sessionFromJson(obj);
+        settleLoaded(s);
         m_sessions.append(s);
     }
     m_activeProviderId = root.value("providerId").toString(m_providers.first().id);
@@ -130,25 +133,54 @@ void CodingAgent::load()
         if (findProvider(s->providerId)) m_activeProviderId = s->providerId;
     }
 }
-void CodingAgent::save() const
+// Changes are written a moment later, and only the tasks that changed (plus the small settings file): a step of the agent
+// used to rewrite every task ever kept, often several times. save() marks the active task and, when a change reached another one, that task.
+int CodingAgent::s_saveDelay = 300;
+void CodingAgent::setSaveDelay(int ms) { s_saveDelay = ms; }
+void CodingAgent::save(const QString &id)
 {
-    QJsonArray ps, ss, fs, cs;
+    if (!m_activeSessionId.isEmpty()) m_dirty.insert(m_activeSessionId);
+    if (!id.isEmpty()) m_dirty.insert(id);
+    if (s_saveDelay <= 0) flush();
+    else if (!m_saveTimer.isActive()) m_saveTimer.start(s_saveDelay);
+}
+void CodingAgent::flush()
+{
+    m_saveTimer.stop();
+    QJsonArray ps, fs, cs;
+    QStringList order;
     for (const QString &path : m_folders) fs.append(QJsonObject{{"path", path}, {"name", m_folderNames.value(path)}});
     for (const QString &path : m_collapsed) cs.append(path);
     for (const auto &p : m_providers) ps.append(providerToJson(p));
-    for (const auto &s : m_sessions) ss.append(sessionToJson(s));
-    SecureFiles::ownerOnlyPath(NotchPaths::devDir(), "agent.json");
-    SecureFiles::writePrivateJson(configPath(), QJsonDocument(QJsonObject{{"version", 1}, {"providers", ps}, {"sessions", ss},
-        {"providerId", m_activeProviderId}, {"sessionId", m_activeSessionId}, {"workspace", m_workspace}, {"effort", m_effort}, {"detail", m_detail},
-        {"folders", fs}, {"collapsed", cs}}));
+    for (const auto &s : m_sessions) {
+        order.append(s.id);
+        if (m_dirty.contains(s.id) && !s.evicted) AgentStore::saveSession(sessionToJson(s));
+    }
+    m_dirty.clear();
+    AgentStore::saveSettings({{"providers", ps}, {"providerId", m_activeProviderId}, {"sessionId", m_activeSessionId}, {"workspace", m_workspace},
+        {"effort", m_effort}, {"detail", m_detail}, {"folders", fs}, {"collapsed", cs}}, order);
 }
 ProviderConfig *CodingAgent::findProvider(const QString &id) { for (auto &p : m_providers) if (p.id == id) return &p; return nullptr; }
 const ProviderConfig *CodingAgent::findProvider(const QString &id) const { for (const auto &p : m_providers) if (p.id == id) return &p; return nullptr; }
-Session *CodingAgent::findSession(const QString &id) { for (auto &s : m_sessions) if (s.id == id) return &s; return nullptr; }
-const Session *CodingAgent::findSession(const QString &id) const { for (const auto &s : m_sessions) if (s.id == id) return &s; return nullptr; }
+Session *CodingAgent::findSession(const QString &id) { for (auto &s : m_sessions) if (s.id == id) { if (s.evicted) restore(s); return &s; } return nullptr; }
+const Session *CodingAgent::findSession(const QString &id) const { for (auto &s : m_sessions) if (s.id == id) { if (s.evicted) restore(s); return &s; } return nullptr; }
 Session *CodingAgent::ensureActiveSession() { if (!findSession(m_activeSessionId)) newSession(); return findSession(m_activeSessionId); }
-QString CodingAgent::apiKeyFor(const QString &id) const { return SecretsStore::get("ai", id); }
-void CodingAgent::setApiKeyFor(const QString &id, const QString &key) { SecretsStore::set("ai", id, key); }
+// Keys are read from the secrets file once and kept; a provider list used to read and parse the file for every provider, every time.
+QString CodingAgent::apiKeyFor(const QString &id) const
+{
+    if (!m_keysLoaded) {
+        const QJsonObject all = SecretsStore::section("ai");
+        for (auto it = all.begin(); it != all.end(); ++it) m_keys.insert(it.key(), it.value().toString());
+        m_keysLoaded = true;
+    }
+    return m_keys.value(id);
+}
+void CodingAgent::setApiKeyFor(const QString &id, const QString &key)
+{
+    SecretsStore::set("ai", id, key);
+    if (!m_keysLoaded) return;
+    if (key.isEmpty()) m_keys.remove(id); else m_keys.insert(id, key);
+}
 QVariantMap CodingAgent::providerToMap(const ProviderConfig &p) const
 {
     auto map = providerToJson(p).toVariantMap(); map.insert("hasApiKey", !apiKeyFor(p.id).isEmpty()); return map;
@@ -214,11 +246,6 @@ bool CodingAgent::removeProvider(const QString &id)
     }
     return false;
 }
-void CodingAgent::resetProviderDefaults(const QString &id)
-{
-    if (busy() || hasPendingApprovals()) return;
-    for (const auto &p : defaultProviders()) if (p.id == id) if (auto *target = findProvider(id)) { *target = p; save(); emit providersChanged(); }
-}
 void CodingAgent::applyAuthHeaders(QNetworkRequest &req, const ProviderConfig &p, const QString &key) const
 {
     req.setHeader(QNetworkRequest::ContentTypeHeader, "application/json");
@@ -269,34 +296,20 @@ void CodingAgent::refreshModels()
         r->deleteLater(); emit modelsChanged();
     });
 }
-void CodingAgent::testProvider(const QString &id, const QVariantMap &overrides)
-{
-    if (busy()) return;
-    auto *saved = findProvider(id); if (!saved) return;
-    auto obj = providerToJson(*saved);
-    for (auto it = overrides.begin(); it != overrides.end(); ++it) if (obj.contains(it.key())) obj.insert(it.key(), QJsonValue::fromVariant(it.value()));
-    auto p = providerFromJson(obj); if (!validConfig(p)) return;
-    QNetworkRequest req(modelsEndpointUrl(p));
-    applyAuthHeaders(req, p, overrides.contains("apiKey") ? overrides.value("apiKey").toString() : apiKeyFor(id));
-    auto clock = QElapsedTimer(); clock.start();
-    m_testReply = m_nam.get(req); emit busyChanged();
-    connect(m_testReply, &QNetworkReply::finished, this, [this, id, clock] {
-        auto *r = m_testReply; m_testReply = nullptr;
-        const auto bytes = r->read(1024 * 1024);
-        QStringList models;
-        for (const auto &v : QJsonDocument::fromJson(bytes).object().value("data").toArray()) models.append(v.toObject().value("id").toString());
-        const bool ok = r->error() == QNetworkReply::NoError && r->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 200;
-        emit testFinished({{"id", id}, {"ok", ok}, {"message", ok ? "Connected (models endpoint)" : r->errorString()}, {"models", models}, {"latencyMs", clock.elapsed()}});
-        r->deleteLater(); emit busyChanged();
-    });
-}
 QString CodingAgent::plan() const { const auto *s = findSession(m_activeSessionId); return s ? s->plan : QString(); }
 QString CodingAgent::planStatus() const { const auto *s = findSession(m_activeSessionId); return s ? s->planStatus : QString(); }
 QString CodingAgent::planPath() const { return m_activeSessionId.isEmpty() || plan().isEmpty() ? QString() : planFileFor(m_activeSessionId); }
-QString CodingAgent::planFileFor(const QString &sessionId) const { return NotchPaths::devDir() + "/plans/" + sessionId + "/plan.md"; }
+QString CodingAgent::planFileFor(const QString &sessionId) const { return isSafeId(sessionId) ? NotchPaths::devDir() + "/plans/" + sessionId + "/plan.md" : QString(); }
+void CodingAgent::removePlanDir(const QString &sessionId) const
+{
+    const QString file = planFileFor(sessionId);
+    if (!file.isEmpty()) QDir(QFileInfo(file).absolutePath()).removeRecursively(); // only ever <config>/plans/<a plain id>
+}
+bool CodingAgent::openLink(const QString &url) const { return isSafeLink(url) && QDesktopServices::openUrl(QUrl(url.trimmed())); }
 void CodingAgent::storePlan(const Session &s) const
 {
     const QString path = planFileFor(s.id);
+    if (path.isEmpty()) return;
     QDir().mkpath(QFileInfo(path).absolutePath());
     QSaveFile f(path);
     if (f.open(QIODevice::WriteOnly)) { f.write(s.plan.toUtf8()); f.commit(); }
@@ -492,21 +505,7 @@ bool CodingAgent::contextExact() const
 }
 void CodingAgent::rebuildFileIndex()
 {
-    m_fileIndex.clear(); m_fileIndexWorkspace = m_workspace; m_fileIndexAge.restart();
-    if (m_workspace.isEmpty() || !QFileInfo(m_workspace).isDir()) return;
-    static const QStringList skip{".git", "node_modules", "build", "dist", "target", ".next", "__pycache__", ".venv", "venv", ".cache", ".gradle", ".idea"};
-    QElapsedTimer clock; clock.start();
-    QStringList dirs{m_workspace};
-    while (!dirs.isEmpty() && m_fileIndex.size() < 5000 && clock.elapsed() < 300) {
-        const QString dir = dirs.takeFirst(); // nearest folders first
-        for (const auto &f : QDir(dir).entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden, QDir::Name)) {
-            if (f.isSymLink()) continue;
-            const QString rel = QDir(m_workspace).relativeFilePath(f.filePath());
-            if (privatePath(rel)) continue;
-            if (f.isDir()) { if (!skip.contains(f.fileName())) dirs.append(f.filePath()); }
-            else if (m_fileIndex.size() < 5000) m_fileIndex.append(rel);
-        }
-    }
+    m_fileIndex = AgentTools::fileIndex(m_workspace); m_fileIndexWorkspace = m_workspace; m_fileIndexAge.restart();
 }
 QVariantList CodingAgent::findFiles(const QString &query, int limit)
 {
@@ -652,7 +651,7 @@ void CodingAgent::startCompaction(const QString &focus, bool thenContinue)
             ChatMessage note; note.id = newId(); note.role = "note"; note.timestamp = QDateTime::currentMSecsSinceEpoch();
             note.content = "Compacted · earlier messages were summarized to save context";
             s->messages.insert(cut, note); s->compactedUpTo = cut; s->lastPromptTokens = 0;
-            save(); emit statusMessage(thenContinue ? "The context was nearly full: older messages were summarized." : "Compacted: older messages were summarized.");
+            save(sessionId); emit statusMessage(thenContinue ? "The context was nearly full: older messages were summarized." : "Compacted: older messages were summarized.");
         } else emit statusMessage(ok ? "The model returned no summary; nothing was compacted." : "Could not compact: " + why);
         emit busyChanged(); emit messagesChanged(); emit contextChanged();
         carryOn();
@@ -807,7 +806,7 @@ void CodingAgent::selectSession(const QString &id)
         m_activeSessionId = id; m_mode = s->mode == "auto" ? "manual" : s->mode;
         // A task made before any folder was chosen has none: it adopts the current one instead of blanking it.
         if (!s->workspace.isEmpty()) m_workspace = s->workspace;
-        else if (auto *mine = findSession(id)) mine->workspace = m_workspace;
+        else if (auto *mine = findSession(id)) { mine->workspace = m_workspace; m_dirty.insert(id); }
         if (findProvider(s->providerId)) m_activeProviderId = s->providerId;
         save();
         if (sameTask && oldWorkspace == m_workspace && oldMode == m_mode && oldProvider == m_activeProviderId) return;
@@ -821,7 +820,8 @@ void CodingAgent::selectSession(const QString &id)
 void CodingAgent::deleteSession(const QString &id)
 {
     if (busy() || hasPendingApprovals()) return;
-    for (int i = 0; i < m_sessions.size(); ++i) if (m_sessions[i].id == id) { m_sessions.removeAt(i); QDir(QFileInfo(planFileFor(id)).absolutePath()).removeRecursively(); break; }
+    for (int i = 0; i < m_sessions.size(); ++i) if (m_sessions[i].id == id) { m_sessions.removeAt(i); removePlanDir(id); break; }
+    AgentStore::removeSession(id); m_dirty.remove(id);
     if (m_activeSessionId == id) m_activeSessionId.clear();
     save(); emit sessionsChanged(); emit messagesChanged(); emit planChanged();
 }
@@ -830,13 +830,13 @@ void CodingAgent::clearSession(const QString &id)
     if (busy() || hasPendingApprovals()) return;
     if (auto *s = findSession(id.isEmpty() ? m_activeSessionId : id)) {
         s->messages.clear(); s->plan.clear(); s->planStatus.clear(); s->todos.clear(); s->summary.clear(); s->compactedUpTo = 0; s->lastPromptTokens = 0;
-        QDir(QFileInfo(planFileFor(s->id)).absolutePath()).removeRecursively();
+        removePlanDir(s->id);
     }
     save(); emit messagesChanged();
 }
 void CodingAgent::renameSession(const QString &id, const QString &title)
 {
-    if (auto *s = findSession(id)) { s->title = title.left(120); save(); emit sessionsChanged(); }
+    if (auto *s = findSession(id)) { s->title = title.left(120); save(id); emit sessionsChanged(); }
 }
 void CodingAgent::sendPrompt(const QString &prompt, const QVariantList &attachedFiles)
 {
@@ -1048,9 +1048,9 @@ void CodingAgent::processToolCalls(const QString &messageId)
         const auto args = doc.object();
         QString result;
         if (err.error != QJsonParseError::NoError || !doc.isObject()) result = "Error: invalid tool arguments.";
-        else if (tc->name == "list_files") result = execListFiles(args, &tc->summary);
-        else if (tc->name == "read_file") result = execReadFile(args, &tc->summary);
-        else if (tc->name == "search_files") result = execSearchFiles(args, &tc->summary);
+        else if (tc->name == "list_files") result = AgentTools::listFiles(m_workspace, args, &tc->summary);
+        else if (tc->name == "read_file") result = AgentTools::readFile(m_workspace, args, &tc->summary);
+        else if (tc->name == "search_files") result = AgentTools::searchFiles(m_workspace, args, &tc->summary);
         else if (tc->name == "todo_write") {
             QString err;
             const QList<TodoItem> todos = parseTodos(args, &err);
@@ -1079,7 +1079,7 @@ void CodingAgent::processToolCalls(const QString &messageId)
         }
         else if (m_mode == "plan") result = "Error: Plan Mode prohibits file changes and shell commands.";
         else if (tc->name == "propose_edit") {
-            prepareProposeEdit(*tc, args);
+            AgentTools::proposeEdit(m_workspace, *tc, args);
             if (tc->status == "error") result = tc->output;
             else { tc->status = "awaiting_approval"; continue; }
         } else if (tc->name == "run_command") {
@@ -1118,80 +1118,11 @@ void CodingAgent::resumeAfterToolCompletion()
         emit busyChanged();
     });
 }
-QString CodingAgent::execListFiles(const QJsonObject &args, QString *summary) const
-{
-    const QString path = resolveWorkspacePath(m_workspace, args.value("path").toString("."));
-    if (path.isEmpty() || !QFileInfo(path).isDir()) return "Error: directory outside workspace or missing.";
-    QStringList out;
-    for (const auto &f : QDir(path).entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden, QDir::DirsFirst | QDir::Name)) {
-        if (out.size() >= 300) { out.append("[truncated]"); break; }
-        if (!privatePath(QDir(m_workspace).relativeFilePath(f.filePath()))) out.append(f.fileName() + (f.isDir() ? "/" : ""));
-    }
-    *summary = "List " + args.value("path").toString("."); return out.join('\n');
-}
-QString CodingAgent::execReadFile(const QJsonObject &args, QString *summary) const
-{
-    const QString path = resolveWorkspacePath(m_workspace, args.value("path").toString());
-    if (path.isEmpty() || privatePath(QDir(m_workspace).relativeFilePath(path))) return "Error: restricted path.";
-    bool ok; const QString text = readText(path, &ok); if (!ok) return "Error: file unreadable, binary or larger than 256 KiB.";
-    const auto lines = text.split('\n'); const int start = qMax(1, args.value("start_line").toInt(1));
-    const int end = qMin(int(lines.size()), qMin(start + 499, args.value("end_line").toInt(start + 499)));
-    QStringList out; for (int i = start; i <= end; ++i) out.append(QString::number(i) + "\t" + lines[i - 1]);
-    if (end < lines.size()) out.append("[more lines available]");
-    *summary = "Read " + args.value("path").toString(); return out.join('\n').left(64000);
-}
-QString CodingAgent::execSearchFiles(const QJsonObject &args, QString *summary) const
-{
-    const QString path = resolveWorkspacePath(m_workspace, args.value("path").toString("."));
-    const QString pattern = args.value("pattern").toString();
-    if (path.isEmpty() || pattern.isEmpty()) return "Error: invalid search path or empty pattern.";
-    // Literal search avoids untrusted regular expressions blocking the GUI thread.
-    QStringList out; int visited = 0; QElapsedTimer clock; clock.start();
-    QStringList dirs{path};
-    while (!dirs.isEmpty() && visited < 2000 && clock.elapsed() < 400 && out.size() < 100) {
-        const QString dir = dirs.takeLast();
-        for (const auto &f : QDir(dir).entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden)) {
-            if (++visited > 2000 || clock.elapsed() >= 400 || out.size() >= 100) break;
-            const QString rel = QDir(m_workspace).relativeFilePath(f.filePath());
-            if (f.isSymLink() || privatePath(rel) || rel.startsWith("build/")) continue;
-            if (f.isDir()) { dirs.append(f.filePath()); continue; }
-            bool ok; const auto text = readText(f.filePath(), &ok); if (!ok) continue;
-            const auto lines = text.split('\n');
-            for (int i = 0; i < lines.size() && out.size() < 100; ++i) if (lines[i].contains(pattern, Qt::CaseInsensitive)) out.append(rel + ":" + QString::number(i + 1) + ": " + lines[i].left(300));
-        }
-    }
-    *summary = "Search " + pattern; out.append("[bounded search: up to 2000 entries, 100 matches, 1.5 seconds]"); return out.join('\n');
-}
-void CodingAgent::prepareProposeEdit(ToolCall &tc, const QJsonObject &args) const
-{
-    tc.filePath = args.value("path").toString(); const QString path = resolveWorkspacePath(m_workspace, tc.filePath);
-    auto fail = [&tc](const QString &s) { tc.status = "error"; tc.output = "Error: " + s; };
-    if (path.isEmpty() || privatePath(QDir(m_workspace).relativeFilePath(path))) { fail("restricted path"); return; }
-    bool ok = true; QString old;
-    if (QFileInfo::exists(path)) { old = readText(path, &ok); if (!ok) { fail("file unreadable, binary or too large"); return; } }
-    tc.proposedContent = args.value("new_text").toString();
-    if (!args.contains("new_text")) { fail("new_text is required"); return; }
-    if (args.contains("old_text")) {
-        const QString needle = args.value("old_text").toString();
-        if (needle.isEmpty() || old.count(needle) != 1) { fail("old_text must match exactly once"); return; }
-        tc.proposedContent = old; tc.proposedContent.replace(needle, args.value("new_text").toString());
-    }
-    if (tc.proposedContent.toUtf8().size() > FileLimit) { fail("proposed file too large"); return; }
-    tc.originalHash = QCryptographicHash::hash(old.toUtf8(), QCryptographicHash::Sha256).toHex();
-    tc.originalExists = QFileInfo::exists(path);
-    const auto diff = computeUnifiedDiff(tc.filePath, old, tc.proposedContent);
-    tc.diffText = diff.unified; tc.addedLines = diff.added; tc.removedLines = diff.removed; tc.summary = args.value("description").toString();
-}
 QString CodingAgent::applyProposedEdit(ToolCall &tc)
 {
-    const QString path = resolveWorkspacePath(m_workspace, tc.filePath);
-    if (path.isEmpty() || privatePath(QDir(m_workspace).relativeFilePath(path))) return "Error: restricted path.";
-    bool ok = true; const bool exists = QFileInfo::exists(path); const QString old = exists ? readText(path, &ok) : QString();
-    if (!ok || exists != tc.originalExists || QCryptographicHash::hash(old.toUtf8(), QCryptographicHash::Sha256).toHex() != tc.originalHash) return "Error: file changed since proposal; request a fresh edit.";
-    if (!QDir().mkpath(QFileInfo(path).absolutePath())) return "Error: cannot create parent folder.";
-    QSaveFile f(path); const QByteArray bytes = tc.proposedContent.toUtf8();
-    if (!f.open(QIODevice::WriteOnly) || f.write(bytes) != bytes.size() || !f.commit()) return "Error: cannot save file.";
-    emit workspaceChanged(); return "Applied " + tc.filePath;
+    const QString result = AgentTools::applyEdit(m_workspace, tc);
+    if (result.startsWith("Applied ")) emit workspaceChanged();
+    return result;
 }
 void CodingAgent::approveToolCall(const QString &msg, const QString &id)
 {
@@ -1285,7 +1216,6 @@ void CodingAgent::stop()
     m_turnDepth = 0; ++m_epoch; m_resumeQueued = false;
     const QString partial = m_reply ? m_streamContent.trimmed() : QString(); // what the agent had written so far is kept, not thrown away
     if (m_reply) { auto *r = m_reply; m_reply = nullptr; r->disconnect(this); r->abort(); r->deleteLater(); }
-    if (m_testReply) { auto *r = m_testReply; m_testReply = nullptr; r->disconnect(this); r->abort(); r->deleteLater(); }
     if (m_compactReply) { auto *r = m_compactReply; m_compactReply = nullptr; r->disconnect(this); r->abort(); r->deleteLater(); }
     if (m_proc) { auto *p = m_proc; m_proc = nullptr; p->disconnect(this); killCommand(p); p->waitForFinished(1000); p->deleteLater(); }
     if (auto *s = findSession(m_activeSessionId)) {

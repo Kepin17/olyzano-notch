@@ -148,3 +148,7 @@ The eye button in the sidebar header, or `/details [headings|full]`, switches to
 
 When a run is over (nothing streaming, no approval waiting) and it changed or ran something, a **What changed** card closes the chat: the files created or edited with `+added −removed` (a file edited several times is one line), how many commands ran and which failed, how many proposals you declined, and the state of the to-do list. It is built from what actually happened, not from what the model says, and a run that only answered a question has none. The agent is also told to end such a task with a short conclusion in plain words (what and why, how it was checked, what is left); a plain question just gets its answer.
 
+## A conclusion that is easy to read
+
+At the end of a task the agent is told to write its conclusion for scanning: one bold line with the result, then short parts with a bold label each (**Changed**, **Checked**, **Left** / **Good to know**), two to four bullets per part, a blank line between parts, file paths and commands in `backticks`, in the language you used. The agent's answers are drawn as a document (room between paragraphs and bullets, code as chips, links that open), the same way the plan is. While an answer is still arriving, every paragraph that is complete is already drawn that way; only the one being written is plain text, without its `##` and `**` markers, until it is finished.
+

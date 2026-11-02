@@ -91,7 +91,7 @@ To remove everything, uninstall and delete those folders. Full table: [Settings 
 
 ## 9. Dev hub (API · SSH · Database)
 
-Open the notch → **Dev** in the action bar. A top switcher picks **API**, **SSH** or **Database**. The notch **stays open** while you are on this page.
+Open the notch → **Dev** in the action bar. A top switcher picks **API**, **SSH** or **Database**. The notch closes when the pointer leaves it, like every page; a dialog or menu that is open, or **Pin**, keeps it open.
 
 ### API tester
 

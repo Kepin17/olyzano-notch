@@ -441,6 +441,12 @@ RowLayout {
                         checked: memtune.lowMemory
                         onToggled: memtune.lowMemory = !memtune.lowMemory
                     }
+                    SettingToggle {
+                        title: "Free memory when idle"
+                        caption: "A few seconds after the panel closes, Notch lets go of what the pages you opened built up (camera, agent, speech model) and hands it back to the system. They load again, a little slower, the next time."
+                        checked: memtune.freeWhenIdle
+                        onToggled: memtune.freeWhenIdle = !memtune.freeWhenIdle
+                    }
                     RowLayout {
                         visible: memtune.lowMemory !== memtune.running
                         Layout.fillWidth: true

@@ -14,111 +14,15 @@ ColumnLayout {
         || providerChoice.popup.visible || modeMenu.visible || modelMenu.visible || effortMenu.visible || suggest.visible || clearConfirm.visible
     readonly property bool locked: codingAgent.busy || codingAgent.hasPendingApprovals
     readonly property bool hasKey: !!codingAgent.activeProvider.hasApiKey || codingAgent.activeProvider.authHeader === "none"
-    property var draft: ({})
-    property string editingProviderId: ""
-    property string formError: ""
     property string deleteSessionId: ""
     property string deleteProviderId: ""
     property string autoSessionId: ""
-    // A known provider (MiMo, DeepSeek, Claude, OpenAI) only needs a model and a key: its endpoint, protocol and
-    // auth are filled in. Everything else shows for a custom endpoint, or under "Advanced".
-    property bool known: false
-    property bool advanced: false
-    readonly property bool full: !known || advanced   // name, address, model
-    readonly property bool extras: advanced           // sign-in style, temperature, tokens, context window
-    property var addChoices: [] // presets not in the list yet, then "Custom endpoint"
 
+    function editProvider(id) { providerEditor.edit(id) } // DevPage opens it from outside
     function indexOfId(items, id) {
         for (let i = 0; i < items.length; ++i)
             if (items[i].id === id) return i
         return -1
-    }
-    function setDraft(field, value) {
-        const next = Object.assign({}, draft)
-        next[field] = value
-        draft = next
-    }
-    readonly property var customDraft: ({
-        name: "Custom", baseUrl: "", modelId: "", protocol: "openai", authHeader: "Bearer",
-        temperature: 0.2, maxTokens: 8192, maxTokensParameter: "max_tokens", modelPresets: []
-    })
-    function isKnown(p) {
-        if (p.customHeadersJson || p.extraBodyJson) return false
-        const presets = codingAgent.presets()
-        for (let i = 0; i < presets.length; ++i)
-            if (presets[i].baseUrl === p.baseUrl && presets[i].protocol === p.protocol && presets[i].authHeader === p.authHeader)
-                return true
-        return false
-    }
-    function pickPreset(index) {
-        const choice = addChoices[index]
-        draft = choice.preset ? Object.assign({}, choice.preset) : Object.assign({}, customDraft)
-        known = !!choice.preset
-    }
-    function editProvider(id) {
-        editingProviderId = id
-        advanced = false
-        if (id) {
-            draft = codingAgent.providerById(id)
-            known = isKnown(draft)
-        } else {
-            const have = codingAgent.providers.map(p => p.id)
-            const choices = codingAgent.presets().filter(p => have.indexOf(p.id) < 0).map(p => ({ id: p.id, name: p.name, preset: p }))
-            choices.push({ id: "custom", name: "Custom AI (any endpoint)", preset: null })
-            addChoices = choices
-            const custom = choices.length - 1 // the "+" button is for a custom AI first; the known providers are one pick away
-            pickPreset(custom)
-            Qt.callLater(() => presetChoice.currentIndex = custom)
-        }
-        keyField.value = ""
-        clearKey.checked = false
-        formError = ""
-        providerEditor.open()
-    }
-    function saveProvider() {
-        formError = ""
-        const temperature = Number(temperatureField.text)
-        const maxTokens = Number(tokensField.text)
-        if (!nameField.text.trim() || !urlField.text.trim() || !modelField.text.trim()) {
-            formError = "Name, base URL and model ID are required."
-            return
-        }
-        if (!/^https?:\/\//i.test(urlField.text.trim())) {
-            formError = "Base URL must start with https:// or http://."
-            return
-        }
-        if (!temperatureField.text.trim() || !isFinite(temperature) || temperature < -1 || temperature > 2
-                || !isFinite(maxTokens) || maxTokens < 256 || maxTokens > 1000000 || Math.floor(maxTokens) !== maxTokens) {
-            formError = "Use temperature -1 to 2 (-1 omits it), and a token limit from 256 to 1000000."
-            return
-        }
-        const fields = {
-            name: nameField.text.trim(), baseUrl: urlField.text.trim(),
-            modelId: modelField.text.trim(), protocol: protocolChoice.currentValue,
-            authHeader: authField.text.trim(), temperature: temperature, maxTokens: maxTokens,
-            maxTokensParameter: tokenParameter.text.trim(),
-            contextWindow: Math.max(0, Math.floor(Number(contextField.text) || 0)),
-            // not editable here; kept as they are for a provider that already has them
-            customHeadersJson: draft.customHeadersJson || "", extraBodyJson: draft.extraBodyJson || ""
-        }
-        // Omitting apiKey preserves the saved key; an explicit empty value removes it.
-        if (clearKey.checked) fields.apiKey = ""
-        else if (keyField.text.length > 0) fields.apiKey = keyField.text
-        if (editingProviderId) {
-            if (!codingAgent.updateProvider(editingProviderId, fields)) {
-                formError = "Could not update provider. " + codingAgent.lastError
-                return
-            }
-        } else {
-            const id = codingAgent.addProvider(fields)
-            if (!id) {
-                formError = "Could not add provider. " + codingAgent.lastError
-                return
-            }
-            codingAgent.activeProviderId = id
-        }
-        providerEditor.close()
-        Qt.callLater(() => composer.forceActiveFocus()) // ready to type right away
     }
     property bool sendAfterPick: false
     property string renamingKey: ""   // "f:<folder path>" or "t:<task id>" while its name is being edited
@@ -143,6 +47,21 @@ ColumnLayout {
     // The chat, the to-do list and the provider list are replaced only when their content is different, so an unrelated
     // change (a folded folder, a renamed task) does not rebuild them.
     readonly property bool detailFull: codingAgent.detail === "full"
+    // While an answer arrives: how much of it is whole blocks (up to the last blank line, and never inside an open code fence)
+    function stableLength(t) {
+        let end = t.lastIndexOf("\n\n")
+        if (end < 0) return 0
+        const fences = t.slice(0, end).match(/^```/gm)
+        if (fences && fences.length % 2 === 1) end = t.lastIndexOf("\n\n", t.lastIndexOf("```", end))
+        return end < 0 ? 0 : end + 2
+    }
+    // The paragraph still being written, without its markers (## and ** are noise until it can be drawn properly)
+    function tidy(t) { return t.replace(/^#{1,6}\s+/gm, "").replace(/\*\*/g, "").replace(/^\s*[-*]\s+/gm, "• ") }
+    // Markdown as a document (room between paragraphs, bullets with air, chips for code): the plan reader and the agent's answers
+    function renderDoc(text) {
+        return codingAgent.renderMarkdown(text, Qt.application.font.family, 14, theme.dark ? "#ff9b8e" : "#c2362b",
+                                          theme.dark ? "#1fffffff" : "#14000000", theme.accentText, theme.dark ? "#33ffffff" : "#26000000")
+    }
     ListModel { id: chatModel; dynamicRoles: true } // one row per message, patched in place: only the message that changed is redrawn
     property var todoItems: []
     property string todoJson: ""
@@ -312,7 +231,7 @@ ColumnLayout {
     function sendPromptText() {
         const prompt = composer.text.trim()
         if (!prompt || locked || !codingAgent.activeProviderId) return
-        if (!hasKey) { editProvider(codingAgent.activeProviderId); return }
+        if (!hasKey) { providerEditor.edit(codingAgent.activeProviderId); return }
         if (!codingAgent.workspace) { sendAfterPick = true; workspacePicker.start(codingAgent.workspace); return }
         if (revising && codingAgent.planStatus === "pending") codingAgent.revisePlan(prompt)
         else codingAgent.sendPrompt(prompt, chips) // a plain comment: the agent tells a question from a change request
@@ -344,110 +263,6 @@ ColumnLayout {
         context: Qt.WindowShortcut
         enabled: tab.visible && codingAgent.busy && !tab.modalOpen
         onActivated: codingAgent.stop()
-    }
-
-    component Choice: ComboBox {
-        id: choice
-        implicitHeight: 28
-        leftPadding: 9
-        rightPadding: 24
-        font.pixelSize: 12
-        contentItem: Text {
-            text: choice.displayText
-            color: choice.enabled ? theme.text : theme.textFaint
-            font: choice.font
-            elide: Text.ElideRight
-            verticalAlignment: Text.AlignVCenter
-        }
-        indicator: Text {
-            x: choice.width - width - 8
-            anchors.verticalCenter: parent.verticalCenter
-            text: "⌄"
-            color: theme.textDim
-        }
-        background: Rectangle {
-            radius: theme.radiusSm
-            color: theme.well
-            border.width: 1
-            border.color: choice.activeFocus ? theme.accent : theme.hairline
-        }
-        delegate: ItemDelegate {
-            required property var modelData
-            required property int index
-            width: choice.width
-            implicitHeight: 30
-            highlighted: choice.highlightedIndex === index
-            contentItem: Text {
-                text: choice.textRole ? modelData[choice.textRole] : modelData
-                color: theme.text
-                font.pixelSize: 12
-                elide: Text.ElideRight
-            }
-            background: Rectangle {
-                color: parent.highlighted ? Qt.alpha(theme.accent, 0.16) : "transparent"
-                radius: theme.radiusSm
-            }
-        }
-        popup: Popup {
-            y: choice.height + 4
-            width: choice.width
-            implicitHeight: Math.min(contentItem.implicitHeight + 8, 200)
-            padding: 4
-            contentItem: ListView {
-                clip: true
-                implicitHeight: contentHeight
-                model: choice.popup.visible ? choice.delegateModel : null
-                currentIndex: choice.highlightedIndex
-                ScrollBar.vertical: ScrollBar {}
-            }
-            background: Rectangle {
-                color: theme.surface
-                radius: theme.radiusSm
-                border.width: 1
-                border.color: theme.outline
-            }
-        }
-    }
-
-    component CopyText: TextArea {
-        Layout.fillWidth: true
-        implicitHeight: contentHeight + topPadding + bottomPadding
-        readOnly: true
-        selectByMouse: true
-        wrapMode: TextEdit.Wrap
-        textFormat: TextEdit.PlainText
-        color: theme.text
-        font.pixelSize: 14 // the conversation is what you read most: roomy
-        font.family: Qt.application.font.family
-        padding: 0
-        background: null
-    }
-
-    component Step: RowLayout {
-        id: step
-        property bool done: false
-        property string title: ""
-        property string detail: ""
-        property string action: ""
-        signal triggered()
-        Layout.fillWidth: true
-        spacing: 10
-        Rectangle {
-            Layout.preferredWidth: 20
-            Layout.preferredHeight: 20
-            radius: 10
-            color: step.done ? Qt.alpha(theme.accent, 0.2) : "transparent"
-            border.width: 1
-            border.color: step.done ? Qt.alpha(theme.accent, 0.6) : theme.outline
-            LineIcon { anchors.centerIn: parent; visible: step.done; glyph: "check"; sourceSize: Qt.size(11, 11); color: theme.accentText }
-        }
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: 1
-            Text { text: step.title; color: step.done ? theme.textDim : theme.text; font.pixelSize: 12; font.weight: Font.Medium }
-            Text { Layout.fillWidth: true; visible: !!text; text: step.detail; color: theme.textFaint; font.pixelSize: 11; elide: Text.ElideMiddle }
-        }
-        PillButton { visible: !step.done && !!step.action; text: step.action; checked: true; onClicked: step.triggered() }
     }
 
     readonly property var modes: [
@@ -504,166 +319,11 @@ ColumnLayout {
         Layout.fillHeight: true
         spacing: 10
 
-        Rectangle { // the tasks, grouped by folder
-            id: sidebar
-            Layout.preferredWidth: 220
-            Layout.fillHeight: true
-            radius: theme.radiusMd
-            color: theme.well
-            border.width: 1
-            border.color: theme.hairline
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 8
-                spacing: 6
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 4
-                    Text {
-                        Layout.fillWidth: true
-                        Layout.leftMargin: 4
-                        text: "TASKS"
-                        color: theme.textFaint
-                        font.pixelSize: 10
-                        font.weight: Font.DemiBold
-                        font.letterSpacing: 0.8
-                    }
-                    PillButton { // one line per action, or everything
-                        iconOnly: true; iconName: "eye"
-                        text: tab.detailFull ? "Showing everything: click for one line per action" : "One line per action: click to show everything"
-                        checked: tab.detailFull
-                        implicitHeight: 26
-                        implicitWidth: 30
-                        onClicked: codingAgent.detail = tab.detailFull ? "headings" : "full"
-                    }
-                    PillButton {
-                        iconOnly: true; iconName: "folder"; text: "Add a folder"
-                        implicitHeight: 26
-                        implicitWidth: 30
-                        enabled: !tab.locked
-                        onClicked: workspacePicker.start(codingAgent.workspace)
-                    }
-                    PillButton {
-                        iconOnly: true; iconName: "plus"; text: "New task in this folder"
-                        implicitHeight: 26
-                        implicitWidth: 30
-                        enabled: !tab.locked
-                        onClicked: tab.newTask()
-                    }
-                }
-                ListView {
-                    id: sessionList
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    clip: true
-                    spacing: 1
-                    boundsBehavior: Flickable.StopAtBounds
-                    model: sidebarModel
-                    ScrollBar.vertical: ScrollBar {}
-                    delegate: Rectangle {
-                        id: item
-                        required property string kind
-                        required property string rowKey
-                        required property string path
-                        required property string name
-                        required property string title
-                        required property string sid
-                        required property int count
-                        required property bool collapsed
-                        required property bool exists
-                        required property bool active
-                        readonly property bool isFolder: kind === "folder"
-                        readonly property bool renaming: tab.renamingKey === rowKey
-                        width: sessionList.width - 8
-                        height: isFolder ? 32 : 34
-                        radius: theme.radiusSm
-                        color: !isFolder && active ? Qt.alpha(theme.accent, 0.16) : rowArea.containsMouse && !renaming ? theme.surfaceHover : "transparent"
-                        opacity: !isFolder && tab.locked && !active ? 0.5 : 1
-                        MouseArea {
-                            id: rowArea
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            acceptedButtons: Qt.LeftButton
-                            enabled: !item.renaming
-                            onClicked: {
-                                if (item.isFolder) codingAgent.setFolderCollapsed(item.path, !item.collapsed)
-                                else if (!tab.locked) codingAgent.selectSession(item.sid)
-                            }
-                            onDoubleClicked: if (!item.isFolder && !tab.locked) tab.startRename(item.rowKey, item.title)
-                        }
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: item.isFolder ? 6 : 24
-                            anchors.rightMargin: 6
-                            spacing: 6
-                            Text { visible: item.isFolder; text: item.collapsed ? "›" : "⌄"; color: theme.textFaint; font.pixelSize: 12; Layout.preferredWidth: 10 }
-                            LineIcon { visible: item.isFolder; glyph: "folder"; sourceSize: Qt.size(14, 14); color: item.exists === false ? "#ff9f0a" : item.active ? theme.accentText : theme.textDim }
-                            Text {
-                                visible: !item.renaming
-                                Layout.fillWidth: true
-                                text: item.isFolder ? item.name : (item.title || "New task")
-                                color: item.isFolder ? theme.text : item.active ? theme.accentText : theme.text
-                                font.pixelSize: item.isFolder ? 12 : 12
-                                font.weight: item.isFolder ? Font.DemiBold : Font.Medium
-                                elide: Text.ElideRight
-                            }
-                            TextField { // renaming, right where the name is
-                                id: renameField
-                                visible: item.renaming
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 24
-                                color: theme.text
-                                font.pixelSize: 12
-                                leftPadding: 6
-                                selectByMouse: true
-                                background: Rectangle { radius: 5; color: theme.surface; border.width: 1; border.color: Qt.alpha(theme.accent, 0.6) }
-                                onVisibleChanged: if (visible) { text = tab.renameText; forceActiveFocus(); selectAll() }
-                                onAccepted: tab.commitRename(text)
-                                Keys.onEscapePressed: tab.renamingKey = ""
-                                onActiveFocusChanged: if (!activeFocus && item.renaming) tab.commitRename(text)
-                            }
-                            Text { visible: item.isFolder && !item.renaming && !rowArea.containsMouse; text: item.count; color: theme.textFaint; font.pixelSize: 11 }
-                            // actions, on hover
-                            Row {
-                                visible: !item.renaming && rowArea.containsMouse && !tab.locked
-                                spacing: 2
-                                Repeater {
-                                    model: item.isFolder
-                                        ? (item.count === 0 ? ["plus", "pen", "trash"] : ["plus", "pen"])
-                                        : ["pen", "trash"]
-                                    delegate: MouseArea {
-                                        id: act
-                                        required property string modelData
-                                        width: 22; height: 22
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            if (modelData === "plus") codingAgent.openFolder(item.path)
-                                            else if (modelData === "pen") tab.startRename(item.rowKey, item.isFolder ? item.name : item.title)
-                                            else if (item.isFolder) codingAgent.removeFolder(item.path)
-                                            else { tab.deleteSessionId = item.sid; deleteSessionConfirm.open() }
-                                        }
-                                        LineIcon { anchors.centerIn: parent; glyph: act.modelData; sourceSize: Qt.size(13, 13); color: act.containsMouse ? theme.accentText : theme.textFaint }
-                                        ToolTip.visible: containsMouse
-                                        ToolTip.delay: 400
-                                        ToolTip.text: act.modelData === "plus" ? "New task in this folder" : act.modelData === "pen" ? "Rename"
-                                            : item.isFolder ? "Remove this folder from the list (files stay)" : "Delete task"
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Text {
-                        anchors.centerIn: parent
-                        visible: sessionList.count === 0
-                        text: "No folders yet.\nAdd one with the folder button."
-                        horizontalAlignment: Text.AlignHCenter
-                        color: theme.textFaint
-                        font.pixelSize: 11
-                    }
-                }
-            }
+        AgentSidebar {
+            tab: tab
+            model: sidebarModel
+            onAddFolder: workspacePicker.start(codingAgent.workspace)
+            onDeleteTask: sid => { tab.deleteSessionId = sid; deleteSessionConfirm.open() }
         }
 
         ColumnLayout {
@@ -706,7 +366,7 @@ ColumnLayout {
                         Text { visible: !!codingAgent.workspace; text: "Change"; color: theme.textFaint; font.pixelSize: 11 }
                     }
                 }
-                Choice {
+                AgentChoice {
                     id: providerChoice
                     Layout.preferredWidth: 170
                     Layout.preferredHeight: 32
@@ -732,13 +392,13 @@ ColumnLayout {
                     implicitHeight: 32
                     checked: !tab.hasKey
                     enabled: !tab.locked && !!codingAgent.activeProviderId
-                    onClicked: tab.editProvider(codingAgent.activeProviderId)
+                    onClicked: providerEditor.edit(codingAgent.activeProviderId)
                 }
                 PillButton {
                     iconOnly: true; iconName: "plus"; text: "Add a custom AI or another provider"
                     implicitHeight: 32
                     enabled: !tab.locked
-                    onClicked: tab.editProvider("")
+                    onClicked: providerEditor.edit("")
                 }
             }
 
@@ -827,18 +487,23 @@ ColumnLayout {
                                 Text { text: message.thought ? "⌃" : "⌄"; color: theme.textFaint; font.pixelSize: 11 }
                             }
                         }
-                        CopyText {
+                        AgentCopyText {
                             visible: !!text && (tab.detailFull || message.thought)
-                            text: message.msg.reasoning || ""
+                            readonly property bool doc: (message.msg.reasoning || "").length < 12000
+                            text: doc ? tab.renderDoc(message.msg.reasoning || "") : (message.msg.reasoning || "")
+                            textFormat: doc ? TextEdit.RichText : TextEdit.PlainText
                             color: theme.textDim
                             font.pixelSize: 13
-                            font.italic: true
+                            onLinkActivated: link => codingAgent.openLink(link)
                         }
-                        CopyText {
+                        AgentCopyText {
                             visible: !!text && message.msg.role !== "shell" && message.msg.role !== "note"
-                            text: message.msg.shown || message.msg.content || ""
-                            // a very long answer is laid out as plain text: Markdown of a hundred thousand characters stalls the panel
-                            textFormat: message.msg.role === "assistant" && (message.msg.content || "").length < 30000 ? TextEdit.MarkdownText : TextEdit.PlainText
+                            // an answer is laid out as a document (spacing, bullets, code chips); a very long one as plain text, because
+                            // laying out a hundred thousand characters of Markdown stalls the panel
+                            readonly property bool doc: message.msg.role === "assistant" && (message.msg.content || "").length < 12000
+                            text: doc ? tab.renderDoc(message.msg.content) : (message.msg.shown || message.msg.content || "")
+                            textFormat: doc ? TextEdit.RichText : TextEdit.PlainText // a longer answer is plain text: Markdown of it would also load its pictures
+                            onLinkActivated: link => codingAgent.openLink(link)
                             font.family: message.msg.role === "tool" ? "monospace" : Qt.application.font.family
                             font.pixelSize: message.msg.role === "tool" ? 12 : 14
                         }
@@ -900,24 +565,24 @@ ColumnLayout {
                                         font.pixelSize: 12
                                         wrapMode: Text.Wrap
                                     }
-                                    CopyText {
+                                    AgentCopyText {
                                         visible: !!text && message.msg.role !== "shell"
                                         text: tool.modelData.summary || tool.modelData.filePath || ""
                                         font.pixelSize: 13
                                     }
-                                    CopyText {
+                                    AgentCopyText {
                                         visible: !!text && message.msg.role !== "shell"
                                         text: tool.modelData.command || ""
                                         font.family: "monospace"
                                         font.pixelSize: 12
                                     }
-                                    CopyText {
+                                    AgentCopyText {
                                         visible: !!text
                                         text: tool.modelData.diffText || ""
                                         font.family: "monospace"
                                         font.pixelSize: 12
                                     }
-                                    CopyText {
+                                    AgentCopyText {
                                         visible: !!text
                                         text: tool.modelData.output || ""
                                         font.family: "monospace"
@@ -964,8 +629,11 @@ ColumnLayout {
                             id: footerCol
                             width: parent.width - 10
                             spacing: 8
-                            ColumnLayout { // plain text while it arrives; Markdown once the answer is complete
+                            ColumnLayout { // the finished paragraphs are drawn as a document as they arrive; the one being written, plain
                                 id: streamCol
+                                readonly property string text: codingAgent.streamingContent
+                                readonly property int cutAt: tab.stableLength(text)
+                                readonly property string stable: text.slice(Math.max(0, cutAt - 8000), cutAt) // the end of it: laying out all of a long answer at each paragraph stalls the panel
                                 Layout.fillWidth: true
                                 visible: codingAgent.streaming
                                 spacing: 4
@@ -974,14 +642,27 @@ ColumnLayout {
                                     color: theme.accentText
                                     font.pixelSize: 12
                                 }
-                                CopyText {
+                                AgentCopyText {
                                     visible: !!text
                                     text: codingAgent.streamingReasoning
                                     color: theme.textDim
                                     font.pixelSize: 13
                                     font.italic: true
                                 }
-                                CopyText { text: codingAgent.streamingContent || "Waiting for response…" }
+                                AgentCopyText {
+                                    visible: streamCol.stable !== ""
+                                    textFormat: TextEdit.RichText
+                                    text: tab.renderDoc(streamCol.stable)
+                                    onLinkActivated: link => codingAgent.openLink(link)
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    visible: text !== ""
+                                    wrapMode: Text.Wrap
+                                    color: theme.text
+                                    font.pixelSize: 14
+                                    text: tab.tidy(streamCol.text.slice(streamCol.cutAt)) || (streamCol.cutAt === 0 && streamCol.text === "" ? "Waiting for response…" : "")
+                                }
                             }
                             Rectangle { // what the run really changed (from what happened, not from what the model says)
                                 id: summaryCard
@@ -1061,19 +742,19 @@ ColumnLayout {
                         font.pixelSize: 12
                         wrapMode: Text.Wrap
                     }
-                    Step {
+                    AgentStep {
                         done: !!codingAgent.workspace
                         title: done ? "Workspace" : "Choose a workspace"
                         detail: codingAgent.workspace || "The folder the agent can read and change"
                         action: "Choose folder…"
                         onTriggered: workspacePicker.start(codingAgent.workspace)
                     }
-                    Step {
+                    AgentStep {
                         done: tab.hasKey
                         title: done ? "API key for " + (codingAgent.activeProvider.name || "") : "Add an API key for " + (codingAgent.activeProvider.name || "this provider")
                         detail: done ? "Saved on this computer" : "Pick the model and paste the key; the rest is filled in"
                         action: "Add key…"
-                        onTriggered: tab.editProvider(codingAgent.activeProviderId)
+                        onTriggered: providerEditor.edit(codingAgent.activeProviderId)
                     }
                 }
             }
@@ -1090,233 +771,13 @@ ColumnLayout {
                 elide: Text.ElideRight
             }
 
-            Rectangle { // the agent's own checklist for a bigger task
-                id: todoCard
-                readonly property int total: tab.todoItems.length
-                readonly property int done: tab.todoItems.filter(t => t.status === "completed").length
-                readonly property var current: tab.todoItems.find(t => t.status === "in_progress")
-                property bool open: true
-                visible: total > 0
-                Layout.fillWidth: true
-                Layout.preferredHeight: todoCol.implicitHeight + 16
-                radius: theme.radiusMd
-                color: theme.well
-                border.width: 1
-                border.color: done === total ? Qt.alpha("#30d158", 0.5) : theme.hairline
-                ColumnLayout {
-                    id: todoCol
-                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
-                    spacing: 6
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        MouseArea { // the whole header folds the list
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 24
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: todoCard.open = !todoCard.open
-                            RowLayout {
-                                anchors.fill: parent
-                                spacing: 8
-                                LineIcon { glyph: todoCard.done === todoCard.total ? "check" : "grid"; sourceSize: Qt.size(14, 14); color: todoCard.done === todoCard.total ? "#30d158" : theme.accentText }
-                                Text { text: "To-do"; color: theme.text; font.pixelSize: 13; font.weight: Font.DemiBold }
-                                AgentBadge { text: todoCard.done + " / " + todoCard.total; tone: todoCard.done === todoCard.total ? "ok" : "accent"; mono: true }
-                                Text {
-                                    Layout.fillWidth: true
-                                    visible: !todoCard.open && !!todoCard.current
-                                    text: todoCard.current ? todoCard.current.content : ""
-                                    color: theme.textDim
-                                    font.pixelSize: 12
-                                    elide: Text.ElideRight
-                                }
-                                Item { Layout.fillWidth: true; visible: todoCard.open || !todoCard.current }
-                                Text { text: todoCard.open ? "⌃" : "⌄"; color: theme.textFaint; font.pixelSize: 11 }
-                            }
-                        }
-                    }
-                    Rectangle { // progress
-                        Layout.fillWidth: true
-                        height: 3; radius: 1.5
-                        color: theme.hairline
-                        Rectangle { width: parent.width * (todoCard.total > 0 ? todoCard.done / todoCard.total : 0); height: parent.height; radius: parent.radius; color: todoCard.done === todoCard.total ? "#30d158" : theme.accent
-                            Behavior on width { enabled: activities.animations; NumberAnimation { duration: 200 } } }
-                    }
-                    Flickable {
-                        visible: todoCard.open
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: Math.min(150, todoList.implicitHeight)
-                        contentHeight: todoList.implicitHeight
-                        clip: true
-                        boundsBehavior: Flickable.StopAtBounds
-                        ScrollBar.vertical: ScrollBar {}
-                        ColumnLayout {
-                            id: todoList
-                            width: parent.width - 10
-                            spacing: 3
-                            Repeater {
-                                model: tab.todoItems
-                                delegate: RowLayout {
-                                    id: todoRow
-                                    required property var modelData
-                                    readonly property bool finished: modelData.status === "completed"
-                                    readonly property bool active: modelData.status === "in_progress"
-                                    Layout.fillWidth: true
-                                    spacing: 8
-                                    Rectangle {
-                                        Layout.preferredWidth: 14; Layout.preferredHeight: 14; Layout.alignment: Qt.AlignTop; Layout.topMargin: 2
-                                        radius: 7
-                                        color: todoRow.finished ? Qt.alpha("#30d158", 0.2) : "transparent"
-                                        border.width: 1.5
-                                        border.color: todoRow.finished ? "#30d158" : todoRow.active ? theme.accent : theme.outline
-                                        LineIcon { anchors.centerIn: parent; visible: todoRow.finished; glyph: "check"; sourceSize: Qt.size(9, 9); color: "#30d158" }
-                                        Rectangle { anchors.centerIn: parent; visible: todoRow.active; width: 6; height: 6; radius: 3; color: theme.accent }
-                                    }
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: todoRow.modelData.content
-                                        color: todoRow.finished ? theme.textFaint : todoRow.active ? theme.text : theme.textDim
-                                        font.pixelSize: 13
-                                        font.weight: todoRow.active ? Font.Medium : Font.Normal
-                                        font.strikeout: todoRow.finished
-                                        wrapMode: Text.Wrap
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            AgentTodoCard { id: todoCard; tab: tab }
 
-            Rectangle { // the plan the agent wrote: read it, then decide
+            AgentPlanCard {
                 id: planCard
-                Layout.fillWidth: true
-                readonly property bool pending: codingAgent.planStatus === "pending"
-                visible: codingAgent.planStatus !== ""
-                Layout.preferredHeight: planCol.implicitHeight + 20
-                Layout.fillHeight: tab.planOpen // reading the plan: it takes the room the conversation had
-                radius: theme.radiusMd
-                color: theme.well
-                border.width: 1
-                border.color: Qt.alpha(theme.accent, 0.5)
-                ColumnLayout {
-                    id: planCol
-                    anchors.fill: parent
-                    anchors.margins: 10
-                    spacing: 8
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 8
-                        LineIcon { glyph: "pen"; sourceSize: Qt.size(15, 15); color: theme.accentText }
-                        ColumnLayout {
-                            Layout.fillWidth: true
-                            spacing: 0
-                            Text {
-                                text: planCard.pending ? "Plan ready" : codingAgent.planStatus === "accepted" ? "Plan accepted" : "Plan rejected"
-                                color: theme.text; font.pixelSize: 13; font.weight: Font.DemiBold
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: planCard.pending ? "Saved as plan.md. Read it, then choose, or just comment in the chat."
-                                    : codingAgent.planStatus === "accepted" ? "The agent is working from it. plan.md stays readable."
-                                    : "Kept as plan.md. Reopen it if you change your mind."
-                                color: theme.textFaint; font.pixelSize: 11; elide: Text.ElideRight
-                            }
-                        }
-                        PillButton {
-                            visible: codingAgent.planStatus === "rejected"
-                            text: "Reopen"
-                            iconName: "undo"
-                            enabled: !tab.locked
-                            onClicked: codingAgent.reopenPlan()
-                        }
-                        PillButton {
-                            text: tab.planOpen ? "Hide plan.md" : "Read plan.md"
-                            iconName: "eye"
-                            onClicked: tab.planOpen = !tab.planOpen
-                        }
-                    }
-                    Rectangle { // the plan as a document: a column of text on its own page, like a Markdown preview
-                        visible: tab.planOpen
-                        Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        Layout.minimumHeight: 80
-                        Layout.preferredHeight: Math.min(320, planDoc.implicitHeight + 40)
-                        radius: theme.radiusSm
-                        color: theme.dark ? "#0f0f11" : "#fafafc"
-                        border.width: 1
-                        border.color: theme.hairline
-                        clip: true
-                        ScrollView {
-                            id: planView
-                            anchors.fill: parent
-                            contentWidth: availableWidth
-                            Item {
-                                width: planView.availableWidth
-                                implicitWidth: planView.availableWidth
-                                implicitHeight: planDoc.implicitHeight + 40 // a ScrollView takes the content size from this, not from height
-                                CopyText {
-                                    id: planDoc
-                                    x: Math.max(20, (parent.width - 700) / 2)
-                                    y: 20
-                                    width: Math.min(700, parent.width - 40)
-                                    textFormat: TextEdit.RichText
-                                    font.pixelSize: 14
-                                    text: codingAgent.renderMarkdown(codingAgent.plan, Qt.application.font.family, 14,
-                                                                     theme.dark ? "#ff9b8e" : "#c2362b", theme.dark ? "#1fffffff" : "#14000000",
-                                                                     theme.accentText, theme.dark ? "#33ffffff" : "#26000000")
-                                    onLinkActivated: link => Qt.openUrlExternally(link)
-                                }
-                            }
-                        }
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        visible: planCard.pending
-                        spacing: 6
-                        PillButton {
-                            text: "Revise"
-                            iconName: "pen"
-                            implicitHeight: 30
-                            enabled: !tab.locked
-                            ToolTip.visible: hovered
-                            ToolTip.delay: 400
-                            ToolTip.text: "Tell the agent what to change; it writes a new plan"
-                            onClicked: { tab.revising = true; composer.forceActiveFocus() }
-                        }
-                        PillButton {
-                            text: "Reject"
-                            iconName: "close"
-                            implicitHeight: 30
-                            enabled: !tab.locked
-                            ToolTip.visible: hovered
-                            ToolTip.delay: 400
-                            ToolTip.text: "Drop this plan; nothing is changed"
-                            onClicked: codingAgent.rejectPlan()
-                        }
-                        Item { Layout.fillWidth: true }
-                        PillButton {
-                            text: "Accept · Manual"
-                            iconName: "check"
-                            checked: true
-                            implicitHeight: 30
-                            enabled: !tab.locked
-                            ToolTip.visible: hovered
-                            ToolTip.delay: 400
-                            ToolTip.text: "Start the work; you approve each edit and command"
-                            onClicked: codingAgent.acceptPlan("manual")
-                        }
-                        PillButton {
-                            text: "Accept · Auto"
-                            iconName: "play"
-                            implicitHeight: 30
-                            enabled: !tab.locked
-                            ToolTip.visible: hovered
-                            ToolTip.delay: 400
-                            ToolTip.text: "Start the work; edits and commands run without asking"
-                            onClicked: { tab.planAutoPending = true; autoConfirm.open() }
-                        }
-                    }
-                }
+                tab: tab
+                onRevise: { tab.revising = true; composer.forceActiveFocus() }
+                onAcceptAuto: { tab.planAutoPending = true; autoConfirm.open() }
             }
 
             Rectangle { // the prompt box, with Send inside it
@@ -1748,6 +1209,11 @@ ColumnLayout {
         confirmText: "Clear"
         onConfirmed: codingAgent.clearSession()
     }
+    AgentProviderEditor {
+        id: providerEditor
+        onSaved: Qt.callLater(() => composer.forceActiveFocus()) // ready to type right away
+        onDeleteRequested: id => { tab.deleteProviderId = id; deleteProviderConfirm.open() }
+    }
     FolderPicker { // the folder the agent works in: inside the notch, because a system dialog opens behind it
         id: workspacePicker
         title: "Choose the agent workspace"
@@ -1789,185 +1255,4 @@ ColumnLayout {
         }
     }
 
-    Popup {
-        id: providerEditor
-        parent: Overlay.overlay
-        x: Math.max(12, (Overlay.overlay.width - width) / 2)
-        y: Math.max(12, (Overlay.overlay.height - height) / 2)
-        width: Math.min(620, Overlay.overlay.width - 24)
-        height: Math.min(tab.extras ? 520 : tab.full ? 460 : 340, Overlay.overlay.height - 24)
-        padding: 12
-        modal: true
-        dim: false
-        focus: true
-        Overlay.modal: Item {}
-        closePolicy: Popup.CloseOnEscape
-        onClosed: {
-            keyField.value = ""
-            clearKey.checked = false
-        }
-        background: Rectangle {
-            color: theme.surface
-            radius: theme.radiusLg
-            border.width: 1
-            border.color: theme.outline
-        }
-        contentItem: ColumnLayout {
-            spacing: 8
-            Text {
-                text: !tab.known ? (tab.editingProviderId ? "Custom AI" : "Add a custom AI") : tab.editingProviderId ? "Configure provider" : "Add provider"
-                color: theme.text
-                font.pixelSize: 14
-                font.weight: Font.DemiBold
-            }
-            ScrollView {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                contentWidth: availableWidth
-                clip: true
-                ColumnLayout {
-                    width: parent.width
-                    spacing: 8
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        visible: !tab.editingProviderId && tab.addChoices.length > 1
-                        spacing: 4
-                        Text { text: "Provider"; color: theme.textDim; font.pixelSize: 11 }
-                        Choice {
-                            id: presetChoice
-                            Layout.fillWidth: true
-                            model: tab.addChoices
-                            textRole: "name"
-                            onActivated: index => tab.pickPreset(index)
-                        }
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        visible: tab.known && !tab.advanced
-                        text: (tab.draft.name || "") + " · " + (tab.draft.baseUrl || "") + " — the endpoint and sign-in style are set for you. Choose a model and paste your API key."
-                        color: theme.textDim
-                        font.pixelSize: 11
-                        wrapMode: Text.Wrap
-                    }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        visible: tab.known && !tab.advanced
-                        spacing: 4
-                        Text { text: "Model"; color: theme.textDim; font.pixelSize: 11 }
-                        Choice {
-                            id: modelChoice
-                            Layout.fillWidth: true
-                            model: tab.draft.modelPresets || []
-                            currentIndex: Math.max(0, (tab.draft.modelPresets || []).indexOf(tab.draft.modelId))
-                            onActivated: index => tab.setDraft("modelId", (tab.draft.modelPresets || [])[index])
-                        }
-                    }
-                    Text { // a custom AI: whatever speaks one of the two protocols
-                        Layout.fillWidth: true
-                        visible: !tab.known
-                        text: "Any OpenAI-compatible server (Ollama, LM Studio, vLLM, OpenRouter, a company gateway) or an Anthropic-style endpoint. Example address: http://localhost:11434/v1. Leave the key empty for a local server."
-                        color: theme.textDim
-                        font.pixelSize: 11
-                        wrapMode: Text.Wrap
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        visible: tab.full
-                        Field { id: nameField; label: "Name"; placeholder: "My AI"; value: tab.draft.name || ""; onEdited: text => tab.setDraft("name", text) }
-                        Field { id: modelField; label: "Model ID"; placeholder: "llama3.1:8b"; value: tab.draft.modelId || ""; mono: true; onEdited: text => tab.setDraft("modelId", text) }
-                    }
-                    Field { id: urlField; show: tab.full; label: "Base URL"; placeholder: "https://…/v1"; value: tab.draft.baseUrl || ""; mono: true; onEdited: text => tab.setDraft("baseUrl", text) }
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        visible: tab.full
-                        Text { text: "Protocol"; color: theme.textDim; font.pixelSize: 11 }
-                        Choice {
-                            id: protocolChoice
-                            Layout.fillWidth: true
-                            model: [{id: "openai", name: "OpenAI-compatible (most servers)"}, {id: "anthropic", name: "Anthropic (Claude-style)"}]
-                            textRole: "name"
-                            valueRole: "id"
-                            currentIndex: tab.draft.protocol === "anthropic" ? 1 : 0
-                            onActivated: tab.setDraft("protocol", currentValue)
-                        }
-                    }
-                    Field {
-                        id: keyField
-                        label: tab.editingProviderId && tab.draft.hasApiKey ? "API key — leave blank to keep the saved key" : tab.known ? "API key" : "API key (empty if the server needs none)"
-                        echoMode: TextInput.Password
-                        enabled: !clearKey.checked
-                        onEdited: text => keyField.value = text
-                    }
-                    PillButton {
-                        id: clearKey
-                        visible: !!tab.editingProviderId && !!tab.draft.hasApiKey
-                        text: "Clear saved API key on save"
-                        checkable: true
-                    }
-                    PillButton {
-                        text: tab.advanced ? "Hide advanced" : "Advanced (sign-in style, tokens, context)"
-                        onClicked: tab.advanced = !tab.advanced
-                    }
-                    Field {
-                        id: authField
-                        show: tab.extras
-                        label: "Sign-in style (Bearer / api-key / x-api-key / none)"
-                        value: tab.draft.authHeader || ""
-                        mono: true
-                        onEdited: text => tab.setDraft("authHeader", text)
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        visible: tab.extras
-                        Field { id: temperatureField; label: "Temperature (-1 = omit)"; value: String(tab.draft.temperature ?? 0.2); onEdited: text => tab.setDraft("temperature", text) }
-                        Field { id: tokensField; label: "Max tokens"; value: String(tab.draft.maxTokens ?? 8192); onEdited: text => tab.setDraft("maxTokens", text) }
-                    }
-                    Field {
-                        id: contextField
-                        show: tab.extras
-                        label: "Context window in tokens (0 = guess from the model)"
-                        value: String(tab.draft.contextWindow ?? 0)
-                        mono: true
-                        onEdited: text => tab.setDraft("contextWindow", text)
-                    }
-                    Field {
-                        id: tokenParameter
-                        show: tab.extras
-                        label: "Token limit parameter (max_tokens / max_completion_tokens)"
-                        value: tab.draft.maxTokensParameter || "max_tokens"
-                        onEdited: text => tab.setDraft("maxTokensParameter", text)
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        text: "Keys are stored as owner-only plaintext, not encrypted. Code and prompts go to this endpoint."
-                        color: theme.textDim
-                        font.pixelSize: 11
-                        wrapMode: Text.Wrap
-                    }
-                }
-            }
-            Text {
-                Layout.fillWidth: true
-                visible: !!tab.formError
-                text: tab.formError
-                color: theme.accentText
-                font.pixelSize: 11
-                wrapMode: Text.Wrap
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                PillButton {
-                    visible: !!tab.editingProviderId
-                    text: "Delete provider…"
-                    onClicked: {
-                        tab.deleteProviderId = tab.editingProviderId
-                        deleteProviderConfirm.open()
-                    }
-                }
-                Item { Layout.fillWidth: true }
-                PillButton { text: "Cancel"; onClicked: providerEditor.close() }
-                PillButton { text: "Save"; checked: true; onClicked: tab.saveProvider() }
-            }
-        }
-    }
 }
