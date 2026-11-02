@@ -447,6 +447,12 @@ RowLayout {
                         checked: memtune.freeWhenIdle
                         onToggled: memtune.freeWhenIdle = !memtune.freeWhenIdle
                     }
+                    SettingToggle {
+                        title: "Restart when it stays big"
+                        caption: "If Notch is still over 1 GB of memory after the panel has been closed for ten minutes (and the agent is not working), it restarts itself. What held the memory is written to memory.log in Notch's data folder either way."
+                        checked: memtune.restartOverMb > 0
+                        onToggled: memtune.restartOverMb = memtune.restartOverMb > 0 ? 0 : 1024
+                    }
                     RowLayout {
                         visible: memtune.lowMemory !== memtune.running
                         Layout.fillWidth: true

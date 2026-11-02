@@ -987,7 +987,8 @@ Window {
     }
     Timer { id: maskSettle; interval: 350; onTriggered: { root.updateMask(); root.updateBlur() } }
     onVisibleChanged: { updateMask(); applyReserve() }
-    onModeChanged: { applyGeometry(); updateMask(); updateBlur(); if (mode === "idle" || mode === "hidden") trimTimer.restart() }
+    onModeChanged: { applyGeometry(); updateMask(); updateBlur(); memtune.setPanelIdle(mode === "idle" || mode === "hidden"); if (mode === "idle" || mode === "hidden") trimTimer.restart() }
+    Connections { target: codingAgent; function onBusyChanged() { memtune.setBusy(codingAgent.busy) } }
     // A little after the panel has closed, freed memory goes back to the system.
     Timer { id: trimTimer; interval: 15000; onTriggered: { if (codingAgent.busy) restart(); else { if (memtune.freeWhenIdle) codingAgent.releaseIdle(); memtune.trim() } } }
     // The agent finished while the panel was closed: what its work built up goes back too.
@@ -1197,6 +1198,7 @@ Window {
     }
 
     onPageChanged: {
+        memtune.setContext(page)
         if (page === "note") {
             notePageLoader.active = true
             if (notePageLoader.item)

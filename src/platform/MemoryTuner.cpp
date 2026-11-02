@@ -1,6 +1,11 @@
 #include "platform/NotchPaths.h"
 #include "MemoryTuner.h"
 
+#include <QDateTime>
+#include <QHash>
+#include <QPair>
+#include <algorithm>
+#include <cctype>
 #include <QCoreApplication>
 #include <QFile>
 #include <QFileInfo>
@@ -20,15 +25,99 @@
 #endif
 #ifdef Q_OS_WIN
 #include <windows.h>
+#include <psapi.h>
 #endif
 
 namespace {
+constexpr qint64 WatchOverMb = 450;      // an idle Notch above this (private memory) is written up and trimmed
+constexpr qint64 RestartIdleMs = 10 * 60 * 1000;
+constexpr qint64 LogLimit = 200 * 1024;
+
+struct Usage { qint64 rss = 0, priv = 0, file = 0; }; // MB. priv: anonymous memory (Linux) / private bytes (Windows)
+Usage usage()
+{
+    Usage u;
+#ifdef Q_OS_LINUX
+    QFile f(QStringLiteral("/proc/self/status"));
+    if (f.open(QIODevice::ReadOnly))
+        for (const QByteArray &line : f.readAll().split('\n')) {
+            const QList<QByteArray> p = line.simplified().split(' ');
+            if (p.size() < 2) continue;
+            if (p[0] == "VmRSS:") u.rss = p[1].toLongLong() / 1024;
+            else if (p[0] == "RssAnon:") u.priv = p[1].toLongLong() / 1024;
+            else if (p[0] == "RssFile:") u.file = p[1].toLongLong() / 1024;
+        }
+#elif defined(Q_OS_WIN)
+    PROCESS_MEMORY_COUNTERS_EX c = {};
+    if (GetProcessMemoryInfo(GetCurrentProcess(), reinterpret_cast<PROCESS_MEMORY_COUNTERS *>(&c), sizeof(c))) {
+        u.rss = qint64(c.WorkingSetSize) / (1024 * 1024);
+        u.priv = qint64(c.PrivateUsage) / (1024 * 1024);
+    }
+#endif
+    return u;
+}
+
+// The biggest mappings by resident size: what kind of memory it is (heap, anonymous, a library) tells where to look.
+int threadCount()
+{
+#ifdef Q_OS_LINUX
+    return QDir(QStringLiteral("/proc/self/task")).entryList(QDir::Dirs | QDir::NoDotAndDotDot).size();
+#else
+    return 0;
+#endif
+}
+
+QString topMappings()
+{
+    QString out;
+#ifdef Q_OS_LINUX
+    QFile f(QStringLiteral("/proc/self/smaps"));
+    if (!f.open(QIODevice::ReadOnly)) return out;
+    QHash<QString, qint64> kb;
+    QList<QPair<qint64, QString>> regions; // the biggest single mappings: one huge anonymous block looks different from a heap of small ones
+    QString name, range;
+    for (const QByteArray &line : f.readAll().split('\n')) {
+        if (!line.isEmpty() && (std::isxdigit(uchar(line[0]))) && line.contains('-') && line.contains(' ')) {
+            const QList<QByteArray> p = line.simplified().split(' ');
+            name = p.size() > 5 ? QString::fromUtf8(p[5]) : QStringLiteral("[anon]");
+            range = QString::fromUtf8(p[0]);
+        } else if (line.startsWith("Rss:")) {
+            const qint64 v = line.simplified().split(' ').value(1).toLongLong();
+            kb[name] += v;
+            if (v > 20 * 1024) regions.append({v, range + QLatin1Char(' ') + name});
+        }
+    }
+    QList<QPair<qint64, QString>> sorted;
+    for (auto it = kb.begin(); it != kb.end(); ++it) sorted.append({it.value(), it.key()});
+    std::sort(sorted.begin(), sorted.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+    for (int i = 0; i < qMin(8, int(sorted.size())); ++i) out += QStringLiteral("    %1 MB  %2\n").arg(sorted[i].first / 1024).arg(sorted[i].second);
+    std::sort(regions.begin(), regions.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+    if (!regions.isEmpty()) out += QStringLiteral("  biggest single blocks:\n");
+    for (int i = 0; i < qMin(5, int(regions.size())); ++i) out += QStringLiteral("    %1 MB  %2\n").arg(regions[i].first / 1024).arg(regions[i].second);
+#endif
+    return out;
+}
+
+void writeLog(const QString &text)
+{
+    const QString path = NotchPaths::dataDir() + QStringLiteral("/memory.log");
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    if (QFileInfo(path).size() > LogLimit) { QFile::remove(path + QStringLiteral(".1")); QFile::rename(path, path + QStringLiteral(".1")); }
+    QFile f(path);
+    if (!f.open(QIODevice::Append | QIODevice::Text)) return;
+    f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    f.write(text.toUtf8());
+}
+
 QString choiceFile() { return NotchPaths::conf(QStringLiteral("perf")); }
 }
 
 MemoryTuner::MemoryTuner(QObject *parent) : QObject(parent)
 {
     QThreadPool::globalInstance()->setMaxThreadCount(4); // QtConcurrent jobs (copying, encrypting, speech): a few at a time is plenty
+    m_watch.setInterval(60000);
+    connect(&m_watch, &QTimer::timeout, this, &MemoryTuner::check);
+    m_watch.start();
     if (qEnvironmentVariableIntValue("NOTCH_MEMLOG") > 0) {
         m_log.setInterval(30000);
         connect(&m_log, &QTimer::timeout, this, [this] { report("tick"); });
@@ -52,21 +141,64 @@ void MemoryTuner::setFreeWhenIdle(bool on)
 
 void MemoryTuner::report(const char *why) const
 {
-#ifdef Q_OS_LINUX
-    QFile f(QStringLiteral("/proc/self/status"));
-    qint64 rss = 0, anon = 0, file = 0;
-    if (f.open(QIODevice::ReadOnly))
-        for (const QByteArray &line : f.readAll().split('\n')) {
-            const QList<QByteArray> p = line.simplified().split(' ');
-            if (p.size() < 2) continue;
-            if (p[0] == "VmRSS:") rss = p[1].toLongLong();
-            else if (p[0] == "RssAnon:") anon = p[1].toLongLong();
-            else if (p[0] == "RssFile:") file = p[1].toLongLong();
-        }
-    fprintf(stderr, "notch-mem %s rss=%lld MB anon=%lld MB file=%lld MB\n", why, rss / 1024, anon / 1024, file / 1024);
-#else
-    Q_UNUSED(why)
-#endif
+    const Usage u = usage();
+    fprintf(stderr, "notch-mem %s rss=%lld MB private=%lld MB file=%lld MB\n", why, qint64(u.rss), qint64(u.priv), qint64(u.file));
+}
+
+int MemoryTuner::restartOverMb() const { return QSettings(choiceFile(), QSettings::IniFormat).value(QStringLiteral("restartOverMb"), 0).toInt(); }
+
+void MemoryTuner::setRestartOverMb(int mb)
+{
+    mb = qMax(0, mb);
+    if (mb == restartOverMb())
+        return;
+    QDir().mkpath(QFileInfo(choiceFile()).absolutePath());
+    QSettings s(choiceFile(), QSettings::IniFormat);
+    s.setValue(QStringLiteral("restartOverMb"), mb);
+    s.sync();
+    emit changed();
+}
+
+void MemoryTuner::setPanelIdle(bool idle)
+{
+    if (idle == m_panelIdle)
+        return;
+    m_panelIdle = idle;
+    if (idle) m_idleSince.restart();
+}
+
+// Once a minute, only while the panel is closed: a Notch that holds a lot writes down what holds it (so the cause can be read from
+// memory.log, not guessed), is trimmed, and, if the person asked for it, restarted when it is still big after ten quiet minutes.
+void MemoryTuner::check()
+{
+    Usage u = usage();
+    // Growth while the panel is in use never reaches the idle report below: each time private memory first passes a step, it is written down once.
+    static const qint64 steps[] = {qEnvironmentVariableIsSet("NOTCH_MEM_WATCH_MB") ? qEnvironmentVariableIntValue("NOTCH_MEM_WATCH_MB") : 450, 900, 1500, 2500, 4000}; // (the variable is for testing)
+    bool passed = false;
+    while (m_step < int(sizeof(steps) / sizeof(steps[0])) && u.priv >= steps[m_step]) { ++m_step; passed = true; }
+    if (passed)
+        writeLog(QStringLiteral("%1 %2, page \"%3\"%4: rss %5 MB, private %6 MB, file %7 MB, %8 threads\n%9\n")
+                     .arg(QDateTime::currentDateTime().toString(Qt::ISODate), m_panelIdle ? QStringLiteral("idle") : QStringLiteral("in use"), m_context,
+                          m_busy ? QStringLiteral(" (agent working)") : QString()).arg(u.rss).arg(u.priv).arg(u.file).arg(threadCount()).arg(topMappings()));
+    if (!m_panelIdle)
+        return;
+    static const qint64 over = qEnvironmentVariableIsSet("NOTCH_MEM_WATCH_MB") ? qEnvironmentVariableIntValue("NOTCH_MEM_WATCH_MB") : WatchOverMb; // the variable is for testing
+    if (u.priv < over)
+        return;
+    if (!m_reported.isValid() || m_reported.elapsed() > 10 * 60 * 1000) {
+        m_reported.restart();
+        const QString before = QStringLiteral("%1 idle, last page \"%2\": rss %3 MB, private %4 MB, file %5 MB\n%6")
+            .arg(QDateTime::currentDateTime().toString(Qt::ISODate), m_context).arg(u.rss).arg(u.priv).arg(u.file).arg(topMappings());
+        trim();
+        u = usage();
+        writeLog(before + QStringLiteral("  after trim: rss %1 MB, private %2 MB\n\n").arg(u.rss).arg(u.priv));
+    }
+    const int limit = restartOverMb();
+    if (limit > 0 && u.priv > limit && !m_busy && m_idleSince.isValid() && m_idleSince.elapsed() > RestartIdleMs) {
+        writeLog(QStringLiteral("%1 restarting: private %2 MB is over %3 MB after %4 min idle\n\n")
+                     .arg(QDateTime::currentDateTime().toString(Qt::ISODate)).arg(u.priv).arg(limit).arg(m_idleSince.elapsed() / 60000));
+        restart();
+    }
 }
 
 void MemoryTuner::applyEarly()
