@@ -1,14 +1,16 @@
 #pragma once
 
 #include <QList>
+#include <functional>
 #include <QPair>
 #include <QString>
 #include <QStringList>
 
 // Document and image tools. Each writes its result to `out` (or files under outDir) and returns
 // an empty string on success, else a user-facing reason. Blocking: run them on a worker thread.
-// External programs: pdfunite / pdfseparate / pdfinfo / pdftoppm (poppler-utils), gs
-// (ghostscript), tesseract. Images → PDF and image conversion use Qt only.
+// External programs: pdfunite / pdfseparate / pdfinfo / pdftoppm / pdftotext (poppler-utils), gs
+// (ghostscript), tesseract, soffice (LibreOffice, Office documents), ffmpeg (audio and video). Images → PDF, image
+// conversion and text → PDF use Qt only.
 namespace DocTools {
 
 QString mergePdfs(const QStringList &pdfs, const QString &out);
@@ -22,6 +24,11 @@ QString recognizeText(const QString &file, bool isPdf, QString *text);
 // format: "png" | "jpg" | "webp"; maxWidth 0 keeps the size (never upscales).
 QString convertImage(const QString &image, const QString &format, int maxWidth, const QString &out);
 
+// One file to another format (ConvertModel lists the targets: "png", "pdf", "mp3", "mp4-small"...). `reserve(name)` gives a fresh
+// path in the work folder; every file written is added to *outputs as {path, display name}. Empty string on success.
+QString convertFile(const QString &in, const QString &name, const QString &base, const QString &target, const QString &workDir,
+                    const std::function<QString(const QString &)> &reserve, QList<QPair<QString, QString>> *outputs);
+
 struct ToolInput {
     QString path; // the file to work on
     QString base; // its name without extension, for naming results
@@ -34,7 +41,7 @@ struct ToolResult {
     QString summary;                        // one line for the user
 };
 // Runs one tool on inputs, writing results into workDir. kind: merge | images-pdf | compress |
-// split | extract (option: page ranges) | ocr-copy | ocr-note | convert (option: format) |
+// split | extract (option: page ranges) | ocr-copy | ocr-note | convert (option: target id from ConvertModel) |
 // resize (option: max width).
 ToolResult runTool(const QString &kind, const QList<ToolInput> &inputs, const QString &option, const QString &workDir);
 

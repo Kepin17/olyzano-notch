@@ -1,6 +1,7 @@
 #include "FileRepository.h"
 
 #include <QFile>
+#include <QRegularExpression>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -60,7 +61,10 @@ bool FileRepository::open(const QString &dbPath)
     q.finish();
     q.exec(QStringLiteral("PRAGMA journal_mode=WAL"));
     q.finish();
-    return migrate(dbPath);
+    if (!migrate(dbPath))
+        return false;
+    openText();
+    return true;
 }
 
 bool FileRepository::migrate(const QString &dbPath)
@@ -103,6 +107,142 @@ bool FileRepository::migrate(const QString &dbPath)
         }
     }
     return true;
+}
+
+// Not a migration: a migration that fails keeps the whole database from opening, and a SQLite without FTS5 only loses the
+// search inside files.
+void FileRepository::openText()
+{
+    QSqlQuery q(QSqlDatabase::database(m_conn));
+    // The FTS table holds only the text; file_text_id says which row is whose (looking an id up inside FTS means reading every row).
+    m_fts = q.exec(QStringLiteral("CREATE VIRTUAL TABLE IF NOT EXISTS file_text USING fts5(body, tokenize = 'unicode61 remove_diacritics 2')"))
+            && q.exec(QStringLiteral("CREATE TABLE IF NOT EXISTS file_text_id (id TEXT PRIMARY KEY, rid INTEGER NOT NULL)"));
+    if (!m_fts)
+        qCWarning(lcNotch) << "No FTS5 in this SQLite: search matches file names only." << q.lastError().text();
+}
+
+// Runs `work` inside one transaction: committed when it returns true, otherwise rolled back.
+bool FileRepository::inTransaction(const std::function<bool()> &work)
+{
+    QSqlDatabase db = QSqlDatabase::database(m_conn);
+    if (!db.transaction()) {
+        m_error = db.lastError().text();
+        return false;
+    }
+    if (work() && db.commit())
+        return true;
+    if (m_error.isEmpty())
+        m_error = db.lastError().text();
+    db.rollback();
+    return false;
+}
+
+bool FileRepository::setRemovedMany(const QStringList &ids, const QDateTime &at)
+{
+    return inTransaction([&] {
+        for (const QString &id : ids)
+            if (!setRemoved(id, at))
+                return false;
+        return true;
+    });
+}
+
+bool FileRepository::setStatusMany(const QStringList &ids, const QString &status)
+{
+    return inTransaction([&] {
+        for (const QString &id : ids)
+            if (!setStatus(id, status))
+                return false;
+        return true;
+    });
+}
+
+bool FileRepository::removeMany(const QStringList &ids)
+{
+    return inTransaction([&] {
+        for (const QString &id : ids) {
+            if (!remove(id))
+                return false;
+            if (m_fts && !dropText(id))
+                return false;
+        }
+        return true;
+    });
+}
+
+// Forgets the text of one file: its FTS row (by rowid, which is fast) and the line that names it.
+bool FileRepository::dropText(const QString &id)
+{
+    QSqlQuery q(QSqlDatabase::database(m_conn));
+    q.prepare(QStringLiteral("SELECT rid FROM file_text_id WHERE id = ?"));
+    q.addBindValue(id);
+    if (q.exec() && q.next()) {
+        const QVariant rid = q.value(0);
+        q.finish();
+        if (!exec(QStringLiteral("DELETE FROM file_text WHERE rowid = ?"), {rid}) || !exec(QStringLiteral("DELETE FROM file_text_id WHERE id = ?"), {id}))
+            return false;
+    }
+    return true;
+}
+
+QSet<QString> FileRepository::indexedIds()
+{
+    QSet<QString> ids;
+    if (!m_fts)
+        return ids;
+    QSqlQuery q(QSqlDatabase::database(m_conn));
+    if (q.exec(QStringLiteral("SELECT id FROM file_text_id")))
+        while (q.next())
+            ids.insert(q.value(0).toString());
+    return ids;
+}
+
+bool FileRepository::indexTexts(const QList<QPair<QString, QString>> &texts)
+{
+    if (!m_fts)
+        return false;
+    return inTransaction([&] {
+        for (const auto &t : texts) {
+            if (!dropText(t.first))
+                return false;
+            QSqlQuery q(QSqlDatabase::database(m_conn));
+            q.prepare(QStringLiteral("INSERT INTO file_text (body) VALUES (?)"));
+            q.addBindValue(t.second);
+            if (!q.exec()) {
+                m_error = q.lastError().text();
+                return false;
+            }
+            if (!exec(QStringLiteral("INSERT INTO file_text_id (id, rid) VALUES (?, ?)"), {t.first, q.lastInsertId()}))
+                return false;
+        }
+        return true;
+    });
+}
+
+QString FileRepository::matchQuery(const QString &words)
+{
+    QStringList parts;
+    for (QString w : words.split(QRegularExpression(QStringLiteral("\\s+")), Qt::SkipEmptyParts)) {
+        w.remove(u'"'); // inside a quoted string only the quote means anything
+        if (!w.isEmpty())
+            parts << u'"' + w + QStringLiteral("\"*");
+    }
+    return parts.join(u' ');
+}
+
+QSet<QString> FileRepository::searchText(const QString &words)
+{
+    QSet<QString> ids;
+    const QString match = matchQuery(words);
+    if (!m_fts || match.isEmpty())
+        return ids;
+    QSqlQuery q(QSqlDatabase::database(m_conn));
+    q.prepare(QStringLiteral("SELECT m.id FROM file_text f JOIN file_text_id m ON m.rid = f.rowid WHERE file_text MATCH ?"));
+    q.addBindValue(match);
+    if (q.exec())
+        while (q.next())
+            ids.insert(q.value(0).toString());
+    return ids;
 }
 
 bool FileRepository::exec(const QString &sql, const QVariantList &binds)

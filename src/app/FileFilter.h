@@ -3,7 +3,7 @@
 #include "models/FileItemModel.h"
 
 #include <QCollator>
-#include <QHash>
+#include <QSet>
 #include <QModelIndex>
 #include <QSortFilterProxyModel>
 #include <QString>
@@ -20,7 +20,8 @@ public:
     void setText(const QString &text);
     void setCategory(const QString &categoryId);
     void setSortMode(const QString &mode);
-    void setContents(const QHash<QString, QString> *contents) { m_contents = contents; }
+    // Items whose text matches the search (from the FTS index): shown besides the ones whose name matches.
+    void setContentIds(const QSet<QString> &ids);
     void setVaultUnlocked(bool unlocked);
 
 protected:
@@ -46,6 +47,6 @@ private:
     QString m_text;
     QString m_category;
     QString m_sort = QStringLiteral("date");
-    const QHash<QString, QString> *m_contents = nullptr; // id -> text of text files, for search
+    QSet<QString> m_contentIds;
     bool m_vaultUnlocked = false;
 };

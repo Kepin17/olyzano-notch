@@ -149,11 +149,35 @@ void FileItemModel::refreshTimes()
 
 void FileItemModel::setRemoved(const QStringList &ids, const QDateTime &at)
 {
-    for (int row = 0; row < m_items.size(); ++row) {
+    setRemoved(QSet<QString>(ids.begin(), ids.end()), at);
+}
+
+// One dataChanged over the rows touched (not one per item: every listener, such as the category counts, runs once).
+void FileItemModel::setRemoved(const QSet<QString> &ids, const QDateTime &at)
+{
+    int first = -1, last = -1;
+    for (int row = 0; row < m_items.size(); ++row)
         if (ids.contains(m_items.at(row).id)) {
             m_items[row].removedAt = at;
-            emit dataChanged(index(row), index(row), {RemovedRole, RemovedTextRole, ExpiringSoonRole});
+            if (first < 0) first = row;
+            last = row;
         }
+    if (first >= 0)
+        emit dataChanged(index(first), index(last), {RemovedRole, RemovedTextRole, ExpiringSoonRole});
+}
+
+void FileItemModel::removeIds(const QSet<QString> &ids)
+{
+    for (int row = int(m_items.size()) - 1; row >= 0; --row) { // from the end, so rows above keep their numbers
+        if (!ids.contains(m_items.at(row).id))
+            continue;
+        int top = row;
+        while (top > 0 && ids.contains(m_items.at(top - 1).id))
+            --top;
+        beginRemoveRows({}, top, row);
+        m_items.erase(m_items.begin() + top, m_items.begin() + row + 1);
+        endRemoveRows();
+        row = top;
     }
 }
 

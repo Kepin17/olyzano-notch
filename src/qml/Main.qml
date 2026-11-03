@@ -252,7 +252,7 @@ Window {
     readonly property bool inRemoved: notch.categoryFilter === "__removed__" // Recently removed view
     readonly property bool anyMenu: menu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible
                                     || toolsMenu.visible || extractPopup.visible || (settingsLoader.item !== null && settingsLoader.item.overlayOpen)
-                                    || quickLookCard.visible || vaultPopup.visible || confirmDelete.visible
+                                    || quickLookCard.visible || vaultPopup.visible || confirmDelete.visible || confirmClear.visible
                                     || (shareLoader.item !== null && shareLoader.item.visible) || incomingPopup.visible
                                     || sortMenu.visible || removedMenu.visible || (tasksPageLoader.item && tasksPageLoader.item.modalOpen)
                                     || (devPageLoader.item && devPageLoader.item.modalOpen)
@@ -642,6 +642,8 @@ Window {
         // Scrolling a short-form feed for a while (under a song the capsule keeps its place: the warning still comes)
         if (doomscroll.site !== "" && doomscroll.minutes >= 5 && !musicShown)
             return { kind: "doomscroll", title: "Scrolling " + doomscroll.siteName, detail: doomscroll.minutes + " min", progress: -1, color: theme.warn }
+        if (notch.batchLabel !== "") // a big remove / restore / delete in steps
+            return { kind: "copy", title: notch.batchLabel + "…", detail: String(notch.count), progress: -1, color: theme.accent }
         if (notch.copying > 0)
             return { kind: "copy", title: "Copying " + notch.copying + (notch.copying === 1 ? " file" : " files"),
                      detail: String(notch.count), progress: -1, color: theme.accent }
@@ -987,10 +989,68 @@ Window {
     }
     Timer { id: maskSettle; interval: 350; onTriggered: { root.updateMask(); root.updateBlur() } }
     onVisibleChanged: { updateMask(); applyReserve() }
-    onModeChanged: { applyGeometry(); updateMask(); updateBlur(); memtune.setPanelIdle(mode === "idle" || mode === "hidden"); if (mode === "idle" || mode === "hidden") trimTimer.restart() }
+    onModeChanged: { stir(); applyGeometry(); updateMask(); updateBlur(); memtune.setPanelIdle(mode === "idle" || mode === "hidden"); if (mode === "idle" || mode === "hidden") trimTimer.restart() }
     Connections { target: codingAgent; function onBusyChanged() { memtune.setBusy(codingAgent.busy) } }
     // A little after the panel has closed, freed memory goes back to the system.
     Timer { id: trimTimer; interval: 15000; onTriggered: { if (codingAgent.busy) restart(); else { if (memtune.freeWhenIdle) codingAgent.releaseIdle(); memtune.trim() } } }
+
+    // ---- The cat: what it shows, from what is going on (the most pressing first) ----
+    readonly property bool mascotOn: activities.mascot && !gaming.active
+    property string flashMood: ""   // a reaction that passes: the agent finished, a voice command worked
+    property bool catAsleep: false
+    property double lastStir: Date.now()
+    function stir() { lastStir = Date.now(); catAsleep = false }
+    function flash(m) { flashMood = m; flashTimer.restart(); stir() }
+    function toastMood(kind) {
+        switch (kind) {
+        case "charging": case "bluetooth": case "file": return "happy"
+        case "lowbattery": return "worried"
+        case "media": return "music"
+        case "color": case "update": return "surprised"
+        case "timer": case "task": return "excited"
+        case "call": return "sad" // a missed one
+        case "wellbeing": return "love"
+        default: return "calm"
+        }
+    }
+    function liveMood(kind) {
+        switch (kind) {
+        case "assistant": return assistant.state === "listening" ? "listening" : assistant.state === "thinking" ? "thinking" : assistant.state === "error" ? "confused" : "happy"
+        case "call": return "excited"
+        case "break": return "love"
+        case "transfer": case "download": case "copy": return "munch"
+        case "share": return "happy"
+        case "doomscroll": return "worried"
+        default: return "calm"
+        }
+    }
+    readonly property string mascotMood: {
+        if (assistant.state === "listening") return "listening"
+        if (assistant.state === "thinking") return "thinking"
+        if (assistant.state === "error") return "confused"
+        if (codingAgent.busy) return "thinking"
+        if (flashMood !== "") return flashMood
+        if (live) return liveMood(live.kind)
+        if (media.playing) return "music"
+        return catAsleep ? "sleepy" : "calm"
+    }
+    Timer { id: flashTimer; interval: 3500; onTriggered: root.flashMood = "" }
+    Timer { // after a while with nothing happening the cat dozes off; any news wakes it
+        interval: 15000
+        repeat: true
+        running: root.mascotOn && root.mode === "idle" && !root.catAsleep
+        onTriggered: if (Date.now() - root.lastStir > 90000) root.catAsleep = true
+    }
+    onLiveChanged: stir()
+    onShownToastChanged: stir()
+    Connections {
+        target: codingAgent
+        function onBusyChanged() { if (!codingAgent.busy) root.flash(codingAgent.lastError !== "" ? "worried" : "happy") }
+    }
+    Connections {
+        target: assistant
+        function onStateChanged() { if (assistant.state === "done") root.flash("happy") }
+    }
     // The agent finished while the panel was closed: what its work built up goes back too.
     Connections {
         target: codingAgent
@@ -1068,6 +1128,13 @@ Window {
     function openTools(ids) {
         toolsMenu.targets = ids
         toolsMenu.mimes = notch.mimeTypes(ids)
+        const rows = []
+        let group = ""
+        for (const t of notch.convertTargets(ids)) { // a heading above each group of formats
+            if (t.group !== group) { rows.push({ header: true, name: t.group }); group = t.group }
+            rows.push(t)
+        }
+        toolsMenu.convertRows = rows
         toolsMenu.popup()
     }
 
@@ -1465,6 +1532,16 @@ Window {
                 opacity: 1 - Math.abs(root.toastRoll)
                 transform: Translate { y: root.toastRoll * 12 }
 
+                Mascot {
+                    visible: root.mascotOn
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.preferredWidth: 34
+                    Layout.preferredHeight: 34
+                    size: 34
+                    mood: root.toastMood(toastRow.t.kind)
+                    animated: activities.animations
+                    lively: activities.animations && toastRow.visible && !memtune.running
+                }
                 Item { // the chip
                     Layout.preferredWidth: 36
                     Layout.preferredHeight: 36
@@ -1631,6 +1708,16 @@ Window {
             spacing: 8
             opacity: island.fade("peek")
             visible: opacity > 0
+            Mascot {
+                visible: root.mascotOn
+                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredWidth: 22
+                Layout.preferredHeight: 22
+                size: 22
+                mood: root.liveMood(liveRow.l.kind)
+                animated: activities.animations
+                lively: activities.animations && liveRow.visible && !memtune.running
+            }
             PulseDot {
                 visible: liveRow.l.kind === "copy" || liveRow.l.kind === "call"
                 color: liveRow.l.color
@@ -1715,6 +1802,16 @@ Window {
             opacity: root.musicShown ? 0 : island.fade("idle")
             visible: opacity > 0
             Behavior on opacity { enabled: activities.animations && !island.transitioning; NumberAnimation { duration: 140 } }
+            Mascot {
+                visible: root.mascotOn
+                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredWidth: 26
+                Layout.preferredHeight: 26
+                size: 26
+                mood: root.mascotMood
+                animated: activities.animations
+                lively: activities.animations && idleRow.visible && !memtune.running
+            }
             Text {
                 text: Qt.formatTime(root.idleNow, Qt.locale().timeFormat(Locale.ShortFormat))
                 color: activities.clockAccent ? theme.accent : root.textPrimary
@@ -1844,6 +1941,16 @@ Window {
                 maxHeight: 18
                 color: capColor.color
                 Layout.alignment: Qt.AlignVCenter
+            }
+            Mascot { // nods to the song
+                visible: root.mascotOn
+                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredWidth: 26
+                Layout.preferredHeight: 26
+                size: 26
+                mood: root.mascotMood
+                animated: activities.animations
+                lively: activities.animations && capRow.visible && !memtune.running && media.playing
             }
             DiscordBadge { Layout.alignment: Qt.AlignVCenter }
             LineIcon { // something is being shared
@@ -2001,6 +2108,16 @@ Window {
                         Accessible.name: "Back"
                         onClicked: root.page = "shelf"
                     }
+                    Mascot {
+                        visible: root.mascotOn && !root.selecting
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.preferredWidth: 24
+                        Layout.preferredHeight: 24
+                        size: 24
+                        mood: root.mascotMood === "sleepy" ? "calm" : root.mascotMood // awake: the panel is open
+                        animated: activities.animations
+                        lively: activities.animations && root.mode === "open" && !memtune.running
+                    }
                     Text {
                         Layout.maximumWidth: 300
                         text: root.selecting ? root.selection.length + " selected"
@@ -2037,7 +2154,7 @@ Window {
                         }
                     }
                     Item { Layout.fillWidth: true }
-                    PulseDot { visible: root.page === "shelf" && notch.copying > 0 }
+                    PulseDot { visible: root.page === "shelf" && (notch.copying > 0 || notch.batchLabel !== "") }
                     TextField {
                         id: search
                         visible: root.page === "shelf" && notch.count > 0 && !root.selecting
@@ -2138,6 +2255,17 @@ Window {
                         iconName: "unlock"
                         Accessible.name: "Lock locked categories now"
                         onClicked: notch.lockVault()
+                    }
+                    PillButton { // everything in this view (the category, the search) at once; Recently removed keeps it for a day
+                        visible: root.page === "shelf" && !root.selecting && list.count > 0
+                        enabled: notch.batchLabel === ""
+                        text: notch.batchLabel !== "" ? notch.batchLabel + "…" : root.inRemoved ? "Empty" : "Clear all"
+                        iconName: "trash"
+                        implicitHeight: 28
+                        onClicked: {
+                            confirmClear.count = list.count
+                            confirmClear.open()
+                        }
                     }
                     // Recently removed: a header button (with count) rather than a chip at the far end.
                     IconButton {
@@ -2522,11 +2650,28 @@ Window {
                             }
                         }
                     }
+                    MouseArea { // the empty shelf opens the file picker: a drop target is also a button
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: addDialog.open()
+                        Accessible.role: Accessible.Button
+                        Accessible.name: "Add files"
+                        Accessible.onPressAction: addDialog.open()
+                    }
                     Column {
                         anchors.centerIn: parent
                         spacing: 5
+                        Mascot {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            visible: root.mascotOn
+                            size: 36
+                            mood: root.dragOver ? "excited" : root.catAsleep ? "sleepy" : "calm"
+                            animated: activities.animations
+                            lively: activities.animations && emptyState.visible && !memtune.running
+                        }
                         LineIcon {
                             anchors.horizontalCenter: parent.horizontalCenter
+                            visible: !root.mascotOn
                             glyph: "download"
                             sourceSize: Qt.size(24, 24)
                             color: root.dragOver ? root.accent : root.textSecondary
@@ -2542,7 +2687,7 @@ Window {
                         }
                         Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            text: "or click here and press Ctrl+V · kept for " + notch.retentionDays
+                            text: "or click to browse · Ctrl+V to paste · kept for " + notch.retentionDays
                                   + (notch.retentionDays === 1 ? " day" : " days")
                             color: root.textSecondary
                             font.pixelSize: 11
@@ -3154,45 +3299,65 @@ Window {
         }
     }
 
-    // PDF & image tools. Items enable only for files they apply to; order = selection order.
+    // Tools for the selected files, in groups. A group is open only for the files it applies to; order = selection order.
     DarkMenu {
         id: toolsMenu
         property var targets: []
         property var mimes: []
+        property var convertRows: [] // [{header, name | id, label, available, hint}], from notch.convertTargets
         readonly property int n: mimes.length
         readonly property bool allPdf: n > 0 && mimes.every(m => m === "application/pdf")
         readonly property bool allImages: n > 0 && mimes.every(m => m.startsWith("image/"))
-        Action { text: "Merge PDFs"; enabled: toolsMenu.allPdf && toolsMenu.n >= 2; onTriggered: root.runTool("merge") }
-        Action { text: "Images → PDF"; enabled: toolsMenu.allImages; onTriggered: root.runTool("images-pdf") }
-        Action { text: "Compress PDF"; enabled: toolsMenu.allPdf; onTriggered: root.runTool("compress") }
-        Action { text: "Split into pages"; enabled: toolsMenu.allPdf && toolsMenu.n === 1; onTriggered: root.runTool("split") }
-        Action {
-            text: "Extract pages…"
-            enabled: toolsMenu.allPdf && toolsMenu.n === 1
-            onTriggered: {
-                extractPopup.itemId = toolsMenu.targets[0]
-                extractPopup.pages = notch.pageCount(extractPopup.itemId)
-                extractPopup.open()
+
+        DarkMenu {
+            id: convertMenu
+            title: "Convert to"
+            width: 240
+            implicitWidth: 240
+            enabled: toolsMenu.convertRows.length > 0
+            Instantiator {
+                model: toolsMenu.convertRows
+                delegate: DarkMenuItem {
+                    required property var modelData
+                    heading: !!modelData.header
+                    disabledByCaller: !modelData.header && !modelData.available
+                    text: modelData.header ? modelData.name.toUpperCase() : modelData.label + (modelData.available ? "" : "  ·  " + modelData.hint)
+                    onTriggered: root.runTool("convert", modelData.id)
+                }
+                onObjectAdded: (index, object) => convertMenu.insertItem(index, object)
+                onObjectRemoved: (index, object) => convertMenu.removeItem(object)
             }
         }
-        DarkSeparator {}
-        Action {
-            text: "Copy text (OCR)"
-            enabled: toolsMenu.n === 1 && (toolsMenu.allImages || toolsMenu.allPdf)
-            onTriggered: root.runTool("ocr-copy")
+        DarkMenu {
+            title: "PDF tools"
+            enabled: toolsMenu.allPdf
+            Action { text: "Merge PDFs"; enabled: toolsMenu.n >= 2; onTriggered: root.runTool("merge") }
+            Action { text: "Compress PDF"; onTriggered: root.runTool("compress") }
+            Action { text: "Split into pages"; enabled: toolsMenu.n === 1; onTriggered: root.runTool("split") }
+            Action {
+                text: "Extract pages…"
+                enabled: toolsMenu.n === 1
+                onTriggered: {
+                    extractPopup.itemId = toolsMenu.targets[0]
+                    extractPopup.pages = notch.pageCount(extractPopup.itemId)
+                    extractPopup.open()
+                }
+            }
         }
-        Action {
-            text: "Text to note (OCR)"
-            enabled: toolsMenu.n === 1 && (toolsMenu.allImages || toolsMenu.allPdf)
-            onTriggered: root.runTool("ocr-note")
+        DarkMenu {
+            title: "Images"
+            enabled: toolsMenu.allImages
+            Action { text: "Images → one PDF"; onTriggered: root.runTool("images-pdf") }
+            Action { text: "Resize to 1920 px wide"; onTriggered: root.runTool("resize", "1920") }
+            Action { text: "Resize to 1280 px wide"; onTriggered: root.runTool("resize", "1280") }
+            Action { text: "Resize to 800 px wide"; onTriggered: root.runTool("resize", "800") }
         }
-        DarkSeparator {}
-        Action { text: "Convert to PNG"; enabled: toolsMenu.allImages; onTriggered: root.runTool("convert", "png") }
-        Action { text: "Convert to JPG"; enabled: toolsMenu.allImages; onTriggered: root.runTool("convert", "jpg") }
-        Action { text: "Convert to WebP"; enabled: toolsMenu.allImages; onTriggered: root.runTool("convert", "webp") }
-        Action { text: "Resize to 1920 px wide"; enabled: toolsMenu.allImages; onTriggered: root.runTool("resize", "1920") }
-        Action { text: "Resize to 1280 px wide"; enabled: toolsMenu.allImages; onTriggered: root.runTool("resize", "1280") }
-        Action { text: "Resize to 800 px wide"; enabled: toolsMenu.allImages; onTriggered: root.runTool("resize", "800") }
+        DarkMenu {
+            title: "Text (OCR)"
+            enabled: toolsMenu.n === 1 && (toolsMenu.allImages || toolsMenu.allPdf)
+            Action { text: "Copy text"; onTriggered: root.runTool("ocr-copy") }
+            Action { text: "Text to note"; onTriggered: root.runTool("ocr-note") }
+        }
         DarkSeparator {}
         Action {
             text: "Compress to .zip"
@@ -3357,6 +3522,16 @@ Window {
                 PillButton { text: vaultPopup.mode === "create" ? "Lock" : "Unlock"; checked: true; onClicked: vaultPopup.go() }
             }
         }
+    }
+
+    ConfirmDialog {
+        id: confirmClear
+        property int count: 0
+        title: root.inRemoved ? "Delete everything removed?" : "Clear all " + count + (count === 1 ? " file?" : " files?")
+        body: root.inRemoved ? "These " + count + " files are deleted for good."
+              : "They move to Recently removed and can be restored for 24 hours. Locked files are deleted for good. Only what this view shows is cleared."
+        confirmText: root.inRemoved ? "Delete" : "Clear all"
+        onConfirmed: root.inRemoved ? notch.emptyRecentlyRemoved() : notch.removeItems(notch.visibleIds())
     }
 
     ConfirmDialog {

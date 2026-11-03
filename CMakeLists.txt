@@ -35,7 +35,7 @@ qt_add_library(notch_core STATIC
     src/services/CleanupService.h src/services/CleanupService.cpp
     src/services/FolderWatcher.h src/services/FolderWatcher.cpp
     src/services/TextTools.h
-    src/services/DocTools.h src/services/DocTools.cpp
+    src/services/DocTools.h src/services/DocTools.cpp src/services/ConvertModel.h
     src/services/Vault.h src/services/Vault.cpp
     src/services/ShareCrypto.h src/services/ShareCrypto.cpp
     src/services/Signature.h src/services/Signature.cpp
@@ -187,7 +187,7 @@ qt_add_qml_module(notch
         src/qml/AgentTab.qml src/qml/AgentSidebar.qml src/qml/AgentTodoCard.qml src/qml/AgentPlanCard.qml src/qml/AgentProviderEditor.qml src/qml/AgentChoice.qml src/qml/AgentCopyText.qml src/qml/AgentStep.qml src/qml/AgentBadge.qml src/qml/AgentSuggest.qml src/qml/AgentActivity.qml src/qml/FolderPicker.qml
         # shared controls
         src/qml/PillButton.qml src/qml/IconButton.qml src/qml/Toggle.qml src/qml/PulseDot.qml
-        src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkSeparator.qml
+        src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkMenuItem.qml src/qml/Mascot.qml src/qml/DarkSeparator.qml
         src/qml/SettingToggle.qml src/qml/Chip.qml src/qml/WheelScroller.qml
         src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml src/qml/ActionBar.qml src/qml/Bar.qml src/qml/Segmented.qml src/qml/GlassLayer.qml src/qml/Launcher.qml src/qml/SignalIcon.qml src/qml/CircleAction.qml src/qml/ColorPage.qml src/qml/AppMenuPopup.qml src/qml/CalendarCard.qml src/qml/QuickSettings.qml src/qml/ClipboardPage.qml src/qml/SearchPanel.qml src/qml/CameraPage.qml src/qml/CameraView.qml src/qml/LyricsPanel.qml
         src/qml/Dock.qml src/qml/TimerPage.qml src/qml/TasksPage.qml src/qml/ArtColor.qml src/qml/MarqueeText.qml src/qml/CoverArt.qml src/qml/DiscordBadge.qml src/qml/DevPage.qml src/qml/ApiPage.qml src/qml/ApiEnvEditor.qml src/qml/ApiRunPanel.qml src/qml/SshTab.qml src/qml/DbTab.qml src/qml/Field.qml src/qml/ConfirmDialog.qml src/qml/EmptyState.qml src/qml/Card.qml src/qml/SelectableRow.qml
@@ -321,6 +321,13 @@ qt_add_executable(tst_core tests/tst_core.cpp)
 target_compile_definitions(tst_core PRIVATE NOTCH_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_link_libraries(tst_core PRIVATE notch_core Qt6::Test)
 add_test(NAME tst_core COMMAND tst_core)
+
+# The shelf controller with many files: needs the controller itself, not just the core library.
+qt_add_executable(tst_shelf tests/tst_shelf.cpp src/app/NotchController.h src/app/NotchController.cpp src/app/FileFilter.h src/app/FileFilter.cpp
+                  src/models/FileItemModel.h src/models/FileItemModel.cpp)
+target_include_directories(tst_shelf PRIVATE src)
+target_link_libraries(tst_shelf PRIVATE notch_core Qt6::Test Qt6::Gui Qt6::Network Qt6::Concurrent)
+add_test(NAME tst_shelf COMMAND tst_shelf)
 qt_add_executable(tst_codingagent tests/tst_codingagent.cpp src/platform/CodingAgent.h src/platform/CodingAgent.cpp src/platform/AgentStore.h src/platform/AgentStore.cpp src/platform/AgentTools.h)
 target_include_directories(tst_codingagent PRIVATE src)
 target_link_libraries(tst_codingagent PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Test)
@@ -343,7 +350,7 @@ set(CPACK_PACKAGE_CONTACT "kevien.oj@gmail.com")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Temporary file shelf for KDE Plasma")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libqt6sql6-sqlite, layer-shell-qt, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-window, qml6-module-qtqml-workerscript, qml6-module-qtquick-templates, qml6-module-qtquick-shapes, qml6-module-qtquick-effects, qml6-module-qtquick-dialogs, qml6-module-qt-labs-platform, qml6-module-qtcore, pulseaudio-utils, poppler-utils, ghostscript, gocryptfs, fuse3, qt6-svg-plugins, qt6-image-formats-plugins, fonts-noto-cjk")
-set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "tesseract-ocr, qml6-module-qtmultimedia") # the Camera page (loaded only when it is opened)
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "tesseract-ocr, qml6-module-qtmultimedia, ffmpeg, libreoffice-core | libreoffice") # the Camera page (loaded only when it is opened); ffmpeg: audio and video conversion; LibreOffice: Office documents
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 include(CPack)
 endif()

@@ -5,6 +5,11 @@ void FileFilter::setText(const QString &text)
     changeFilter([&] { m_text = text; });
 }
 
+void FileFilter::setContentIds(const QSet<QString> &ids)
+{
+    changeFilter([&] { m_contentIds = ids; });
+}
+
 void FileFilter::setCategory(const QString &categoryId)
 {
     changeFilter([&] { m_category = categoryId; });
@@ -47,8 +52,7 @@ bool FileFilter::filterAcceptsRow(int row, const QModelIndex &parent) const
 {
     const QModelIndex i = sourceModel()->index(row, 0, parent);
     const bool match = i.data(FileItemModel::NameRole).toString().contains(m_text, Qt::CaseInsensitive)
-                       || (m_contents && !m_text.isEmpty()
-                           && m_contents->value(i.data(FileItemModel::IdRole).toString()).contains(m_text, Qt::CaseInsensitive));
+                       || (!m_text.isEmpty() && m_contentIds.contains(i.data(FileItemModel::IdRole).toString()));
     if (!match)
         return false;
     // Vault files: only inside their own (locked) category, and only while the vault is open.

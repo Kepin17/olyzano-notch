@@ -146,6 +146,8 @@ Olyzano Notch runs without these; each one switches on a feature. It finds them 
 |---|---|---|---|
 | **Tesseract OCR** + a language | *OCR* in the Tools menu | `sudo apt install tesseract-ocr tesseract-ocr-eng`<br>(more: `tesseract-ocr-ind`, …) | [UB Mannheim installer](https://github.com/UB-Mannheim/tesseract/wiki): tick languages, add `C:\Program Files\Tesseract-OCR` to `PATH` |
 | **Poppler** | PDF tools, OCR of PDFs | included in the `.deb` | [poppler-windows](https://github.com/oschwartz10612/poppler-windows/releases/latest): unzip, add `Library\bin` to `PATH` |
+| **ffmpeg** | *Convert to* audio and video | recommended by the `.deb` | [ffmpeg builds](https://www.gyan.dev/ffmpeg/builds/): add `bin` to `PATH` |
+| **LibreOffice** | *Convert to* for Word, Excel, PowerPoint | recommended by the `.deb` | [LibreOffice](https://www.libreoffice.org/download/download-libreoffice/): found in its default folder |
 | **Ghostscript** | *Compress PDF* | included in the `.deb` | [Ghostscript](https://ghostscript.com/releases/gsdnld.html) (64-bit AGPL); installer adds to `PATH` |
 | **KDE Connect** | *Send to device*, files from phone, calls, notifications | `sudo apt install kdeconnect` + [Android](https://play.google.com/store/apps/details?id=org.kde.kdeconnect_tp) / [iOS](https://apps.apple.com/app/kde-connect/id1580245991); pair once | [KDE Connect for Windows](https://kdeconnect.kde.org/download.html) (installer; Store version is not found) + same phone app |
 | **KWin** | Dock: real running apps, window list | part of Plasma | built in (Windows windows) |
@@ -292,7 +294,13 @@ Right-click → **Tools…** (or **Tools** while selecting). New files appear ne
 
 - **PDF:** merge in the order you picked, images → PDF (one A4 page per image), compress, split into pages, extract
   pages ("1-3, 5, 8-").
-- **Images:** convert to PNG / JPG / WebP, resize to 1920 / 1280 / 800 px wide (never upscales).
+- **Convert to** (a submenu that lists only what the selected files can become; a format whose program is missing is greyed with its name):
+  - Images and SVG: PNG, JPG, WebP, BMP, TIFF, ICO, PDF (Qt, nothing to install).
+  - PDF: PNG or JPG, one per page (up to 200 pages), or text (Poppler).
+  - Text, Markdown, HTML, CSV: PDF (Qt).
+  - Word, Excel, PowerPoint, OpenDocument, RTF: PDF and the other office formats (needs LibreOffice).
+  - Audio: MP3, WAV, FLAC, OGG, M4A, Opus. Video: MP4, WebM, MKV, animated GIF, a smaller MP4, or just the audio (needs ffmpeg).
+- **Images:** resize to 1920 / 1280 / 800 px wide (never upscales).
 - **OCR:** copy the text, or make it a note, from an image or a scanned PDF.
 - **Zip:** *Compress to .zip*, or *Zip category*. **Save to…** copies files out to a folder without overwriting.
 - **Copy** puts files on the clipboard as files; *Copy contents* copies a text file's text; *Copy path* the path.

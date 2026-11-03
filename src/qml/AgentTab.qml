@@ -400,6 +400,16 @@ ColumnLayout {
                     enabled: !tab.locked
                     onClicked: providerEditor.edit("")
                 }
+                Mascot {
+                    visible: tab.shell.mascotOn
+                    Layout.alignment: Qt.AlignVCenter
+                    Layout.preferredWidth: 26
+                    Layout.preferredHeight: 26
+                    size: 26
+                    mood: codingAgent.busy ? "thinking" : codingAgent.lastError !== "" ? "worried" : tab.shell.flashMood !== "" ? tab.shell.flashMood : "calm"
+                    animated: activities.animations
+                    lively: activities.animations && tab.visible && !memtune.running
+                }
             }
 
             Rectangle { // the conversation (hidden while the plan is open for reading)

@@ -1,12 +1,17 @@
 #include "DocTools.h"
 
 #include "platform/ProcessRunner.h"
+#include "services/ConvertModel.h"
 #include "services/FileService.h"
 
 #include <QDir>
 #include <QFileInfo>
 #include <QImageReader>
 #include <QLocale>
+#include <QMimeDatabase>
+#include <QTextDocument>
+#include <QUrl>
+#include <QUuid>
 #include <QPageSize>
 #include <QPainter>
 #include <QPdfWriter>
@@ -164,11 +169,18 @@ QString convertImage(const QString &image, const QString &format, int maxWidth, 
 {
     QImageReader reader(image);
     reader.setAutoTransform(true);
+    if (reader.format().startsWith("svg")) { // a drawing has no pixels of its own: twice its nominal size reads sharp
+        const QSize nominal = reader.size();
+        if (nominal.isValid())
+            reader.setScaledSize(nominal.scaled(QSize(4096, 4096), Qt::KeepAspectRatio).boundedTo(nominal * 2));
+    }
     QImage img = reader.read();
     if (img.isNull())
         return reader.errorString();
     if (maxWidth > 0 && img.width() > maxWidth)
         img = img.scaledToWidth(maxWidth, Qt::SmoothTransformation);
+    if (format == QLatin1String("ico") && (img.width() > 256 || img.height() > 256)) // an icon file holds at most 256 px
+        img = img.scaled(256, 256, Qt::KeepAspectRatio, Qt::SmoothTransformation);
     if (format == QLatin1String("jpg") && img.hasAlphaChannel()) { // JPEG has no transparency: put it on white
         QImage flat(img.size(), QImage::Format_RGB32);
         flat.fill(Qt::white);
@@ -176,8 +188,149 @@ QString convertImage(const QString &image, const QString &format, int maxWidth, 
         img = flat;
     }
     // For PNG Qt reads "quality" as (inverse) compression: keep its default, which compresses well.
-    const int quality = format == QLatin1String("png") ? -1 : 90;
+    const int quality = (format == QLatin1String("png") || format == QLatin1String("bmp") || format == QLatin1String("ico") || format == QLatin1String("tiff")) ? -1 : 90;
     return img.save(out, format.toLatin1().constData(), quality) ? QString() : QStringLiteral("cannot write %1").arg(format);
+}
+
+namespace {
+using ConvertModel::Engine;
+using ConvertModel::Kind;
+
+QString runEngine(Engine e, const QStringList &args, int timeoutMs)
+{
+    const QString path = ConvertModel::programPath(e);
+    if (path.isEmpty())
+        return QStringLiteral("%1 is not installed (needed for this conversion)").arg(ConvertModel::needs(e));
+    const auto r = ProcessRunner::run(path, args, timeoutMs);
+    return r.ok ? QString() : r.error;
+}
+
+QString textToPdf(const QString &in, const QString &suffix, const QString &out)
+{
+    QFile f(in);
+    if (!f.open(QIODevice::ReadOnly) || f.size() > 8 * 1024 * 1024)
+        return QStringLiteral("cannot read the file, or it is larger than 8 MB");
+    const QString text = QString::fromUtf8(f.readAll());
+    QTextDocument doc;
+    if (suffix == QLatin1String("md") || suffix == QLatin1String("markdown"))
+        doc.setMarkdown(text);
+    else if (suffix == QLatin1String("html") || suffix == QLatin1String("htm"))
+        doc.setHtml(text);
+    else {
+        QFont mono(QStringLiteral("monospace"));
+        mono.setStyleHint(QFont::Monospace);
+        doc.setDefaultFont(mono);
+        doc.setPlainText(text);
+    }
+    QPdfWriter writer(out);
+    writer.setPageSize(QPageSize(QPageSize::A4));
+    writer.setPageMargins(QMarginsF(15, 15, 15, 15), QPageLayout::Millimeter);
+    doc.print(&writer);
+    return QFileInfo(out).size() > 0 ? QString() : QStringLiteral("cannot write the PDF");
+}
+
+// Codec arguments per target. -vn drops the picture when the target is sound only.
+QStringList ffmpegArgs(const QString &t)
+{
+    if (t == QLatin1String("mp3")) return {"-vn", "-c:a", "libmp3lame", "-q:a", "2"};
+    if (t == QLatin1String("wav")) return {"-vn", "-c:a", "pcm_s16le"};
+    if (t == QLatin1String("flac")) return {"-vn", "-c:a", "flac"};
+    if (t == QLatin1String("ogg")) return {"-vn", "-c:a", "libvorbis", "-q:a", "5"};
+    if (t == QLatin1String("m4a")) return {"-vn", "-c:a", "aac", "-b:a", "192k"};
+    if (t == QLatin1String("opus")) return {"-vn", "-c:a", "libopus", "-b:a", "128k"};
+    if (t == QLatin1String("mp4")) return {"-c:v", "libx264", "-crf", "23", "-preset", "medium", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart"};
+    if (t == QLatin1String("mp4-small")) return {"-c:v", "libx264", "-crf", "28", "-preset", "medium", "-vf", "scale='min(1280,iw)':-2", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "96k", "-movflags", "+faststart"};
+    if (t == QLatin1String("webm")) return {"-c:v", "libvpx-vp9", "-crf", "32", "-b:v", "0", "-c:a", "libopus"};
+    if (t == QLatin1String("mkv")) return {"-c", "copy"};
+    if (t == QLatin1String("gif")) return {"-t", "30", "-filter_complex", "fps=12,scale=480:-1:flags=lanczos,split[a][b];[a]palettegen[p];[b][p]paletteuse", "-loop", "0"};
+    return {};
+}
+}
+
+QString convertFile(const QString &in, const QString &name, const QString &base, const QString &target, const QString &workDir,
+                    const std::function<QString(const QString &)> &reserve, QList<QPair<QString, QString>> *outputs)
+{
+    const QString suffix = ConvertModel::suffixOf(name);
+    const Kind kind = ConvertModel::kindOf(QMimeDatabase().mimeTypeForFile(in).name(), name);
+    const auto offered = ConvertModel::targetsFor(kind, suffix);
+    const auto hit = std::find_if(offered.begin(), offered.end(), [&](const ConvertModel::Target &t) { return t.id == target; });
+    if (hit == offered.end())
+        return QStringLiteral("cannot convert this file to %1").arg(target);
+    if (!ConvertModel::have(hit->engine))
+        return QStringLiteral("%1 is not installed (needed for this conversion)").arg(ConvertModel::needs(hit->engine));
+    const QString ext = target == QLatin1String("mp4-small") ? QStringLiteral("mp4") : target;
+    const QString stem = target == QLatin1String("mp4-small") ? base + QStringLiteral(" (small)") : base;
+    auto done = [&](const QString &path) { outputs->append(qMakePair(path, QFileInfo(path).fileName())); };
+
+    if (kind == Kind::Image || kind == Kind::Svg) {
+        const QString out = reserve(stem + u'.' + ext);
+        const QString err = ext == QLatin1String("pdf") ? imagesToPdf({in}, out) : convertImage(in, ext, 0, out);
+        if (err.isEmpty()) done(out);
+        return err;
+    }
+    if (kind == Kind::Text) {
+        const QString out = reserve(stem + QStringLiteral(".pdf"));
+        const QString err = textToPdf(in, suffix, out);
+        if (err.isEmpty()) done(out);
+        return err;
+    }
+    if (kind == Kind::Pdf && ext == QLatin1String("txt")) {
+        const QString out = reserve(stem + QStringLiteral(".txt"));
+        const QString err = run(QStringLiteral("pdftotext"), {QStringLiteral("-layout"), in, out});
+        if (err.isEmpty()) done(out);
+        return err;
+    }
+    if (kind == Kind::Pdf) { // one picture per page
+        constexpr int MaxPages = 200;
+        const int pages = pdfPageCount(in);
+        if (pages > MaxPages)
+            return QStringLiteral("the PDF has %1 pages; up to %2 are converted at once (extract the pages you need first)").arg(pages).arg(MaxPages);
+        const QString dir = workDir + QStringLiteral("/render-") + QUuid::createUuid().toString(QUuid::WithoutBraces);
+        QDir().mkpath(dir);
+        if (const QString err = run(QStringLiteral("pdftoppm"), {QStringLiteral("-r"), QStringLiteral("150"), ext == QLatin1String("png") ? QStringLiteral("-png") : QStringLiteral("-jpeg"), in, dir + QStringLiteral("/p")}, nullptr, 600000);
+            !err.isEmpty())
+            return err;
+        const QStringList rendered = QDir(dir).entryList({QStringLiteral("p-*")}, QDir::Files, QDir::Name); // padded to the same width: name order is page order
+        int page = 0;
+        for (const QString &file : rendered) {
+            const QString out = reserve(QStringLiteral("%1 - page %2.%3").arg(stem).arg(++page).arg(ext));
+            if (!QFile::rename(dir + u'/' + file, out))
+                return QStringLiteral("cannot write %1").arg(QFileInfo(out).fileName());
+            done(out);
+        }
+        QDir(dir).removeRecursively();
+        return rendered.isEmpty() ? QStringLiteral("no pages were rendered") : QString();
+    }
+    if (kind == Kind::Document) {
+        const QString dir = workDir + QStringLiteral("/office-") + QUuid::createUuid().toString(QUuid::WithoutBraces);
+        QDir().mkpath(dir);
+        // a profile of its own: a LibreOffice the person has open would otherwise take the job, or refuse it
+        const QString filter = ext == QLatin1String("txt") ? QStringLiteral("txt:Text") : ext;
+        if (const QString err = runEngine(Engine::Office, {QStringLiteral("--headless"), QStringLiteral("--norestore"), QStringLiteral("--nologo"),
+                                                           QStringLiteral("-env:UserInstallation=") + QUrl::fromLocalFile(dir + QStringLiteral("/profile")).toString(),
+                                                           QStringLiteral("--convert-to"), filter, QStringLiteral("--outdir"), dir + QStringLiteral("/out"), in}, 180000);
+            !err.isEmpty())
+            return err;
+        const QStringList made = QDir(dir + QStringLiteral("/out")).entryList(QDir::Files, QDir::Name);
+        if (made.isEmpty())
+            return QStringLiteral("LibreOffice could not convert this file");
+        const QString out = reserve(stem + u'.' + ext);
+        if (!QFile::rename(dir + QStringLiteral("/out/") + made.first(), out))
+            return QStringLiteral("cannot write %1").arg(QFileInfo(out).fileName());
+        QDir(dir).removeRecursively();
+        done(out);
+        return {};
+    }
+    if (kind == Kind::Audio || kind == Kind::Video) {
+        const QString out = reserve(stem + u'.' + ext);
+        QStringList args{QStringLiteral("-hide_banner"), QStringLiteral("-loglevel"), QStringLiteral("error"), QStringLiteral("-nostdin"), QStringLiteral("-y"), QStringLiteral("-i"), in};
+        args << ffmpegArgs(target) << out;
+        const QString err = runEngine(Engine::Ffmpeg, args, kind == Kind::Video ? 30 * 60 * 1000 : 10 * 60 * 1000);
+        if (err.isEmpty() && QFileInfo(out).size() > 0) { done(out); return {}; }
+        QFile::remove(out);
+        return err.isEmpty() ? QStringLiteral("ffmpeg wrote nothing") : err;
+    }
+    return QStringLiteral("cannot convert this file");
 }
 
 QList<int> parsePageRanges(const QString &text, int pageCount, QString *error)
@@ -262,25 +415,30 @@ ToolResult runTool(const QString &kind, const QList<ToolInput> &inputs, const QS
     } else if (kind == QLatin1String("ocr-copy") || kind == QLatin1String("ocr-note")) {
         const bool pdf = inputs.first().name.endsWith(QLatin1String(".pdf"), Qt::CaseInsensitive);
         r.error = recognizeText(inputs.first().path, pdf, &r.text);
-    } else if (kind == QLatin1String("convert") || kind == QLatin1String("resize")) {
+    } else if (kind == QLatin1String("convert")) {
+        const auto reserve = [&](const QString &name) { return workDir + u'/' + FileService::uniqueName(workDir, FileService::safeFileName(name)); };
+        int files = 0;
         for (const ToolInput &in : inputs) {
-            QString format = option, suffix;
-            int width = 0;
-            if (kind == QLatin1String("resize")) {
-                width = option.toInt();
-                const QString ext = QFileInfo(in.name).suffix().toLower();
-                format = ext == QLatin1String("jpeg") ? QStringLiteral("jpg")
-                       : (ext == QLatin1String("jpg") || ext == QLatin1String("webp")) ? ext : QStringLiteral("png");
-                suffix = QStringLiteral(" (%1px)").arg(width);
-            }
-            const QString target = out(in.base + suffix + u'.' + format);
+            if (const QString err = convertFile(in.path, in.name, in.base, option, workDir, reserve, &r.outputs); !err.isEmpty())
+                r.error = in.name + QStringLiteral(": ") + err;
+            else
+                ++files;
+        }
+        r.summary = QStringLiteral("Converted %1 file%2 → %3 file%4").arg(files).arg(files == 1 ? QString() : QStringLiteral("s"))
+                        .arg(r.outputs.size()).arg(r.outputs.size() == 1 ? QString() : QStringLiteral("s"));
+    } else if (kind == QLatin1String("resize")) {
+        for (const ToolInput &in : inputs) {
+            const int width = option.toInt();
+            const QString ext = QFileInfo(in.name).suffix().toLower();
+            const QString format = ext == QLatin1String("jpeg") ? QStringLiteral("jpg")
+                                 : (ext == QLatin1String("jpg") || ext == QLatin1String("webp")) ? ext : QStringLiteral("png");
+            const QString target = out(in.base + QStringLiteral(" (%1px)").arg(width) + u'.' + format);
             if (const QString err = convertImage(in.path, format, width, target); !err.isEmpty()) {
                 r.outputs.removeLast();
                 r.error = in.name + QStringLiteral(": ") + err;
             }
         }
-        r.summary = QStringLiteral("%1 %2 image%3").arg(kind == QLatin1String("resize") ? QStringLiteral("Resized") : QStringLiteral("Converted"))
-                        .arg(r.outputs.size()).arg(r.outputs.size() == 1 ? QString() : QStringLiteral("s"));
+        r.summary = QStringLiteral("Resized %1 image%2").arg(r.outputs.size()).arg(r.outputs.size() == 1 ? QString() : QStringLiteral("s"));
     } else {
         r.error = QStringLiteral("unknown tool %1").arg(kind);
     }

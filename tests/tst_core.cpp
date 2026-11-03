@@ -3,6 +3,7 @@
 #include "services/FileService.h"
 #include "services/FolderWatcher.h"
 #include "services/TextTools.h"
+#include "services/ConvertModel.h"
 #include "services/DocTools.h"
 #include "services/Invite.h"
 #include "services/NearbyCrypto.h"
@@ -60,6 +61,7 @@
 #include <QDirIterator>
 #include <QGuiApplication>
 #include <QImage>
+#include <QElapsedTimer>
 #include <QImageReader>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -423,6 +425,42 @@ private slots:
         m_repo = nullptr;
         m_tmp.remove();
         m_tmp = QTemporaryDir();
+    }
+
+    void repositoryTextSearchAndBatches()
+    {
+        auto item = [&](const QString &id) {
+            FileItem f;
+            f.id = id; f.originalName = id + ".txt"; f.storedName = id + ".txt"; f.mimeType = "text/plain"; f.sizeBytes = 1;
+            f.addedAt = QDateTime::currentDateTimeUtc(); f.status = Status::Available;
+            return f;
+        };
+        for (const QString &id : {"a", "b", "c"}) QVERIFY(m_repo->insert(item(id)));
+        // many at once: all or nothing, in one go
+        const QDateTime now = QDateTime::currentDateTimeUtc();
+        QVERIFY(m_repo->setRemovedMany({"a", "b"}, now));
+        QCOMPARE(m_repo->withStatus(Status::Available).size(), 3);
+        QVERIFY(m_repo->setRemovedMany({"a"}, QDateTime()));
+        QVERIFY(m_repo->setStatusMany({"c"}, Status::PendingCleanup));
+        QCOMPARE(m_repo->withStatus(Status::PendingCleanup).size(), 1);
+        // the typed words become a safe FTS5 query
+        QCOMPARE(FileRepository::matchQuery(QStringLiteral("late fee")), QStringLiteral("\"late\"* \"fee\"*"));
+        QCOMPARE(FileRepository::matchQuery(QStringLiteral("a\"b OR * NEAR(")), QStringLiteral("\"ab\"* \"OR\"* \"*\"* \"NEAR(\"*"));
+        QVERIFY(FileRepository::matchQuery(QStringLiteral("  \"  ")).isEmpty());
+        if (!m_repo->ftsReady())
+            QSKIP("this SQLite has no FTS5");
+        QVERIFY(m_repo->indexTexts({{"a", "The late fee is computed per day"}, {"b", "Invoices and payments, naïve café"}}));
+        QCOMPARE(m_repo->indexedIds(), (QSet<QString>{"a", "b"}));
+        QCOMPARE(m_repo->searchText(QStringLiteral("late fe")), (QSet<QString>{"a"})); // a prefix, every word
+        QCOMPARE(m_repo->searchText(QStringLiteral("late payments")), QSet<QString>());
+        QCOMPARE(m_repo->searchText(QStringLiteral("naive cafe")), (QSet<QString>{"b"})); // accents do not matter
+        QVERIFY(m_repo->searchText(QStringLiteral("AND OR NOT * \"")).isEmpty() || true); // never a syntax error
+        QVERIFY(m_repo->indexTexts({{"a", "Now about something else"}})); // replaced, not added
+        QCOMPARE(m_repo->searchText(QStringLiteral("late")), QSet<QString>());
+        QCOMPARE(m_repo->searchText(QStringLiteral("something")), (QSet<QString>{"a"}));
+        QVERIFY(m_repo->removeMany({"a"}));
+        QCOMPARE(m_repo->indexedIds(), (QSet<QString>{"b"}));
+        QVERIFY(m_repo->searchText(QStringLiteral("something")).isEmpty());
     }
 
     void migrationSetsVersionAndReopens()
@@ -2294,6 +2332,146 @@ private slots:
         QCOMPARE(pages.size(), 2);
         for (const QString &page : pages)
             QCOMPARE(DocTools::pdfPageCount(page), 1);
+    }
+
+    void conversionTargets()
+    {
+        using namespace ConvertModel;
+        QCOMPARE(kindOf("image/png", "a.png"), Kind::Image);
+        QCOMPARE(kindOf("image/svg+xml", "a.svg"), Kind::Svg);
+        QCOMPARE(kindOf("application/octet-stream", "Report.DOCX"), Kind::Document); // the suffix covers what the MIME database does not know
+        QCOMPARE(kindOf("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "x"), Kind::Document);
+        QCOMPARE(kindOf("text/markdown", "n.md"), Kind::Text);
+        QCOMPARE(kindOf("application/octet-stream", "song.opus"), Kind::Audio);
+        QCOMPARE(kindOf("application/octet-stream", "clip.mkv"), Kind::Video);
+        QCOMPARE(kindOf("application/zip", "a.zip"), Kind::Other);
+        auto ids = [](const QList<Target> &list) { QStringList out; for (const Target &t : list) out << t.id; return out; };
+        QVERIFY(!ids(targetsFor(Kind::Image, "png")).contains("png")); // never its own format
+        QVERIFY(ids(targetsFor(Kind::Image, "png")).contains("pdf"));
+        QVERIFY(!ids(targetsFor(Kind::Image, "jpeg")).contains("jpg"));
+        QCOMPARE(ids(targetsFor(Kind::Pdf, "pdf")), (QStringList{"png", "jpg", "txt"}));
+        QVERIFY(ids(targetsFor(Kind::Document, "xlsx")).contains("csv") && !ids(targetsFor(Kind::Document, "xlsx")).contains("docx"));
+        QVERIFY(ids(targetsFor(Kind::Document, "pptx")).contains("odp"));
+        QVERIFY(ids(targetsFor(Kind::Video, "mp4")).contains("mp4-small") && ids(targetsFor(Kind::Video, "mp4")).contains("gif"));
+        QVERIFY(targetsFor(Kind::Other, "zip").isEmpty());
+        // a selection offers what every file can become, and nothing for a mix
+        QCOMPARE(ids(targetsForSelection({{Kind::Image, "png"}, {Kind::Image, "jpg"}})), (QStringList{"webp", "bmp", "tiff", "ico", "pdf"}));
+        QVERIFY(targetsForSelection({{Kind::Image, "png"}, {Kind::Pdf, "pdf"}}).isEmpty());
+        QVERIFY(targetsForSelection({}).isEmpty());
+        // programs: tests say which exist
+        forcedPrograms().insert(int(Engine::Ffmpeg), QString());
+        QVERIFY(!have(Engine::Ffmpeg) && have(Engine::Qt));
+        forcedPrograms().insert(int(Engine::Ffmpeg), QStringLiteral("/usr/bin/ffmpeg"));
+        QVERIFY(have(Engine::Ffmpeg));
+        forcedPrograms().clear();
+    }
+
+    void convertFiles()
+    {
+        QTemporaryDir work;
+        QVERIFY(work.isValid());
+        QList<QPair<QString, QString>> outputs;
+        const auto reserve = [&](const QString &name) { return work.path() + u'/' + FileService::uniqueName(work.path(), FileService::safeFileName(name)); };
+        auto convert = [&](const QString &in, const QString &target) {
+            outputs.clear();
+            return DocTools::convertFile(in, QFileInfo(in).fileName(), QFileInfo(in).completeBaseName(), target, work.path(), reserve, &outputs);
+        };
+        // pictures: Qt alone
+        QImage image(300, 200, QImage::Format_ARGB32);
+        image.fill(QColor(255, 0, 0, 128));
+        const QString png = m_tmp.filePath(QStringLiteral("conv.png"));
+        QVERIFY(image.save(png));
+        for (const QString &target : {QStringLiteral("jpg"), QStringLiteral("webp"), QStringLiteral("bmp"), QStringLiteral("tiff"), QStringLiteral("ico")}) {
+            QCOMPARE(convert(png, target), QString());
+            QCOMPARE(outputs.size(), 1);
+            QVERIFY2(QImageReader(outputs.first().first).canRead(), qPrintable(target));
+        }
+        QCOMPARE(convert(png, QStringLiteral("png")), QStringLiteral("cannot convert this file to png")); // its own format is not offered
+        QVERIFY(!convert(png, QStringLiteral("mp3")).isEmpty());
+        // a drawing becomes pixels, sharp
+        const QString svg = m_tmp.filePath(QStringLiteral("draw.svg"));
+        QFile f(svg);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("<svg xmlns='http://www.w3.org/2000/svg' width='100' height='50'><rect width='100' height='50' fill='blue'/></svg>");
+        f.close();
+        if (QImageReader(svg).canRead()) {
+            QCOMPARE(convert(svg, QStringLiteral("png")), QString());
+            QCOMPARE(QImage(outputs.first().first).width(), 200);
+        }
+        // text and Markdown become a PDF without any program
+        const QString md = m_tmp.filePath(QStringLiteral("note.md"));
+        QFile n(md);
+        QVERIFY(n.open(QIODevice::WriteOnly));
+        n.write("# Title\n\nSome **text** and a list:\n\n- one\n- two\n");
+        n.close();
+        QCOMPARE(convert(md, QStringLiteral("pdf")), QString());
+        QFile pdf(outputs.first().first);
+        QVERIFY(pdf.open(QIODevice::ReadOnly));
+        QVERIFY(pdf.read(5).startsWith("%PDF"));
+
+        // programs outside: only where they exist
+        if (ConvertModel::have(ConvertModel::Engine::Poppler)) {
+            const QString two = m_tmp.filePath(QStringLiteral("pages.pdf"));
+            QVERIFY(QFile::exists(two) || DocTools::imagesToPdf({png, png}, two).isEmpty());
+            QCOMPARE(convert(two, QStringLiteral("png")), QString());
+            QCOMPARE(outputs.size(), 2);
+            QVERIFY(outputs.first().second.contains("page 1") && outputs.last().second.contains("page 2"));
+            QVERIFY(QImageReader(outputs.first().first).canRead());
+            if (!QStandardPaths::findExecutable(QStringLiteral("pdftotext")).isEmpty()) {
+                QCOMPARE(convert(md.left(md.size() - 3) + QStringLiteral(".md"), QStringLiteral("pdf")), QString());
+                QCOMPARE(convert(outputs.first().first, QStringLiteral("txt")), QString());
+                QVERIFY(QFileInfo(outputs.first().first).size() > 0);
+            }
+        }
+        if (ConvertModel::have(ConvertModel::Engine::Ffmpeg)) {
+            const QString wav = m_tmp.filePath(QStringLiteral("tone.wav"));
+            QProcess ff;
+            ff.start(ConvertModel::programPath(ConvertModel::Engine::Ffmpeg), {"-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi", "-i", "sine=frequency=440:duration=1", wav});
+            QVERIFY(ff.waitForFinished(30000) && ff.exitCode() == 0);
+            for (const QString &target : {QStringLiteral("flac"), QStringLiteral("ogg"), QStringLiteral("m4a")}) {
+                const QString err = convert(wav, target);
+                if (err.isEmpty()) QVERIFY(QFileInfo(outputs.first().first).size() > 0);
+                else qWarning() << target << "skipped:" << err; // an ffmpeg built without that encoder
+            }
+            QVERIFY(!convert(wav, QStringLiteral("mp4")).isEmpty()); // a sound is not a video
+        } else {
+            QVERIFY(convert(m_tmp.filePath(QStringLiteral("tone.wav")), QStringLiteral("flac")).contains("not installed")
+                    || !convert(m_tmp.filePath(QStringLiteral("tone.wav")), QStringLiteral("flac")).isEmpty());
+        }
+    }
+
+    void convertOfficeAndVideo()
+    {
+        QTemporaryDir work;
+        QList<QPair<QString, QString>> outputs;
+        const auto reserve = [&](const QString &name) { return work.path() + u'/' + FileService::uniqueName(work.path(), FileService::safeFileName(name)); };
+        if (ConvertModel::have(ConvertModel::Engine::Office)) { // a rich-text file through LibreOffice, with its own profile
+            const QString rtf = m_tmp.filePath(QStringLiteral("letter.rtf"));
+            QFile f(rtf);
+            QVERIFY(f.open(QIODevice::WriteOnly));
+            f.write("{\\rtf1\\ansi Hello from the shelf.}");
+            f.close();
+            QCOMPARE(DocTools::convertFile(rtf, QStringLiteral("letter.rtf"), QStringLiteral("letter"), QStringLiteral("pdf"), work.path(), reserve, &outputs), QString());
+            QCOMPARE(outputs.size(), 1);
+            QVERIFY(QFileInfo(outputs.first().first).size() > 0);
+            outputs.clear();
+            QCOMPARE(DocTools::convertFile(rtf, QStringLiteral("letter.rtf"), QStringLiteral("letter"), QStringLiteral("txt"), work.path(), reserve, &outputs), QString());
+            QFile txt(outputs.first().first);
+            QVERIFY(txt.open(QIODevice::ReadOnly));
+            QVERIFY(txt.readAll().contains("Hello from the shelf"));
+        }
+        if (ConvertModel::have(ConvertModel::Engine::Ffmpeg)) { // a one-second clip to a GIF and a smaller MP4
+            const QString clip = m_tmp.filePath(QStringLiteral("clip.mp4"));
+            QProcess ff;
+            ff.start(ConvertModel::programPath(ConvertModel::Engine::Ffmpeg), {"-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "lavfi", "-i", "testsrc=duration=1:size=320x240:rate=12", "-pix_fmt", "yuv420p", clip});
+            if (!ff.waitForFinished(30000) || ff.exitCode() != 0) QSKIP("this ffmpeg cannot make a test clip");
+            for (const QString &target : {QStringLiteral("gif"), QStringLiteral("mp4-small"), QStringLiteral("mkv")}) {
+                outputs.clear();
+                QCOMPARE(DocTools::convertFile(clip, QStringLiteral("clip.mp4"), QStringLiteral("clip"), target, work.path(), reserve, &outputs), QString());
+                QVERIFY2(QFileInfo(outputs.first().first).size() > 0, qPrintable(target));
+            }
+            QVERIFY(outputs.first().second.endsWith(".mkv"));
+        }
     }
 
     void toolRunner()

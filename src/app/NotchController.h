@@ -7,6 +7,7 @@
 #include "services/Vault.h"
 
 #include <QObject>
+#include <functional>
 #include <QSet>
 #include <QSettings>
 #include <QTimer>
@@ -23,6 +24,7 @@ class NotchController : public QObject
     Q_PROPERTY(QAbstractItemModel *items READ items CONSTANT)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
     Q_PROPERTY(int copying READ copying NOTIFY copyingChanged)
+    Q_PROPERTY(QString batchLabel READ batchLabel NOTIFY batchLabelChanged) // "Removing 340 of 1000" while a big remove/restore/delete runs, else ""
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged)
     Q_PROPERTY(QVariantList categories READ categories NOTIFY categoriesChanged) // [{id, name, count}]
@@ -62,6 +64,7 @@ public:
     int copying() const { return m_copying; }
     QString errorMessage() const { return m_error; }
     QString filter() const { return m_filter; }
+    QString batchLabel() const { return m_batchLabel; }
     void setFilter(const QString &text);
     QVariantList categories() const { return m_categories; }
     QString categoryFilter() const { return m_categoryFilter; }
@@ -164,6 +167,8 @@ public:
     // ranges) | ocr-copy | ocr-note | convert (option: png/jpg/webp) | resize (option: max width).
     Q_INVOKABLE void runTool(const QString &kind, const QStringList &ids, const QString &option = {});
     Q_INVOKABLE QStringList mimeTypes(const QStringList &ids) const;
+    // What the selected files can be converted to: [{id, label, group, available, hint}], empty for a mixed selection.
+    Q_INVOKABLE QVariantList convertTargets(const QStringList &ids) const;
     Q_INVOKABLE int pageCount(const QString &id) const;
     // Note editor toolkit (see TextTools.h): {ok, text, error}.
     Q_INVOKABLE QVariantMap transformText(const QString &kind, const QString &text) const;
@@ -210,6 +215,7 @@ public:
 signals:
     void countChanged();
     void copyingChanged();
+    void batchLabelChanged();
     void errorMessageChanged();
     void filterChanged();
     void categoriesChanged();
@@ -242,7 +248,6 @@ private:
                   const QString &categoryId, QString *idOut = nullptr);
     // Moves a finished file (e.g. a tool's output) into managed storage as a new item.
     bool adoptFile(const QString &path, const QString &name, const QString &source, const QString &categoryId);
-    void deleteNow(const FileItem &item);
     void updateWatchers();
     void onWatchedFile(const QString &path, const QString &settingKey, const QString &categoryName, const QString &title);
     QString autoCategory(const QString &settingKey, const QString &name); // remembered by id, recreated if deleted
@@ -264,7 +269,18 @@ private:
     // A new file's category: the explicit one if any (open category, folder, auto source),
     // else the rule for its type, else none.
     QString ruledCategory(const QString &categoryId, const QString &mimeType);
-    void indexContents(); // text of the shelf's text files, so search also matches inside them
+    // Big removes, restores and deletes run in small steps (kBatch items, a short pause between, one transaction each), so the panel
+    // keeps drawing and answering; a short list is done at once.
+    bool runBatches(const QString &verb, const QStringList &ids, std::function<void(const QStringList &)> step, std::function<void()> finish);
+    void nextBatch();
+    void trashBatch(const QStringList &chunk);
+    void restoreBatch(const QStringList &chunk);
+    void deleteBatch(const QStringList &chunk);
+    // Search inside text files: the first 64 KB of each goes to the FTS index a few files at a time, in the background.
+    void scheduleIndexing();
+    void indexStep();
+    bool indexable(const FileItem &item);
+    void runSearch();
     void runCleanup();
     void expireEmptyCategories();
     void setError(const QString &message);
@@ -287,8 +303,18 @@ private:
     QStringList m_lastRemoved; // what the Undo toast restores
     QList<Category> m_categoryList; // from the database, see reloadCategories()
     QVariantList m_categories;      // what QML sees: [{id, name, count, special}]
-    QHash<QString, QString> m_contents; // see indexContents()
-    bool m_contentsStale = true;
+    QSet<QString> m_indexed; // ids whose text is in the index
+    QHash<QString, bool> m_textMime;
+    QTimer m_indexTimer, m_searchTimer, m_batchTimer;
+    struct Job {
+        QString verb;
+        QStringList ids;
+        qsizetype done = 0;
+        std::function<void(const QStringList &)> step;
+        std::function<void()> finish;
+    } m_job;
+    QString m_batchLabel;
+    QStringList m_trashed; // what the running remove has moved so far (for one Undo at the end)
     FolderWatcher m_screenshots;
     FolderWatcher m_downloads;
     QHash<QString, qint64> m_autoAdded; // path -> ms since epoch, de-dupes Downloads vs KDE Connect

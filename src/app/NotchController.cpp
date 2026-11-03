@@ -7,6 +7,7 @@
 #include "services/FileService.h"
 #include "services/ZipWriter.h"
 #include "services/TextTools.h"
+#include "services/ConvertModel.h"
 #include "services/DocTools.h"
 
 #include <QBuffer>
@@ -83,11 +84,17 @@ NotchController::NotchController(const QString &dataDir, QObject *parent)
 {
     m_model.setRetentionDays(m_retentionDays);
     m_proxy.setSourceModel(&m_model);
-    m_proxy.setContents(&m_contents);
-    const auto stale = [this] { m_contentsStale = true; };
-    connect(&m_model, &QAbstractItemModel::rowsInserted, this, stale);
-    connect(&m_model, &QAbstractItemModel::rowsRemoved, this, stale);
-    connect(&m_model, &QAbstractItemModel::modelReset, this, stale);
+    m_batchTimer.setSingleShot(true);
+    connect(&m_batchTimer, &QTimer::timeout, this, &NotchController::nextBatch);
+    m_indexTimer.setSingleShot(true);
+    connect(&m_indexTimer, &QTimer::timeout, this, &NotchController::indexStep);
+    m_searchTimer.setSingleShot(true);
+    m_searchTimer.setInterval(150);
+    connect(&m_searchTimer, &QTimer::timeout, this, &NotchController::runSearch);
+    // a file that arrived, or finished copying, gets its text into the search index
+    connect(&m_model, &QAbstractItemModel::rowsInserted, this, &NotchController::scheduleIndexing);
+    connect(&m_model, &QAbstractItemModel::modelReset, this, &NotchController::scheduleIndexing);
+    connect(&m_model, &QAbstractItemModel::dataChanged, this, &NotchController::scheduleIndexing);
     m_proxy.setSortMode(sortMode());
     connect(&m_screenshots, &FolderWatcher::fileReady, this, [this](const QString &path) {
         onWatchedFile(path, QStringLiteral("screenshotCategory"), tr("Screenshots"), tr("Screenshot added"));
@@ -142,6 +149,8 @@ bool NotchController::start()
     vaultStateChanged();
     connect(qApp, &QCoreApplication::aboutToQuit, this, &NotchController::lockVault);
     m_model.setItems(m_repo.visible());
+    m_indexed = m_repo.indexedIds();
+    scheduleIndexing();
     updateWatchers();
     expireEmptyCategories();
     m_clock.start();
@@ -700,29 +709,91 @@ void NotchController::remove(const QString &id)
     removeItems({id});
 }
 
+namespace {
+constexpr int kBatch = 10;       // items per step of a big remove / restore / delete
+constexpr int kBatchPauseMs = 8; // the panel gets this long between steps to draw and answer
+}
+
+bool NotchController::runBatches(const QString &verb, const QStringList &ids, std::function<void(const QStringList &)> step,
+                                 std::function<void()> finish)
+{
+    if (ids.isEmpty())
+        return true;
+    if (!m_job.verb.isEmpty()) {
+        setError(tr("Wait for the current job to finish"));
+        return false;
+    }
+    if (ids.size() <= kBatch) { // the usual case: done at once
+        step(ids);
+        finish();
+        return true;
+    }
+    m_job = {verb, ids, 0, std::move(step), std::move(finish)};
+    m_batchLabel = tr("%1 0 of %2").arg(verb).arg(ids.size());
+    emit batchLabelChanged();
+    nextBatch();
+    return true;
+}
+
+void NotchController::nextBatch()
+{
+    const QStringList chunk = m_job.ids.mid(m_job.done, kBatch);
+    m_job.step(chunk);
+    m_job.done += chunk.size();
+    if (m_job.done >= m_job.ids.size()) {
+        const auto finish = std::move(m_job.finish);
+        m_job = {};
+        m_batchLabel.clear();
+        emit batchLabelChanged();
+        finish();
+        return;
+    }
+    m_batchLabel = tr("%1 %2 of %3").arg(m_job.verb).arg(m_job.done).arg(m_job.ids.size());
+    emit batchLabelChanged();
+    m_batchTimer.start(kBatchPauseMs);
+}
+
 void NotchController::removeItems(const QStringList &ids)
 {
-    const QDateTime now = QDateTime::currentDateTimeUtc();
-    QStringList moved, vaultIds;
-    for (const QString &id : ids)
-        if (const FileItem *item = m_model.find(id); item && item->vault)
-            vaultIds << id;
-    if (!vaultIds.isEmpty()) // locked files skip Recently removed: no plain copy should linger there
-        deleteForever(vaultIds);
-    for (const QString &id : ids) {
-        const FileItem *item = m_model.find(id);
-        if (!item || item->vault || item->status == Status::Copying || item->removedAt.isValid())
-            continue;
-        if (m_repo.setRemoved(id, now))
-            moved << id;
-    }
-    if (moved.isEmpty())
+    if (!m_job.verb.isEmpty()) {
+        setError(tr("Wait for the current job to finish"));
         return;
-    m_model.setRemoved(moved, now);
-    m_lastRemoved = moved;
-    m_trashTimer.start(); // the Undo toast's lifetime
-    emit undoCountChanged();
-    emit countChanged();
+    }
+    m_trashed.clear();
+    runBatches(tr("Removing"), ids, [this](const QStringList &chunk) { trashBatch(chunk); }, [this] {
+        if (!m_trashed.isEmpty()) {
+            m_lastRemoved = m_trashed;
+            m_trashed.clear();
+            m_trashTimer.start(); // the Undo toast's lifetime
+            emit undoCountChanged();
+        }
+        emit countChanged();
+    });
+}
+
+void NotchController::trashBatch(const QStringList &chunk)
+{
+    QStringList trash, vault;
+    for (const QString &id : chunk) {
+        const FileItem *item = m_model.find(id);
+        if (!item)
+            continue;
+        if (item->vault) // locked files skip Recently removed: no plain copy should linger there
+            vault << id;
+        else if (item->status != Status::Copying && !item->removedAt.isValid())
+            trash << id;
+    }
+    if (!vault.isEmpty())
+        deleteBatch(vault);
+    if (trash.isEmpty())
+        return;
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    if (!m_repo.setRemovedMany(trash, now)) {
+        setError(tr("Database error: %1").arg(m_repo.errorString()));
+        return;
+    }
+    m_model.setRemoved(QSet<QString>(trash.begin(), trash.end()), now);
+    m_trashed += trash;
 }
 
 void NotchController::undoRemove()
@@ -732,29 +803,28 @@ void NotchController::undoRemove()
 
 void NotchController::restoreItems(const QStringList &ids)
 {
-    QStringList back;
-    for (const QString &id : ids)
-        if (m_repo.setRemoved(id, QDateTime()))
-            back << id;
-    m_model.setRemoved(back, QDateTime());
-    if (!m_lastRemoved.isEmpty()) {
-        m_lastRemoved.clear();
-        m_trashTimer.stop();
-        emit undoCountChanged();
+    runBatches(tr("Restoring"), ids, [this](const QStringList &chunk) { restoreBatch(chunk); }, [this] {
+        if (!m_lastRemoved.isEmpty()) {
+            m_lastRemoved.clear();
+            m_trashTimer.stop();
+            emit undoCountChanged();
+        }
+        emit countChanged();
+    });
+}
+
+void NotchController::restoreBatch(const QStringList &chunk)
+{
+    if (!m_repo.setRemovedMany(chunk, QDateTime())) {
+        setError(tr("Database error: %1").arg(m_repo.errorString()));
+        return;
     }
-    emit countChanged();
+    m_model.setRemoved(QSet<QString>(chunk.begin(), chunk.end()), QDateTime());
 }
 
 void NotchController::deleteForever(const QStringList &ids)
 {
-    for (const QString &id : ids) {
-        if (const FileItem *item = m_model.find(id); item && item->status != Status::Copying) {
-            const FileItem copy = *item;
-            m_model.removeId(id);
-            deleteNow(copy);
-        }
-    }
-    emit countChanged();
+    runBatches(tr("Deleting"), ids, [this](const QStringList &chunk) { deleteBatch(chunk); }, [this] { emit countChanged(); });
 }
 
 void NotchController::emptyRecentlyRemoved()
@@ -766,16 +836,33 @@ void NotchController::emptyRecentlyRemoved()
     deleteForever(ids);
 }
 
-void NotchController::deleteNow(const FileItem &item)
+// For good: marked for cleanup (so a crash in the middle is finished on the next start), gone from the shelf, the stored copies
+// deleted, then the rows. Two transactions for the whole step.
+void NotchController::deleteBatch(const QStringList &chunk)
 {
-    if (!m_repo.setStatus(item.id, Status::PendingCleanup)) {
+    QList<FileItem> items;
+    QStringList ids;
+    for (const QString &id : chunk)
+        if (const FileItem *item = m_model.find(id); item && item->status != Status::Copying) {
+            items << *item;
+            ids << id;
+        }
+    if (items.isEmpty())
+        return;
+    if (!m_repo.setStatusMany(ids, Status::PendingCleanup)) {
         setError(tr("Database error: %1").arg(m_repo.errorString()));
         return;
     }
-    if (FileService::removeManaged(baseDir(item), item.storedName))
-        m_repo.remove(item.id);
-    else
-        setError(tr("Could not delete the stored copy yet; cleanup will retry."));
+    m_model.removeIds(QSet<QString>(ids.begin(), ids.end()));
+    QStringList gone;
+    for (const FileItem &item : items) {
+        m_indexed.remove(item.id);
+        if (FileService::removeManaged(baseDir(item), item.storedName))
+            gone << item.id;
+        else
+            setError(tr("Could not delete the stored copy yet; cleanup will retry."));
+    }
+    m_repo.removeMany(gone);
 }
 
 void NotchController::setDragging(const QStringList &ids, bool dragging)
@@ -947,9 +1034,13 @@ void NotchController::setFilter(const QString &text)
     if (text == m_filter)
         return;
     m_filter = text;
-    if (!text.isEmpty() && m_contentsStale)
-        indexContents();
     m_proxy.setText(text);
+    if (text.trimmed().isEmpty()) {
+        m_searchTimer.stop();
+        m_proxy.setContentIds({});
+    } else {
+        m_searchTimer.start(); // the names match at once; the text inside files a moment after the last key
+    }
     emit filterChanged();
 }
 
@@ -1303,27 +1394,59 @@ bool NotchController::saveNote(const QString &id, const QString &name, const QSt
     FileItem saved = *item;
     saved.sizeBytes = bytes.size();
     m_model.upsert(saved);
-    m_contentsStale = true;
+    m_indexed.remove(id); // its text changed: indexed again
+    scheduleIndexing();
     renameItem(id, clean); // no-op when the name is unchanged
     return true;
 }
 
-// ponytail: re-reads every text file on the first search after a change; fine for a shelf of
-// files that expire within days. An incremental index is the upgrade if shelves get huge.
-void NotchController::indexContents()
+// Which files have their text searched: plain text, on the shelf for good (not copying, not locked away).
+bool NotchController::indexable(const FileItem &item)
 {
-    m_contents.clear();
-    QMimeDatabase db;
+    if (item.status != Status::Available || item.vault || item.mimeType == QLatin1String("application/x-desktop"))
+        return false;
+    auto it = m_textMime.find(item.mimeType);
+    if (it == m_textMime.end())
+        it = m_textMime.insert(item.mimeType, QMimeDatabase().mimeTypeForName(item.mimeType).inherits(QStringLiteral("text/plain")));
+    return it.value();
+}
+
+void NotchController::scheduleIndexing()
+{
+    if (m_ready && m_repo.ftsReady() && !m_indexTimer.isActive())
+        m_indexTimer.start(m_indexed.isEmpty() ? 0 : 200);
+}
+
+// A few files at a time (the first 64 KB of each, one transaction), until none is left; then the timer is not started again.
+void NotchController::indexStep()
+{
+    constexpr int PerStep = 10;
+    constexpr qint64 MaxBytes = 64 * 1024;
+    QList<QPair<QString, QString>> batch;
+    bool more = false;
     for (const FileItem &item : m_model.items()) {
-        if (item.status != Status::Available || item.vault || item.sizeBytes > (512 << 10) // never index vault text
-            || !db.mimeTypeForName(item.mimeType).inherits(QStringLiteral("text/plain"))
-            || item.mimeType == QLatin1String("application/x-desktop"))
+        if (m_indexed.contains(item.id) || !indexable(item))
             continue;
+        if (batch.size() >= PerStep) {
+            more = true;
+            break;
+        }
         QFile f(pathOf(item));
-        if (f.open(QIODevice::ReadOnly))
-            m_contents.insert(item.id, QString::fromUtf8(f.readAll()));
+        batch.append({item.id, f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.read(MaxBytes)) : QString()}); // unreadable: empty text, not asked again
     }
-    m_contentsStale = false;
+    if (!batch.isEmpty() && m_repo.indexTexts(batch)) {
+        for (const auto &t : batch)
+            m_indexed.insert(t.first);
+        if (!m_filter.trimmed().isEmpty())
+            m_searchTimer.start(); // a search is open: what was just indexed may match it
+    }
+    if (more)
+        m_indexTimer.start(50);
+}
+
+void NotchController::runSearch()
+{
+    m_proxy.setContentIds(m_repo.searchText(m_filter));
 }
 
 bool NotchController::adoptFile(const QString &path, const QString &name, const QString &source, const QString &categoryId)
@@ -1356,6 +1479,21 @@ QStringList NotchController::mimeTypes(const QStringList &ids) const
     for (const QString &id : ids)
         if (const FileItem *item = m_model.find(id))
             out << item->mimeType;
+    return out;
+}
+
+QVariantList NotchController::convertTargets(const QStringList &ids) const
+{
+    QList<ConvertModel::Pick> picks;
+    for (const QString &id : ids)
+        if (const FileItem *item = m_model.find(id))
+            picks.append({ConvertModel::kindOf(item->mimeType, item->originalName), ConvertModel::suffixOf(item->originalName)});
+    QVariantList out;
+    for (const ConvertModel::Target &t : ConvertModel::targetsForSelection(picks)) {
+        const bool have = ConvertModel::have(t.engine);
+        out.append(QVariantMap{{QStringLiteral("id"), t.id}, {QStringLiteral("label"), t.label}, {QStringLiteral("group"), t.group},
+                               {QStringLiteral("available"), have}, {QStringLiteral("hint"), have ? QString() : tr("needs %1").arg(ConvertModel::needs(t.engine))}});
+    }
     return out;
 }
 
@@ -1456,7 +1594,6 @@ void NotchController::vaultStateChanged()
     const bool open = m_vault.isUnlocked();
     m_model.vaultStateChanged();
     m_proxy.setVaultUnlocked(open);
-    m_contentsStale = true;
     emit vaultChanged();
     emit countChanged();
 }
@@ -1479,7 +1616,7 @@ void NotchController::setCategoryLocked(const QString &categoryId, bool locked)
         if (item.categoryId != categoryId || item.status != Status::Available)
             continue;
         if (item.removedAt.isValid() && m_repo.setRemoved(item.id, QDateTime()))
-            m_model.setRemoved({item.id}, QDateTime());
+            m_model.setRemoved(QSet<QString>{item.id}, QDateTime());
         if (const FileItem *current = m_model.find(item.id); current && relocate(*current, locked))
             ++moved;
     }

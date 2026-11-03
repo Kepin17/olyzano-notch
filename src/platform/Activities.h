@@ -72,6 +72,7 @@ class Activities : public QObject
     // How far the capsule and panel overshoot when they spring to their size: "off" | "soft" | "normal" | "bouncy".
     Q_PROPERTY(QString animBounce READ animBounce WRITE setAnimBounce NOTIFY settingsChanged)
     Q_PROPERTY(qreal bounceFactor READ bounceFactor NOTIFY settingsChanged) // what the springs' damping is multiplied by
+    Q_PROPERTY(bool mascot READ mascot WRITE setMascot NOTIFY settingsChanged) // the cat that shows how the notch feels (Settings → Appearance)
     Q_PROPERTY(bool animations READ animations WRITE setAnimations NOTIFY settingsChanged) // transitions and movement on or off (Settings → Appearance)
     Q_PROPERTY(bool taskInCapsule READ taskInCapsule WRITE setTaskInCapsule NOTIFY settingsChanged) // the next task in the idle capsule
     // Settings
@@ -168,6 +169,8 @@ public:
     void setAnimBounce(const QString &level) { store(QStringLiteral("animBounce"), level == QLatin1String("off") || level == QLatin1String("soft") || level == QLatin1String("bouncy") ? level : QStringLiteral("normal")); }
     qreal bounceFactor() const { return BounceModel::factor(animBounce()); }
     Q_INVOKABLE qreal damp(qreal base, qreal factor) const { return BounceModel::damp(base, factor); }
+    bool mascot() const { return m_settings.value(QStringLiteral("mascot"), true).toBool(); }
+    void setMascot(bool on) { store(QStringLiteral("mascot"), on); }
     bool animations() const { return m_settings.value(QStringLiteral("animations"), true).toBool(); }
     void setAnimations(bool on) { store(QStringLiteral("animations"), on); }
     bool taskInCapsule() const { return m_settings.value(QStringLiteral("taskInCapsule"), true).toBool(); }

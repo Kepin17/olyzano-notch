@@ -31,8 +31,16 @@ Files are deleted after the retention period (default 7 days; *Settings → Keep
 
 ## 3. Tools on files
 
-Right-click → **Tools…**: merge, split, extract and compress PDFs; images → PDF; convert or resize images; OCR; zip. Results
+Right-click → **Tools…**: **Convert to** (the formats the selected files can become: images, PDF → PNG/JPG per page or text, Office documents → PDF/DOCX/ODT…, text and Markdown → PDF, audio, video → MP4/WebM/GIF/MP3), **PDF tools** (merge, split, extract, compress), **Images** (images → one PDF, resize), **Text (OCR)**, zip. Results
 appear next to the originals.
+
+### The cat
+
+A small cat lives in the notch and shows how things are going: asleep after a quiet minute and a half, happy when the charger connects
+or a file arrives, worried when the battery is low or a command failed, listening while you speak to the assistant, thinking while the
+Agent works, nodding to the music. It sits left of the clock when idle, beside the song while music plays, in the panel header and on an
+empty shelf. Settings → Appearance → **Mascot** turns it off and lets you try every face. It is drawn from a few shapes and does nothing
+while the notch is still (no extra memory: about the same as without it).
 
 ## 4. Share a file with a phone or another computer
 

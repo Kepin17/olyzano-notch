@@ -39,38 +39,5 @@ Menu {
         border.color: menu.menuEdge
     }
 
-    delegate: MenuItem {
-        id: mi
-        implicitWidth: menu.width - 12
-        implicitHeight: 30
-        leftPadding: 10
-        rightPadding: 10
-        topPadding: 4
-        bottomPadding: 4
-        spacing: 0
-        indicator: null
-        arrow: null
-        hoverEnabled: true
-        // keep Basic from applying its own white "sunken" chrome
-        down: false
-
-        contentItem: Text {
-            text: mi.text
-            color: mi.enabled ? menu.menuFg : menu.menuFgDim
-            font.pixelSize: 12
-            font.weight: Font.Medium
-            elide: Text.ElideRight
-            horizontalAlignment: Text.AlignLeft
-            verticalAlignment: Text.AlignVCenter
-            anchors.fill: parent
-            anchors.leftMargin: mi.leftPadding
-            anchors.rightMargin: mi.rightPadding
-        }
-
-        // Always an opaque row — no transparency for a style highlight to show through
-        background: Rectangle {
-            radius: theme.radiusSm
-            color: mi.highlighted && mi.enabled ? menu.menuHoverBg : menu.menuBg
-        }
-    }
+    delegate: DarkMenuItem {}
 }

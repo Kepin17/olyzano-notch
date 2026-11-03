@@ -3,6 +3,7 @@
 #include "FileItem.h"
 
 #include <QAbstractListModel>
+#include <QSet>
 
 // Updated incrementally (never reset after load) so a delegate being dragged out
 // is not destroyed when another item changes.
@@ -42,6 +43,7 @@ public:
     void setItems(const QList<FileItem> &items);
     void upsert(const FileItem &item);
     void removeId(const QString &id);
+    void removeIds(const QSet<QString> &ids); // one signal per run of neighbours, not per item
     const FileItem *find(const QString &id) const;
     void refreshTimes();
     void setFilesDir(const QString &filesDir); // only while empty
@@ -52,6 +54,7 @@ public:
     void clearCategory(const QString &from);
     void setPinned(const QStringList &ids, bool pinned);
     void setRemoved(const QStringList &ids, const QDateTime &at); // invalid at = restore
+    void setRemoved(const QSet<QString> &ids, const QDateTime &at);
     void setVaultDir(const QString &dir) { m_vaultDir = dir; }
     void vaultStateChanged(); // file URLs of vault items become (in)valid
     int shelfCount() const;   // items on the shelf: not in Recently removed, not in the vault
