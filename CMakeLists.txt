@@ -322,12 +322,15 @@ target_compile_definitions(tst_core PRIVATE NOTCH_SOURCE_DIR="${CMAKE_SOURCE_DIR
 target_link_libraries(tst_core PRIVATE notch_core Qt6::Test)
 add_test(NAME tst_core COMMAND tst_core)
 
-# The shelf controller with many files: needs the controller itself, not just the core library.
-qt_add_executable(tst_shelf tests/tst_shelf.cpp src/app/NotchController.h src/app/NotchController.cpp src/app/FileFilter.h src/app/FileFilter.cpp
-                  src/models/FileItemModel.h src/models/FileItemModel.cpp)
-target_include_directories(tst_shelf PRIVATE src)
-target_link_libraries(tst_shelf PRIVATE notch_core Qt6::Test Qt6::Gui Qt6::Network Qt6::Concurrent)
-add_test(NAME tst_shelf COMMAND tst_shelf)
+# The shelf controller with many files: needs the controller itself, not just the core library. Not on Windows: the controller
+# needs that platform's own sources (WinPrivacy and more), which only the app links.
+if(NOT WIN32)
+    qt_add_executable(tst_shelf tests/tst_shelf.cpp src/app/NotchController.h src/app/NotchController.cpp src/app/FileFilter.h src/app/FileFilter.cpp
+                      src/models/FileItemModel.h src/models/FileItemModel.cpp)
+    target_include_directories(tst_shelf PRIVATE src)
+    target_link_libraries(tst_shelf PRIVATE notch_core Qt6::Test Qt6::Gui Qt6::Network Qt6::Concurrent)
+    add_test(NAME tst_shelf COMMAND tst_shelf)
+endif()
 qt_add_executable(tst_codingagent tests/tst_codingagent.cpp src/platform/CodingAgent.h src/platform/CodingAgent.cpp src/platform/AgentStore.h src/platform/AgentStore.cpp src/platform/AgentTools.h)
 target_include_directories(tst_codingagent PRIVATE src)
 target_link_libraries(tst_codingagent PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Test)

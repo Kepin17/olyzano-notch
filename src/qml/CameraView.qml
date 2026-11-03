@@ -26,6 +26,8 @@ ColumnLayout {
     spacing: 8
 
     MediaDevices { id: devices }
+    // The camera list is a popup that reaches out of the panel: the notch must keep its whole window clickable while it is open.
+    readonly property bool modalOpen: camMenu.visible
     CameraPermission { id: permission }
     Component.onCompleted: if (permission.status === Qt.Undetermined) permission.request()
 

@@ -256,6 +256,7 @@ Window {
                                     || (shareLoader.item !== null && shareLoader.item.visible) || incomingPopup.visible
                                     || sortMenu.visible || removedMenu.visible || (tasksPageLoader.item && tasksPageLoader.item.modalOpen)
                                     || (devPageLoader.item && devPageLoader.item.modalOpen)
+                                    || (cameraPageLoader.item && cameraPageLoader.item.modalOpen)
                                     || removedChipMenu.visible
     readonly property bool dragOver: dragLive && (edgeDrop.containsDrag || islandDrop.containsDrag || chipDragOver)
     // Once it has started to open it stays open a moment, so a hover that blinks while the panel grows under a
@@ -2567,6 +2568,7 @@ Window {
 
                 // ---- Camera: a mirror, and a photo booth ----
                 Loader {
+                    id: cameraPageLoader
                     active: root.page === "camera"
                     visible: active // an idle Loader is still a layout item: its spacing left a gap above the page
                     Layout.fillWidth: true

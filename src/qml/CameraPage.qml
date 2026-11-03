@@ -8,6 +8,7 @@ ColumnLayout {
     id: page
     required property var shell
     visible: shell.page === "camera"
+    readonly property bool modalOpen: !!view.item && view.item.modalOpen
     Layout.fillWidth: true
     Layout.leftMargin: 12
     Layout.rightMargin: 12
