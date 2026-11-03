@@ -1,24 +1,52 @@
-## Olyzano Notch 0.15.1
+## Olyzano Notch 0.16.0
 
-Windows: the notch opens again with Low memory mode (performance) on.
+An AI coding agent in the Dev hub, a cat that shows how the notch feels, a Convert menu for almost any file, a deadline radar for tasks, and a shelf and memory use that stay light with thousands of files. It also includes the fixes of 0.15.1, which had no release of its own.
 
 ### New
+- **Agent** (Dev hub → *Agent*): a coding assistant that works in a folder you choose. Add a provider (MiMo, DeepSeek, Claude, OpenAI, or **any OpenAI- or Anthropic-compatible endpoint** of your own); the key is trimmed and filled in for you.
+  - **Modes:** *Plan* (discusses and writes `plan.md`, then **Accept · Manual**, **Accept · Auto**, **Reject** or **Revise**), *Manual* (asks before every edit or command) and *Auto*. Mode, model and effort (*low* to *max*) can change while it works.
+  - **In the prompt:** `@` adds a file, `!` runs a command and gives its output to the agent, `/` has commands (`fork`, `model`, `effort`, `mode`, `plan`, `compact`, `new`, `clear`, `rename`, `workspace`, `copy`, `export`, `details`, `help`).
+  - **Keeps track:** a to-do list for bigger tasks, a context meter that **compacts older messages by itself** near the limit, tasks grouped by folder (rename, delete), a folder picker inside the notch.
+  - **Easy to follow:** one line per action instead of code (switch to full detail any time), a *What changed* card, and a formatted conclusion at the end. **Esc** or the Send button (it turns into Stop) interrupts it.
+  - **Robust:** it retries up to 10 times when the model has a problem, continues when a reply is cut by the token limit, and tells you through the notch when it finishes, needs approval or fails.
+- **A cat in the notch.** A small cat with 13 faces (calm, sleepy, happy, excited, in love, worried, sad, surprised, confused, listening, thinking, nodding to music, munching). It sleeps when it is quiet, cheers when the charger connects, worries when the battery is low, listens while you speak to the assistant, thinks while the Agent works and nods to the song. It sits in the idle notch, beside the music, in notifications, in the panel header, on an empty shelf and in the Agent. *Settings → Appearance → Mascot* turns it off and lets you try every face.
+- **Convert to** (right-click files → *Tools*): only the formats that fit the selected files are listed.
+  - Images and SVG: PNG, JPG, WebP, BMP, TIFF, ICO, PDF.
+  - PDF: PNG or JPG, one per page, or text.
+  - Text, Markdown, HTML, CSV: PDF.
+  - Word, Excel, PowerPoint, OpenDocument, RTF: PDF and the other office formats (needs LibreOffice).
+  - Audio: MP3, WAV, FLAC, OGG, M4A, Opus. Video: MP4, WebM, MKV, animated GIF, a smaller MP4, or just the audio (needs ffmpeg).
 - **Tasks: deadline radar + course.** Each task can carry a free-text course/subject (chip suggestions from courses you already used); filter the list by course. A deadline within 3 hours is shown as critical (red) in the list, calendar and capsule. The idle capsule ticker shows up to three next deadlines on one line (`CS101 Essay · 2h · MATH Quiz · 5h`).
+- **Clear all** on the shelf (or *Empty* in Recently removed), and an empty shelf can be clicked to browse for files.
+- **Free memory when idle** (*Settings → General → Performance*): a few seconds after the panel closes, Notch lets go of what the pages you opened built up. *Restart when it stays big* (off by default) restarts Notch if it is still over 1 GB after ten quiet minutes. Notch also writes what held the memory to `memory.log` in its data folder when it grows past 450 MB.
 
 ### Improved
-- **Windows search finds more apps.** Store / UWP apps join the Start Menu shortcuts; a multi-word query (“visual studio”) must match every word against the name and the Start Menu folders (content filter).
+- **Windows search finds more apps.** Store / UWP apps join the Start Menu shortcuts; a multi-word query (“visual studio”) must match every word against the name and the Start Menu folders.
+- **Tools menu** is tidier: *Convert to*, *PDF tools*, *Images*, *Text (OCR)* and *Compress to .zip* are submenus; only the groups that fit the selection are open.
+- **A big shelf stays smooth.** Removing, restoring and deleting many files run in small steps with a progress label ("Removing 340 of 1000…") instead of freezing the notch, and Undo comes once at the end. With 1,500 notes the longest freeze dropped from 254 ms to 16 ms.
+- **Search inside files uses an index** (SQLite FTS5) that fills in the background: no more reading every text file into memory at the first key (about 115 MB less at 1,500 notes, and no pause). Without FTS5 in your SQLite, search matches names only.
+- **Less memory:** the speech model is unloaded a minute after the last voice command, other Agent tasks stay on disk until you open them, and QML and picture caches are released when the panel has been closed for a while.
+- **Agent chats are saved one file per task**, written a moment after a change instead of rewriting everything (20 small changes: 6.4 s → 0.05 s on a 76 MB history). An old single-file history is split automatically; a copy is kept as `agent.json.v1.bak`.
+- The Agent answer is shown as formatted text while it streams, and the panel closes when the pointer leaves it in the Dev hub.
+
+### Security
+- The Agent refuses task and provider ids that are not plain names (they became file names), shows no pictures from the model's Markdown (it could leak data in an address) and opens only web and mail links.
+- API keys are read from the secrets file once, not on every provider listing.
 
 ### Fixed
 - **Windows + Low memory mode:** the notch could not be opened. The software renderer uses a layered window whose pointer hit-test is per-pixel alpha, so the window mask no longer delivered hover on the top edge. A near-invisible live strip now takes the pointer again (GPU mode is unchanged).
 - **Windows tray icon:** the icon path is resolved to the bundled asset, so the tray entry shows on the taskbar (right-click for the menu: Gaming mode, Show/hide, Settings, Quit).
+- The notch froze while the Agent ran long commands (the output is shortened for display).
+- Pressing Enter in a text field of the Dev hub could pin the notch.
+- Sessions blinked when the Agent list was edited; reading `plan.md` could not be scrolled.
 
 ### Downloads
-- **Linux:** `notch_0.15.1_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.15.1_amd64.deb`, then restart Olyzano Notch.
-- **Windows:** `Notch-0.15.1-windows-x64-setup.exe`, or the portable `.zip`.
+- **Linux:** `notch_0.16.0_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.16.0_amd64.deb`, then restart Olyzano Notch. The package now *recommends* `ffmpeg` and LibreOffice (for the audio, video and office conversions).
+- **Windows:** `Notch-0.16.0-windows-x64-setup.exe`, or the portable `.zip`. ffmpeg, LibreOffice and Poppler are found on your `PATH` (LibreOffice also in its default folder).
 - Optional components (OCR, KDE Connect, PDF tools on Windows): see the [install page](https://kepin17.github.io/olyzano-notch/#optional).
 
 ### Is the Windows warning safe to click through?
-Windows SmartScreen says *"Windows protected your PC"* because the installer is not code-signed yet and Notch is new to Microsoft, not because anything was found in it. Click **More info → Run anyway**. To check the file yourself, compare its SHA-256 with `SHA256SUMS-windows.txt` (and `SHA256SUMS-linux.txt` for the `.deb`) on this page: in PowerShell, `Get-FileHash .\Notch-0.15.1-windows-x64-setup.exe`. The code is open and built by GitHub Actions from this repository.
+Windows SmartScreen says *"Windows protected your PC"* because the installer is not code-signed yet and Notch is new to Microsoft, not because anything was found in it. Click **More info → Run anyway**. To check the file yourself, compare its SHA-256 with `SHA256SUMS-windows.txt` (and `SHA256SUMS-linux.txt` for the `.deb`) on this page: in PowerShell, `Get-FileHash .\Notch-0.16.0-windows-x64-setup.exe`. The code is open and built by GitHub Actions from this repository.
 
 ---
 
