@@ -3,6 +3,9 @@
 #include "services/FileService.h"
 #include "services/FolderWatcher.h"
 #include "services/TextTools.h"
+#include "platform/AppLaunch.h"
+#include "platform/ChildLife.h"
+#include "platform/MonitorModel.h"
 #include "services/ConvertModel.h"
 #include "services/DocTools.h"
 #include "services/Invite.h"
@@ -1808,13 +1811,36 @@ private slots:
         g.fullScreen = true;
         QVERIFY(!g.active()); // switched off: a full-screen window changes nothing
         g.enabled = true;
-        QVERIFY(g.active());  // on, with a game full screen: Notch keeps away
+        QVERIFY(g.active() && g.strict() && g.muting()); // on, with a game full screen: Notch keeps away, and is quiet
         g.fullScreen = false;
         QVERIFY(!g.active()); // the game is minimised or in a window: Notch is back
         g.fullScreen = true;
         QVERIFY(g.active());
         g.enabled = false;
         QVERIFY(!g.active());
+    }
+
+    // "Hide Notch when an app is full screen": the stepping aside without Gaming mode's quiet and locked tray menu
+    void hidingInFullScreenIsNotGamingMode()
+    {
+        GamingModel g;
+        g.hideInFullScreen = true;
+        QVERIFY(!g.active());                                     // no full-screen app: nothing hidden
+        g.fullScreen = true;
+        QVERIFY(g.active() && g.hidden());                        // hidden over the app...
+        QVERIFY(!g.strict() && !g.muting());                      // ...but sounds play and the tray menu stays open
+        g.revealed = true;
+        QVERIFY(!g.active());                                     // brought up from the tray: shown over the app
+        g.revealed = false;
+        g.enabled = true;
+        QVERIFY(g.active() && g.strict() && g.muting());          // Gaming mode on top: locked and quiet
+        g.revealed = true;
+        QVERIFY(g.active());                                      // "revealed" never opens Gaming mode's lock
+        g.enabled = false;
+        g.hideInFullScreen = false;
+        g.revealed = false;
+        g.fullScreen = true;
+        QVERIFY(!g.active());                                     // preference off, Gaming mode off: untouched
     }
 
     void quickSettingsModel()
@@ -2372,7 +2398,7 @@ private slots:
         QVERIFY(work.isValid());
         QList<QPair<QString, QString>> outputs;
         const auto reserve = [&](const QString &name) { return work.path() + u'/' + FileService::uniqueName(work.path(), FileService::safeFileName(name)); };
-        auto convert = [&](const QString &in, const QString &target) {
+        auto convert = [&](const QString in, const QString &target) { // by value: `in` may be a string inside `outputs`, which is cleared here
             outputs.clear();
             return DocTools::convertFile(in, QFileInfo(in).fileName(), QFileInfo(in).completeBaseName(), target, work.path(), reserve, &outputs);
         };
@@ -2473,6 +2499,93 @@ private slots:
             QVERIFY(outputs.first().second.endsWith(".mkv"));
         }
     }
+
+    void launchedProgramsGetTheirOwnScope()
+    {
+        // the unit name and the arguments, which are exact
+        const QString unit = AppLaunch::unitName(QStringLiteral("/opt/google/chrome/Google Chrome!"));
+        QVERIFY2(QRegularExpression(QStringLiteral("^app-google-chrome--[0-9]{6}\\.scope$")).match(unit).hasMatch(), qPrintable(unit));
+        const QStringList args = AppLaunch::scopeArgs(QStringLiteral("app-x-123456.scope"), QStringLiteral("-weird"), {QStringLiteral("--flag"), QStringLiteral("a b")});
+        QCOMPARE(args.mid(0, 4), (QStringList{"--user", "--scope", "--quiet", "--collect"}));
+        QCOMPARE(args.mid(args.indexOf(QStringLiteral("--")) + 1), (QStringList{"-weird", "--flag", "a b"})); // after "--": untouched
+        QVERIFY(args.contains(QStringLiteral("--unit=app-x-123456.scope")));
+#ifdef Q_OS_LINUX
+        // for real, where this computer has a user systemd: the program is in a scope of its own, not in this test's unit
+        if (!AppLaunch::probeBlocking())
+            QSKIP("no systemd user manager here");
+        QVERIFY(AppLaunch::start(QStringLiteral("sleep"), {QStringLiteral("31415.9")}, QDir::tempPath()));
+        QString cgroup;
+        for (int i = 0; i < 100 && cgroup.isEmpty(); ++i) {
+            QTest::qWait(50);
+            for (const QString &pid : QDir(QStringLiteral("/proc")).entryList(QDir::Dirs | QDir::NoDotAndDotDot)) {
+                QFile cmd(QStringLiteral("/proc/%1/cmdline").arg(pid));
+                if (!cmd.open(QIODevice::ReadOnly))
+                    continue;
+                const QList<QByteArray> words = cmd.readAll().split('\0'); // exactly "sleep 31415.9", not a shell that mentions it
+                if (words.size() < 2 || !words.first().endsWith("sleep") || words.at(1) != "31415.9")
+                    continue;
+                QFile cg(QStringLiteral("/proc/%1/cgroup").arg(pid));
+                if (cg.open(QIODevice::ReadOnly))
+                    cgroup = QString::fromUtf8(cg.readAll());
+                QProcess::execute(QStringLiteral("kill"), {pid});
+            }
+        }
+        QVERIFY2(cgroup.contains(QRegularExpression(QStringLiteral("app-sleep-[0-9]{6}\\.scope"))), qPrintable(cgroup));
+#endif
+    }
+
+    void monitorsShowNotchUnlessSwitchedOff()
+    {
+        using namespace MonitorModel;
+        const QStringList two{"eDP-1", "HDMI-A-1"};
+        QCOMPARE(effectiveShown(two, {}), two);                                          // all show by default, new monitors too
+        QCOMPARE(effectiveShown(two, {"HDMI-A-1"}), (QStringList{"eDP-1"}));
+        QCOMPARE(effectiveShown(two, {"eDP-1", "HDMI-A-1"}), two);                       // never none: all switched off = all show
+        QCOMPARE(effectiveShown({"HDMI-A-1"}, {"HDMI-A-1"}), (QStringList{"HDMI-A-1"})); // the other one was unplugged
+        QCOMPARE(effectiveShown(two, {"DP-9"}), two);                                    // a monitor that is not here changes nothing
+        QVERIFY(canDisable("HDMI-A-1", two, {}));
+        QVERIFY(!canDisable("eDP-1", two, {"HDMI-A-1"}));                                // the last one that shows it stays
+        QVERIFY(canDisable("HDMI-A-1", two, {"eDP-1"}) == false);
+        QVERIFY(!canDisable("DP-1", {"DP-1"}, {}));
+        QCOMPARE(label("DP-1", 2560, 1440), QStringLiteral("DP-1 · 2560×1440"));
+        QCOMPARE(label("DP-1", 0, 0), QStringLiteral("DP-1"));
+    }
+
+    void aMonitorCanDifferFromTheGeneralSettings()
+    {
+        using namespace MonitorModel;
+        QCOMPARE(scaleFor(0, 1.2), 1.2);                                  // as general
+        QCOMPARE(scaleFor(1, 1.2), 0.85);                                 // small, large and normal ignore the general size
+        QCOMPARE(scaleFor(2, 0.8), 1.0);
+        QCOMPARE(scaleFor(3, 0.8), 1.15);
+        QCOMPARE(modeFor(0, QStringLiteral("open")), QStringLiteral("open"));
+        QCOMPARE(modeFor(1, QStringLiteral("open")), QStringLiteral("capsule"));
+        QCOMPARE(modeFor(2, QStringLiteral("capsule")), QStringLiteral("hidden"));
+        QVERIFY(flagFor(0, true) && !flagFor(0, false));                  // as general
+        QVERIFY(flagFor(1, false) && !flagFor(2, true));                  // on / off win over the general switch
+    }
+
+#ifdef Q_OS_LINUX
+    // A helper started with ChildLife is told to end (SIGTERM) when the process that started it is gone, even if that one is killed.
+    // The child reports its own parent-death signal: prctl(PR_GET_PDEATHSIG).
+    void childOfACrashedParentEnds()
+    {
+        const QString python = QStandardPaths::findExecutable(QStringLiteral("python3"));
+        if (python.isEmpty())
+            QSKIP("python3 not installed");
+        const QStringList args{QStringLiteral("-c"), QStringLiteral("import ctypes;s=ctypes.c_int();ctypes.CDLL(None).prctl(2,ctypes.byref(s));print(s.value)")};
+        auto signalOf = [&](bool withLife) {
+            QProcess p;
+            if (withLife)
+                ChildLife::dieWithParent(p);
+            p.start(python, args);
+            p.waitForFinished(5000);
+            return p.readAllStandardOutput().trimmed().toInt();
+        };
+        QCOMPARE(signalOf(false), 0);
+        QCOMPARE(signalOf(true), 15); // SIGTERM
+    }
+#endif
 
     void toolRunner()
     {

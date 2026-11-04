@@ -1,3 +1,4 @@
+#include "platform/ChildLife.h"
 #include "platform/QuickSettings.h"
 
 #include "models/FileItem.h"
@@ -180,7 +181,8 @@ void QuickSettings::listenAudio()
         if (out.contains("sink") || out.contains("source") || out.contains("server"))
             soon();
     });
-    connect(&m_subscribe, &QProcess::finished, this, [this] { QTimer::singleShot(3000, this, [this] { m_subscribe.start(QStringLiteral("pactl"), {QStringLiteral("subscribe")}); }); });
+    connect(&m_subscribe, &QProcess::finished, this, [this] { QTimer::singleShot(3000, this, [this] { ChildLife::dieWithParent(m_subscribe); m_subscribe.start(QStringLiteral("pactl"), {QStringLiteral("subscribe")}); }); });
+    ChildLife::dieWithParent(m_subscribe);
     m_subscribe.start(QStringLiteral("pactl"), {QStringLiteral("subscribe")});
 }
 

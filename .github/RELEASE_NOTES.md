@@ -1,151 +1,27 @@
-## Olyzano Notch 0.16.0
+## Olyzano Notch 0.16.1
 
-An AI coding agent in the Dev hub, a cat that shows how the notch feels, a Convert menu for almost any file, a deadline radar for tasks, and a shelf and memory use that stay light with thousands of files. It also includes the fixes of 0.15.1, which had no release of its own.
+Choose which monitors show Notch and how each one looks, clearer *Keep* on the shelf, hide Notch in full-screen apps without Gaming mode, a crash fixed, and Chrome (or any program you open from Notch) no longer counted as Notch's memory.
 
 ### New
-- **Agent** (Dev hub → *Agent*): a coding assistant that works in a folder you choose. Add a provider (MiMo, DeepSeek, Claude, OpenAI, or **any OpenAI- or Anthropic-compatible endpoint** of your own); the key is trimmed and filled in for you.
-  - **Modes:** *Plan* (discusses and writes `plan.md`, then **Accept · Manual**, **Accept · Auto**, **Reject** or **Revise**), *Manual* (asks before every edit or command) and *Auto*. Mode, model and effort (*low* to *max*) can change while it works.
-  - **In the prompt:** `@` adds a file, `!` runs a command and gives its output to the agent, `/` has commands (`fork`, `model`, `effort`, `mode`, `plan`, `compact`, `new`, `clear`, `rename`, `workspace`, `copy`, `export`, `details`, `help`).
-  - **Keeps track:** a to-do list for bigger tasks, a context meter that **compacts older messages by itself** near the limit, tasks grouped by folder (rename, delete), a folder picker inside the notch.
-  - **Easy to follow:** one line per action instead of code (switch to full detail any time), a *What changed* card, and a formatted conclusion at the end. **Esc** or the Send button (it turns into Stop) interrupts it.
-  - **Robust:** it retries up to 10 times when the model has a problem, continues when a reply is cut by the token limit, and tells you through the notch when it finishes, needs approval or fails.
-- **A cat in the notch.** A small cat with 13 faces (calm, sleepy, happy, excited, in love, worried, sad, surprised, confused, listening, thinking, nodding to music, munching). It sleeps when it is quiet, cheers when the charger connects, worries when the battery is low, listens while you speak to the assistant, thinks while the Agent works and nods to the song. It sits in the idle notch, beside the music, in notifications, in the panel header, on an empty shelf and in the Agent. *Settings → Appearance → Mascot* turns it off and lets you try every face.
-- **Convert to** (right-click files → *Tools*): only the formats that fit the selected files are listed.
-  - Images and SVG: PNG, JPG, WebP, BMP, TIFF, ICO, PDF.
-  - PDF: PNG or JPG, one per page, or text.
-  - Text, Markdown, HTML, CSV: PDF.
-  - Word, Excel, PowerPoint, OpenDocument, RTF: PDF and the other office formats (needs LibreOffice).
-  - Audio: MP3, WAV, FLAC, OGG, M4A, Opus. Video: MP4, WebM, MKV, animated GIF, a smaller MP4, or just the audio (needs ffmpeg).
-- **Tasks: deadline radar + course.** Each task can carry a free-text course/subject (chip suggestions from courses you already used); filter the list by course. A deadline within 3 hours is shown as critical (red) in the list, calendar and capsule. The idle capsule ticker shows up to three next deadlines on one line (`CS101 Essay · 2h · MATH Quiz · 5h`).
-- **Clear all** on the shelf (or *Empty* in Recently removed), and an empty shelf can be clicked to browse for files.
-- **Free memory when idle** (*Settings → General → Performance*): a few seconds after the panel closes, Notch lets go of what the pages you opened built up. *Restart when it stays big* (off by default) restarts Notch if it is still over 1 GB after ten quiet minutes. Notch also writes what held the memory to `memory.log` in its data folder when it grows past 450 MB.
+- **Monitors** (*Settings → General → Monitors*): Notch shows the monitors that are connected, laid out the way they stand, and a click on one switches Notch off or on there: the notch, the status bar and the dock together. A monitor you plug in appears at once, and at least one monitor always keeps Notch.
+
+- **Settings for each monitor** (same card): click a monitor to choose it, then give it its own capsule size, capsule mode (capsule or hidden), dock and status bar, or leave each one *As general*. A big capsule and a dock on the main screen, a small capsule and nothing else on the second one.
+
+- **Hide Notch when an app is full screen** (*Settings → General*): the notch, the status bar and the dock step aside while an app or game fills the screen, and come back when it does not. Unlike Gaming mode (the gamepad button) it keeps sounds and reminders on and leaves the tray menu working: *Show Olyzano Notch over this app* (or a click on the tray icon) brings Notch up over the app until it leaves full screen. Off by default.
 
 ### Improved
-- **Windows search finds more apps.** Store / UWP apps join the Start Menu shortcuts; a multi-word query (“visual studio”) must match every word against the name and the Start Menu folders.
-- **Tools menu** is tidier: *Convert to*, *PDF tools*, *Images*, *Text (OCR)* and *Compress to .zip* are submenus; only the groups that fit the selection are open.
-- **A big shelf stays smooth.** Removing, restoring and deleting many files run in small steps with a progress label ("Removing 340 of 1000…") instead of freezing the notch, and Undo comes once at the end. With 1,500 notes the longest freeze dropped from 254 ms to 16 ms.
-- **Search inside files uses an index** (SQLite FTS5) that fills in the background: no more reading every text file into memory at the first key (about 115 MB less at 1,500 notes, and no pause). Without FTS5 in your SQLite, search matches names only.
-- **Less memory:** the speech model is unloaded a minute after the last voice command, other Agent tasks stay on disk until you open them, and QML and picture caches are released when the panel has been closed for a while.
-- **Agent chats are saved one file per task**, written a moment after a change instead of rewriting everything (20 small changes: 6.4 s → 0.05 s on a 76 MB history). An old single-file history is split automatically; a copy is kept as `agent.json.v1.bak`.
-- The Agent answer is shown as formatted text while it streams, and the panel closes when the pointer leaves it in the Dev hub.
-
-### Security
-- The Agent refuses task and provider ids that are not plain names (they became file names), shows no pictures from the model's Markdown (it could leak data in an address) and opens only web and mail links.
-- API keys are read from the secrets file once, not on every provider listing.
+- **Keep is easier to see on the shelf:** every file shows the days it has left (`1.2 MB · 5d`) or *Kept*; the sort menu has **Expiring first** (kept files last); keeping or releasing many files at once runs in steps and no longer stalls the panel. The Settings note for *Keep files for* says kept files are never removed.
+- **The chosen option is easier to read** in every switch of choices (Timer / Pomodoro / Stopwatch, Mirror / Photo booth, and the rest): it is now the solid accent colour with text that contrasts with it, instead of a pale tint with accent-coloured text.
 
 ### Fixed
-- **Windows + Low memory mode:** the notch could not be opened. The software renderer uses a layered window whose pointer hit-test is per-pixel alpha, so the window mask no longer delivered hover on the top edge. A near-invisible live strip now takes the pointer again (GPU mode is unchanged).
-- **Windows tray icon:** the icon path is resolved to the bundled asset, so the tray entry shows on the taskbar (right-click for the menu: Gaming mode, Show/hide, Settings, Quit).
-- The notch froze while the Agent ran long commands (the output is shortened for display).
-- Pressing Enter in a text field of the Dev hub could pin the notch.
-- Sessions blinked when the Agent list was edited; reading `plan.md` could not be scrolled.
+- **A crash** when icons were drawn (in the icon theme, `KIconLoader`): the icons of files, dock apps and tray items are now made on the main thread, where the theme is safe to use.
+- **Programs started from Notch** (the dock, the app search, the voice assistant) now run in a systemd scope of their own, the way KDE starts applications. A browser opened from the dock no longer shows up as *Olyzano Notch, 2.6 GiB* in System Monitor, and it no longer keeps Notch's unit "running" after Notch quits or crashes.
+- **Helpers that are left behind:** `pactl subscribe` and `parec` now end together with Notch, so a crash leaves no stray process (and no second "Olyzano Notch" in System Monitor).
 
 ### Downloads
-- **Linux:** `notch_0.16.0_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.16.0_amd64.deb`, then restart Olyzano Notch. The package now *recommends* `ffmpeg` and LibreOffice (for the audio, video and office conversions).
-- **Windows:** `Notch-0.16.0-windows-x64-setup.exe`, or the portable `.zip`. ffmpeg, LibreOffice and Poppler are found on your `PATH` (LibreOffice also in its default folder).
-- Optional components (OCR, KDE Connect, PDF tools on Windows): see the [install page](https://kepin17.github.io/olyzano-notch/#optional).
+- **Linux:** `notch_0.16.1_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.16.1_amd64.deb`, then restart Olyzano Notch.
+- **Windows:** `Notch-0.16.1-windows-x64-setup.exe`, or the portable `.zip`.
+- Optional components (OCR, KDE Connect, PDF tools, ffmpeg, LibreOffice): see the [install page](https://kepin17.github.io/olyzano-notch/#optional).
 
 ### Is the Windows warning safe to click through?
-Windows SmartScreen says *"Windows protected your PC"* because the installer is not code-signed yet and Notch is new to Microsoft, not because anything was found in it. Click **More info → Run anyway**. To check the file yourself, compare its SHA-256 with `SHA256SUMS-windows.txt` (and `SHA256SUMS-linux.txt` for the `.deb`) on this page: in PowerShell, `Get-FileHash .\Notch-0.16.0-windows-x64-setup.exe`. The code is open and built by GitHub Actions from this repository.
-
----
-
-## Olyzano Notch 0.15.0
-
-Dev hub in the action bar, a camera photo booth, notch search, and a faster app.
-
-### New
-- **Dev hub** (action bar → *Dev*): **API**, **SSH** and **Database** behind one switcher; the notch stays open while you work.
-- **API tester:** HTTP client with collections, folders, environments (`{{baseUrl}}` / `{{relayKey}}`), history, pretty JSON, pre-request and test scripts, Postman Collection v2.1 / Environment import-export, and a **Ports** tab (listener / process / PID, stop, control command).
-- **SSH manager:** save hosts, **persistent terminal** in the notch (`ssh -tt`, live shell, `clear`), test connectivity (key/agent preferred), open a system terminal. Passwords never go on the command line.
-- **Database browser:** SQLite always; MySQL/MariaDB and PostgreSQL when the Qt SQL driver is installed — databases + tables side by side, browse rows, run SQL with timing.
-- **Camera photo booth** (action bar → *Camera*): take frames, pick a template and filter, compose one picture and keep it on the shelf. The privacy dot shows while the camera is on.
-- **Search from the notch** (Shift + Space): Spotlight-style field with matching apps underneath — the same search works from the top edge on Windows too.
-- Clock colour can follow the theme accent (*Settings → Appearance → Clock follows theme colour*).
-
-### Improved
-- **Faster app:** Settings sections and idle pages load only when opened; album art is served from a cover cache instead of re-reading files; menu and button hover/press states are solid theme colours (no system-white flash).
-- Share: guide for setting up the sharing server, plus a clearer layout around server URLs.
-- The reserved top strip on Windows is filled with a visual bar instead of bare wallpaper; tray menu gains Settings shortcuts.
-- The notch and dock re-assert themselves on Windows when another app steals z-order.
-
-### Fixed
-- Dev section: menus, modals and the database form no longer show a white system background or an empty panel; the panel is wide enough for the database browser (no cut-off).
-- Confirmation toasts stick to the bottom of the open panel and clear themselves (they used to sit in the page flow or never disappear).
-- Contrast of right-click menus, auth picker and dialog buttons on dark and light themes.
-
-### Downloads
-- **Linux:** `notch_0.15.0_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.15.0_amd64.deb`, then restart Olyzano Notch.
-- **Windows:** `Notch-0.15.0-windows-x64-setup.exe`, or the portable `.zip`.
-- Optional components (OCR, KDE Connect, PDF tools on Windows): see the [install page](https://kepin17.github.io/olyzano-notch/#optional).
-
-### Is the Windows warning safe to click through?
-Windows SmartScreen says *"Windows protected your PC"* because the installer is not code-signed yet and Notch is new to Microsoft, not because anything was found in it. Click **More info → Run anyway**. To check the file yourself, compare its SHA-256 with `SHA256SUMS-windows.txt` (and `SHA256SUMS-linux.txt` for the `.deb`) on this page: in PowerShell, `Get-FileHash .\Notch-0.15.0-windows-x64-setup.exe`. The code is open and built by GitHub Actions from this repository.
-
----
-
-## Olyzano Notch 0.14.0
-
-Update from inside Notch, a Bounce setting for the animations, and a simpler music player.
-
-- **Update now (Settings → About).** When a newer version is out, one button downloads the installer (Windows) or the package (Linux), checks its SHA-256 against the release's checksum file, installs it and starts the new version. On Windows the installer runs silently; on Linux your system asks for your password. A copy you built yourself or the portable zip still uses *Download*. Nothing is installed unless the checksum matches.
-- **Bounce (Settings → Appearance → Animations):** *Off*, *Soft*, *Normal* or *Bouncy*: how far the capsule and panel overshoot before they settle.
-- **The music player is simpler.** The *Lyrics* button at the top is gone: the button at the right of the controls now shows or hides the lyrics. Karaoke (your voice through the speakers with the music) is a small microphone button on the lyrics panel.
-- **Linux: much less memory** (since 0.13.1): about 133 MB instead of 154 MB at rest, and about 87 MB with the new *Low memory mode* (Settings → General → Performance). Windows is unchanged.
-
-### Downloads
-- **Linux:** `notch_0.14.0_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.14.0_amd64.deb`, then restart Olyzano Notch.
-- **Windows:** `Notch-0.14.0-windows-x64-setup.exe`, or the portable `.zip`.
-- Optional components (OCR, KDE Connect, PDF tools on Windows): see the [install page](https://kepin17.github.io/olyzano-notch/#optional).
-
-### Is the Windows warning safe to click through?
-Windows SmartScreen says *"Windows protected your PC"* because the installer is not code-signed yet and Notch is new to Microsoft, not because anything was found in it. Click **More info → Run anyway**. To check the file yourself, compare its SHA-256 with `SHA256SUMS-windows.txt` (and `SHA256SUMS-linux.txt` for the `.deb`) on this page: in PowerShell, `Get-FileHash .\Notch-0.14.0-windows-x64-setup.exe`. The code is open and built by GitHub Actions from this repository.
-
----
-
-## Olyzano Notch 0.13.1
-
-Linux: much less memory. Nothing else changes; the Windows installer of 0.13.0 is still the current one.
-
-- **About 20 MB less at rest** (the capsule: 154 MB to 133 MB PSS, the memory Notch really owns) from fewer malloc arenas, memory handed back after the panel closes, a smaller worker pool and no helper thread in Mesa.
-- **Low memory mode** (*Settings → General → Performance*, Linux, restart to apply): draws with Qt's software renderer instead of the graphics card, about **87 MB** at rest (down from 154 MB), and a little less processor while the panel is open. It also keeps Mesa and LLVM from loading.
-- **Settings and the share dialog are unloaded** a minute or two after they are closed (they were ~20 MB for as long as Notch ran). Your place in Settings is kept.
-- **A crash-at-exit fixed:** closing Notch while `pactl` was still running could read freed memory (found with AddressSanitizer; no other leak was found in Notch's own code).
-- `scripts/memcheck.sh` measures all this on your own machine.
-
-### Downloads
-- **Linux:** `notch_0.13.1_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.13.1_amd64.deb`, then restart Olyzano Notch.
-- **Windows:** unchanged, see the [0.13.0 release](https://github.com/Kepin17/olyzano-notch/releases/tag/v0.13.0).
-- Optional components (OCR, KDE Connect, PDF tools on Windows): see the [install page](https://kepin17.github.io/olyzano-notch/#optional).
-
----
-
-## Olyzano Notch 0.13.0
-
-A calendar for your tasks, a clipboard history, a System monitor in Quick Settings, a roomier Files shelf, and Settings and glass that look and read better.
-
-### Interface
-- **One slider for the pages** (Files, Music, Timer, Tasks, Color, Clipboard). The open page shows its icon, name and count; the others are icons with a count badge. Click, drag across, scroll the wheel or press the arrows.
-- **Pointer cursor** on every button and clickable area.
-- **Settings is easier to find your way in.** The sidebar is grouped (Basics, On the screen, Files & sharing, You), and *General* is arranged by how the notch sits: one choice (Hidden / Capsule / Widget / Always open) with only the options that belong to it. The duplicate *Dynamic island* switch is gone.
-- **Appearance → Size & shape:** *Interface size* (90 to 125 %, text, icons and spacing together) and *Corners* (Sharp, Normal, Round).
-- **A new glass look:** a soft sheen from the top, a bright rim along the top edge and a slightly lifted tint. The blur behind the panel now follows the panel's final size.
-
-### New
-- **Tasks with a calendar.** A month calendar with a dot on every day that has something to do (red when late), an *Up next* list with a colour bar for how soon, a tap on a day to see just that day, and a window for *New task* (a line of words like "Buy milk fri 17:00" still works).
-- **Clipboard history (off by default).** A *Clipboard* page with search, pin, keep-in-Files and an age limit. On KDE Plasma it uses Klipper (so it also works while Notch is not in front); items marked secret by password managers are skipped.
-- **System in Quick Settings:** CPU (with temperature), RAM, graphics card, disk and network, with the three busiest programs. Read only while the card is open. Choose which parts of Quick Settings show in *Settings → Panel*.
-- **Files shelf as a grid.** As many rows as you have files (it grows to three rows, then scrolls up and down), with no gap at the right edge.
-- **Sharing servers, from the app.** The host makes a key for someone (with their username, how long their access lasts and how much space they get, up to 5 GB) in *Settings → Sharing*; the other person pastes it under *Join a server*. Members can be revoked, and the list loads as you scroll. The relay now takes files up to 5 GB (20 GB in all) by default.
-
-### Fixed
-- The page names are no longer cut off, and the member and task windows are opaque with Glass on.
-- The pill capsule has no shadow and sits on the top edge.
-
-### Downloads
-- **Linux:** `notch_0.13.0_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.13.0_amd64.deb`, then restart Olyzano Notch.
-- **Windows:** `Notch-0.13.0-windows-x64-setup.exe`, or the portable `.zip`.
-- Optional components (OCR, KDE Connect, PDF tools on Windows): see the [install page](https://kepin17.github.io/olyzano-notch/#optional).
-
-### Is the Windows warning safe to click through?
-Windows SmartScreen says *"Windows protected your PC"* because the installer is not code-signed yet and Notch is new to Microsoft, not because anything was found in it. Click **More info → Run anyway**. To check the file yourself, compare its SHA-256 with `SHA256SUMS-windows.txt` (and `SHA256SUMS-linux.txt` for the `.deb`) on this page: in PowerShell, `Get-FileHash .\Notch-0.13.0-windows-x64-setup.exe`. The code is open and built by GitHub Actions from this repository.
+Windows SmartScreen says *"Windows protected your PC"* because the installer is not code-signed yet and Notch is new to Microsoft, not because anything was found in it. Click **More info → Run anyway**. To check the file yourself, compare its SHA-256 with `SHA256SUMS-windows.txt` (and `SHA256SUMS-linux.txt` for the `.deb`) on this page: in PowerShell, `Get-FileHash .\Notch-0.16.1-windows-x64-setup.exe`. The code is open and built by GitHub Actions from this repository.

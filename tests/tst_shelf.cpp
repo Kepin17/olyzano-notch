@@ -1,10 +1,14 @@
 #include "app/NotchController.h"
+#include "services/GuiImageProvider.h"
 
 #include <QElapsedTimer>
 #include <QFile>
 #include <QGuiApplication>
 #include <QTemporaryDir>
 #include <QTimer>
+#include <QQmlComponent>
+#include <QQmlEngine>
+#include <QSignalSpy>
 #include <QtTest>
 
 // The shelf with a lot on it: removing, restoring and searching must not freeze the panel.
@@ -98,6 +102,96 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(shelf.removedCount(), 0, 10000);
         QTRY_VERIFY_WITH_TIMEOUT(shelf.batchLabel().isEmpty(), 10000);
         QCOMPARE(shelf.count(), 0);
+    }
+
+    // Keep: a big selection is kept in steps, kept files go last in "Expiring first", and releasing them puts them back.
+    void keepWorksInBatchesAndSortsLast()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        NotchController shelf(dir.path());
+        QVERIFY(shelf.start());
+        for (int i = 0; i < 25; ++i)
+            shelf.addTextNote(QStringLiteral("keep %1").arg(i));
+        QTRY_COMPARE_WITH_TIMEOUT(shelf.count(), 25, 30000);
+        const QStringList ids = shelf.visibleIds();
+        const auto kept = [&] {
+            int n = 0;
+            for (int r = 0; r < shelf.items()->rowCount(); ++r)
+                n += shelf.items()->index(r, 0).data(FileItemModel::PinnedRole).toBool();
+            return n;
+        };
+        shelf.setPinned(ids, true);
+        QVERIFY(!shelf.batchLabel().isEmpty()); // 25 > one step
+        QTRY_COMPARE_WITH_TIMEOUT(kept(), 25, 10000);
+        QTRY_VERIFY_WITH_TIMEOUT(shelf.batchLabel().isEmpty(), 10000);
+        shelf.setPinned(ids.mid(0, 20), false);
+        QTRY_COMPARE_WITH_TIMEOUT(kept(), 5, 10000);
+
+        shelf.setSortMode(QStringLiteral("expiring"));
+        for (int r = 0; r < 20; ++r)
+            QVERIFY(!shelf.items()->index(r, 0).data(FileItemModel::PinnedRole).toBool());
+        for (int r = 20; r < 25; ++r)
+            QVERIFY(shelf.items()->index(r, 0).data(FileItemModel::PinnedRole).toBool());
+        QCOMPARE(shelf.items()->index(24, 0).data(FileItemModel::ExpiresTextRole).toString(), QStringLiteral("kept, never expires"));
+    }
+
+    // Icons from the theme are made on the GUI thread, whichever thread asks (a race with it crashed Notch in KIconLoader).
+    void iconProviderMakesImagesOnTheGuiThread()
+    {
+        QThread *madeIn = nullptr;
+        GuiImageProvider provider([&madeIn](const QString &, const QSize &size) {
+            madeIn = QThread::currentThread();
+            QImage image(size, QImage::Format_ARGB32);
+            image.fill(Qt::red);
+            return image;
+        }, QSize(32, 32));
+
+        std::unique_ptr<QQuickImageResponse> a(provider.requestImageResponse(QStringLiteral("a"), QSize(20, 10)));
+        QSignalSpy spyA(a.get(), &QQuickImageResponse::finished);
+        QTRY_COMPARE(spyA.count(), 1);
+        std::unique_ptr<QQuickTextureFactory> factoryA(a->textureFactory());
+        QCOMPARE(factoryA->textureSize(), QSize(20, 10));
+        QCOMPARE(madeIn, QThread::currentThread());
+
+        // asked from another thread (the image reader's): still made here, and the size falls back
+        madeIn = nullptr;
+        QQuickImageResponse *b = nullptr;
+        QThread *worker = QThread::create([&] { b = provider.requestImageResponse(QStringLiteral("b"), QSize()); });
+        worker->start();
+        QVERIFY(worker->wait(5000));
+        QVERIFY(b);
+        QSignalSpy spyB(b, &QQuickImageResponse::finished);
+        QTRY_COMPARE_WITH_TIMEOUT(spyB.count(), 1, 5000);
+        std::unique_ptr<QQuickTextureFactory> factoryB(b->textureFactory());
+        QCOMPARE(factoryB->textureSize(), QSize(32, 32));
+        QCOMPARE(madeIn, QCoreApplication::instance()->thread());
+        delete b;
+        delete worker;
+
+        // dropped before it finished: nothing is touched afterwards
+        { std::unique_ptr<QQuickImageResponse> c(provider.requestImageResponse(QStringLiteral("c"), QSize(8, 8))); }
+        QTest::qWait(50);
+    }
+
+    // The real thing: a QML Image asking for image://t/... is served through the provider and ends up Ready, at the size asked.
+    void qmlImageIsServedByTheProvider()
+    {
+        QQmlEngine engine;
+        QThread *madeIn = nullptr;
+        engine.addImageProvider(QStringLiteral("t"), new GuiImageProvider([&madeIn](const QString &, const QSize &size) {
+            madeIn = QThread::currentThread();
+            QImage image(size, QImage::Format_ARGB32);
+            image.fill(Qt::blue);
+            return image;
+        }, QSize(32, 32)));
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\nImage { source: \"image://t/anything\"; sourceSize: Qt.size(20, 10); asynchronous: false }", QUrl());
+        std::unique_ptr<QObject> image(component.create());
+        QVERIFY2(image, qPrintable(component.errorString()));
+        QTRY_COMPARE_WITH_TIMEOUT(image->property("status").toInt(), 1, 5000); // Image.Ready
+        QCOMPARE(image->property("implicitWidth").toInt(), 20);
+        QCOMPARE(madeIn, QCoreApplication::instance()->thread());
     }
 };
 

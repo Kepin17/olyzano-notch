@@ -46,7 +46,10 @@ Window {
     // panel is at least as tall as the dialog needs (so the dialog never hangs out of it onto the desktop).
     readonly property rect panelRect: Qt.rect(island.x, island.y, island.width, island.height)
     readonly property real shareNeed: shareLoader.item !== null && shareLoader.item.visible ? shareLoader.item.height + 40 : 0
-    readonly property string capsuleMode: activities.capsuleMode
+    // This monitor's own choices (Settings → General → Monitors); 0 = as in the general settings. Reads `screens` so it follows changes.
+    readonly property var screenOptions: { monitors.screens; return monitors.options(screenName) }
+    readonly property string capsuleMode: screenOptions.mode === 1 ? "capsule" : screenOptions.mode === 2 ? "hidden" : activities.capsuleMode
+    readonly property real capsuleScale: screenOptions.scale === 1 ? 0.85 : screenOptions.scale === 2 ? 1.0 : screenOptions.scale === 3 ? 1.15 : activities.capsuleScale
     onCapsuleModeChanged: {
         pinned = capsuleMode === "open" // "Always open" is a pin that stays
         updateMask()
@@ -60,10 +63,11 @@ Window {
     }
 
     // ---- Room at the top: other windows keep clear of the capsule (Settings → General) ----
-    readonly property int barReservePx: topbar.enabled && topbar.behavior === "always" && topbar.reserve ? topbar.height : 0
-    function applyReserve() { desktop.reserve(root, capsuleMode, activities.reserveSpace, activities.capsuleScale, barReservePx) }
+    readonly property int barReservePx: (screenOptions.bar === 1 || (screenOptions.bar !== 2 && topbar.enabled)) && topbar.behavior === "always" && topbar.reserve ? topbar.height : 0
+    function applyReserve() { desktop.reserve(root, capsuleMode, activities.reserveSpace, capsuleScale, barReservePx) }
     Connections { target: activities; function onSettingsChanged() { root.applyReserve() } }
     Connections { target: topbar; function onChanged() { root.applyReserve() } }
+    onScreenOptionsChanged: applyReserve()
 
     // ---- Widget mode (beta): the notch as a floating card you drag anywhere ----
     // The window follows the card: a small one while it floats, the big one while its panel is open (the panel grows
@@ -83,7 +87,7 @@ Window {
     // The spring damping, as the Bounce setting wants it (Settings -> Appearance): Off lifts every spring to no overshoot.
     function damp(base) { return activities.damp(base, activities.bounceFactor) }
     readonly property real uiK: activities.uiScale > 1 ? Math.min(activities.uiScale, Math.max(1, (width - 20) / Math.max(1, panelWidth))) : activities.uiScale
-    readonly property real islandK: mode === "idle" || floating ? activities.capsuleScale : mode === "open" ? uiK : 1
+    readonly property real islandK: mode === "idle" || floating ? capsuleScale : mode === "open" ? uiK : 1
     property bool dragging: false
     property string dragMask: ""
     readonly property bool docked: !widgetMode || mode === "prompt" || mode === "search" || mode === "hidden"
@@ -498,7 +502,7 @@ Window {
     TextMetrics { id: capTimeSize; font.pixelSize: 11; font.features: { "tnum": 1 }; text: root.capTime }
     readonly property real capOverhead: 2 * 24 + 30 + 26 + capTimeSize.advanceWidth + 4 * 10
                                         + (activities.micApps.length > 0 ? 25 : 0) + (activities.cameraApps.length > 0 ? 25 : 0) + (activities.discordState !== "off" ? 24 : 0) + (sharingNow ? 24 : 0) + 16
-    readonly property real capMaxWidth: ((widgetMode ? 720 : root.width) - 40) / activities.capsuleScale
+    readonly property real capMaxWidth: ((widgetMode ? 720 : root.width) - 40) / capsuleScale
     readonly property real capWidth: !capLyric ? 430 : Math.min(capMaxWidth, Math.max(430, capLineSize.advanceWidth + capOverhead))
     // the colour of the cover, for the wave and the progress line
     ArtColor { id: capColor; source: media.artUrl; fallback: theme.media }
@@ -2549,7 +2553,7 @@ Window {
                     PillButton {
                         visible: notch.count > 1
                         iconName: "sort"
-                        text: ({ date: "Date", name: "Name", size: "Size", type: "Type" })[notch.sortMode]
+                        text: ({ date: "Date", name: "Name", size: "Size", type: "Type", expiring: "Expiring" })[notch.sortMode]
                         Accessible.name: "Sort files"
                         onClicked: sortMenu.popup()
                     }
@@ -3620,7 +3624,7 @@ Window {
     DarkMenu {
         id: sortMenu
         Repeater {
-            model: [["date", "Date added"], ["name", "Name"], ["size", "Size"], ["type", "Type"]]
+            model: [["date", "Date added"], ["expiring", "Expiring first"], ["name", "Name"], ["size", "Size"], ["type", "Type"]]
             delegate: MenuItem {
                 id: sortItem
                 required property var modelData

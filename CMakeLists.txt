@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(notch VERSION 0.16.0 LANGUAGES CXX)
+project(notch VERSION 0.16.1 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -93,12 +93,12 @@ qt_add_executable(notch
     src/platform/Karaoke.h src/platform/Karaoke.cpp src/platform/KaraokeModel.h
     src/platform/GamingMode.h src/platform/GamingMode.cpp src/platform/GamingModel.h
     src/platform/PanelBar.h src/platform/PanelBar.cpp
-    src/platform/QuickSettings.h src/platform/QuickSettings.cpp src/platform/SystemStats.h src/platform/SystemStats.cpp src/platform/ClipboardHistory.h src/platform/ClipboardHistory.cpp src/platform/MemoryTuner.h src/platform/MemoryTuner.cpp src/platform/PhotoBooth.h src/platform/PhotoBooth.cpp src/platform/PhotoModel.h src/platform/PanelModel.h
+    src/platform/QuickSettings.h src/platform/QuickSettings.cpp src/platform/SystemStats.h src/platform/SystemStats.cpp src/platform/ClipboardHistory.h src/platform/ClipboardHistory.cpp src/platform/MemoryTuner.h src/platform/MemoryTuner.cpp src/platform/Monitors.h src/platform/Monitors.cpp src/platform/MonitorModel.h src/platform/ChildLife.h src/platform/PhotoBooth.h src/platform/PhotoBooth.cpp src/platform/PhotoModel.h src/platform/PanelModel.h
     src/platform/AppMenu.h src/platform/AppMenu.cpp src/platform/DbusMenuModel.h src/platform/CalendarModel.h src/platform/Prayer.h src/platform/Prayer.cpp src/platform/PrayerModel.h src/platform/Cities.h src/platform/Tasks.h src/platform/Tasks.cpp src/platform/TasksModel.h src/platform/Updates.h src/platform/Updates.cpp src/platform/UpdateModel.h src/platform/Doomscroll.h src/platform/Doomscroll.cpp src/platform/DoomscrollModel.h src/platform/Launcher.h src/platform/Launcher.cpp src/platform/LauncherModel.h src/platform/ColorFormat.h src/platform/TrayHost.h src/platform/TrayHost.cpp src/platform/ApiTester.h src/platform/ApiTester.cpp src/platform/ApiTesterModel.h
     src/platform/SshManager.h src/platform/SshManager.cpp src/platform/SshModel.h
     src/platform/DatabaseManager.h src/platform/DatabaseManager.cpp src/platform/DbModel.h
     src/platform/CodingAgent.h src/platform/CodingAgent.cpp src/platform/CodingAgentModel.h src/platform/AgentStore.h src/platform/AgentStore.cpp src/platform/AgentTools.h
-    src/platform/SecureFiles.h src/platform/SecretsStore.h src/platform/NotchPaths.h src/platform/ProcessRunner.h src/platform/ScriptSandbox.h
+    src/platform/SecureFiles.h src/platform/SecretsStore.h src/platform/NotchPaths.h src/platform/ProcessRunner.h src/platform/ScriptSandbox.h src/platform/AppLaunch.h src/services/GuiImageProvider.h
     src/platform/DesktopNotifications.h src/platform/DesktopNotifications.cpp src/platform/NotificationFilter.h
 )
 if(NOTCH_DBUS)
@@ -328,7 +328,7 @@ if(NOT WIN32)
     qt_add_executable(tst_shelf tests/tst_shelf.cpp src/app/NotchController.h src/app/NotchController.cpp src/app/FileFilter.h src/app/FileFilter.cpp
                       src/models/FileItemModel.h src/models/FileItemModel.cpp)
     target_include_directories(tst_shelf PRIVATE src)
-    target_link_libraries(tst_shelf PRIVATE notch_core Qt6::Test Qt6::Gui Qt6::Network Qt6::Concurrent)
+    target_link_libraries(tst_shelf PRIVATE notch_core Qt6::Test Qt6::Gui Qt6::Quick Qt6::Network Qt6::Concurrent)
     add_test(NAME tst_shelf COMMAND tst_shelf)
 endif()
 qt_add_executable(tst_codingagent tests/tst_codingagent.cpp src/platform/CodingAgent.h src/platform/CodingAgent.cpp src/platform/AgentStore.h src/platform/AgentStore.cpp src/platform/AgentTools.h)

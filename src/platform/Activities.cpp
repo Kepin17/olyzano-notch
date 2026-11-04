@@ -1,3 +1,4 @@
+#include "platform/ChildLife.h"
 #include "platform/NotchPaths.h"
 #include "platform/Activities.h"
 
@@ -475,7 +476,8 @@ void Activities::syncMicTap()
     if (want && m_micTap.state() == QProcess::NotRunning) {
         m_voice.reset();   // a new reading starts with a new idea of how loud the room is
         m_tapRest.clear();
-        m_micTap.start(QStringLiteral("parec"), {QStringLiteral("--device=@DEFAULT_SOURCE@"), QStringLiteral("--raw"),
+        ChildLife::dieWithParent(m_micTap);
+    m_micTap.start(QStringLiteral("parec"), {QStringLiteral("--device=@DEFAULT_SOURCE@"), QStringLiteral("--raw"),
                                                  QStringLiteral("--format=s16le"), QStringLiteral("--rate=8000"),
                                                  QStringLiteral("--channels=1"), QStringLiteral("--latency-msec=60"),
                                                  QStringLiteral("--client-name=OlyzanoMicLevel")});

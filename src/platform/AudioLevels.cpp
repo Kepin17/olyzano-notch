@@ -1,3 +1,4 @@
+#include "platform/ChildLife.h"
 #include "AudioLevels.h"
 
 #include "models/FileItem.h"
@@ -78,6 +79,7 @@ void AudioLevels::start()
     if (!m_available || m_process.state() != QProcess::NotRunning)
         return;
     m_buffer.clear();
+    ChildLife::dieWithParent(m_process);
     m_process.start(QStringLiteral("parec"),
                     {QStringLiteral("-d"), QStringLiteral("@DEFAULT_MONITOR@"), QStringLiteral("--rate=%1").arg(Rate),
                      QStringLiteral("--channels=1"), QStringLiteral("--format=float32le"),

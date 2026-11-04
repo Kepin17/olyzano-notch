@@ -1,3 +1,4 @@
+#include "platform/ChildLife.h"
 #include "MicCapture.h"
 
 #include <QStandardPaths>
@@ -36,6 +37,7 @@ bool MicCapture::start()
     m_rest.clear();
     m_got = false;
     m_proc.setProperty("wanted", true);
+    ChildLife::dieWithParent(m_proc);
     m_proc.start(QStringLiteral("parec"), {QStringLiteral("--device=@DEFAULT_SOURCE@"), QStringLiteral("--raw"),
                                            QStringLiteral("--format=s16le"), QStringLiteral("--rate=16000"),
                                            QStringLiteral("--channels=1"), QStringLiteral("--latency-msec=60"),

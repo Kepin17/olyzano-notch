@@ -2,6 +2,7 @@
 #include "app/NearbyController.h"
 #include "app/ShareController.h"
 #include "services/QrImage.h"
+#include "services/GuiImageProvider.h"
 #include "platform/DesktopIntegration.h"
 #include "platform/Activities.h"
 #include "platform/AppDock.h"
@@ -32,6 +33,8 @@
 #include "platform/SystemStats.h"
 #include "platform/ClipboardHistory.h"
 #include "platform/MemoryTuner.h"
+#include "platform/MonitorModel.h"
+#include "platform/Monitors.h"
 #include "services/CoverCache.h"
 #include "platform/PhotoBooth.h"
 #ifdef Q_OS_WIN
@@ -72,39 +75,23 @@
 #include <unistd.h>
 #endif
 
-// image://tray/<item key>/<revision> -> the icon of a tray item.
-class TrayIconProvider : public QQuickImageProvider
+// image://tray/<item key>/<revision> -> the icon of a tray item. The icon theme is only used on the GUI thread (GuiImageProvider.h).
+static QQmlImageProviderBase *makeTrayIconProvider(TrayHost *host)
 {
-public:
-    explicit TrayIconProvider(TrayHost *host) : QQuickImageProvider(Pixmap), m_host(host) {}
-    QPixmap requestPixmap(const QString &id, QSize *size, const QSize &requested) override
-    {
-        const QSize s = requested.isValid() ? requested : QSize(32, 32);
-        if (size)
-            *size = s;
-        return m_host->pixmap(id.section(u'/', 0, 0), s);
-    }
-private:
-    TrayHost *m_host;
-};
+    return new GuiImageProvider([host](const QString &id, const QSize &s) { return host->pixmap(id.section(u'/', 0, 0), s).toImage(); }, QSize(32, 32));
+}
 
 // image://mime/<icon-name> -> themed icon for a MIME type.
-class MimeIconProvider : public QQuickImageProvider
+static QQmlImageProviderBase *makeMimeIconProvider()
 {
-public:
-    MimeIconProvider() : QQuickImageProvider(Pixmap) {}
-    QPixmap requestPixmap(const QString &id, QSize *size, const QSize &requested) override
-    {
-        const QSize s = requested.isValid() ? requested : QSize(32, 32);
-        if (size)
-            *size = s;
+    return new GuiImageProvider([](const QString &id, const QSize &s) {
         // Windows has no icon theme: device icons named after a bundled one (bluetooth, headphones) use that.
         const QString bundled = QStringLiteral(":/qt/qml/Notch/src/qml/icons/%1.svg").arg(id);
         if (!QIcon::hasThemeIcon(id) && QFile::exists(bundled))
-            return QIcon(bundled).pixmap(s);
-        return QIcon::fromTheme(id, QIcon::fromTheme(QStringLiteral("text-x-generic"))).pixmap(s);
-    }
-};
+            return QIcon(bundled).pixmap(s).toImage();
+        return QIcon::fromTheme(id, QIcon::fromTheme(QStringLiteral("text-x-generic"))).pixmap(s).toImage();
+    }, QSize(32, 32));
+}
 
 // image://thumb/<percent-encoded file url> -> the picture scaled down to fit 96 px, for the drag pixmap
 // (the drag used the full-size file, so a photo dragged out of the shelf came out huge).
@@ -268,6 +255,7 @@ int main(int argc, char *argv[])
     SystemStats sysstats;
     ClipboardHistory clipboardHistory;
     MemoryTuner memtune;
+    Monitors monitors;
     PhotoBooth photoBooth(&controller);
     QObject::connect(&clipboardHistory, &ClipboardHistory::keepRequested, &controller, [&](const QString &name, const QString &mime, const QByteArray &bytes) {
         controller.keepBytes(name, mime, bytes, QObject::tr("Clipboard"));
@@ -356,7 +344,7 @@ int main(int argc, char *argv[])
                           open ? (process.isEmpty() ? QObject::tr("Something is listening again") : process) : QObject::tr("Nothing is listening on it any more"),
                           QStringLiteral("server"), QString());
     });
-    sounds.setSilencer([&] { return gaming.active(); });
+    sounds.setSilencer([&] { return gaming.muting(); }); // only Gaming mode mutes; the plain "hide in full screen" does not
     sounds.setBusyChecks([&] { return !activities.micApps().isEmpty(); }, [&] { return dock.fullScreenActive(); });
     auto play = [&](const char *name) { return [&sounds, name] { sounds.play(QString::fromLatin1(name)); }; };
     QObject::connect(&controller, &NotchController::sound, &sounds, &Sounds::play);
@@ -416,11 +404,11 @@ int main(int argc, char *argv[])
     QQmlApplicationEngine engine;
     CoverCache coverCache; // one decode per cover, shared by the capsule, the toast and the card (services/CoverCache.h)
     engine.addImageProvider(QStringLiteral("cover"), CoverCache::makeProvider(&coverCache));
-    engine.addImageProvider(QStringLiteral("mime"), new MimeIconProvider);
-    engine.addImageProvider(QStringLiteral("tray"), new TrayIconProvider(&trayHost));
+    engine.addImageProvider(QStringLiteral("mime"), makeMimeIconProvider());
+    engine.addImageProvider(QStringLiteral("tray"), makeTrayIconProvider(&trayHost));
     engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider);
     engine.addImageProvider(QStringLiteral("thumb"), new ThumbImageProvider);
-    engine.addImageProvider(QStringLiteral("appicon"), new DockIconProvider(&dock));
+    engine.addImageProvider(QStringLiteral("appicon"), makeDockIconProvider(&dock));
     engine.rootContext()->setContextProperty(QStringLiteral("share"), &share);
     engine.rootContext()->setContextProperty(QStringLiteral("nearby"), &nearby);
     engine.rootContext()->setContextProperty(QStringLiteral("notch"), &controller);
@@ -437,6 +425,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("clipboardHistory"), &clipboardHistory);
     memtune.setEngine(&engine);
     engine.rootContext()->setContextProperty(QStringLiteral("memtune"), &memtune);
+    engine.rootContext()->setContextProperty(QStringLiteral("monitors"), &monitors);
     engine.rootContext()->setContextProperty(QStringLiteral("coverCache"), &coverCache);
     engine.rootContext()->setContextProperty(QStringLiteral("photoBooth"), &photoBooth);
     engine.rootContext()->setContextProperty(QStringLiteral("wellbeing"), &wellbeing);
@@ -524,15 +513,20 @@ int main(int argc, char *argv[])
             QMetaObject::invokeMethod(target, "openSearch");
     });
     auto addScreen = [&](QScreen *screen) {
+        // this monitor's own say over the status bar and the dock (Settings → Monitors), else the general settings
+        const QString screenName = screen->name();
+        const auto barOn = [&monitors, &panelBar, screenName] { return MonitorModel::flagFor(monitors.option(screenName, QStringLiteral("bar")), panelBar.enabled()); };
+        const auto dockOn = [&monitors, &dock, screenName] { return MonitorModel::flagFor(monitors.option(screenName, QStringLiteral("dock")), dock.enabled()); };
         if (auto *bar = qobject_cast<QQuickWindow *>(barWindow.create())) {
             bar->setScreen(screen);
             desktop.attachBar(bar);
-            const auto apply = [bar, &panelBar, &desktop] {
-                desktop.setBarReserve(bar, panelBar.behavior() == QLatin1String("always") && panelBar.reserve() ? panelBar.height() : 0);
-                bar->setVisible(panelBar.enabled());
+            const auto apply = [bar, &panelBar, &desktop, barOn] {
+                desktop.setBarReserve(bar, barOn() && panelBar.behavior() == QLatin1String("always") && panelBar.reserve() ? panelBar.height() : 0);
+                bar->setVisible(barOn());
             };
             apply();
             QObject::connect(&panelBar, &PanelBar::changed, bar, apply);
+            QObject::connect(&monitors, &Monitors::changed, bar, apply);
             bars.insert(screen, bar);
         } else {
             qCritical().noquote() << barWindow.errorString();
@@ -544,17 +538,19 @@ int main(int argc, char *argv[])
         }
         window->setScreen(screen);
         desktop.attach(window);
-        desktop.setAboveBar(window, panelBar.enabled()); // the bar must not cover the notch panel
+        desktop.setAboveBar(window, barOn()); // the bar must not cover the notch panel
         window->show();
         windows.insert(screen, window);
-        QObject::connect(&panelBar, &PanelBar::changed, window, [window, &desktop, &panelBar] { desktop.setAboveBar(window, panelBar.enabled()); });
+        const auto aboveBar = [window, &desktop, barOn] { desktop.setAboveBar(window, barOn()); };
+        QObject::connect(&panelBar, &PanelBar::changed, window, aboveBar);
+        QObject::connect(&monitors, &Monitors::changed, window, aboveBar);
         if (!QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
             // The bar can slip over the notch again (a full-screen app closing, Windows re-sorting topmost windows):
             // look now and then, and leave it alone while one of the notch's own menus is open.
             auto *keepAbove = new QTimer(window);
             keepAbove->setInterval(2000);
-            QObject::connect(keepAbove, &QTimer::timeout, window, [window, &desktop, &panelBar] {
-                if (panelBar.enabled() && window->isVisible() && !window->property("anyMenu").toBool())
+            QObject::connect(keepAbove, &QTimer::timeout, window, [window, &desktop, barOn] {
+                if (barOn() && window->isVisible() && !window->property("anyMenu").toBool())
                     desktop.setAboveBar(window, true);
             });
             keepAbove->start();
@@ -578,20 +574,21 @@ int main(int argc, char *argv[])
         }
         dockView->setScreen(screen);
         desktop.attachDock(dockView, dock.position());
-        dockView->setVisible(dock.enabled());
-        QObject::connect(&dock, &AppDock::enabledChanged, dockView, [dockView, &dock] { dockView->setVisible(dock.enabled()); });
+        dockView->setVisible(dockOn());
+        QObject::connect(&dock, &AppDock::enabledChanged, dockView, [dockView, dockOn] { dockView->setVisible(dockOn()); });
+        QObject::connect(&monitors, &Monitors::changed, dockView, [dockView, dockOn] { dockView->setVisible(dockOn()); });
         // Another edge: hide, re-anchor, show again (queued so the window has taken its new size from QML).
-        QObject::connect(&dock, &AppDock::positionChanged, dockView, [dockView, &dock, &desktop] {
+        QObject::connect(&dock, &AppDock::positionChanged, dockView, [dockView, &dock, &desktop, dockOn] {
             dockView->hide();
             desktop.moveDock(dockView, dock.position());
-            dockView->setVisible(dock.enabled());
+            dockView->setVisible(dockOn());
         }, Qt::QueuedConnection);
         if (!QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
             // Same drift as the notch on Windows: keep the dock on top and shown while it is enabled.
             auto *dockGuard = new QTimer(dockView);
             dockGuard->setInterval(2000);
-            QObject::connect(dockGuard, &QTimer::timeout, dockView, [dockView, &dock, &desktop] {
-                if (dock.enabled() && !dockView->isVisible())
+            QObject::connect(dockGuard, &QTimer::timeout, dockView, [dockView, dockOn, &desktop] {
+                if (dockOn() && !dockView->isVisible())
                     dockView->show();
                 if (dockView->isVisible())
                     desktop.raiseOnTop(dockView);
@@ -601,7 +598,8 @@ int main(int argc, char *argv[])
         docks.insert(screen, dockView);
     };
     for (QScreen *screen : app.screens())
-        addScreen(screen);
+        if (monitors.shown(screen)) // a monitor switched off in Settings has no notch, bar or dock
+            addScreen(screen);
     if (windows.isEmpty())
         return 1;
     // Plugging or unplugging a monitor makes the compositor re-lay the outputs, and the notch on one that was already there can end up
@@ -615,9 +613,11 @@ int main(int argc, char *argv[])
     auto syncScreens = [&] {
         const QList<QScreen *> screens = app.screens();
         for (QScreen *s : windows.keys())
-            if (!screens.contains(s))
+            if (!screens.contains(s) || !monitors.shown(s))
                 dropScreen(s);
         for (QScreen *s : screens) {
+            if (!monitors.shown(s))
+                continue;
             const QQuickWindow *w = windows.value(s);
             if (!w || w->screen() != s || !w->isVisible()) {
                 dropScreen(s);
@@ -632,6 +632,8 @@ int main(int argc, char *argv[])
     QObject::connect(&app, &QGuiApplication::screenAdded, &app, [&](QScreen *) { syncScreens(); screenSettle->start(); });
     QObject::connect(&app, &QGuiApplication::screenRemoved, &app, [&](QScreen *) { syncScreens(); screenSettle->start(); });
     QObject::connect(&app, &QGuiApplication::primaryScreenChanged, &app, [&](QScreen *) { screenSettle->start(); });
+    // A monitor switched on or off in Settings: queued, because the click came from a window that may be the one that goes away.
+    QObject::connect(&monitors, &Monitors::changed, &app, [&] { syncScreens(); screenSettle->start(); }, Qt::QueuedConnection);
 
     // `notch --shot file.png` (offscreen, software rendering): the status bar with Quick Settings open, saved as a picture,
     // to see the layout where nobody is looking at a screen.

@@ -37,8 +37,8 @@ RowLayout {
     ]
     // What a search can find: section, setting, words that also describe it.
     readonly property var index: [
-        ["about", "Updates", "update upgrade new version release check download latest github notify"], ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
-        ["general", "Gaming mode", "game fullscreen full screen maximised hide"], ["general", "Search from the notch", "search apps launcher spotlight shortcut win space meta keyboard open app"], ["general", "Low memory mode", "memory ram performance software renderer gpu graphics lower usage"], ["general", "Clipboard history", "clipboard copy paste history remember klipper"], ["general", "Sounds", "sound effects volume quiet mute"],
+        ["about", "Updates", "update upgrade new version release check download latest github notify"], ["wellbeing", "Doomscrolling", "doomscroll scrolling instagram tiktok youtube shorts reels feed warn screen time"], ["general", "Start at login", "autostart boot startup"], ["general", "Monitors", "monitor monitors screen screens display multi multiple second external hdmi show hide switch notch every monitor dock status bar size capsule own each only on"], ["general", "How the notch sits on the screen", "hidden capsule always open dynamic island pin"],
+        ["general", "Hide Notch when an app is full screen", "hide fullscreen full screen video movie presentation game maximised step aside tray"], ["general", "Gaming mode", "game fullscreen full screen maximised hide mute quiet"], ["general", "Search from the notch", "search apps launcher spotlight shortcut win space meta keyboard open app"], ["general", "Low memory mode", "memory ram performance software renderer gpu graphics lower usage"], ["general", "Clipboard history", "clipboard copy paste history remember klipper"], ["general", "Sounds", "sound effects volume quiet mute"],
         ["appearance", "Theme", "style colors classic washi frost ocean forest sunset lavender mocha sakura matcha ai indigo cheongja hanbok hanji japanese korean"], ["general", "Keep windows clear of the capsule", "reserve space taskbar work area maximise maximize windows below auto align strip"], ["general", "Widget (beta)", "widget floating card drag move position beta"], ["general", "Spectrum style", "spectrum equalizer bars wave dots pulse song capsule style visualizer"], ["general", "Voice assistant", "voice assistant commands speech microphone whisper offline say listen"], ["general", "Capsule size", "capsule size scale bigger smaller dynamic island"], ["appearance", "Capsule shape", "capsule shape notch pill rounded dynamic island edge look widget"],["about", "Report a bug", "bug report issue problem crash broken feedback github"], ["about", "About Olyzano Notch", "version author website demo source license coffee donate support traktir qr"], ["appearance", "Light or dark", "brightness dark light system mode"], ["appearance", "Glass", "glass glassmorphism translucent transparent blur frosted see-through"], ["appearance", "Border matches my system accent", "border outline edge accent windows color capsule widget"], ["appearance", "Clock follows theme colour", "clock time hour accent colour colour color theme status bar idle"], ["appearance", "Bounce", "bounce overshoot spring elastic animation capsule panel soft bouncy"], ["appearance", "Mascot", "mascot cat character face expression emoji pet cute notch companion"], ["appearance", "Animations and transitions", "animation animations transition motion reduce disable off smooth instant bounce spring"],
         ["panel", "Status bar", "panel top bar glass clock quick settings"], ["panel", "Always show or auto-hide", "bar hide slide reserve space"],
         ["panel", "Transparency and blur", "glass opacity bar"], ["panel", "What the bar shows", "app name date seconds battery percentage"],
@@ -205,8 +205,14 @@ RowLayout {
                         onToggled: notch.autostart = !notch.autostart
                     }
                     SettingToggle {
-                        title: "Keep away from full-screen apps and games"
-                        caption: "While an app or game fills the screen, Olyzano Notch and the dock cannot be reached, so a stray click never lands in them."
+                        title: "Hide Notch when an app is full screen"
+                        caption: "The notch, the status bar and the dock step aside while an app or game fills the screen, and come back when it does not. Sounds still play, and the tray icon's menu can still bring Notch up over the app."
+                        checked: gaming.hideInFullScreen
+                        onToggled: gaming.hideInFullScreen = !gaming.hideInFullScreen
+                    }
+                    SettingToggle {
+                        title: "Gaming mode (also mutes sounds and reminders)"
+                        caption: "The gamepad button at the top of the panel. In a full-screen app or game Notch and the dock cannot be reached, so a stray click never lands in them, sounds and reminders stay quiet, and the tray menu is locked."
                         checked: gaming.enabled
                         onToggled: gaming.enabled = !gaming.enabled
                     }
@@ -305,6 +311,127 @@ RowLayout {
                     checked: activities.reserveSpace
                     onToggled: activities.reserveSpace = !activities.reserveSpace
                 }
+                }
+
+                SettingCard {
+                    id: monitorsCard
+                    title: "Monitors"
+                    visible: monitors.count > 0
+                    property string picked: "" // the monitor whose own settings are shown below the map
+                    readonly property var current: {
+                        const list = monitors.screens
+                        return list.find(m => m.name === picked) || list.find(m => m.primary) || (list.length ? list[0] : null)
+                    }
+                    component OptRow: ColumnLayout {
+                        id: optRow
+                        property string optKey
+                        property var choices: []
+                        Layout.fillWidth: true
+                        spacing: 4
+                        property alias label: rowLabel.text
+                        SectionLabel { id: rowLabel }
+                        Segmented {
+                            id: optSeg
+                            Layout.fillWidth: true
+                            model: optRow.choices
+                            onPicked: (v) => monitors.setOption(monitorsCard.current.name, optRow.optKey, v)
+                            Binding on value { value: monitorsCard.current ? monitorsCard.current.options[optRow.optKey] : 0 }
+                        }
+                    }
+                    Caption {
+                        Layout.fillWidth: true
+                        text: monitors.count > 1 ? "Click a monitor to choose it; the tick in its corner shows or hides Olyzano Notch on it (the notch, the status bar and the dock). New monitors appear here when you plug them in."
+                                                  : "One monitor is connected. Plug in another and it appears here, ready to switch on or off."
+                    }
+                    Item { // the monitors where they stand, scaled to fit
+                        id: monitorMap
+                        Layout.fillWidth: true
+                        readonly property var list: monitors.screens
+                        readonly property real pad: 6
+                        readonly property rect box: {
+                            let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9
+                            for (const m of list) { x0 = Math.min(x0, m.x); y0 = Math.min(y0, m.y); x1 = Math.max(x1, m.x + m.w); y1 = Math.max(y1, m.y + m.h) }
+                            return list.length ? Qt.rect(x0, y0, x1 - x0, y1 - y0) : Qt.rect(0, 0, 16, 9)
+                        }
+                        readonly property real k: Math.min((width - 2 * pad) / box.width, 150 / box.height)
+                        implicitHeight: box.height * k + 2 * pad
+                        Repeater {
+                            model: monitorMap.list
+                            delegate: Rectangle {
+                                id: tile
+                                required property var modelData
+                                readonly property bool on: modelData.shown
+                                x: (monitorMap.width - monitorMap.box.width * monitorMap.k) / 2 + (modelData.x - monitorMap.box.x) * monitorMap.k + 2
+                                y: monitorMap.pad + (modelData.y - monitorMap.box.y) * monitorMap.k + 2
+                                width: modelData.w * monitorMap.k - 4
+                                height: modelData.h * monitorMap.k - 4
+                                radius: theme.radiusSm
+                                color: on ? theme.accentSoft : theme.well
+                                readonly property bool chosen: monitorsCard.current && monitorsCard.current.name === modelData.name
+                                border.width: chosen || tileArea.containsMouse ? 2 : 1
+                                border.color: chosen ? theme.accent : on ? theme.accentSoft : theme.hairline
+                                opacity: on ? 1 : 0.6
+                                Accessible.role: Accessible.CheckBox
+                                Accessible.name: modelData.name
+                                Accessible.checked: on
+                                Column {
+                                    anchors.centerIn: parent
+                                    spacing: 2
+                                    width: parent.width - 8
+                                    Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight; text: modelData.name; color: theme.text; font.pixelSize: 12; font.weight: Font.DemiBold }
+                                    Text { width: parent.width; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight; text: modelData.label.substring(modelData.name.length + 3) + (modelData.primary ? " · Main" : ""); color: theme.textDim; font.pixelSize: 10 }
+                                    Text { visible: modelData.model !== "" && tile.height > 70; width: parent.width; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight; text: modelData.model; color: theme.textFaint; font.pixelSize: 10 }
+                                }
+                                MouseArea {
+                                    id: tileArea
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: monitorsCard.picked = tile.modelData.name
+                                }
+                                Rectangle { // the switch for this monitor
+                                    anchors.top: parent.top
+                                    anchors.right: parent.right
+                                    anchors.margins: 6
+                                    width: 22
+                                    height: 22
+                                    radius: 6
+                                    color: tile.on ? theme.accent : "transparent"
+                                    border.width: 1.5
+                                    border.color: tile.on ? theme.accent : theme.textFaint
+                                    Accessible.role: Accessible.CheckBox
+                                    Accessible.name: "Show Olyzano Notch on " + tile.modelData.name
+                                    Accessible.checked: tile.on
+                                    LineIcon { anchors.centerIn: parent; visible: tile.on; glyph: "check"; sourceSize: Qt.size(13, 13); color: theme.onColor(theme.accent) }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        anchors.margins: -4
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: monitors.setShown(tile.modelData.name, !tile.on)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Caption {
+                        id: lastWarning
+                        visible: false
+                        Layout.fillWidth: true
+                        text: "At least one monitor has to show Olyzano Notch."
+                        color: theme.warn
+                        Timer { id: warnTimer; interval: 3500; onTriggered: lastWarning.visible = false }
+                        Connections { target: monitors; function onRejected() { lastWarning.visible = true; warnTimer.restart() } }
+                    }
+                    SectionLabel { visible: monitorsCard.current !== null; text: monitorsCard.current ? "Only on " + monitorsCard.current.name : ""; Layout.topMargin: 4 }
+                    OptRow { visible: monitorsCard.current !== null && monitorsCard.current.shown; label: "Capsule size"; optKey: "scale"; choices: [[0, "As general"], [1, "Small"], [2, "Normal"], [3, "Large"]] }
+                    OptRow { visible: monitorsCard.current !== null && monitorsCard.current.shown; label: "Capsule mode"; optKey: "mode"; choices: [[0, "As general"], [1, "Capsule"], [2, "Hidden"]] }
+                    OptRow { visible: monitorsCard.current !== null && monitorsCard.current.shown; label: "Dock"; optKey: "dock"; choices: [[0, "As general"], [1, "On"], [2, "Off"]] }
+                    OptRow { visible: monitorsCard.current !== null && monitorsCard.current.shown; label: "Status bar"; optKey: "bar"; choices: [[0, "As general"], [1, "On"], [2, "Off"]] }
+                    Caption {
+                        visible: monitorsCard.current !== null && monitorsCard.current.shown
+                        Layout.fillWidth: true
+                        text: "\"As general\" follows the settings elsewhere on this page, the Dock and the Status bar. Colours, sounds and the apps in the dock are the same on every monitor."
+                    }
                 }
 
                 SettingCard {
@@ -765,7 +892,7 @@ RowLayout {
                             }
                         }
                     }
-                    Caption { text: "Files older than this are removed right away." }
+                    Caption { text: "Files older than this are removed right away, unless you keep them (right-click a file, Keep)." }
                 }
 
                 ColumnLayout {

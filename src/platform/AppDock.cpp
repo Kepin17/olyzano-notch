@@ -1,5 +1,7 @@
 #include "platform/NotchPaths.h"
 #include "platform/AppDock.h"
+#include "services/GuiImageProvider.h"
+#include "platform/AppLaunch.h"
 
 #include <QKeySequence>
 
@@ -54,6 +56,7 @@ static QString configPath()
 AppDock::AppDock(QObject *parent)
     : QObject(parent), m_settings(configPath(), QSettings::IniFormat)
 {
+    AppLaunch::probe(this); // Linux: do programs started from here get a scope of their own? (learned once, in the background)
     m_enabled = m_settings.value(QStringLiteral("enabled"), true).toBool();
     m_autoHide = m_settings.value(QStringLiteral("autoHide"), true).toBool();
     m_pinned = m_settings.value(QStringLiteral("pinned")).toStringList();
@@ -308,7 +311,7 @@ void AppDock::launchNew(const QString &id)
     }
 #endif
     if (!app.command.isEmpty())
-        QProcess::startDetached(app.command.first(), app.command.mid(1), QDir::homePath());
+        AppLaunch::start(app.command.first(), app.command.mid(1), QDir::homePath());
 }
 
 void AppDock::pin(const QString &id)
@@ -456,7 +459,7 @@ void AppDock::openWith(const QString &id, const QStringList &urls)
         return;
     const QStringList args = app.exec.isEmpty() ? app.command + paths : dockmodel::openArguments(app.exec, paths);
     if (!args.isEmpty())
-        QProcess::startDetached(args.first(), args.mid(1), QDir::homePath());
+        AppLaunch::start(args.first(), args.mid(1), QDir::homePath());
 }
 
 QIcon AppDock::iconFor(const QString &id) const
@@ -536,13 +539,12 @@ void AppDock::refresh()
     emit itemsChanged();
 }
 
-QPixmap DockIconProvider::requestPixmap(const QString &id, QSize *size, const QSize &requested)
+QQmlImageProviderBase *makeDockIconProvider(AppDock *dock)
 {
-    const QSize s = requested.isValid() ? requested : QSize(64, 64);
-    if (size)
-        *size = s;
-    const QString appId = QString::fromUtf8(QByteArray::fromBase64(id.toLatin1(), QByteArray::Base64UrlEncoding));
-    return m_dock->iconFor(appId).pixmap(s);
+    return new GuiImageProvider([dock](const QString &id, const QSize &s) {
+        const QString appId = QString::fromUtf8(QByteArray::fromBase64(id.toLatin1(), QByteArray::Base64UrlEncoding));
+        return dock->iconFor(appId).pixmap(s).toImage();
+    }, QSize(64, 64));
 }
 
 // ---- KWin (KDE Plasma 5 and 6) ----

@@ -7,6 +7,7 @@
 #include <QIcon>
 #include <QObject>
 #include <QQuickImageProvider>
+#include <QQmlImageProviderBase>
 #include <QSettings>
 #include <QTimer>
 #include <QVariantList>
@@ -184,13 +185,5 @@ private:
     QList<KWinWindow> m_kwinWindows;
 };
 
-// image://appicon/<base64url app id> -> the app's icon.
-class DockIconProvider : public QQuickImageProvider
-{
-public:
-    explicit DockIconProvider(AppDock *dock) : QQuickImageProvider(Pixmap), m_dock(dock) {}
-    QPixmap requestPixmap(const QString &id, QSize *size, const QSize &requested) override;
-
-private:
-    AppDock *m_dock;
-};
+// image://appicon/<base64url app id> -> the app's icon (made on the GUI thread, see services/GuiImageProvider.h).
+QQmlImageProviderBase *makeDockIconProvider(AppDock *dock);

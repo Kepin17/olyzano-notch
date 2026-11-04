@@ -24,15 +24,21 @@ Optional extras (OCR, KDE Connect, PDF tools on Windows): [optional components](
 2. **Add things:** drop files, folders, browser images/links or text; **Ctrl+V** pastes; new screenshots can be picked up
    automatically (*Settings → Add new screenshots*). Files are *copied*; your originals are never touched.
 3. **Take things back out:** drag a tile to a folder or app, or right-click → *Save to…* / *Copy*.
-4. **Tidy up:** categories (the chips under the header), sort, search (names and text inside notes), *Keep* (★) to stop auto-delete.
+4. **Tidy up:** categories (the chips under the header), sort, search (names and text inside notes), *Keep* (right-click, Keep) to stop auto-delete; *Sort → Expiring first* puts what goes soonest at the top, kept files last.
 5. **Mistakes:** removed files wait 24 hours in *Recently removed*; **Ctrl+Z** undoes the last removal.
 
-Files are deleted after the retention period (default 7 days; *Settings → Keep files for*). A ⏳ badge means *due within a day*.
+Files are deleted after the retention period (default 7 days; *Settings → Keep files for*). Each file shows the days it has left, or *Kept*; a ⏳ badge means *due within a day*.
 
 ## 3. Tools on files
 
 Right-click → **Tools…**: **Convert to** (the formats the selected files can become: images, PDF → PNG/JPG per page or text, Office documents → PDF/DOCX/ODT…, text and Markdown → PDF, audio, video → MP4/WebM/GIF/MP3), **PDF tools** (merge, split, extract, compress), **Images** (images → one PDF, resize), **Text (OCR)**, zip. Results
 appear next to the originals.
+
+### Monitors
+
+With more than one monitor, *Settings → General → Monitors* shows them as they stand next to each other. Click a monitor to switch Notch off or on there (the notch, the status bar and the dock go together). A monitor you plug in shows up straight away, and one monitor always keeps Notch.
+
+Click a monitor (not its tick) to choose it, then set what is different there: capsule size, capsule mode, dock and status bar. *As general* follows the settings elsewhere; colours, sounds and the dock's apps stay the same on every monitor.
 
 ### The cat
 
@@ -60,6 +66,10 @@ while the notch is still (no extra memory: about the same as without it).
   or 30 videos in the last hour, it asks "Still scrolling?". It looks only at the window in front, what the browser plays and your idle
   time; only the *kind* of site is kept.
 - **Gaming mode:** the gamepad button hides the notch and dock and silences sounds while a full-screen app is in front.
+
+### Full-screen apps
+
+*Settings → General → Hide Notch when an app is full screen* makes the notch, the status bar and the dock step aside while an app or game fills the screen. Sounds still play, and the tray icon's menu (*Show Olyzano Notch over this app*) brings Notch back until you leave full screen. **Gaming mode** (the gamepad button) does the same and also mutes sounds and reminders and locks the tray menu.
 
 ## 6. Dock and status bar
 

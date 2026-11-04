@@ -268,7 +268,8 @@ Item {
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 8
         text: tile.copying ? "Copying…" : tile.failed ? "Missing" : tile.removed ? tile.removedText
-            : tile.expiringSoon ? tile.expiresText.replace(" left", "") + " · Keep" : tile.sizeText
+            : tile.expiringSoon ? tile.expiresText.replace(" left", "") + " · Keep"
+            : tile.pinned ? tile.sizeText + " · Kept" : tile.sizeText + " · " + tile.expiresText.split(" ")[0]
         color: tile.failed ? theme.danger : tile.expiringSoon && !tile.removed ? theme.warn : theme.textDim
         // One click on "· Keep" saves a file that is about to expire.
         TapHandler {

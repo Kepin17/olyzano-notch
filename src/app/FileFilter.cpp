@@ -45,6 +45,12 @@ bool FileFilter::lessThan(const QModelIndex &left, const QModelIndex &right) con
                                             right.data(FileItemModel::MimeTypeRole).toString());
         return byType != 0 ? byType < 0 : natural.compare(name(left), name(right)) < 0;
     }
+    if (m_sort == QLatin1String("expiring")) { // what goes first at the top; kept files, which never go, at the end
+        const bool keptLeft = left.data(FileItemModel::PinnedRole).toBool(), keptRight = right.data(FileItemModel::PinnedRole).toBool();
+        if (keptLeft != keptRight)
+            return keptRight;
+        return left.data(FileItemModel::AddedAtRole).toDateTime() < right.data(FileItemModel::AddedAtRole).toDateTime();
+    }
     return left.data(FileItemModel::AddedAtRole).toDateTime() > right.data(FileItemModel::AddedAtRole).toDateTime();
 }
 

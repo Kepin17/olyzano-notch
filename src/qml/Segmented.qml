@@ -19,16 +19,15 @@ Item {
         border.width: 1
         border.color: theme.washi ? theme.outline : theme.hairline
     }
-    Rectangle { // the highlight — solid grey-ish accent tint, never a pale “white” block
+    Rectangle { // the chosen one: the solid accent, with text that reads on it (the same as a switch that is on)
         readonly property real cell: (seg.width - 6) / Math.max(1, seg.model.length)
         x: 3 + seg.index * cell
         y: 3
         width: cell
         height: seg.height - 6
         radius: theme.washi ? Math.max(2, theme.chipRadius - 2) : theme.radiusSm
-        color: theme.dark ? Qt.tint("#3a3a3c", Qt.alpha(theme.accent, 0.35)) : Qt.tint("#e4e4e9", Qt.alpha(theme.accent, 0.25))
-        border.width: 1
-        border.color: Qt.alpha(theme.accent, 0.4)
+        color: theme.accent
+        border.width: 0
         Behavior on x { enabled: activities.animations; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
     }
     Row {
@@ -48,7 +47,7 @@ Item {
                 onClicked: { seg.value = modelData[0]; seg.picked(modelData[0]) }
                 contentItem: Text {
                     text: modelData[1]
-                    color: index === seg.index ? theme.accentText : hovered ? theme.text : theme.textSoft
+                    color: index === seg.index ? theme.onColor(theme.accent) : hovered ? theme.text : theme.textSoft
                     font.pixelSize: 12
                     font.weight: index === seg.index ? Font.DemiBold : Font.Medium
                     horizontalAlignment: Text.AlignHCenter

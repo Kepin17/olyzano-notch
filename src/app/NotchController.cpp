@@ -688,11 +688,13 @@ void NotchController::copyPaths(const QStringList &ids)
 
 void NotchController::setPinned(const QStringList &ids, bool pinned)
 {
-    QStringList done;
-    for (const QString &id : ids)
-        if (m_repo.setPinned(id, pinned))
-            done << id;
-    m_model.setPinned(done, pinned);
+    runBatches(pinned ? tr("Keeping") : tr("Releasing"), ids, [this, pinned](const QStringList &chunk) {
+        QStringList done;
+        for (const QString &id : chunk)
+            if (m_repo.setPinned(id, pinned))
+                done << id;
+        m_model.setPinned(done, pinned);
+    }, [] {});
 }
 
 void NotchController::open(const QString &id)
