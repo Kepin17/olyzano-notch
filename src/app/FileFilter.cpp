@@ -36,22 +36,31 @@ bool FileFilter::lessThan(const QModelIndex &left, const QModelIndex &right) con
         return c;
     }();
     const auto name = [](const QModelIndex &i) { return i.data(FileItemModel::NameRole).toString(); };
+    const auto id = [](const QModelIndex &i) { return i.data(FileItemModel::IdRole).toString(); };
+    const auto byId = [&] { return id(left) < id(right); };
     if (m_sort == QLatin1String("name"))
-        return natural.compare(name(left), name(right)) < 0;
+        return natural.compare(name(left), name(right)) != 0 ? natural.compare(name(left), name(right)) < 0 : byId();
     if (m_sort == QLatin1String("size"))
-        return left.data(FileItemModel::SizeRole).toLongLong() > right.data(FileItemModel::SizeRole).toLongLong();
+        return left.data(FileItemModel::SizeRole).toLongLong() != right.data(FileItemModel::SizeRole).toLongLong()
+                   ? left.data(FileItemModel::SizeRole).toLongLong() > right.data(FileItemModel::SizeRole).toLongLong()
+                   : byId();
     if (m_sort == QLatin1String("type")) {
         const int byType = QString::compare(left.data(FileItemModel::MimeTypeRole).toString(),
                                             right.data(FileItemModel::MimeTypeRole).toString());
-        return byType != 0 ? byType < 0 : natural.compare(name(left), name(right)) < 0;
+        if (byType != 0)
+            return byType < 0;
+        const int byName = natural.compare(name(left), name(right));
+        return byName != 0 ? byName < 0 : byId();
     }
     if (m_sort == QLatin1String("expiring")) { // what goes first at the top; kept files, which never go, at the end
         const bool keptLeft = left.data(FileItemModel::PinnedRole).toBool(), keptRight = right.data(FileItemModel::PinnedRole).toBool();
         if (keptLeft != keptRight)
             return keptRight;
-        return left.data(FileItemModel::AddedAtRole).toDateTime() < right.data(FileItemModel::AddedAtRole).toDateTime();
+        const QDateTime a = left.data(FileItemModel::AddedAtRole).toDateTime(), b = right.data(FileItemModel::AddedAtRole).toDateTime();
+        return a != b ? a < b : byId();
     }
-    return left.data(FileItemModel::AddedAtRole).toDateTime() > right.data(FileItemModel::AddedAtRole).toDateTime();
+    const QDateTime a = left.data(FileItemModel::AddedAtRole).toDateTime(), b = right.data(FileItemModel::AddedAtRole).toDateTime();
+    return a != b ? a > b : byId();
 }
 
 bool FileFilter::filterAcceptsRow(int row, const QModelIndex &parent) const

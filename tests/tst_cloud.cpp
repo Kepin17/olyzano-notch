@@ -32,6 +32,40 @@ class TestCloud : public QObject
     }
 
 private slots:
+    void cloudEntriesCanBeSearchedAndSorted()
+    {
+        CloudModel source;
+        CloudFilterModel view;
+        view.setSourceModel(&source);
+        CloudModel::Entry later;
+        later.id = QStringLiteral("later");
+        later.name = QStringLiteral("zebra.txt");
+        later.mime = QStringLiteral("text/plain");
+        later.size = 10;
+        later.added = QDateTime::fromSecsSinceEpoch(200);
+        CloudModel::Entry earlier;
+        earlier.id = QStringLiteral("earlier");
+        earlier.name = QStringLiteral("alpha.pdf");
+        earlier.mime = QStringLiteral("application/pdf");
+        earlier.size = 20;
+        earlier.category = QStringLiteral("Documents");
+        earlier.added = QDateTime::fromSecsSinceEpoch(200);
+        source.setAll({earlier, later});
+
+        QCOMPARE(view.rowCount(), 2);
+        QCOMPARE(view.index(0, 0).data(CloudModel::IdRole).toString(), QStringLiteral("earlier"));
+        QCOMPARE(view.index(1, 0).data(CloudModel::IdRole).toString(), QStringLiteral("later"));
+        view.setSortMode(QStringLiteral("name"));
+        QCOMPARE(view.index(0, 0).data(CloudModel::NameRole).toString(), QStringLiteral("alpha.pdf"));
+        view.setSortMode(QStringLiteral("size"));
+        QCOMPARE(view.index(0, 0).data(CloudModel::NameRole).toString(), QStringLiteral("alpha.pdf"));
+        view.setSortMode(QStringLiteral("oldest"));
+        QCOMPARE(view.index(0, 0).data(CloudModel::NameRole).toString(), QStringLiteral("alpha.pdf"));
+        view.setSearchText(QStringLiteral("documents"));
+        QCOMPARE(view.rowCount(), 1);
+        QCOMPARE(view.index(0, 0).data(CloudModel::NameRole).toString(), QStringLiteral("alpha.pdf"));
+    }
+
     void initTestCase()
     {
         QVERIFY(m_home.isValid());
@@ -77,6 +111,8 @@ private slots:
         cloud.uploadUrls({QUrl::fromLocalFile(f.fileName())});
         QTRY_COMPARE_WITH_TIMEOUT(cloud.count(), 1, 20000);
         QCOMPARE(cloud.entries()->index(0, 0).data(CloudModel::NameRole).toString(), QStringLiteral("plan.txt"));
+        QTRY_COMPARE_WITH_TIMEOUT(cloud.uploads()->index(0, 0).data(CloudUploadModel::StatusRole).toString(), QStringLiteral("Complete"), 20000);
+        QCOMPARE(cloud.uploads()->index(0, 0).data(CloudUploadModel::ProgressRole).toInt(), 100);
         const QJsonObject stored = ask(QStringLiteral("stored"));
         QCOMPARE(stored.value(QStringLiteral("count")).toInt(), 1);
         QVERIFY(!stored.value(QStringLiteral("plaintext")).toBool()); // the store holds ciphertext
@@ -114,6 +150,7 @@ private slots:
         QTRY_COMPARE_WITH_TIMEOUT(cloud.state(), QStringLiteral("ready"), 15000);
         QVERIFY(!cloud.isHost());
         QTRY_COMPARE_WITH_TIMEOUT(cloud.count(), 1, 15000);
+        QVERIFY(!cloud.canRemoveItems(cloud.allIds()));
         QCOMPARE(cloud.entries()->index(0, 0).data(CloudModel::NameRole).toString(), QStringLiteral("plan.txt")); // read with the shared key
         QCOMPARE(cloud.entries()->index(0, 0).data(CloudModel::MineRole).toBool(), false);
         QVERIFY(cloud.quota() > 0);
@@ -170,6 +207,16 @@ private slots:
         share.testServer(memberId);
         QTRY_COMPARE_WITH_TIMEOUT(cloud.state(), QStringLiteral("removed"), 10000);
         QVERIFY2(cloud.stateMessage().contains(QLatin1String("left the team")), qPrintable(cloud.stateMessage()));
+
+        cloud.setServerId(hostId);
+        QTRY_COMPARE_WITH_TIMEOUT(cloud.state(), QStringLiteral("ready"), 10000);
+        cloud.uploadUrls({QUrl::fromLocalFile(f.fileName())});
+        QTRY_COMPARE_WITH_TIMEOUT(cloud.count(), 2, 20000);
+        const QStringList cloudIds = cloud.allIds();
+        QCOMPARE(cloudIds.size(), 2);
+        QVERIFY(cloud.canRemoveItems(cloudIds));
+        cloud.removeItems(cloudIds);
+        QTRY_COMPARE_WITH_TIMEOUT(cloud.count(), 0, 15000);
 
         ask(QStringLiteral("quit"));
         m_relay.waitForFinished(5000);

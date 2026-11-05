@@ -13,7 +13,10 @@ Item {
     required property bool locked
     required property bool busy
     required property int percent
+    property bool selected: false
+    property bool selectionMode: false
     signal openRequested()
+    signal selectionRequested()
     signal menuRequested()
 
     readonly property var view: GridView.view
@@ -23,9 +26,9 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: theme.radiusMd
-        color: hover.hovered ? theme.hoverFill : "transparent"
+        color: tile.selected ? Qt.alpha(theme.accent, 0.12) : hover.hovered ? theme.hoverFill : "transparent"
         border.width: 1
-        border.color: theme.washi ? theme.outline : theme.hairline
+        border.color: tile.selected ? Qt.alpha(theme.accent, 0.55) : theme.washi ? theme.outline : theme.hairline
     }
     HoverHandler { id: hover; cursorShape: tile.locked ? Qt.ArrowCursor : Qt.PointingHandCursor }
     Rectangle {
@@ -45,6 +48,19 @@ Item {
             source: "image://mime/" + tile.iconName
             sourceSize: Qt.size(80, 80)
             opacity: tile.locked ? 0.35 : 1
+        }
+        Rectangle {
+            visible: tile.selected
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: -5
+            width: 18
+            height: 18
+            radius: 9
+            color: theme.accent
+            border.color: theme.island
+            border.width: 1.5
+            LineIcon { anchors.centerIn: parent; glyph: "check"; sourceSize: Qt.size(11, 11); color: theme.onColor(theme.accent) }
         }
         Rectangle { // being fetched
             anchors.fill: parent
@@ -91,8 +107,8 @@ Item {
     }
     TapHandler {
         acceptedButtons: Qt.LeftButton
-        enabled: !tile.locked && !tile.busy
-        onTapped: tile.openRequested()
+        enabled: tile.selectionMode || (!tile.locked && !tile.busy)
+        onTapped: tile.selectionMode ? tile.selectionRequested() : tile.openRequested()
     }
     TapHandler {
         acceptedButtons: Qt.RightButton

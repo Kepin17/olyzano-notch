@@ -32,7 +32,10 @@ class CloudController : public QObject
     Q_PROPERTY(bool usable READ usable NOTIFY changed)                // can send and fetch right now
     Q_PROPERTY(int count READ count NOTIFY changed)
     Q_PROPERTY(int uploadsPending READ uploadsPending NOTIFY changed)
+    Q_PROPERTY(QString searchText READ searchText WRITE setSearchText NOTIFY changed)
+    Q_PROPERTY(QString sortMode READ sortMode WRITE setSortMode NOTIFY changed)
     Q_PROPERTY(QAbstractItemModel *entries READ entries CONSTANT)
+    Q_PROPERTY(QAbstractItemModel *uploads READ uploads CONSTANT)
 
 public:
     CloudController(NotchController *notch, ShareController *share, QObject *parent = nullptr);
@@ -48,16 +51,26 @@ public:
     bool isHost() const;
     bool usable() const;
     int count() const { return int(m_model.rowCount()); }
-    int uploadsPending() const { return m_active + int(m_queue.size()); }
-    QAbstractItemModel *entries() { return &m_model; }
+    int uploadsPending() const { return m_uploads.pendingCount(); }
+    QString searchText() const { return m_searchText; }
+    QString sortMode() const { return m_sortMode; }
+    QAbstractItemModel *entries() { return &m_entries; }
+    QAbstractItemModel *uploads() { return &m_uploads; }
+    void setSearchText(const QString &text);
+    void setSortMode(const QString &mode);
 
     Q_INVOKABLE void syncNow();
     // Shelf files (by id) or files from anywhere (paths) go to the cloud shelf; one at a time to two at a time, each with its progress in the pill.
     Q_INVOKABLE void uploadItems(const QStringList &itemIds);
     Q_INVOKABLE void uploadUrls(const QList<QUrl> &urls);
+    Q_INVOKABLE void retryUpload(const QString &uploadId);
     // thenShare: fetch into the local shelf, then readyToShare with the new item's id (for Share via QR).
     Q_INVOKABLE void download(const QString &cloudId, bool thenShare = false);
     Q_INVOKABLE void remove(const QString &cloudId);
+    Q_INVOKABLE void removeItems(const QStringList &cloudIds);
+    Q_INVOKABLE QStringList allIds() const;
+    Q_INVOKABLE QStringList removableIds() const;
+    Q_INVOKABLE bool canRemoveItems(const QStringList &cloudIds) const;
     Q_INVOKABLE void rename(const QString &cloudId, const QString &name);
 
 signals:
@@ -72,7 +85,7 @@ private:
         QByteArray meta; // ciphertext
     };
     struct Job {
-        QString path, name, mime, category;
+        QString id, path, name, mime, category;
     };
     QByteArray key() const;
     QNetworkRequest request(const QString &path) const;
@@ -91,14 +104,17 @@ private:
     ShareController *m_share;
     QSettings m_settings;
     CloudModel m_model;
+    CloudFilterModel m_entries;
+    CloudUploadModel m_uploads;
     QThreadPool m_pool;
     QTimer m_poll;
     QHash<QString, Raw> m_raw;
+    QHash<QString, Job> m_jobs;
     QList<Job> m_queue;
     int m_active = 0;
     qint64 m_seq = 0, m_me = -1;
     qlonglong m_used = 0, m_quota = 0;
-    QString m_state = QStringLiteral("off"), m_message, m_loadedFor;
+    QString m_state = QStringLiteral("off"), m_message, m_loadedFor, m_searchText, m_sortMode = QStringLiteral("newest");
     QString m_net; // "" | offline | disabled | removed | unsupported
     bool m_syncing = false, m_again = false;
 };

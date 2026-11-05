@@ -42,7 +42,7 @@ Item {
     readonly property bool showThumbnail: isImage && available
 
     width: view ? view.tileWidth : 96
-    height: 136
+    height: 150
 
     component CircleButton: AbstractButton {
         HoverHandler { cursorShape: Qt.PointingHandCursor }
@@ -270,6 +270,8 @@ Item {
         anchors.topMargin: 8
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 8
+        height: 30
+        clip: true
         textFormat: Text.PlainText // a name can look like markup
         text: tile.name
         color: theme.text
@@ -285,6 +287,10 @@ Item {
         anchors.topMargin: 2
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 8
+        height: 16
+        clip: true
+        verticalAlignment: Text.AlignVCenter
+        wrapMode: Text.NoWrap
         text: tile.copying ? (tile.copyPercent >= 0 ? tile.copyPercent + "%" : "Copying…") : tile.failed ? "Missing" : tile.removed ? tile.removedText
             : tile.expiringSoon ? tile.expiresText.replace(" left", "") + " · Keep"
             : tile.pinned ? tile.sizeText + " · Kept" : tile.sizeText + " · " + tile.expiresText.split(" ")[0]
@@ -362,7 +368,8 @@ Item {
     // Drag out: hands the managed copies to the target as file URLs. Dragging a selected tile
     // carries the whole selection; dropping on a category chip moves them there.
     property bool dragging: false // this press started a drag (cleared on the next press)
-    GridView.onReused: { dragging = false; draggedIds = [] } // a tile is given another file when the grid scrolls
+    // A tile is given another file when the grid scrolls. An add/remove transition cut short can leave it small or faint, so reset that too.
+    GridView.onReused: { dragging = false; draggedIds = []; scale = 1; opacity = 1 }
     DragHandler {
         id: dragHandler
         target: null

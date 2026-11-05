@@ -14,6 +14,7 @@
 #include <QMimeDatabase>
 #include <QNetworkReply>
 #include <QSaveFile>
+#include <QSet>
 #include <QUuid>
 #include <QtConcurrent>
 
@@ -28,6 +29,7 @@ CloudController::CloudController(NotchController *notch, ShareController *share,
     , m_share(share)
     , m_settings(notch->settingsFolder() + QStringLiteral("/cloud.conf"), QSettings::IniFormat)
 {
+    m_entries.setSourceModel(&m_model);
     m_pool.setMaxThreadCount(Parallel);
     QDir(notch->scratchPath(false) + QStringLiteral("/cloud")).removeRecursively(); // leftovers of a crash
     m_poll.setInterval(PollMs);
@@ -69,6 +71,26 @@ QString CloudController::serverId() const
 {
     const QString id = m_settings.value(QStringLiteral("serverId")).toString();
     return id.isEmpty() ? m_share->defaultServerId() : id;
+}
+
+void CloudController::setSearchText(const QString &text)
+{
+    if (m_searchText == text)
+        return;
+    m_searchText = text;
+    m_entries.setSearchText(text);
+    emit changed();
+}
+
+void CloudController::setSortMode(const QString &mode)
+{
+    if (mode != QLatin1String("newest") && mode != QLatin1String("oldest") && mode != QLatin1String("name") && mode != QLatin1String("size"))
+        return;
+    if (m_sortMode == mode)
+        return;
+    m_sortMode = mode;
+    m_entries.setSortMode(mode);
+    emit changed();
 }
 
 bool CloudController::isHost() const { return m_share->serverStatus(serverId()).value(QStringLiteral("owner")).toBool(); }
@@ -336,7 +358,10 @@ void CloudController::uploadItems(const QStringList &itemIds)
         for (const QVariant &c : m_notch->categories())
             if (c.toMap().value(QStringLiteral("id")).toString() == item->categoryId)
                 category = c.toMap().value(QStringLiteral("name")).toString();
-        m_queue.append({path, item->originalName, item->mimeType, category});
+        Job job{QUuid::createUuid().toString(QUuid::WithoutBraces), path, item->originalName, item->mimeType, category};
+        m_jobs.insert(job.id, job);
+        m_uploads.append({job.id, job.name, QStringLiteral("Queued"), {}, -1});
+        m_queue.append(job);
     }
     pump();
     emit changed();
@@ -347,9 +372,36 @@ void CloudController::uploadUrls(const QList<QUrl> &urls)
     static const QMimeDatabase mimes;
     for (const QUrl &url : urls) {
         const QFileInfo fi(url.toLocalFile());
-        if (url.isLocalFile() && fi.isFile())
-            m_queue.append({fi.absoluteFilePath(), fi.fileName(), mimes.mimeTypeForFile(fi).name(), QString()});
+        if (url.isLocalFile() && fi.isFile()) {
+            Job job{QUuid::createUuid().toString(QUuid::WithoutBraces), fi.absoluteFilePath(), fi.fileName(), mimes.mimeTypeForFile(fi).name(), QString()};
+            m_jobs.insert(job.id, job);
+            m_uploads.append({job.id, job.name, QStringLiteral("Queued"), {}, -1});
+            m_queue.append(job);
+        }
     }
+    pump();
+    emit changed();
+}
+
+void CloudController::retryUpload(const QString &uploadId)
+{
+    const CloudUploadModel::Upload *upload = m_uploads.find(uploadId);
+    const auto job = m_jobs.constFind(uploadId);
+    if (!upload || upload->status != QLatin1String("Failed") || job == m_jobs.cend())
+        return;
+    if (!usable()) {
+        emit failed(m_state == QLatin1String("disabled") || m_state == QLatin1String("removed") ? m_message
+                                                                                                : tr("The cloud shelf is not ready: %1").arg(m_message.isEmpty() ? m_state : m_message));
+        return;
+    }
+    if (!QFileInfo(job->path).isFile()) {
+        const QString error = tr("The original file is no longer available");
+        m_uploads.update(uploadId, QStringLiteral("Failed"), -1, error);
+        emit failed(tr("%1: %2").arg(job->name, error));
+        return;
+    }
+    m_uploads.update(uploadId, QStringLiteral("Queued"), -1);
+    m_queue.append(job.value());
     pump();
     emit changed();
 }
@@ -357,9 +409,12 @@ void CloudController::uploadUrls(const QList<QUrl> &urls)
 void CloudController::pump()
 {
     if (!usable() && !m_queue.isEmpty()) {
-        emit failed(m_state == QLatin1String("disabled") || m_state == QLatin1String("removed") ? m_message
-                                                                                               : tr("The cloud shelf is not ready: %1").arg(m_message.isEmpty() ? m_state : m_message));
+        const QString error = m_state == QLatin1String("disabled") || m_state == QLatin1String("removed") ? m_message
+                                                                                                           : tr("The cloud shelf is not ready: %1").arg(m_message.isEmpty() ? m_state : m_message);
+        for (const Job &job : std::as_const(m_queue))
+            m_uploads.update(job.id, QStringLiteral("Failed"), -1, error);
         m_queue.clear();
+        emit failed(error);
         emit changed();
         return;
     }
@@ -382,13 +437,18 @@ void CloudController::startUpload(const Job &job)
     t.title = job.name;
     t.verb = tr("Uploading");
     m_notch->beginTransfer(transferId, t);
+    m_uploads.update(job.id, QStringLiteral("Preparing"), -1);
 
-    auto finish = [this, transferId, tmp](const QString &error) {
+    auto finish = [this, transferId, tmp, job](const QString &error) {
         m_notch->endTransfer(transferId);
         QFile::remove(tmp);
         --m_active;
-        if (!error.isEmpty())
+        if (!error.isEmpty()) {
+            m_uploads.update(job.id, QStringLiteral("Failed"), -1, error);
             emit failed(error);
+        } else {
+            m_uploads.update(job.id, QStringLiteral("Complete"), 100);
+        }
         pump();
         emit changed();
     };
@@ -400,7 +460,7 @@ void CloudController::startUpload(const Job &job)
         if (!err.isEmpty())
             return finish(tr("%1: %2").arg(job.name, err));
         if (t.cancel->load())
-            return finish({});
+            return finish(tr("%1: upload cancelled").arg(job.name));
         auto *file = new QFile(tmp);
         if (!file->open(QIODevice::ReadOnly)) {
             delete file;
@@ -413,8 +473,11 @@ void CloudController::startUpload(const Job &job)
         QNetworkReply *reply = m_share->nam()->post(req, file);
         file->setParent(reply);
         const qint64 plainSize = t.total, sealedSize = file->size();
-        connect(reply, &QNetworkReply::uploadProgress, this, [reply, t, plainSize, sealedSize](qint64 sent, qint64) {
+        m_uploads.update(job.id, QStringLiteral("Uploading"), 0);
+        connect(reply, &QNetworkReply::uploadProgress, this, [this, reply, t, plainSize, sealedSize, uploadId = job.id](qint64 sent, qint64) {
             t.done->store(sealedSize > 0 ? sent * plainSize / sealedSize : 0); // bytes of the file, not of its encrypted copy
+            const int percent = sealedSize > 0 ? int(qMin<qint64>(99, sent * 100 / sealedSize)) : -1;
+            m_uploads.update(uploadId, QStringLiteral("Uploading"), percent);
             if (t.cancel->load())
                 reply->abort();
         });
@@ -423,7 +486,9 @@ void CloudController::startUpload(const Job &job)
             const QByteArray body = reply->readAll();
             reply->setProperty("body", body);
             if (t.cancel->load())
-                return finish({});
+                return finish(tr("%1: upload cancelled").arg(job.name));
+            if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 413)
+                return finish(tr("%1: upload rejected; the maximum file size through Cloudflare is 100 MB").arg(job.name));
             if (reply->error() != QNetworkReply::NoError)
                 return finish(tr("%1: %2").arg(job.name, failure(reply)));
             emit notice(tr("Sent to the cloud shelf"), job.name);
@@ -542,13 +607,84 @@ void CloudController::remove(const QString &cloudId)
     });
 }
 
+QStringList CloudController::allIds() const
+{
+    QStringList ids;
+    ids.reserve(m_model.rows().size());
+    for (const CloudModel::Entry &entry : m_model.rows())
+        ids.append(entry.id);
+    return ids;
+}
+
+QStringList CloudController::removableIds() const
+{
+    QStringList ids;
+    for (const CloudModel::Entry &entry : m_model.rows())
+        if (isHost() || entry.owner == m_me)
+            ids.append(entry.id);
+    return ids;
+}
+
+bool CloudController::canRemoveItems(const QStringList &cloudIds) const
+{
+    if (cloudIds.isEmpty())
+        return false;
+    for (const QString &id : cloudIds) {
+        const CloudModel::Entry *entry = m_model.find(id);
+        if (!entry || entry->busy || (!isHost() && entry->owner != m_me))
+            return false;
+    }
+    return true;
+}
+
+void CloudController::removeItems(const QStringList &cloudIds)
+{
+    if (!usable()) {
+        emit failed(tr("The cloud shelf is not ready: %1").arg(m_message.isEmpty() ? m_state : m_message));
+        return;
+    }
+    if (!canRemoveItems(cloudIds)) {
+        emit failed(tr("You can only remove files you own from the cloud shelf"));
+        return;
+    }
+
+    struct Batch {
+        int remaining = 0;
+        QStringList errors;
+    };
+    auto batch = std::make_shared<Batch>();
+    QSet<QString> unique;
+    for (const QString &id : cloudIds) {
+        if (unique.contains(id))
+            continue;
+        unique.insert(id);
+        const CloudModel::Entry *entry = m_model.find(id);
+        if (!entry)
+            continue;
+        const QString name = entry->name.isEmpty() ? id : entry->name;
+        ++batch->remaining;
+        QNetworkReply *reply = m_share->nam()->deleteResource(request(QStringLiteral("/api/v1/cloud/objects/") + id));
+        connect(reply, &QNetworkReply::finished, this, [this, reply, batch, name] {
+            reply->deleteLater();
+            reply->setProperty("body", reply->readAll());
+            if (reply->error() != QNetworkReply::NoError)
+                batch->errors.append(tr("%1: %2").arg(name, failure(reply)));
+            if (--batch->remaining == 0) {
+                if (!batch->errors.isEmpty())
+                    emit failed(batch->errors.join(QLatin1Char('\n')));
+                syncNow();
+            }
+        });
+    }
+}
+
 void CloudController::rename(const QString &cloudId, const QString &name)
 {
     const CloudModel::Entry *e = m_model.find(cloudId);
     const QString clean = FileService::safeFileName(name);
     if (!e || e->locked || !usable() || clean.isEmpty() || clean == e->name)
         return;
-    const Job job{QString(), clean, e->mime, e->category};
+    const Job job{QString(), QString(), clean, e->mime, e->category};
     QNetworkRequest req = request(QStringLiteral("/api/v1/cloud/objects/") + cloudId + QStringLiteral("/meta"));
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     const QByteArray body = QJsonDocument(QJsonObject{{QStringLiteral("meta"), QString::fromLatin1(metaFor(job, e->size, e->added.toSecsSinceEpoch()).toBase64())}}).toJson(QJsonDocument::Compact);

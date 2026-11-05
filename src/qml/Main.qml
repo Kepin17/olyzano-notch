@@ -232,6 +232,8 @@ Window {
     property var preview: ({})
     property string previewText: ""
     property var selection: []          // selected item ids
+    property var cloudSelection: []
+    property bool cloudSelectionMode: false
     property int selectionAnchor: -1    // view index Shift+click ranges start from
     property string editingCategory: "" // "" | "new" | category id being renamed
     property string editingName: ""
@@ -255,12 +257,19 @@ Window {
     readonly property bool selecting: page === "shelf" && selection.length > 0
     readonly property bool inRemoved: notch.categoryFilter === "__removed__" // Recently removed view
     readonly property bool inCloud: notch.categoryFilter === "__cloud__"     // the cloud shelf (Settings → Files)
+    onInCloudChanged: {
+        cloudSelection = []
+        cloudSelectionMode = false
+    }
     property string cloudNote: ""                                           // the last thing that went wrong there, in the host's or the server's words
-    readonly property bool anyMenu: menu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible || cloudMenu.visible
+    // Dropdowns (AgentChoice) report here while their list is open: it hangs below the island, so without it the panel closes
+    // when the pointer reaches the list and the part outside the island's shape is click-through.
+    property int choicesOpen: 0
+    readonly property bool anyMenu: choicesOpen > 0 || menu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible || cloudMenu.visible
                                     || toolsMenu.visible || extractPopup.visible || (settingsLoader.item !== null && settingsLoader.item.overlayOpen)
                                     || quickLookCard.visible || vaultPopup.visible || confirmDelete.visible || confirmClear.visible
                                     || (shareLoader.item !== null && shareLoader.item.visible) || incomingPopup.visible
-                                    || sortMenu.visible || removedMenu.visible || (tasksPageLoader.item && tasksPageLoader.item.modalOpen)
+                                    || removedMenu.visible || confirmCloudDelete.visible || (tasksPageLoader.item && tasksPageLoader.item.modalOpen)
                                     || (devPageLoader.item && devPageLoader.item.modalOpen)
                                     || (cameraPageLoader.item && cameraPageLoader.item.modalOpen)
                                     || removedChipMenu.visible
@@ -2185,36 +2194,6 @@ Window {
                     }
                     Item { Layout.fillWidth: true }
                     PulseDot { visible: root.page === "shelf" && (notch.copying > 0 || notch.batchLabel !== "") }
-                    TextField {
-                        id: search
-                        visible: root.page === "shelf" && notch.count > 0 && !root.selecting
-                        Layout.preferredWidth: activeFocus || text !== "" ? 180 : 110
-                        Behavior on Layout.preferredWidth { enabled: activities.animations; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-                        implicitHeight: 26
-                        leftPadding: 12
-                        rightPadding: 12
-                        topPadding: 0
-                        bottomPadding: 0
-                        verticalAlignment: TextInput.AlignVCenter
-                        placeholderText: "Search"
-                        placeholderTextColor: theme.placeholder
-                        color: root.textPrimary
-                        selectionColor: root.accent
-                        font.pixelSize: 12
-                        background: Rectangle {
-                            radius: theme.chipRadius
-                            color: theme.surface
-                            border.width: 1
-                            border.color: search.activeFocus ? root.accent : "transparent"
-                        }
-                        onTextChanged: notch.filter = text
-                        Keys.onEscapePressed: {
-                            if (text !== "")
-                                text = ""
-                            else
-                                island.forceActiveFocus()
-                        }
-                    }
                     PillButton {
                         visible: root.page === "preview"
                         text: "Open"
@@ -2286,17 +2265,6 @@ Window {
                         Accessible.name: "Lock locked categories now"
                         onClicked: notch.lockVault()
                     }
-                    PillButton { // everything in this view (the category, the search) at once; Recently removed keeps it for a day
-                        visible: root.page === "shelf" && !root.selecting && list.count > 0
-                        enabled: notch.batchLabel === ""
-                        text: notch.batchLabel !== "" ? notch.batchLabel + "…" : root.inRemoved ? "Empty" : "Clear all"
-                        iconName: "trash"
-                        implicitHeight: 28
-                        onClicked: {
-                            confirmClear.count = list.count
-                            confirmClear.open()
-                        }
-                    }
                     // Recently removed: a header button (with count) rather than a chip at the far end.
                     IconButton {
                         id: trashButton
@@ -2343,17 +2311,6 @@ Window {
                         ToolTip.delay: 500
                         ToolTip.text: "Say a command: open an app, search, volume, timer…"
                         onClicked: assistant.start()
-                    }
-                    IconButton {
-                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "camera" || root.page === "dev") && !root.selecting
-                        iconName: "gamepad"
-                        checked: gaming.enabled
-                        Accessible.name: gaming.enabled ? "Gaming mode is on: turn it off" : "Gaming mode: keep away from full-screen games"
-                        onClicked: {
-                            gaming.enabled = !gaming.enabled
-                            root.infoText = gaming.enabled ? "Gaming mode on: Notch stays out of the way of an app that fills the screen" : "Gaming mode off"
-                            infoTimer.restart()
-                        }
                     }
                     IconButton {
                         visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "camera" || root.page === "dev") && !root.selecting
@@ -2624,12 +2581,55 @@ Window {
                         onClicked: root.beginCategoryEdit("new", "", [])
                     }
 
+                }
+
+                RowLayout {
+                    visible: root.page === "shelf" && !root.inCloud && !root.lockedClosed && !root.selecting
+                             && (notch.count > 0 || notch.categories.length > 0 || root.inRemoved)
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    spacing: 8
+                    TextField {
+                        Layout.fillWidth: true
+                        implicitHeight: 30
+                        leftPadding: 12
+                        rightPadding: 12
+                        placeholderText: "Search files"
+                        placeholderTextColor: theme.placeholder
+                        color: root.textPrimary
+                        selectionColor: root.accent
+                        font.pixelSize: 12
+                        text: notch.filter
+                        onTextEdited: notch.filter = text
+                        background: Rectangle {
+                            radius: theme.radiusSm
+                            color: theme.well
+                            border.width: 1
+                            border.color: parent.activeFocus ? root.accent : theme.hairline
+                        }
+                        Keys.onEscapePressed: {
+                            if (text !== "")
+                                text = ""
+                            else
+                                island.forceActiveFocus()
+                        }
+                    }
+                    AgentChoice {
+                        Layout.preferredWidth: 124
+                        model: ["Date", "Name", "Size", "Type", "Expiring"]
+                        currentIndex: ["date", "name", "size", "type", "expiring"].indexOf(notch.sortMode)
+                        onActivated: notch.sortMode = ["date", "name", "size", "type", "expiring"][currentIndex]
+                    }
                     PillButton {
-                        visible: notch.count > 1
-                        iconName: "sort"
-                        text: ({ date: "Date", name: "Name", size: "Size", type: "Type", expiring: "Expiring" })[notch.sortMode]
-                        Accessible.name: "Sort files"
-                        onClicked: sortMenu.popup()
+                        visible: list.count > 0
+                        enabled: notch.batchLabel === ""
+                        text: notch.batchLabel !== "" ? notch.batchLabel + "…" : root.inRemoved ? "Empty" : "Clear all"
+                        iconName: "trash"
+                        onClicked: {
+                            confirmClear.count = list.count
+                            confirmClear.open()
+                        }
                     }
                 }
 
@@ -2720,10 +2720,80 @@ Window {
                             elide: Text.ElideRight
                             color: root.textSecondary
                             font.pixelSize: 12
-                            text: cloud.usable ? (cloud.state === "syncing" ? "Syncing…" : "Using " + root.formatBytes(cloud.used) + (cloud.quota > 0 ? " of " + root.formatBytes(cloud.quota) : ""))
+                            text: cloud.usable ? (cloud.state === "syncing" ? "Syncing…" : "Using " + root.formatBytes(cloud.used)
+                                                + (cloud.quota > 0 ? " of " + root.formatBytes(cloud.quota) + " · " + root.formatBytes(Math.max(0, cloud.quota - cloud.used)) + " available"
+                                                                   : " · No quota limit"))
                                                : cloud.stateMessage !== "" ? cloud.stateMessage : "Not connected"
                         }
                         PillButton { text: "Sync"; enabled: cloud.usable; onClicked: cloud.syncNow() }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        TextField {
+                            Layout.fillWidth: true
+                            implicitHeight: 30
+                            leftPadding: 12
+                            rightPadding: 12
+                            placeholderText: "Search cloud files"
+                            placeholderTextColor: theme.placeholder
+                            color: root.textPrimary
+                            selectionColor: root.accent
+                            font.pixelSize: 12
+                            text: cloud.searchText
+                            onTextEdited: cloud.searchText = text
+                            background: Rectangle {
+                                radius: theme.radiusSm
+                                color: theme.well
+                                border.width: 1
+                                border.color: parent.activeFocus ? root.accent : theme.hairline
+                            }
+                        }
+                        AgentChoice {
+                            Layout.preferredWidth: 124
+                            model: ["Newest", "Oldest", "Name", "Largest"]
+                            currentIndex: ["newest", "oldest", "name", "size"].indexOf(cloud.sortMode)
+                            onActivated: cloud.sortMode = ["newest", "oldest", "name", "size"][currentIndex]
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 6
+                        Text {
+                            Layout.fillWidth: true
+                            text: cloudSelectionMode ? cloudSelection.length + " selected" : cloud.count + " files"
+                            color: root.textSecondary
+                            font.pixelSize: 11
+                        }
+                        PillButton {
+                            visible: cloudSelectionMode && cloudSelection.length > 0
+                            enabled: cloud.canRemoveItems(cloudSelection)
+                            text: "Remove"
+                            onClicked: {
+                                confirmCloudDelete.ids = cloudSelection.slice()
+                                confirmCloudDelete.clearing = false
+                                confirmCloudDelete.open()
+                            }
+                        }
+                        PillButton {
+                            visible: cloud.removableIds().length > 0
+                            enabled: cloud.canRemoveItems(cloud.removableIds())
+                            text: cloud.isHost ? "Clear all" : "Clear my files"
+                            onClicked: {
+                                confirmCloudDelete.ids = cloud.removableIds()
+                                confirmCloudDelete.clearing = true
+                                confirmCloudDelete.open()
+                            }
+                        }
+                        PillButton {
+                            visible: cloud.count > 0
+                            text: cloudSelectionMode ? "Cancel" : "Select"
+                            onClicked: {
+                                cloudSelectionMode = !cloudSelectionMode
+                                if (!cloudSelectionMode)
+                                    cloudSelection = []
+                            }
+                        }
                     }
                     Rectangle {
                         visible: cloud.uploadsPending > 0
@@ -2752,6 +2822,72 @@ Window {
                             }
                         }
                     }
+                    ListView {
+                        visible: count > 0
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(contentHeight, 3 * 58)
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        interactive: contentHeight > height
+                        model: cloud.uploads
+                        delegate: Rectangle {
+                            required property string uploadId
+                            required property string fileName
+                            required property string status
+                            required property string error
+                            required property int progress
+                            width: ListView.view.width
+                            height: error !== "" ? 66 : 48
+                            color: "transparent"
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 2
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 8
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: fileName
+                                        color: root.textPrimary
+                                        font.pixelSize: 11
+                                        elide: Text.ElideMiddle
+                                    }
+                                    Text {
+                                        text: status === "Uploading" && progress >= 0 ? progress + "%" : status
+                                        color: status === "Failed" ? theme.danger : status === "Complete" ? theme.success : root.textSecondary
+                                        font.pixelSize: 11
+                                    }
+                                    PillButton {
+                                        visible: status === "Failed"
+                                        enabled: cloud.usable
+                                        text: "Retry"
+                                        onClicked: cloud.retryUpload(uploadId)
+                                    }
+                                }
+                                Rectangle {
+                                    visible: status === "Uploading" && progress >= 0
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 3
+                                    radius: 2
+                                    color: theme.surfacePressed
+                                    Rectangle {
+                                        width: parent.width * progress / 100
+                                        height: parent.height
+                                        radius: parent.radius
+                                        color: theme.accent
+                                    }
+                                }
+                                Text {
+                                    visible: error !== ""
+                                    Layout.fillWidth: true
+                                    text: error
+                                    color: theme.danger
+                                    font.pixelSize: 10
+                                    elide: Text.ElideRight
+                                }
+                            }
+                        }
+                    }
                     Rectangle { // paused or removed by the host (with their reason), or something wrong with the connection
                         visible: !cloud.usable || root.cloudNote !== ""
                         Layout.fillWidth: true
@@ -2773,7 +2909,7 @@ Window {
                         }
                     }
                     Text {
-                        visible: cloud.usable && cloud.count === 0 && cloud.uploadsPending === 0
+                        visible: cloud.usable && cloud.count === 0 && cloud.uploadsPending === 0 && cloud.searchText === ""
                         Layout.fillWidth: true
                         Layout.preferredHeight: 110
                         horizontalAlignment: Text.AlignHCenter
@@ -2785,16 +2921,35 @@ Window {
                     }
                     GridView {
                         id: cloudGrid
-                        visible: cloud.count > 0
+                        visible: count > 0
                         Layout.fillWidth: true
-                        Layout.preferredHeight: Math.max(132, Math.min(contentHeight, 3 * cellHeight))
+                        Layout.preferredHeight: count > 0 ? Math.max(132, Math.min(contentHeight, 3 * cellHeight)) : 0
                         clip: true
                         boundsBehavior: Flickable.StopAtBounds
                         model: cloud.entries
+                        property var selectedIds: root.cloudSelection
+                        property bool selectionMode: root.cloudSelectionMode
+                        function toggleSelection(id) {
+                            const ids = root.cloudSelection.slice()
+                            const index = ids.indexOf(id)
+                            if (index >= 0)
+                                ids.splice(index, 1)
+                            else
+                                ids.push(id)
+                            root.cloudSelection = ids
+                        }
                         readonly property real usable: Math.max(96, width - 10)
                         readonly property int perRow: Math.max(1, Math.floor(usable / 100))
                         cellWidth: usable / perRow
                         cellHeight: 132
+                        function showFirstRow() {
+                            Qt.callLater(() => contentY = originY)
+                        }
+                        Connections {
+                            target: cloud
+                            function onSearchTextChanged() { cloudGrid.showFirstRow() }
+                            function onSortModeChanged() { cloudGrid.showFirstRow() }
+                        }
                         WheelHandler {
                             target: null
                             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
@@ -2804,8 +2959,23 @@ Window {
                             }
                         }
                         interactive: false
+                        ScrollBar.vertical: ScrollBar {
+                            id: cloudTileBar
+                            policy: cloudGrid.contentHeight > cloudGrid.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                            padding: 2
+                            contentItem: Rectangle {
+                                implicitWidth: cloudTileBar.hovered || cloudTileBar.pressed ? 8 : 5
+                                radius: width / 2
+                                color: cloudTileBar.pressed ? theme.textDim : theme.textFaint
+                                Behavior on implicitWidth { enabled: activities.animations; NumberAnimation { duration: 120 } }
+                            }
+                            background: null
+                        }
                         delegate: CloudTile {
+                            selected: cloudGrid.selectedIds.indexOf(cloudId) >= 0
+                            selectionMode: cloudGrid.selectionMode
                             onOpenRequested: cloud.download(cloudId)
+                            onSelectionRequested: cloudGrid.toggleSelection(cloudId)
                             onMenuRequested: {
                                 cloudMenu.cid = cloudId
                                 cloudMenu.mine = mine
@@ -2815,12 +2985,22 @@ Window {
                             }
                         }
                     }
+                    Text {
+                        visible: cloud.count > 0 && cloudGrid.count === 0
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 72
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        text: "No cloud files match your search."
+                        color: root.textSecondary
+                        font.pixelSize: 13
+                    }
                 }
 
                 // ---- Shelf ----
                 Item {
                     id: emptyState
-                    visible: root.page === "shelf" && notch.count === 0 && !root.lockedClosed && !root.inCloud
+                    visible: root.page === "shelf" && notch.count === 0 && !root.lockedClosed && !root.inCloud && !root.inRemoved
                     Layout.fillWidth: true
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
@@ -2890,7 +3070,8 @@ Window {
                 }
 
                 Text {
-                    visible: root.page === "shelf" && notch.count > 0 && list.count === 0 && !root.lockedClosed && !root.inCloud
+                    visible: root.page === "shelf" && list.count === 0 && !root.lockedClosed && !root.inCloud
+                             && (root.inRemoved ? notch.removedCount > 0 || notch.filter !== "" : notch.count > 0)
                     Layout.fillWidth: true
                     Layout.preferredHeight: 144
                     horizontalAlignment: Text.AlignHCenter
@@ -2905,13 +3086,13 @@ Window {
                 // The files, as many rows as there are: the grid grows to three rows, then scrolls up and down.
                 GridView {
                     id: list
-                    visible: root.page === "shelf" && count > 0
+                    visible: root.page === "shelf" && !root.inCloud && count > 0
                     enabled: root.mode === "open" // the panel is closed: its tiles are not kept up to date for nobody
                     Layout.fillWidth: true
                     Layout.leftMargin: 6
                     Layout.rightMargin: 6
                     readonly property int maxRows: 3
-                    Layout.preferredHeight: Math.max(144, Math.min(contentHeight, maxRows * cellHeight))
+                    Layout.preferredHeight: Math.max(cellHeight, Math.min(Math.ceil(count / tilesPerRow) * cellHeight, maxRows * cellHeight))
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
                     reuseItems: true // scrolling hands a tile that left on one side another file on the other, instead of building a new one
@@ -2920,6 +3101,15 @@ Window {
                     property var selectedIds: root.selection
                     // While files are being put on the shelf, tiles do not animate in and out (a thousand animations at once)
                     readonly property bool busyIngest: notch.copyLabel !== "" || notch.batchLabel !== ""
+                    // A category, search or sort change removes and adds many tiles in one go. Tiles caught in add/remove/displaced
+                    // animations at that moment keep a stale x/y (the grid jumbled after Cloud -> All, and Recently removed overlapped),
+                    // so those animations stay off until the change has settled.
+                    property bool settling: false
+                    readonly property bool animateTiles: !busyIngest && !settling
+                    function settle() {
+                        settling = true
+                        settleTimer.restart()
+                    }
                     // Tiles share the row exactly: as many whole tiles (>= 96 px) as fit, never a cut-off one.
                     readonly property real gap: 4
                     // The row is always this much narrower than the grid (room for the scrollbar, shown or not), so the cells
@@ -2928,7 +3118,47 @@ Window {
                     readonly property int tilesPerRow: Math.max(1, Math.floor((usable + gap) / (96 + gap)))
                     cellWidth: usable / tilesPerRow
                     readonly property real tileWidth: cellWidth - gap
-                    cellHeight: 140
+                    cellHeight: 154
+                    property bool firstRowPending: false
+                    function showFirstRow() {
+                        firstRowPending = true
+                        firstRowTimer.restart()
+                    }
+                    onVisibleChanged: if (visible) showFirstRow()
+                    onWidthChanged: showFirstRow()
+                    onCellWidthChanged: showFirstRow()
+                    onCellHeightChanged: showFirstRow()
+                    onCountChanged: if (firstRowPending) firstRowTimer.restart()
+                    onContentHeightChanged: if (firstRowPending) firstRowTimer.restart()
+                    Timer {
+                        id: settleTimer
+                        interval: 500
+                        repeat: false
+                        onTriggered: {
+                            list.settling = false
+                            if (list.visible)
+                                list.forceLayout()
+                        }
+                    }
+                    Timer {
+                        id: firstRowTimer
+                        interval: 60
+                        repeat: false
+                        onTriggered: {
+                            if (!list.visible)
+                                return
+                            list.forceLayout()
+                            list.positionViewAtBeginning()
+                            list.contentY = list.originY
+                            list.firstRowPending = false
+                        }
+                    }
+                    Connections {
+                        target: notch
+                        function onCategoryFilterChanged() { list.settle(); list.showFirstRow() }
+                        function onFilterChanged() { list.settle(); list.showFirstRow() }
+                        function onSortModeChanged() { list.settle(); list.showFirstRow() }
+                    }
                     property string hoveredId: ""
                     function quickLook(id) { quickLookCard.show(id) }
                     function endQuickLook() { quickLookCard.hide() }
@@ -2978,17 +3208,17 @@ Window {
                         }
                     }
                     add: Transition {
-                        enabled: !list.busyIngest
+                        enabled: list.animateTiles
                         NumberAnimation { property: "scale"; from: 0.4; to: 1; duration: 420; easing.type: Easing.OutBack; easing.overshoot: 2 }
                         NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 200 }
                     }
                     remove: Transition {
-                        enabled: !list.busyIngest
+                        enabled: list.animateTiles
                         NumberAnimation { property: "scale"; to: 0.4; duration: 180; easing.type: Easing.InCubic }
                         NumberAnimation { property: "opacity"; to: 0; duration: 180 }
                     }
                     displaced: Transition {
-                        enabled: !list.busyIngest
+                        enabled: list.animateTiles && list.count < 24
                         NumberAnimation { properties: "x,y"; duration: 280; easing.type: Easing.OutCubic }
                     }
                 }
@@ -3746,6 +3976,26 @@ Window {
         onConfirmed: notch.removeItems(confirmDelete.ids)
     }
 
+    ConfirmDialog {
+        id: confirmCloudDelete
+        property var ids: []
+        property bool clearing: false
+        title: clearing ? (cloud.isHost ? "Clear the cloud shelf?" : "Remove all your cloud files?")
+                        : "Remove " + ids.length + (ids.length === 1 ? " file from the cloud shelf?" : " files from the cloud shelf?")
+        body: clearing && cloud.isHost ? "This removes every file from the shared cloud shelf for all members. This cannot be undone."
+             : "The selected files will be removed from the cloud shelf for everyone. This cannot be undone."
+        confirmText: clearing ? "Clear" : "Remove"
+        onConfirmed: {
+            cloud.removeItems(ids)
+            root.cloudSelection = []
+            root.cloudSelectionMode = false
+        }
+        onClosed: {
+            ids = []
+            clearing = false
+        }
+    }
+
     DarkMenu {
         id: removedMenu
         readonly property var targets: menu.targets
@@ -3833,28 +4083,6 @@ Window {
         }
         DarkSeparator {}
         Action { enabled: false; text: "Its files stay in Olyzano Notch" }
-    }
-
-    DarkMenu {
-        id: sortMenu
-        Repeater {
-            model: [["date", "Date added"], ["expiring", "Expiring first"], ["name", "Name"], ["size", "Size"], ["type", "Type"]]
-            delegate: MenuItem {
-                id: sortItem
-                required property var modelData
-                implicitHeight: 30
-                text: (notch.sortMode === modelData[0] ? "✓  " : "     ") + modelData[1]
-                onTriggered: notch.sortMode = modelData[0]
-                contentItem: Text {
-                    text: sortItem.text
-                    color: theme.text
-                    font.pixelSize: 12
-                    verticalAlignment: Text.AlignVCenter
-                    leftPadding: 4
-                }
-                background: Rectangle { radius: theme.radiusSm; color: sortItem.highlighted ? theme.surfaceHover : "transparent" }
-            }
-        }
     }
 
     FileDialog {
