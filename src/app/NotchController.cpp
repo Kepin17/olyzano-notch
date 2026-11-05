@@ -84,6 +84,7 @@ NotchController::NotchController(const QString &dataDir, QObject *parent)
 {
     m_model.setRetentionDays(m_retentionDays);
     m_proxy.setSourceModel(&m_model);
+    m_paged.setPagedSource(&m_proxy);
     m_ingestPool.setMaxThreadCount(1); // one listing at a time, and not in the pool the rest of the app shares
     m_copyPool.setMaxThreadCount(2);
     m_ingestTimer.setSingleShot(true);
@@ -1195,6 +1196,7 @@ void NotchController::setCategoryFilter(const QString &categoryId)
     if (categoryId == m_categoryFilter)
         return;
     m_categoryFilter = categoryId;
+    m_paged.reset();
     m_proxy.setCategory(categoryId);
     emit categoryFilterChanged();
 }
@@ -1300,6 +1302,7 @@ void NotchController::setFilter(const QString &text)
     if (text == m_filter)
         return;
     m_filter = text;
+    m_paged.reset();
     m_proxy.setText(text);
     if (text.trimmed().isEmpty()) {
         m_searchTimer.stop();
@@ -1453,6 +1456,7 @@ void NotchController::setSortMode(const QString &mode)
     if (mode == sortMode())
         return;
     m_settings.setValue(QStringLiteral("sort"), mode);
+    m_paged.reset();
     m_proxy.setSortMode(mode);
     emit sortModeChanged();
 }

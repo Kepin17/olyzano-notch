@@ -50,3 +50,69 @@ private:
     QSet<QString> m_contentIds;
     bool m_vaultUnlocked = false;
 };
+
+// The first `limit` rows of another model (the shelf's grid builds a page of tiles at a time, and asks for the next page when the
+// pointer reaches the end). The rows stay in the source's order; searching or changing the category starts over at one page.
+class PageLimit : public QSortFilterProxyModel
+{
+public:
+    static constexpr int PageSize = 16;
+
+    void setPagedSource(QAbstractItemModel *source)
+    {
+        setSourceModel(source);
+        // Rows arriving or leaving shift the ones after them across the limit: look again once the burst is over.
+        connect(source, &QAbstractItemModel::rowsInserted, this, [this] { refreshSoon(); });
+        connect(source, &QAbstractItemModel::rowsRemoved, this, [this] { refreshSoon(); });
+        connect(source, &QAbstractItemModel::rowsMoved, this, [this] { refreshSoon(); });
+        connect(source, &QAbstractItemModel::layoutChanged, this, [this] { refreshSoon(); });
+        connect(source, &QAbstractItemModel::modelReset, this, [this] { refreshSoon(); });
+    }
+
+    bool hasMore() const { return sourceModel() && sourceModel()->rowCount() > m_limit; }
+
+    // The next page; false when there is nothing more to show.
+    bool loadMore()
+    {
+        if (!hasMore())
+            return false;
+        changeLimit(m_limit + PageSize);
+        return true;
+    }
+
+    void reset()
+    {
+        if (m_limit != PageSize)
+            changeLimit(PageSize);
+    }
+
+protected:
+    bool filterAcceptsRow(int row, const QModelIndex &) const override { return row < m_limit; }
+
+private:
+    void changeLimit(int limit)
+    {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 9, 0)
+        beginFilterChange();
+        m_limit = limit;
+        endFilterChange(Direction::Rows);
+#else
+        m_limit = limit;
+        invalidateFilter();
+#endif
+    }
+
+    void refreshSoon()
+    {
+        if (m_pending)
+            return;
+        m_pending = true;
+        QMetaObject::invokeMethod(this, [this] {
+            m_pending = false;
+            changeLimit(m_limit);
+        }, Qt::QueuedConnection);
+    }
+
+    int m_limit = PageSize;
+    bool m_pending = false;
+};

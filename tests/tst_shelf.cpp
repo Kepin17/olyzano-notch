@@ -62,6 +62,28 @@ private slots:
         qInfo() << "BENCH delete forever ms" << clock.elapsed();
     }
 
+    void gridShowsOnePageAtATime()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        NotchController shelf(dir.path());
+        QVERIFY(shelf.start());
+        for (int i = 0; i < 40; ++i)
+            shelf.addTextNote(QStringLiteral("page %1").arg(i));
+        QTRY_COMPARE_WITH_TIMEOUT(shelf.count(), 40, 30000);
+        QAbstractItemModel *paged = shelf.pagedItems();
+        QTRY_COMPARE(paged->rowCount(), 16);
+        QCOMPARE(shelf.items()->rowCount(), 40); // the whole shelf is still there for everything that is not the grid
+        QVERIFY(shelf.loadMore());
+        QCOMPARE(paged->rowCount(), 32);
+        QVERIFY(shelf.loadMore());
+        QCOMPARE(paged->rowCount(), 40);
+        QVERIFY(!shelf.loadMore()); // nothing more: it stops
+        QCOMPARE(paged->rowCount(), 40);
+        shelf.setFilter(QStringLiteral("page 1")); // a new search starts over at one page
+        QTRY_VERIFY(paged->rowCount() <= 16);
+    }
+
     void batchesKeepOneUndoAndRefuseOverlap()
     {
         QTemporaryDir dir;

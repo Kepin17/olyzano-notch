@@ -25,6 +25,8 @@ class NotchController : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QAbstractItemModel *items READ items CONSTANT)
+    // The same files, one page (16) at a time for the grid: loadMore() adds the next page once the grid has been scrolled to its end.
+    Q_PROPERTY(QAbstractItemModel *pagedItems READ pagedItems CONSTANT)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
     Q_PROPERTY(int copying READ copying NOTIFY copyingChanged)
     // A big copy or zip: "Copying 12 of 340", "38 GB of 100 GB · 14 min left", how far it is (0-1, -1 when unknown), and a moment before
@@ -67,6 +69,9 @@ public:
     bool start();
 
     QAbstractItemModel *items() { return &m_proxy; }
+    QAbstractItemModel *pagedItems() { return &m_paged; }
+    // Shows the next page of the grid; false when every file is already there.
+    Q_INVOKABLE bool loadMore() { return m_paged.loadMore(); }
     int count() const { return m_model.shelfCount(); }
     int removedCount() const { return m_model.removedCount(); }
     int copying() const { return m_copying; }
@@ -354,6 +359,7 @@ private:
     FileRepository m_repo;
     FileItemModel m_model;
     FileFilter m_proxy;
+    PageLimit m_paged;
     QString m_filter;
     QString m_categoryFilter;
     QNetworkAccessManager *m_net = nullptr;

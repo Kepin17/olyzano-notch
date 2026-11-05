@@ -2601,7 +2601,17 @@ Window {
                         selectionColor: root.accent
                         font.pixelSize: 12
                         text: notch.filter
-                        onTextEdited: notch.filter = text
+                        // Debounced: the shelf is filtered once the typing pauses, not on every key.
+                        onTextEdited: text === "" ? applyFilter() : filterDebounce.restart()
+                        function applyFilter() {
+                            filterDebounce.stop()
+                            notch.filter = text
+                        }
+                        Timer {
+                            id: filterDebounce
+                            interval: 250
+                            onTriggered: parent.applyFilter()
+                        }
                         background: Rectangle {
                             radius: theme.radiusSm
                             color: theme.well
@@ -2609,10 +2619,12 @@ Window {
                             border.color: parent.activeFocus ? root.accent : theme.hairline
                         }
                         Keys.onEscapePressed: {
-                            if (text !== "")
+                            if (text !== "") {
                                 text = ""
-                            else
+                                applyFilter()
+                            } else {
                                 island.forceActiveFocus()
+                            }
                         }
                     }
                     AgentChoice {
@@ -2627,7 +2639,7 @@ Window {
                         text: notch.batchLabel !== "" ? notch.batchLabel + "…" : root.inRemoved ? "Empty" : "Clear all"
                         iconName: "trash"
                         onClicked: {
-                            confirmClear.count = list.count
+                            confirmClear.count = notch.visibleIds().length // all of them, not just the page on the grid
                             confirmClear.open()
                         }
                     }
@@ -2741,7 +2753,16 @@ Window {
                             selectionColor: root.accent
                             font.pixelSize: 12
                             text: cloud.searchText
-                            onTextEdited: cloud.searchText = text
+                            onTextEdited: text === "" ? applyFilter() : searchDebounce.restart()
+                            function applyFilter() {
+                                searchDebounce.stop()
+                                cloud.searchText = text
+                            }
+                            Timer {
+                                id: searchDebounce
+                                interval: 250
+                                onTriggered: parent.applyFilter()
+                            }
                             background: Rectangle {
                                 radius: theme.radiusSm
                                 color: theme.well
@@ -3092,12 +3113,18 @@ Window {
                     Layout.leftMargin: 6
                     Layout.rightMargin: 6
                     readonly property int maxRows: 3
-                    Layout.preferredHeight: Math.max(cellHeight, Math.min(Math.ceil(count / tilesPerRow) * cellHeight, maxRows * cellHeight))
+                    // What is left of the window under the top of the grid. Three full rows plus the header, chips and search above them are
+                    // taller than the window: the island ran past its bottom edge and the last row was cut off.
+                    // Under the grid come the break bar and the microphone/camera line when they show (each with its spacing), then the bottom padding.
+                    readonly property real belowGrid: 20 + (breakBar.visible ? breakBar.implicitHeight + panel.spacing : 0)
+                                                      + (privacyLine.visible ? privacyLine.implicitHeight + panel.spacing : 0)
+                    readonly property real roomBelow: (root.height - 2) / island.scale - y - belowGrid
+                    Layout.preferredHeight: Math.max(cellHeight, Math.min(Math.ceil(count / tilesPerRow) * cellHeight, maxRows * cellHeight, roomBelow))
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
                     reuseItems: true // scrolling hands a tile that left on one side another file on the other, instead of building a new one
                     cacheBuffer: 0
-                    model: notch.items
+                    model: notch.pagedItems // a page of 16 at a time; the next one is added when the grid is scrolled to its end
                     property var selectedIds: root.selection
                     // While files are being put on the shelf, tiles do not animate in and out (a thousand animations at once)
                     readonly property bool busyIngest: notch.copyLabel !== "" || notch.batchLabel !== ""
@@ -3128,8 +3155,14 @@ Window {
                     onWidthChanged: showFirstRow()
                     onCellWidthChanged: showFirstRow()
                     onCellHeightChanged: showFirstRow()
-                    onCountChanged: if (firstRowPending) firstRowTimer.restart()
-                    onContentHeightChanged: if (firstRowPending) firstRowTimer.restart()
+                    // At the end of the grid (or its tiles do not even fill it): ask for the next 16, if there are any. Nothing more: it stops.
+                    function loadMoreAtEnd() {
+                        if (visible && !firstRowPending && contentY + height >= originY + contentHeight - cellHeight / 2)
+                            notch.loadMore()
+                    }
+                    onContentYChanged: loadMoreAtEnd()
+                    onCountChanged: { if (firstRowPending) firstRowTimer.restart(); else loadMoreAtEnd() }
+                    onContentHeightChanged: { if (firstRowPending) firstRowTimer.restart(); else loadMoreAtEnd() }
                     Timer {
                         id: settleTimer
                         interval: 500
@@ -3151,6 +3184,7 @@ Window {
                             list.positionViewAtBeginning()
                             list.contentY = list.originY
                             list.firstRowPending = false
+                            list.loadMoreAtEnd()
                         }
                     }
                     Connections {
@@ -3325,6 +3359,7 @@ Window {
 
                 // On a break: how long is left, and a way to end it early.
                 Rectangle {
+                    id: breakBar
                     visible: root.page === "shelf" && wellbeing.state === "break"
                     Layout.fillWidth: true
                     Layout.leftMargin: 8
@@ -3349,6 +3384,7 @@ Window {
 
                 // Who is using the microphone or a camera right now (the dots by the closed notch, spelled out).
                 Text {
+                    id: privacyLine
                     visible: root.page === "shelf" && activities.privacyIndicators
                              && (activities.micApps.length > 0 || activities.cameraApps.length > 0)
                     Layout.fillWidth: true
