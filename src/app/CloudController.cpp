@@ -181,7 +181,10 @@ QString CloudController::failure(QNetworkReply *reply)
         m_net = QStringLiteral("offline");
         setState(QStringLiteral("offline"), tr("Cannot reach the server"));
     }
-    return !why.isEmpty() ? why : status == 0 ? tr("Cannot reach the server") : tr("The server refused the request");
+    // Without a word from the relay (an nginx or Cloudflare page, say) the code at least says who answered and how.
+    return !why.isEmpty() ? why : status == 0 ? tr("Cannot reach the server")
+         : status == 413 ? tr("The server's front door refused the size of the file (HTTP 413): raise client_max_body_size in nginx, or the file is over Cloudflare's 100 MB")
+                         : tr("The server refused the request (HTTP %1)").arg(status);
 }
 
 // ---- the list --------------------------------------------------------------------------------

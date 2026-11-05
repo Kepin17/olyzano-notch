@@ -76,12 +76,16 @@ class S3:
         path = self._path(key)
         signed = sigv4(method, self.host, path, {}, headers or {}, UNSIGNED, self.access, self.secret, self.region)
         conn = self._conn()
-        conn.putrequest(method, path, skip_host=True, skip_accept_encoding=True)
-        for k, v in signed.items():
-            conn.putheader(k, v)
-        if length is not None:
-            conn.putheader("Content-Length", str(length))
-        conn.endheaders()
+        try:
+            conn.putrequest(method, path, skip_host=True, skip_accept_encoding=True)
+            for k, v in signed.items():
+                conn.putheader(k, v)
+            if length is not None:
+                conn.putheader("Content-Length", str(length))
+            conn.endheaders()
+        except OSError as e:  # the store is not running, or not where S3_ENDPOINT says
+            conn.close()
+            raise S3Error(0, "the storage server is not reachable (%s)" % e)
         return conn
 
     def put(self, key, src, length, chunk=65536):
@@ -105,7 +109,11 @@ class S3:
     def get(self, key, rng=None):
         """-> (status, headers, response, conn); the caller reads the response and closes the conn. Raises S3Error for 404 etc."""
         conn = self._request("GET", key, {"range": rng} if rng else None)
-        resp = conn.getresponse()
+        try:
+            resp = conn.getresponse()
+        except OSError as e:
+            conn.close()
+            raise S3Error(0, "the storage server did not answer (%s)" % e)
         if resp.status not in (200, 206):
             resp.read()
             conn.close()
@@ -122,7 +130,11 @@ class S3:
             conn.close()
 
     def delete(self, key):
-        conn = self._request("DELETE", key)
+        """True when the object is gone (or was never there); False when the store could not be asked or refused."""
+        try:
+            conn = self._request("DELETE", key)
+        except S3Error:
+            return False
         try:
             resp = conn.getresponse()
             resp.read()
@@ -203,7 +215,8 @@ class CloudStore:
 
     def tombstone(self, oid):
         """The file is gone: the contents are deleted from the store at once, the row stays (empty) so other apps learn of it."""
-        self.s3.delete(self.s3.key(oid))
+        if not self.s3.delete(self.s3.key(oid)):  # not deleted: keep the row, or the contents would sit there uncounted
+            raise S3Error(0, "the storage server did not delete the file")
         with self.lock, self.db() as c:
             seq = self._next_seq(c)
             c.execute("UPDATE cloud_objects SET deleted = 1, meta = ?, size = 0, updated = ?, seq = ? WHERE id = ?",
@@ -223,8 +236,13 @@ class CloudStore:
             return [r["id"] for r in c.execute("SELECT id FROM cloud_objects WHERE owner = ? AND deleted = 0", (owner,))]
 
     def purge_owner(self, owner):
+        """Delete all of one member's files; those the store would not let go stay, owned by the host (OWNER = 0), to be deleted later."""
         for oid in self.owned(owner):
-            self.tombstone(oid)
+            try:
+                self.tombstone(oid)
+            except S3Error:
+                pass
+        self.transfer(owner, 0)
 
     def transfer(self, owner, to):
         with self.lock, self.db() as c:

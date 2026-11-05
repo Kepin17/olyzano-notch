@@ -258,6 +258,25 @@ class CloudTest(unittest.TestCase):
         self.assertEqual(len(self.s3.objects), 1)
         self.assertEqual(self.srv.cloud.reserved.get(self.srv.members.get("alice")["id"], 0), 0)
 
+    def test_a_store_that_is_down_is_an_answer_not_a_crash(self):
+        alice = self.join("alice", cloud_quota_mb=2)
+        got = self.put(alice, 1000)
+        self.s3.shutdown()
+        self.s3.server_close()  # the storage server stops
+        status, body, _ = self.call("POST", "/api/v1/cloud/objects", b"x" * 1000, {"X-Meta": meta("m")}, alice)
+        self.assertEqual(status, 502)
+        info = json.loads(body)
+        self.assertEqual(info["error"], "cloud_unavailable")
+        self.assertIn("not reachable", info["message"])
+        self.assertEqual(self.call("GET", "/api/v1/cloud/objects/" + got["id"], key=alice)[0], 502)
+        status, body, _ = self.call("DELETE", "/api/v1/cloud/objects/" + got["id"], key=alice)
+        self.assertEqual(status, 502)  # not deleted, so still counted and still listed
+        self.assertEqual(len(json.loads(self.call("GET", "/api/v1/cloud?since=0", key=alice)[1])["objects"]), 1)
+        self.assertEqual(self.call("GET", "/api/v1/ping", key=alice)[0], 200)  # and the relay itself carries on
+        self.assertEqual(self.jcall("DELETE", "/api/v1/members/alice", {"reason": "x", "delete_files": True})[0], 200)  # even removing a member
+        owner_view = self.jcall("GET", "/api/v1/cloud?since=0")[1]["objects"]
+        self.assertEqual([o["owner"] for o in owner_view if not o["deleted"]], [0])  # what could not be deleted is the host's now
+
     def test_the_shelf_is_off_without_a_store(self):
         self.srv.cloud = None
         alice = self.join("alice")

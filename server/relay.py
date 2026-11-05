@@ -878,14 +878,17 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 cloud.s3.put(cloud.s3.key(oid), self.rfile, length)
                 self.body_left = 0
-            except cloud_mod.S3Error:
+            except cloud_mod.S3Error as e:
                 self.close_connection = True
                 cloud.s3.delete(cloud.s3.key(oid))
-                return self.reply(502, {"error": "cloud_unavailable", "message": "The storage server refused the file"})
-            except OSError:  # the sender went away, or the storage server did: nothing is kept
+                sys.stderr.write("cloud upload: %s\n" % e)
+                return self.reply(502, {"error": "cloud_unavailable", "message":
+                                        "The storage server is not reachable: the host should check it is running" if e.status == 0
+                                        else "The storage server refused the file (HTTP %s): the host should check its key and bucket" % e.status})
+            except OSError:  # the sender went away: nothing is kept
                 self.close_connection = True
                 cloud.s3.delete(cloud.s3.key(oid))
-                return self.reply(400, {"error": "upload failed"})
+                return self.reply(400, {"error": "upload failed", "message": "The upload was cut off"})
             seq = cloud.add(oid, member["id"], length, meta)
             self.reply(201, {"id": oid, "seq": seq})
         finally:
@@ -911,7 +914,11 @@ class Handler(BaseHTTPRequestHandler):
         row = cloud.get(m.group(1)) if m and cloud_ok(m.group(1)) else None
         if not row or row["deleted"] or not (member["id"] == OWNER or row["owner"] == member["id"]):
             return self.reply(404, {"error": "gone"})
-        self.reply(200, {"seq": cloud.tombstone(row["id"])})
+        try:
+            seq = cloud.tombstone(row["id"])
+        except cloud_mod.S3Error:
+            return self.reply(502, {"error": "cloud_unavailable", "message": "The storage server did not delete the file; try again"})
+        self.reply(200, {"seq": seq})
 
     def do_DELETE(self):
         body = self.read_body() if self.body_left else b""

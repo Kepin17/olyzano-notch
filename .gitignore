@@ -4,3 +4,4 @@ __pycache__/
 server/.env
 /.env
 build-*/
+mimocode

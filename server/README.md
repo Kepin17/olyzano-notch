@@ -62,8 +62,10 @@ streams, and so **you** decide who may use it and how much.
 
 1. Make a bucket and a key on your store. With the bundled MinIO: set `S3_ENDPOINT=http://minio:9000`, `S3_ACCESS_KEY`,
    `S3_SECRET_KEY` and `S3_BUCKET` in `.env`, run `docker compose --profile minio up -d --build`, then create the bucket
-   once: `docker compose run --rm --entrypoint sh minio -c "mc alias set l http://minio:9000 \$MINIO_ROOT_USER \$MINIO_ROOT_PASSWORD && mc mb -p l/notch"`
-   (or use MinIO's console on a published port while you set up). For any other store, put its endpoint and a key limited
+   once with the `minio/mc` image on the same network:
+   `NET=$(docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' $(docker compose ps -q minio))` then
+   `docker run --rm --network $NET --entrypoint sh minio/mc -c "mc alias set l http://minio:9000 ACCESS SECRET && mc mb -p l/notch"`
+   (the MinIO image itself has no `mc`).
    to that one bucket in `.env`.
 2. Without `S3_*` the cloud shelf is simply off (the rest of the relay is unchanged).
 3. In Notch (**Settings → Files → Cloud shelf**) pick this server. Files and their names are encrypted on the member's
