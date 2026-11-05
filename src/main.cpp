@@ -1,5 +1,6 @@
 #include "app/NotchController.h"
 #include "app/NearbyController.h"
+#include "app/CloudController.h"
 #include "app/ShareController.h"
 #include "services/QrImage.h"
 #include "services/GuiImageProvider.h"
@@ -234,6 +235,7 @@ int main(int argc, char *argv[])
     NotchController controller(dataDir);
     controller.start(); // failures surface in the UI via errorMessage
     ShareController share(&controller);
+    CloudController cloud(&controller, &share);
     NearbyController nearby(&controller);
 
     DesktopIntegration desktop;
@@ -410,6 +412,7 @@ int main(int argc, char *argv[])
     engine.addImageProvider(QStringLiteral("thumb"), new ThumbImageProvider);
     engine.addImageProvider(QStringLiteral("appicon"), makeDockIconProvider(&dock));
     engine.rootContext()->setContextProperty(QStringLiteral("share"), &share);
+    engine.rootContext()->setContextProperty(QStringLiteral("cloud"), &cloud);
     engine.rootContext()->setContextProperty(QStringLiteral("nearby"), &nearby);
     engine.rootContext()->setContextProperty(QStringLiteral("notch"), &controller);
     engine.rootContext()->setContextProperty(QStringLiteral("desktop"), &desktop);

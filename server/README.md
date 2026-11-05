@@ -54,6 +54,35 @@ what the server would refuse.
 Because everything is end-to-end encrypted, the host can see **who** shared **how much** and **when**, but not
 names or contents.
 
+## Cloud shelf (optional)
+
+The relay can also keep a **shared shelf** for your members, on an S3-compatible store of your own (MinIO, Backblaze B2,
+Wasabi, Cloudflare R2, AWS S3...). Members never see the store's key: they use their own relay key, the relay signs and
+streams, and so **you** decide who may use it and how much.
+
+1. Make a bucket and a key on your store. With the bundled MinIO: set `S3_ENDPOINT=http://minio:9000`, `S3_ACCESS_KEY`,
+   `S3_SECRET_KEY` and `S3_BUCKET` in `.env`, run `docker compose --profile minio up -d --build`, then create the bucket
+   once: `docker compose run --rm --entrypoint sh minio -c "mc alias set l http://minio:9000 \$MINIO_ROOT_USER \$MINIO_ROOT_PASSWORD && mc mb -p l/notch"`
+   (or use MinIO's console on a published port while you set up). For any other store, put its endpoint and a key limited
+   to that one bucket in `.env`.
+2. Without `S3_*` the cloud shelf is simply off (the rest of the relay is unchanged).
+3. In Notch (**Settings → Files → Cloud shelf**) pick this server. Files and their names are encrypted on the member's
+   computer with a shelf key that only the people you invite have: the store and this relay see sizes and who owns what,
+   never names or contents. The host's invitation link carries that key in its `#fragment`.
+
+| Command | What it does |
+|---|---|
+| `members add NAME --cloud-quota-mb N` / `members set NAME --cloud-quota-mb N` | the space a member may use on the cloud shelf |
+| `members disable NAME --reason "..."` | pause a member: every call is refused and the app shows them your reason |
+| `members enable NAME` | let them in again |
+| `members remove NAME --reason "..." [--delete-files]` | remove for good; their cloud files are deleted with `--delete-files`, otherwise they become yours |
+
+The same actions are in Notch (**Settings → Sharing → members**) and over HTTP: `POST /api/v1/members/NAME/limits`,
+`/disable` (`{"reason": "..."}`), `/enable`, and `DELETE /api/v1/members/NAME` (`{"reason": "...", "delete_files": false}`).
+A member who is paused gets `403 {"error":"disabled","reason":...}`; one who was removed gets `401 {"error":"removed",...}`;
+`GET /api/v1/ping` tells a paused member's app why, in plain words. Limits: `CLOUD_MAX_TOTAL_MB` for the whole shelf, then each
+member's own `cloud_quota_mb`, and `MAX_FILE_MB` for one file (one streamed upload, up to 5 GiB).
+
 ## What the recipient sees
 
 The page is flat and plain, in the system's light or dark. A PIN is typed into one box for each digit (the relay tells the page only how many digits the PIN has, never which; a password, or a share made before this was added, gets a single field).

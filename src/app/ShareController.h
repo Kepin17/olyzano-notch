@@ -86,10 +86,23 @@ public:
 
     // The host's side (only a server whose key is the host's has owner = true): make a member and get the key to give them
     // (an invitation link), list the members, revoke one, or reissue a key. Answers come through memberLink / membersLoaded.
-    Q_INVOKABLE void createMember(const QString &serverId, const QString &username, int accessHours = 0, int quotaMb = 0); // 0 = access never ends / the server's own limit
+    Q_INVOKABLE void createMember(const QString &serverId, const QString &username, int accessHours = 0, int quotaMb = 0, int cloudQuotaMb = 0); // 0 = access never ends / the server's own limit
     Q_INVOKABLE void reinviteMember(const QString &serverId, const QString &username);
     Q_INVOKABLE void loadMembers(const QString &serverId, int offset = 0, int limit = 20); // a page, newest first
-    Q_INVOKABLE void revokeMember(const QString &serverId, const QString &username);
+    Q_INVOKABLE void revokeMember(const QString &serverId, const QString &username); // = removeMember without a reason
+    // More of what the host decides (answers through memberActionDone; the list is reloaded): how much space a member has, pause them
+    // with a reason they are shown (and let them back in), or remove them (their cloud files are deleted, or become the host's).
+    Q_INVOKABLE void setMemberLimits(const QString &serverId, const QString &username, int quotaMb, int cloudQuotaMb);
+    Q_INVOKABLE void disableMember(const QString &serverId, const QString &username, const QString &reason);
+    Q_INVOKABLE void enableMember(const QString &serverId, const QString &username);
+    Q_INVOKABLE void removeMember(const QString &serverId, const QString &username, const QString &reason, bool deleteFiles);
+
+    // The key that encrypts the cloud shelf of a server (the host makes it, members get it with the invitation). Empty when there is none.
+    QByteArray shelfKey(const QString &serverId) const;
+    void setShelfKey(const QString &serverId, const QByteArray &key);
+    RelayAccess relayFor(const QString &serverId) const { return accessFor(serverId); }
+    QNetworkAccessManager *nam() { return &m_nam; }
+    QVariantMap serverStatus(const QString &serverId) const { return m_status.value(serverId); }
 
 signals:
     void countChanged();
@@ -99,6 +112,7 @@ signals:
     void joined(bool ok, const QString &message);
     void memberLink(const QString &serverId, const QString &username, bool ok, const QString &linkOrError);
     void membersLoaded(const QString &serverId, const QVariantList &members, int offset, int total);
+    void memberActionDone(const QString &serverId, const QString &username, bool ok, const QString &message);
 
 private:
     struct Server {

@@ -11,7 +11,9 @@
 #include <QSaveFile>
 #include <QUuid>
 
+#include "platform/SecretsStore.h"
 #include "services/Invite.h"
+#include "services/ShareCrypto.h"
 
 ShareController::ShareController(NotchController *notch, QObject *parent)
     : QAbstractListModel(parent)
@@ -262,6 +264,16 @@ bool ShareController::storeKey(const QString &id, const QString &key)
            && f.write(key.trimmed().toUtf8()) >= 0 && f.commit();
 }
 
+QByteArray ShareController::shelfKey(const QString &serverId) const
+{
+    return ShareCrypto::keyFromFragment(SecretsStore::get(QStringLiteral("cloud"), serverId));
+}
+
+void ShareController::setShelfKey(const QString &serverId, const QByteArray &key)
+{
+    SecretsStore::set(QStringLiteral("cloud"), serverId, key.isEmpty() ? QString() : ShareCrypto::keyToFragment(key));
+}
+
 QString ShareController::defaultServerId() const
 {
     const QString id = m_settings.value(QStringLiteral("defaultServer")).toString();
@@ -380,6 +392,7 @@ void ShareController::removeServer(const QString &id)
     m_servers.removeAt(i);
     m_status.remove(id);
     QFile::remove(serversFolder() + u'/' + id + QStringLiteral(".key"));
+    setShelfKey(id, {});
     saveServers();
     emit serversChanged();
 }
@@ -407,7 +420,7 @@ void ShareController::joinServer(const QString &invitation)
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     req.setTransferTimeout(30000);
     QNetworkReply *reply = m_nam.post(req, QJsonDocument(QJsonObject{{QStringLiteral("token"), p.token}}).toJson(QJsonDocument::Compact));
-    connect(reply, &QNetworkReply::finished, this, [this, reply, server = p.server] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, server = p.server, shelfKey = p.shelfKey] {
         reply->deleteLater();
         const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
         if (reply->error() != QNetworkReply::NoError) {
@@ -429,6 +442,8 @@ void ShareController::joinServer(const QString &invitation)
             emit joined(false, tr("Cannot save the API key"));
             return;
         }
+        if (!shelfKey.isEmpty()) // the invitation carried the cloud shelf's key
+            setShelfKey(id, shelfKey);
         emit joined(true, tr("Joined %1 as %2").arg(server.host(), o.value(QStringLiteral("name")).toString()));
         testServer(id);
     });
@@ -452,14 +467,21 @@ void ShareController::testServer(const QString &id)
         reply->deleteLater();
         QVariantMap st;
         QString message;
+        const QJsonObject body = QJsonDocument::fromJson(reply->readAll()).object();
+        const QString why = body.value(QStringLiteral("message")).toString(); // "Your access was removed by the host: ..."
         if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() == 401) {
-            message = tr("The server did not accept the API key");
+            message = !why.isEmpty() ? why : tr("The server did not accept the API key");
+            st.insert(QStringLiteral("removed"), body.value(QStringLiteral("error")).toString() == QLatin1String("removed"));
         } else if (reply->error() != QNetworkReply::NoError) {
             message = reply->error() == QNetworkReply::SslHandshakeFailedError ? tr("The server's HTTPS certificate is not valid")
                                                                               : tr("Cannot reach the server");
         } else {
-            const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
-            if (!o.value(QStringLiteral("ok")).toBool()) {
+            const QJsonObject &o = body;
+            if (o.value(QStringLiteral("disabled")).toBool()) { // paused by the host, who gave a reason
+                message = why.isEmpty() ? tr("Your access was paused by the host") : why;
+                st.insert(QStringLiteral("disabled"), true);
+                st.insert(QStringLiteral("reason"), o.value(QStringLiteral("reason")).toString());
+            } else if (!o.value(QStringLiteral("ok")).toBool()) {
                 message = tr("That address is not a Olyzano Notch share server");
             } else {
                 const QJsonObject lim = o.value(QStringLiteral("limits")).toObject(), use = o.value(QStringLiteral("usage")).toObject();
@@ -472,11 +494,14 @@ void ShareController::testServer(const QString &id)
                       {QStringLiteral("quota"), num(lim.value(QStringLiteral("quota")))},
                       {QStringLiteral("maxActive"), num(lim.value(QStringLiteral("max_active")))},
                       {QStringLiteral("used"), num(use.value(QStringLiteral("used")))},
-                      {QStringLiteral("active"), num(use.value(QStringLiteral("active")))}};
+                      {QStringLiteral("active"), num(use.value(QStringLiteral("active")))},
+                      {QStringLiteral("cloudOn"), o.value(QStringLiteral("cloud")).toObject().value(QStringLiteral("on")).toBool()},
+                      {QStringLiteral("cloudUsed"), num(o.value(QStringLiteral("cloud")).toObject().value(QStringLiteral("used")))},
+                      {QStringLiteral("cloudQuota"), num(o.value(QStringLiteral("cloud")).toObject().value(QStringLiteral("quota")))}};
                 message = tr("Connected as %1").arg(o.value(QStringLiteral("member")).toString(tr("guest")));
             }
         }
-        const bool ok = !st.isEmpty();
+        const bool ok = st.contains(QStringLiteral("member"));
         st.insert(QStringLiteral("ok"), ok);
         st.insert(QStringLiteral("message"), message);
         if (serverIndex(id) >= 0) { // it may have been removed while the test ran
@@ -504,7 +529,7 @@ void ShareController::memberCall(const QString &serverId, const QByteArray &verb
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
     req.setTransferTimeout(30000);
     const QByteArray data = QJsonDocument(body).toJson(QJsonDocument::Compact);
-    QNetworkReply *reply = verb == "GET" ? m_nam.get(req) : verb == "DELETE" ? m_nam.deleteResource(req) : m_nam.post(req, data);
+    QNetworkReply *reply = verb == "GET" ? m_nam.get(req) : verb == "DELETE" ? m_nam.sendCustomRequest(req, "DELETE", data) : m_nam.post(req, data);
     connect(reply, &QNetworkReply::finished, this, [reply, done] {
         reply->deleteLater();
         const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
@@ -516,18 +541,22 @@ void ShareController::memberCall(const QString &serverId, const QByteArray &verb
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         done(false, o, !why.isEmpty() ? why
                        : status == 401 ? tr("The server did not accept the API key")
-                       : status == 403 ? tr("Only the host of this server can manage members")
+                       : status == 403 ? (o.value(QStringLiteral("error")).toString() == QLatin1String("disabled")
+                                              ? tr("Your access was paused by the host") : tr("Only the host of this server can manage members"))
                        : status == 0   ? tr("Cannot reach the server")
                                        : tr("The server refused the request"));
     });
 }
 
-void ShareController::createMember(const QString &serverId, const QString &username, int accessHours, int quotaMb)
+void ShareController::createMember(const QString &serverId, const QString &username, int accessHours, int quotaMb, int cloudQuotaMb)
 {
     const QString name = username.trimmed();
-    memberCall(serverId, "POST", QStringLiteral("/api/v1/members"), {{QStringLiteral("name"), name}, {QStringLiteral("access_hours"), accessHours}, {QStringLiteral("quota_mb"), quotaMb}},
+    memberCall(serverId, "POST", QStringLiteral("/api/v1/members"),
+               {{QStringLiteral("name"), name}, {QStringLiteral("access_hours"), accessHours}, {QStringLiteral("quota_mb"), quotaMb},
+                {QStringLiteral("cloud_quota_mb"), cloudQuotaMb}},
                [this, serverId, name](bool ok, const QJsonObject &o, const QString &error) {
-                   emit memberLink(serverId, name, ok, ok ? o.value(QStringLiteral("link")).toString() : error);
+                   // the shelf's key rides in the link's fragment (never to the server) so the new member can read the cloud shelf
+                   emit memberLink(serverId, name, ok, ok ? Invite::withShelfKey(o.value(QStringLiteral("link")).toString(), shelfKey(serverId)) : error);
                    if (ok)
                        loadMembers(serverId);
                });
@@ -537,7 +566,7 @@ void ShareController::reinviteMember(const QString &serverId, const QString &use
 {
     memberCall(serverId, "POST", QStringLiteral("/api/v1/members/") + QString::fromUtf8(QUrl::toPercentEncoding(username)) + QStringLiteral("/invite"), {},
                [this, serverId, username](bool ok, const QJsonObject &o, const QString &error) {
-                   emit memberLink(serverId, username, ok, ok ? o.value(QStringLiteral("link")).toString() : error);
+                   emit memberLink(serverId, username, ok, ok ? Invite::withShelfKey(o.value(QStringLiteral("link")).toString(), shelfKey(serverId)) : error);
                });
 }
 
@@ -556,7 +585,13 @@ void ShareController::loadMembers(const QString &serverId, int offset, int limit
                                         {QStringLiteral("expiresAt"), m.value(QStringLiteral("expires_at")).toVariant().toLongLong()},
                                         {QStringLiteral("accessHours"), m.value(QStringLiteral("access_hours")).toInt()},
                                         {QStringLiteral("used"), m.value(QStringLiteral("used")).toVariant().toLongLong()},
-                                        {QStringLiteral("quota"), lim.value(QStringLiteral("quota")).toVariant().toLongLong()}});
+                                        {QStringLiteral("quota"), lim.value(QStringLiteral("quota")).toVariant().toLongLong()},
+                                        {QStringLiteral("disabled"), m.value(QStringLiteral("disabled")).toBool()},
+                                        {QStringLiteral("disabledReason"), m.value(QStringLiteral("disabled_reason")).toString()},
+                                        {QStringLiteral("cloudOn"), m.value(QStringLiteral("cloud")).toObject().value(QStringLiteral("on")).toBool()},
+                                        {QStringLiteral("cloudUsed"), m.value(QStringLiteral("cloud")).toObject().value(QStringLiteral("used")).toVariant().toLongLong()},
+                                        {QStringLiteral("cloudQuota"), m.value(QStringLiteral("cloud")).toObject().value(QStringLiteral("quota")).toVariant().toLongLong()},
+                                        {QStringLiteral("cloudFiles"), m.value(QStringLiteral("cloud")).toObject().value(QStringLiteral("files")).toInt()}});
             }
         }
         emit membersLoaded(serverId, list, offset, o.value(QStringLiteral("total")).toInt(int(list.size())));
@@ -565,6 +600,57 @@ void ShareController::loadMembers(const QString &serverId, int offset, int limit
 
 void ShareController::revokeMember(const QString &serverId, const QString &username)
 {
-    memberCall(serverId, "DELETE", QStringLiteral("/api/v1/members/") + QString::fromUtf8(QUrl::toPercentEncoding(username)), {},
-               [this, serverId](bool, const QJsonObject &, const QString &) { loadMembers(serverId); });
+    removeMember(serverId, username, {}, false);
+}
+
+namespace {
+QString memberPath(const QString &username, const QString &action = {})
+{
+    return QStringLiteral("/api/v1/members/") + QString::fromUtf8(QUrl::toPercentEncoding(username)) + (action.isEmpty() ? QString() : u'/' + action);
+}
+}
+
+void ShareController::removeMember(const QString &serverId, const QString &username, const QString &reason, bool deleteFiles)
+{
+    memberCall(serverId, "DELETE", memberPath(username), {{QStringLiteral("reason"), reason.trimmed()}, {QStringLiteral("delete_files"), deleteFiles}},
+               [this, serverId, username](bool ok, const QJsonObject &, const QString &error) {
+                   emit memberActionDone(serverId, username, ok, error);
+                   loadMembers(serverId);
+               });
+}
+
+void ShareController::disableMember(const QString &serverId, const QString &username, const QString &reason)
+{
+    if (reason.trimmed().isEmpty()) {
+        emit memberActionDone(serverId, username, false, tr("Say why: the member is shown the reason"));
+        return;
+    }
+    memberCall(serverId, "POST", memberPath(username, QStringLiteral("disable")), {{QStringLiteral("reason"), reason.trimmed()}},
+               [this, serverId, username](bool ok, const QJsonObject &, const QString &error) {
+                   emit memberActionDone(serverId, username, ok, error);
+                   loadMembers(serverId);
+               });
+}
+
+void ShareController::enableMember(const QString &serverId, const QString &username)
+{
+    memberCall(serverId, "POST", memberPath(username, QStringLiteral("enable")), {},
+               [this, serverId, username](bool ok, const QJsonObject &, const QString &error) {
+                   emit memberActionDone(serverId, username, ok, error);
+                   loadMembers(serverId);
+               });
+}
+
+void ShareController::setMemberLimits(const QString &serverId, const QString &username, int quotaMb, int cloudQuotaMb)
+{
+    QJsonObject body;
+    if (quotaMb > 0)
+        body.insert(QStringLiteral("quota_mb"), quotaMb);
+    if (cloudQuotaMb > 0)
+        body.insert(QStringLiteral("cloud_quota_mb"), cloudQuotaMb);
+    memberCall(serverId, "POST", memberPath(username, QStringLiteral("limits")), body,
+               [this, serverId, username](bool ok, const QJsonObject &, const QString &error) {
+                   emit memberActionDone(serverId, username, ok, error);
+                   loadMembers(serverId);
+               });
 }

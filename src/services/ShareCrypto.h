@@ -34,6 +34,12 @@ constexpr int KdfIterations = 600000;
 QString wrapKey(const QByteArray &key, const QString &password); // the link's fragment
 QByteArray unwrapKey(const QString &fragment, const QString &password); // null when the password is wrong
 
+// A small secret under a key you hold (the cloud shelf's names and types): iv (12 bytes) | AES-GCM(ciphertext + tag). A wrong key,
+// or a blob that was changed, gives a null QByteArray; an empty plaintext is valid (not null).
+QByteArray sealBlob(const QByteArray &key, const QByteArray &plain);
+QByteArray openBlob(const QByteArray &key, const QByteArray &blob);
+QByteArray keyFromFragment(const QString &fragment); // the 32 bytes keyToFragment made, or null when it is not one
+
 // Both return an empty string on success, else a user-facing reason. Names must be unique.
 QString encryptFiles(const QList<SourceFile> &files, const QString &out, const QByteArray &key);
 // Writes every file into outDir under its stored name; `names` gets them in order.

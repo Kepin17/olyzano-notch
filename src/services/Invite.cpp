@@ -1,5 +1,7 @@
 #include "Invite.h"
 
+#include "ShareCrypto.h"
+
 #include <QRegularExpression>
 
 namespace Invite {
@@ -36,6 +38,14 @@ Parsed parse(const QString &text)
         return out;
     }
     out.token = link.mid(hash + 1);
+    if (const int tilde = out.token.indexOf(u'~'); tilde >= 0) { // the cloud shelf's key rides along
+        out.shelfKey = ShareCrypto::keyFromFragment(out.token.mid(tilde + 1));
+        if (out.shelfKey.isEmpty()) {
+            out.error = QObject::tr("The key in this invitation is not valid");
+            return out;
+        }
+        out.token = out.token.left(tilde);
+    }
     static const QRegularExpression valid(QStringLiteral("^[A-Za-z0-9_-]{16,64}$"));
     if (!valid.match(out.token).hasMatch()) {
         out.error = QObject::tr("This invitation code is not valid");
@@ -51,6 +61,11 @@ Parsed parse(const QString &text)
     if (!out.server.isValid())
         out.error = QObject::tr("The server address must start with https://");
     return out;
+}
+
+QString withShelfKey(const QString &link, const QByteArray &key)
+{
+    return key.isEmpty() ? link : link + QLatin1Char('~') + ShareCrypto::keyToFragment(key);
 }
 
 }

@@ -8,6 +8,9 @@
 
 #include <QObject>
 #include <functional>
+#include <QThreadPool>
+#include <atomic>
+#include <memory>
 #include <QSet>
 #include <QSettings>
 #include <QTimer>
@@ -24,6 +27,11 @@ class NotchController : public QObject
     Q_PROPERTY(QAbstractItemModel *items READ items CONSTANT)
     Q_PROPERTY(int count READ count NOTIFY countChanged)
     Q_PROPERTY(int copying READ copying NOTIFY copyingChanged)
+    // A big copy or zip: "Copying 12 of 340", "38 GB of 100 GB · 14 min left", how far it is (0-1, -1 when unknown), and a moment before
+    // that, while the files are being listed. All "" / -1 when nothing is being copied.
+    Q_PROPERTY(QString copyLabel READ copyLabel NOTIFY copyProgressChanged)
+    Q_PROPERTY(QString copyDetail READ copyDetail NOTIFY copyProgressChanged)
+    Q_PROPERTY(double copyFraction READ copyFraction NOTIFY copyProgressChanged)
     Q_PROPERTY(QString batchLabel READ batchLabel NOTIFY batchLabelChanged) // "Removing 340 of 1000" while a big remove/restore/delete runs, else ""
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged)
@@ -65,6 +73,9 @@ public:
     QString errorMessage() const { return m_error; }
     QString filter() const { return m_filter; }
     QString batchLabel() const { return m_batchLabel; }
+    QString copyLabel() const { return m_copyLabel; }
+    QString copyDetail() const { return m_copyDetail; }
+    double copyFraction() const { return m_copyFraction; }
     void setFilter(const QString &text);
     QVariantList categories() const { return m_categories; }
     QString categoryFilter() const { return m_categoryFilter; }
@@ -120,6 +131,11 @@ public:
     // A drop as QML sees it. Browsers add the page title as a bogus relative "URL" and, for an
     // image inside a link, list only the link: the image itself is in the HTML.
     Q_INVOKABLE void addDrop(const QList<QUrl> &urls, const QString &html, const QString &categoryId = {});
+    // Stops the copies and zips in progress (and the listing of a folder); what was half done is removed.
+    Q_INVOKABLE void cancelCopies();
+    Q_INVOKABLE void cancelCopy(const QString &id);
+    // The files of a category as one .zip on the shelf, made in the background.
+    Q_INVOKABLE void zipCategory(const QString &categoryId);
     Q_INVOKABLE void open(const QString &id);
     // Remove = move to Recently removed (deleted for good after TrashHours). Undo restores the
     // last batch; restoreItems/deleteForever act on Recently removed.
@@ -216,6 +232,7 @@ signals:
     void countChanged();
     void copyingChanged();
     void batchLabelChanged();
+    void copyProgressChanged();
     void errorMessageChanged();
     void filterChanged();
     void categoriesChanged();
@@ -285,6 +302,47 @@ private:
     void expireEmptyCategories();
     void setError(const QString &message);
 
+    // A drop is listed and looked at on a worker (a folder can hold thousands of files, a mime lookup reads the file), then put on
+    // the shelf a few at a time, each copied by a worker with its own progress.
+public: // (the worker that lists a drop is a free function)
+    struct Prep {
+        QString path, name, mime, folder; // folder: the category a file of a dropped folder goes in
+        bool fromFolder = false;
+        qint64 size = 0;
+    };
+    struct Prepared {
+        QList<Prep> items;
+        QStringList errors;
+    };
+    struct Ingest {
+        QList<Prep> items;
+        QString categoryId;
+        qsizetype next = 0;
+    };
+
+private:
+    void ingestStep();
+    void ingestOne(const Prep &p, const QString &categoryId, QStringList &errors);
+public:
+    // One running copy, zip or cloud transfer: how far it is, and the switch that stops it. `verb` ("Uploading", "Downloading") makes it a
+    // job named in the pill instead of one of "Copying 12 of 340"; the cloud shelf uses it.
+    struct Transfer {
+        std::shared_ptr<std::atomic<qint64>> done;
+        std::shared_ptr<std::atomic_bool> cancel;
+        qint64 total = 0;
+        bool zip = false;
+        QString title, verb;
+    };
+    void beginTransfer(const QString &id, const Transfer &t);
+    void endTransfer(const QString &id);
+    // For the cloud shelf: a stored file, where it is on disk.
+    const FileItem *itemFor(const QString &id) const { return m_model.find(id); }
+    QString storedPath(const QString &id) const;
+
+private:
+    void progressTick();
+    void startZip(const QStringList &ids, const QString &name, const QString &categoryId);
+
     QSettings m_settings;
     QString m_runtimeDir; // tmpfs: vault mount + decrypted scratch
     Vault m_vault;
@@ -298,6 +356,7 @@ private:
     QString m_categoryFilter;
     QNetworkAccessManager *m_net = nullptr;
     QSet<QString> m_dragging;
+    QHash<QString, QDateTime> m_fresh; // categories just made: left alone for a moment so the files meant for them can arrive
     QTimer m_clock;   // refreshes "expires in" labels
     QTimer m_cleanup;
     QStringList m_lastRemoved; // what the Undo toast restores
@@ -305,7 +364,7 @@ private:
     QVariantList m_categories;      // what QML sees: [{id, name, count, special}]
     QSet<QString> m_indexed; // ids whose text is in the index
     QHash<QString, bool> m_textMime;
-    QTimer m_indexTimer, m_searchTimer, m_batchTimer;
+    QTimer m_indexTimer, m_searchTimer, m_batchTimer, m_countsTimer;
     struct Job {
         QString verb;
         QStringList ids;
@@ -314,6 +373,17 @@ private:
         std::function<void()> finish;
     } m_job;
     QString m_batchLabel;
+    QThreadPool m_ingestPool, m_copyPool;
+    std::atomic_bool m_ingestCancel{false};
+    int m_preparing = 0;
+    QList<Ingest> m_ingest;
+    QTimer m_ingestTimer, m_progressTimer;
+    QHash<QString, Transfer> m_transfers;
+    qint64 m_xferBase = 0, m_xferTotal = 0, m_lastDone = 0, m_lastTickMs = 0;
+    double m_rate = 0;
+    int m_xferFiles = 0, m_xferFinished = 0;
+    QString m_copyLabel, m_copyDetail;
+    double m_copyFraction = -1;
     QStringList m_trashed; // what the running remove has moved so far (for one Undo at the end)
     FolderWatcher m_screenshots;
     FolderWatcher m_downloads;

@@ -51,7 +51,7 @@ static QString writeError(const QFile &f)
                                                    : QStringLiteral("write failed: ") + f.errorString();
 }
 
-CopyResult copyInto(const QString &src, const QString &itemDir, const QString &name)
+CopyResult copyInto(const QString &src, const QString &itemDir, const QString &name, std::atomic<qint64> *done, const std::atomic_bool *cancel)
 {
     CopyResult r;
     QFile in(src);
@@ -82,6 +82,8 @@ CopyResult copyInto(const QString &src, const QString &itemDir, const QString &n
 
     QByteArray buf(1 << 20, Qt::Uninitialized);
     for (;;) {
+        if (cancel && cancel->load())
+            return fail(QStringLiteral("cancelled"));
         const qint64 n = in.read(buf.data(), buf.size());
         if (n < 0)
             return fail(QStringLiteral("read failed: ") + in.errorString());
@@ -90,6 +92,8 @@ CopyResult copyInto(const QString &src, const QString &itemDir, const QString &n
         if (out.write(buf.constData(), n) != n)
             return fail(writeError(out));
         r.bytes += n;
+        if (done)
+            done->store(r.bytes);
     }
     if (!out.flush() || !syncFile(out))
         return fail(writeError(out));
@@ -112,7 +116,7 @@ QString safeFileName(const QString &name, const QString &fallback)
     return s.isEmpty() || s == TmpName ? fallback : s;
 }
 
-QList<FolderEntry> expandFolder(const QString &root, int maxFiles, bool *truncated)
+QList<FolderEntry> expandFolder(const QString &root, int maxFiles, bool *truncated, const std::atomic_bool *cancel)
 {
     QList<FolderEntry> out;
     if (truncated)
@@ -120,7 +124,7 @@ QList<FolderEntry> expandFolder(const QString &root, int maxFiles, bool *truncat
     // Hidden files and folders are skipped, and never entered: ".git", ".env", and what the OS marks hidden.
     // (Qt's own hidden test is only the file attribute on Windows, where a leading dot means nothing.)
     QStringList pending{root};
-    while (!pending.isEmpty() && (!truncated || !*truncated)) {
+    while (!pending.isEmpty() && (!truncated || !*truncated) && !(cancel && cancel->load())) {
         const QDir dir(pending.takeFirst());
         const QFileInfoList entries = dir.entryInfoList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot | QDir::Hidden, QDir::Name);
         for (const QFileInfo &fi : entries) {

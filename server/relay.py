@@ -18,6 +18,10 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
+import cloud as cloud_mod
+
+cloud_ok = lambda oid: bool(cloud_mod.CLOUD_ID_RE.match(oid))
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 PAGE = open(os.path.join(HERE, "page.html"), "rb").read()
 JOIN_PAGE = open(os.path.join(HERE, "join.html"), "rb").read()
@@ -44,6 +48,7 @@ NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]{0,39}$")
 PIN_MAX_FAILS, PIN_LOCK_SECONDS = 5, 600
 INVITE_DAYS = 7
 MAX_MEMBER_QUOTA_MB = 5120  # the most space the app can give one member
+REASON_MAX = 200  # characters of the reason a member is told when they are paused or removed
 MB = 1024 * 1024
 OWNER = 0  # the built-in member behind RELAY_API_KEY: the host, unlimited by member quotas
 
@@ -60,6 +65,15 @@ class Config:
         self.host = env.get("BIND", "0.0.0.0")
         self.port = int(env.get("PORT", "8080"))
         self.public_url = env.get("PUBLIC_URL", "").rstrip("/")  # only used to print invite links
+        # the cloud shelf: an S3-compatible store (MinIO, ...) behind the relay; without these it is switched off
+        self.s3_endpoint = env.get("S3_ENDPOINT", "")
+        self.s3_bucket = env.get("S3_BUCKET", "")
+        self.s3_access = env.get("S3_ACCESS_KEY", "")
+        self.s3_secret = env.get("S3_SECRET_KEY", "")
+        self.s3_region = env.get("S3_REGION", "us-east-1")
+        self.s3_prefix = env.get("S3_PREFIX", "cloud/")
+        self.cloud_max_total = int(float(env.get("CLOUD_MAX_TOTAL_MB", env.get("MAX_TOTAL_MB", "20480"))) * 1024 * 1024)
+        self.cloud_on = bool(self.s3_endpoint and self.s3_bucket and self.s3_access and self.s3_secret)
 
 
 def sha(text):
@@ -83,9 +97,12 @@ class Members:
                 token_hash TEXT PRIMARY KEY, member_id INTEGER NOT NULL, expires_at INTEGER NOT NULL,
                 used INTEGER NOT NULL DEFAULT 0)""")
             have = {r["name"] for r in c.execute("PRAGMA table_info(members)")}
-            for col in ("access_hours", "expires_at"):  # added later: how long a member's access lasts (empty = no end)
+            # added later: how long a member's access lasts (empty = no end), the cloud shelf's space, and a pause with a reason
+            for col, kind in (("access_hours", "INTEGER"), ("expires_at", "INTEGER"), ("cloud_quota_mb", "INTEGER"),
+                              ("disabled", "INTEGER NOT NULL DEFAULT 0"), ("disabled_reason", "TEXT"), ("disabled_at", "INTEGER"),
+                              ("removed_reason", "TEXT")):
                 if col not in have:
-                    c.execute("ALTER TABLE members ADD COLUMN %s INTEGER" % col)
+                    c.execute("ALTER TABLE members ADD COLUMN %s %s" % (col, kind))
         self.fails = {}  # ip -> (count, locked_until) for /join
         self.lock = threading.Lock()
 
@@ -95,16 +112,27 @@ class Members:
         return c
 
     def find(self, key):
-        """The member behind a bearer key, or None. The host's own key is member OWNER."""
+        """The member behind a bearer key, or None. The host's own key is member OWNER. A member whose access was paused, ended
+        or removed is still found (so the app can be told why): their "state" says so; an active one has state "active"."""
         if self.cfg.api_key and hmac.compare_digest(key.encode(), self.cfg.api_key.encode()):
-            return {"id": OWNER, "name": "owner", "quota_mb": None, "max_file_mb": None,
-                    "max_ttl_hours": None, "max_active": None}
+            return {"id": OWNER, "name": "owner", "quota_mb": None, "max_file_mb": None, "cloud_quota_mb": None,
+                    "max_ttl_hours": None, "max_active": None, "state": "active"}
         if not key:
             return None
         with self.db() as c:
-            row = c.execute("SELECT * FROM members WHERE key_hash = ? AND revoked = 0 AND (expires_at IS NULL OR expires_at > ?)",
-                            (sha(key), int(time.time()))).fetchone()
-        return dict(row) if row else None
+            row = c.execute("SELECT * FROM members WHERE key_hash = ?", (sha(key),)).fetchone()
+        if not row:
+            return None
+        m = dict(row)
+        if m["revoked"]:
+            m["state"] = "removed"
+        elif m.get("expires_at") and m["expires_at"] <= time.time():
+            m["state"] = "ended"
+        elif m.get("disabled"):
+            m["state"] = "disabled"
+        else:
+            m["state"] = "active"
+        return m
 
     def get(self, name):
         with self.db() as c:
@@ -131,17 +159,19 @@ class Members:
         return {"quota": cap(m.get("quota_mb"), MB, cfg.max_total),
                 "max_file": cap(m.get("max_file_mb"), MB, cfg.max_file),
                 "max_ttl": cap(m.get("max_ttl_hours"), 3600, cfg.max_ttl),
-                "max_active": m.get("max_active") or 0}
+                "max_active": m.get("max_active") or 0,
+                "cloud_quota": cap(m.get("cloud_quota_mb"), MB, cfg.cloud_max_total)}
 
     def add(self, name, **limits):
         if not NAME_RE.match(name):
             raise ValueError("a name is 1-40 letters, digits, space . _ -")
         with self.db() as c:
             try:
-                cur = c.execute("INSERT INTO members(name, created, quota_mb, max_file_mb, max_ttl_hours, max_active, access_hours)"
-                                " VALUES(?,?,?,?,?,?,?)", (name, int(time.time()), limits.get("quota_mb"),
-                                                           limits.get("max_file_mb"), limits.get("max_ttl_hours"),
-                                                           limits.get("max_active"), limits.get("access_hours")))
+                cur = c.execute("INSERT INTO members(name, created, quota_mb, max_file_mb, max_ttl_hours, max_active, access_hours, cloud_quota_mb)"
+                                " VALUES(?,?,?,?,?,?,?,?)", (name, int(time.time()), limits.get("quota_mb"),
+                                                             limits.get("max_file_mb"), limits.get("max_ttl_hours"),
+                                                             limits.get("max_active"), limits.get("access_hours"),
+                                                             limits.get("cloud_quota_mb")))
             except sqlite3.IntegrityError:
                 raise ValueError("there is already a member called %r" % name)
             return cur.lastrowid
@@ -154,10 +184,21 @@ class Members:
             c.execute("UPDATE members SET " + ", ".join("%s = ?" % k for k in sets) + " WHERE name = ?",
                       (*sets.values(), name))
 
-    def revoke(self, name):
+    def revoke(self, name, reason=""):
+        """Remove a member for good. Their key is kept (as a hash) only to answer it with the reason; it opens nothing."""
         with self.db() as c:
-            c.execute("UPDATE members SET revoked = 1, key_hash = NULL WHERE name = ?", (name,))
+            c.execute("UPDATE members SET revoked = 1, removed_reason = ? WHERE name = ?", (reason[:REASON_MAX], name))
             c.execute("UPDATE invites SET used = 1 WHERE member_id IN (SELECT id FROM members WHERE name = ?)", (name,))
+
+    def disable(self, name, reason):
+        """Pause a member: their key stays, every call is turned away with the reason until the host enables them again."""
+        with self.db() as c:
+            c.execute("UPDATE members SET disabled = 1, disabled_reason = ?, disabled_at = ? WHERE name = ? AND revoked = 0",
+                      (reason[:REASON_MAX], int(time.time()), name))
+
+    def enable(self, name):
+        with self.db() as c:
+            c.execute("UPDATE members SET disabled = 0, disabled_reason = NULL, disabled_at = NULL WHERE name = ?", (name,))
 
     def invite(self, name):
         """A single-use token (valid INVITE_DAYS) that hands the member a fresh key. Reissuing also resets the key."""
@@ -394,9 +435,27 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def auth(self):
-        """The member sending this request, or None."""
+        """The member sending this request, or None (then self.denied says how to answer: a key that is not known, or a member
+        whose access was paused, ended or removed, told why)."""
+        self.denied = None
         got = self.headers.get("Authorization", "")
-        return self.server.members.find(got[7:]) if got.startswith("Bearer ") else None
+        member = self.server.members.find(got[7:]) if got.startswith("Bearer ") else None
+        if member is None:
+            return None
+        state, reason = member.get("state", "active"), ""
+        if state == "disabled":
+            reason = member.get("disabled_reason") or ""
+            self.denied = (403, {"error": "disabled", "reason": reason, "message": "Your access was paused by the host" + (": " + reason if reason else "")})
+        elif state == "removed":
+            reason = member.get("removed_reason") or ""
+            self.denied = (401, {"error": "removed", "reason": reason, "message": "Your access was removed by the host" + (": " + reason if reason else "")})
+        elif state == "ended":
+            self.denied = (401, {"error": "ended", "message": "Your access to this server has ended"})
+        return member if state == "active" else None
+
+    def deny(self):
+        code, body = getattr(self, "denied", None) or (401, {"error": "bad key"})
+        return self.reply(code, body)
 
     def own(self, member, info):
         """A member sees only their own shares; the host (OWNER) sees all."""
@@ -409,6 +468,7 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.body_left and self.read_body() is None:
             return
+        self.body = b""
         path = urlparse(self.path).path
         if path in ("/", "/index.html"):  # someone opened the server's address in a browser
             return self.reply(200, LANDING, "text/html; charset=utf-8", {"Content-Security-Policy": NOTE_CSP})
@@ -420,18 +480,26 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/v1/ping":
             member = self.auth()
             if not member:
-                return self.reply(401, {"error": "bad key"})
+                if self.denied and self.denied[1].get("error") == "disabled":  # paused: the app is told so, and why
+                    return self.reply(200, {"ok": False, "disabled": True, "reason": self.denied[1].get("reason", ""),
+                                            "message": self.denied[1]["message"]})
+                return self.deny()
             c, lim = self.server.cfg, self.server.members.limits(member)
             used, active = self.store.used(member["id"]), self.store.active(member["id"])
             free = max(0, min(lim["quota"] - used, c.max_total - self.store.used()))
-            return self.reply(200, {"ok": True, "member": member["name"], "max_file": lim["max_file"],
-                                    "max_ttl": lim["max_ttl"], "free": free,
-                                    "owner": member["id"] == OWNER, "limits": lim, "usage": {"used": used, "active": active}})
+            info = {"ok": True, "member": member["name"], "max_file": lim["max_file"],
+                    "max_ttl": lim["max_ttl"], "free": free,
+                    "owner": member["id"] == OWNER, "limits": lim, "usage": {"used": used, "active": active}}
+            if self.server.cloud:
+                info["cloud"] = {"on": True, "used": self.server.cloud.used(member["id"]), "quota": lim["cloud_quota"]}
+            return self.reply(200, info)
+        if path == "/api/v1/cloud" or path.startswith("/api/v1/cloud/"):
+            return self.cloud_get(path)
         m = re.match(r"^/api/v1/shares/([^/]+)$", path)
         if m and ID_RE.match(m.group(1)):  # progress check for the sender
             member = self.auth()
             if not member:
-                return self.reply(401, {"error": "bad key"})
+                return self.deny()
             info = self.store.meta(m.group(1))
             if not self.own(member, info):
                 return self.reply(404, {"error": "gone"})
@@ -526,20 +594,22 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        if path != "/api/v1/shares":  # everything but an upload has a small body: read it before answering, whatever the answer is
+        if path not in ("/api/v1/shares", "/api/v1/cloud/objects"):  # everything but an upload has a small body: read it before answering, whatever the answer is
             body = self.read_body()
             if body is None:
                 return
             self.body = body
         if path == "/api/v1/join":
             return self.join()
-        if path == "/api/v1/members" or re.match(r"^/api/v1/members/[^/]+/invite$", path):
+        if path == "/api/v1/members" or re.match(r"^/api/v1/members/[^/]+/(invite|limits|disable|enable)$", path):
             return self.members_api("POST", path)
+        if path == "/api/v1/cloud/objects" or re.match(r"^/api/v1/cloud/objects/[^/]+/meta$", path):
+            return self.cloud_post(path)
         if path != "/api/v1/shares":
             return self.reply(404, {"error": "not found"})
         member = self.auth()
         if not member:
-            return self.reply(401, {"error": "bad key"})
+            return self.deny()
         cfg, lim = self.server.cfg, self.server.members.limits(member)
         try:
             length = int(self.headers.get("Content-Length", ""))
@@ -618,7 +688,7 @@ class Handler(BaseHTTPRequestHandler):
         """The host (and only the host) manages members from the app: list, create (-> invitation), re-invite, revoke."""
         member = self.auth()
         if not member:
-            return self.reply(401, {"error": "bad key"})
+            return self.deny()
         if member["id"] != OWNER:
             return self.reply(403, {"error": "host_only", "message": "Only the host of this server can manage members"})
         members = self.server.members
@@ -634,46 +704,230 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, {"total": total, "offset": offset, "members": [
                     {"name": m["name"], "revoked": bool(m["revoked"]), "joined": bool(m["key_hash"]),
                      "expires_at": m.get("expires_at") or 0, "access_hours": m.get("access_hours") or 0,
-                     "limits": members.limits(m), "used": self.store.used(m["id"]), "active": self.store.active(m["id"])}
+                     "disabled": bool(m.get("disabled")), "disabled_reason": m.get("disabled_reason") or "",
+                     "limits": members.limits(m), "used": self.store.used(m["id"]), "active": self.store.active(m["id"]),
+                     "cloud": self.cloud_usage(m)}
                     for m in page]})
             if method == "POST" and path == "/api/v1/members":
                 try:
                     body = json.loads(self.body or b"{}")
                     name = str(body.get("name", "")).strip()
-                    lim = {k: int(body[k]) for k in ("quota_mb", "max_file_mb", "max_ttl_hours", "max_active", "access_hours") if body.get(k)}
+                    lim = {k: int(body[k]) for k in ("quota_mb", "cloud_quota_mb", "max_file_mb", "max_ttl_hours", "max_active", "access_hours") if body.get(k)}
                 except (ValueError, AttributeError, TypeError):
                     return self.reply(400, {"error": "bad_request", "message": "Bad request"})
                 if members.get(name):
                     return self.reply(409, {"error": "exists", "message": "There is already a member called %s" % name})
-                if lim.get("quota_mb", 0) > MAX_MEMBER_QUOTA_MB:  # one member never takes more than this
-                    lim["quota_mb"] = MAX_MEMBER_QUOTA_MB
+                for k in ("quota_mb", "cloud_quota_mb"):  # one member never takes more than this
+                    if lim.get(k, 0) > MAX_MEMBER_QUOTA_MB:
+                        lim[k] = MAX_MEMBER_QUOTA_MB
                 members.add(name, **lim)
                 return self.reply(201, {"name": name, "link": members.invite_link(members.invite(name))})
             name = unquote(path.split("/")[4])
             m = members.get(name)
             if not m:
                 return self.reply(404, {"error": "not_found", "message": "No member called %s" % name})
-            if method == "DELETE":
-                members.revoke(name)
+            parts = path.split("/")
+            action = parts[5] if len(parts) > 5 else ""
+            try:
+                body = json.loads(self.body or b"{}")
+                if not isinstance(body, dict):
+                    raise ValueError("not an object")
+            except ValueError:
+                return self.reply(400, {"error": "bad_request", "message": "Bad request"})
+            reason = str(body.get("reason", "")).strip()[:REASON_MAX]
+            if method == "DELETE":  # {"reason": "...", "delete_files": true|false}: remove for good
+                members.revoke(name, reason)
                 for sid, meta in self.store.shares():
                     if meta.get("owner", OWNER) == m["id"]:
                         self.store.delete(sid)
+                if self.server.cloud:
+                    if body.get("delete_files"):
+                        self.server.cloud.purge_owner(m["id"])
+                    else:
+                        self.server.cloud.transfer(m["id"], OWNER)  # the files stay on the shelf, now the host's
                 return self.reply(200, {"ok": True})
+            if action == "disable":
+                if not reason:
+                    return self.reply(400, {"error": "reason_required", "message": "Say why: the member is shown the reason"})
+                members.disable(name, reason)
+                return self.reply(200, {"ok": True})
+            if action == "enable":
+                members.enable(name)
+                return self.reply(200, {"ok": True})
+            if action == "limits":
+                lim = {}
+                for k in ("quota_mb", "cloud_quota_mb", "max_file_mb", "max_ttl_hours", "max_active", "access_hours"):
+                    if body.get(k) is not None:
+                        try:
+                            lim[k] = max(1, int(body[k]))
+                        except (TypeError, ValueError):
+                            return self.reply(400, {"error": "bad_request", "message": "%s must be a number" % k})
+                        if k in ("quota_mb", "cloud_quota_mb"):
+                            lim[k] = min(lim[k], MAX_MEMBER_QUOTA_MB)
+                members.update(name, **lim)
+                return self.reply(200, {"ok": True, "limits": members.limits(members.get(name))})
             return self.reply(200, {"name": name, "link": members.invite_link(members.invite(name))})
         except ValueError as e:  # a bad name, a revoked member
             return self.reply(400, {"error": "bad_request", "message": str(e)})
 
-    def do_DELETE(self):
-        if self.body_left and self.read_body() is None:
+    # ---- cloud shelf --------------------------------------------------------------------
+    def cloud_usage(self, m):
+        cloud = self.server.cloud
+        if not cloud:
+            return {"on": False, "used": 0, "quota": 0, "files": 0}
+        return {"on": True, "used": cloud.used(m["id"]), "quota": self.server.members.limits(m)["cloud_quota"], "files": cloud.count(m["id"])}
+
+    def cloud_member(self, upload=False):
+        """The member for a cloud call (the answer is already sent when there is none)."""
+        member = self.auth()
+        if not member:
+            if upload:
+                self.refuse(self.denied[0] if self.denied else 401, *self.refusal())
+            else:
+                self.deny()
+            return None
+        if not self.server.cloud:
+            if upload:
+                self.refuse(404, "cloud_off", "This server has no cloud shelf")
+            else:
+                self.reply(404, {"error": "cloud_off", "message": "This server has no cloud shelf"})
+            return None
+        return member
+
+    def refusal(self):
+        code, body = getattr(self, "denied", None) or (401, {"error": "bad key"})
+        return body.get("error", "bad key"), body.get("message", "Not allowed")
+
+    def cloud_get(self, path):
+        member = self.cloud_member()
+        if not member:
             return
+        cloud = self.server.cloud
+        if path == "/api/v1/cloud":
+            q = parse_qs(urlparse(self.path).query)
+            try:
+                since = max(0, int(q.get("since", ["0"])[0]))
+            except ValueError:
+                since = 0
+            objects, seq = cloud.changes(since)
+            lim = self.server.members.limits(member)
+            return self.reply(200, {"seq": seq, "more": len(objects) == 500, "used": cloud.used(member["id"]), "quota": lim["cloud_quota"],
+                                    "mine": member["id"], "objects": objects})
+        m = re.match(r"^/api/v1/cloud/objects/([^/]+)$", path)
+        row = cloud.get(m.group(1)) if m and cloud_ok(m.group(1)) else None
+        if not row or row["deleted"]:
+            return self.reply(404, {"error": "gone"})
+        try:
+            status, resp, conn = cloud.s3.get(cloud.s3.key(row["id"]), self.headers.get("Range"))
+        except (cloud_mod.S3Error, OSError):
+            return self.reply(502, {"error": "cloud_unavailable", "message": "The storage server did not answer"})
+        try:
+            self.send_response(status)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Length", resp.getheader("Content-Length", str(row["size"])))
+            if resp.getheader("Content-Range"):
+                self.send_header("Content-Range", resp.getheader("Content-Range"))
+            self.send_header("Accept-Ranges", "bytes")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            if self.command != "HEAD":
+                while True:
+                    chunk = resp.read(65536)
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+        except OSError:
+            self.close_connection = True
+        finally:
+            conn.close()
+
+    def cloud_post(self, path):
+        upload = path == "/api/v1/cloud/objects"
+        member = self.cloud_member(upload)
+        if not member:
+            return
+        cloud = self.server.cloud
+        if not upload:  # the metadata of one file changes (a new name, another category)
+            m = re.match(r"^/api/v1/cloud/objects/([^/]+)/meta$", path)
+            row = cloud.get(m.group(1)) if cloud_ok(m.group(1)) else None
+            if not row or row["deleted"] or not (member["id"] == OWNER or row["owner"] == member["id"]):
+                return self.reply(404, {"error": "gone"})
+            meta = self.meta_from(self.body)
+            if meta is None:
+                return self.reply(400, {"error": "bad_request", "message": "Bad metadata"})
+            return self.reply(200, {"seq": cloud.set_meta(row["id"], meta)})
+        lim = self.server.members.limits(member)
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+            meta = self.meta_from(json.dumps({"meta": self.headers.get("X-Meta", "")}).encode())
+        except ValueError:
+            return self.reply(400, {"error": "bad headers"})
+        if length <= 0 or meta is None:
+            return self.refuse(400, "bad_request", "A file needs its size and its metadata")
+        if length > lim["max_file"]:
+            return self.refuse(413, "file_too_big", "This server accepts files up to %d MB" % (lim["max_file"] // MB), limit=lim["max_file"])
+        refused = cloud.claim(member["id"], length, lim["cloud_quota"])
+        if refused:
+            why, used = refused
+            if why == "quota":
+                return self.refuse(413, "cloud_quota", "Your cloud space is full (%d of %d MB used)" % (used // MB, lim["cloud_quota"] // MB),
+                                   limit=lim["cloud_quota"], used=used)
+            return self.refuse(413, "server_full", "The cloud shelf is full right now")
+        oid = cloud.new_id()
+        try:
+            try:
+                cloud.s3.put(cloud.s3.key(oid), self.rfile, length)
+                self.body_left = 0
+            except cloud_mod.S3Error:
+                self.close_connection = True
+                cloud.s3.delete(cloud.s3.key(oid))
+                return self.reply(502, {"error": "cloud_unavailable", "message": "The storage server refused the file"})
+            except OSError:  # the sender went away, or the storage server did: nothing is kept
+                self.close_connection = True
+                cloud.s3.delete(cloud.s3.key(oid))
+                return self.reply(400, {"error": "upload failed"})
+            seq = cloud.add(oid, member["id"], length, meta)
+            self.reply(201, {"id": oid, "seq": seq})
+        finally:
+            cloud.unclaim(member["id"], length)
+
+    @staticmethod
+    def meta_from(raw):
+        """The encrypted metadata (base64 in a JSON body or a header) -> bytes, or None when it is missing or too big."""
+        import base64
+        try:
+            text = json.loads(raw or b"{}").get("meta", "")
+            data = base64.b64decode(text, validate=True)
+        except (ValueError, AttributeError, TypeError):
+            return None
+        return data if 0 < len(data) <= cloud_mod.META_MAX else None
+
+    def cloud_delete(self, path):
+        member = self.cloud_member()
+        if not member:
+            return
+        cloud = self.server.cloud
+        m = re.match(r"^/api/v1/cloud/objects/([^/]+)$", path)
+        row = cloud.get(m.group(1)) if m and cloud_ok(m.group(1)) else None
+        if not row or row["deleted"] or not (member["id"] == OWNER or row["owner"] == member["id"]):
+            return self.reply(404, {"error": "gone"})
+        self.reply(200, {"seq": cloud.tombstone(row["id"])})
+
+    def do_DELETE(self):
+        body = self.read_body() if self.body_left else b""
+        if body is None:
+            return
+        self.body = body
         if re.match(r"^/api/v1/members/[^/]+$", urlparse(self.path).path):
             return self.members_api("DELETE", urlparse(self.path).path)
+        if urlparse(self.path).path.startswith("/api/v1/cloud/objects/"):
+            return self.cloud_delete(urlparse(self.path).path)
         m = re.match(r"^/api/v1/shares/([^/]+)$", urlparse(self.path).path)
         if not m or not ID_RE.match(m.group(1)):
             return self.reply(404, {"error": "not found"})
         member = self.auth()
         if not member:
-            return self.reply(401, {"error": "bad key"})
+            return self.deny()
         if self.own(member, self.store.meta(m.group(1))):
             self.store.delete(m.group(1))
         self.reply(200, {"ok": True})
@@ -683,6 +937,10 @@ def make_server(cfg):
     os.makedirs(cfg.data_dir, exist_ok=True)
     srv = ThreadingHTTPServer((cfg.host, cfg.port), Handler)
     srv.cfg, srv.store, srv.members = cfg, Store(cfg), Members(cfg)
+    srv.cloud = None
+    if cfg.cloud_on:
+        s3 = cloud_mod.S3(cfg.s3_endpoint, cfg.s3_bucket, cfg.s3_access, cfg.s3_secret, cfg.s3_region, cfg.s3_prefix)
+        srv.cloud = cloud_mod.CloudStore(srv.members.path, s3, cfg.cloud_max_total)
     srv.daemon_threads = True
 
     def cleaner():
@@ -706,14 +964,22 @@ def cli(cfg, argv):
         sp.add_argument("--max-ttl-hours", type=int, help="longest a link may live")
         sp.add_argument("--max-active", type=int, help="shares at the same time")
         sp.add_argument("--access-hours", type=int, help="how long their access lasts after they join (default: no end)")
+        sp.add_argument("--cloud-quota-mb", type=int, help="space for their files on the cloud shelf")
     mem = sub.add_parser("members", help="manage members").add_subparsers(dest="action", required=True)
     add = mem.add_parser("add", help="add a member and print their invitation")
     add.add_argument("name"); limits(add)
     mem.add_parser("list", help="members, limits and what they use")
     setp = mem.add_parser("set", help="change a member's limits")
     setp.add_argument("name"); limits(setp)
-    rev = mem.add_parser("revoke", help="end a member's access and delete their shares")
+    rev = mem.add_parser("revoke", aliases=["remove"], help="remove a member for good and delete their shares")
     rev.add_argument("name")
+    rev.add_argument("--reason", default="", help="shown to the member when they next try to connect")
+    rev.add_argument("--delete-files", action="store_true", help="also delete their files on the cloud shelf (default: they become yours)")
+    dis = mem.add_parser("disable", help="pause a member: their key stays, every call is refused with the reason")
+    dis.add_argument("name")
+    dis.add_argument("--reason", required=True, help="shown to the member")
+    ena = mem.add_parser("enable", help="let a paused member in again")
+    ena.add_argument("name")
     inv = sub.add_parser("invite", help="a new invitation for a member (also resets their key)")
     inv.add_argument("name")
     sh = sub.add_parser("shares", help="live shares").add_subparsers(dest="action", required=True)
@@ -726,7 +992,11 @@ def cli(cfg, argv):
 
     members, store = Members(cfg), Store(cfg)
     names = {OWNER: "owner"} | {m["id"]: m["name"] for m in members.all()}
-    pick = lambda a: {k: getattr(a, k) for k in ("quota_mb", "max_file_mb", "max_ttl_hours", "max_active", "access_hours")}
+    pick = lambda a: {k: getattr(a, k) for k in ("quota_mb", "cloud_quota_mb", "max_file_mb", "max_ttl_hours", "max_active", "access_hours")}
+    cloud_store = None
+    if cfg.cloud_on:
+        cloud_store = cloud_mod.CloudStore(members.path, cloud_mod.S3(cfg.s3_endpoint, cfg.s3_bucket, cfg.s3_access, cfg.s3_secret,
+                                                                       cfg.s3_region, cfg.s3_prefix), cfg.cloud_max_total)
     try:
         if args.cmd == "members" and args.action == "add":
             members.add(args.name, **pick(args))
@@ -736,15 +1006,27 @@ def cli(cfg, argv):
                 raise ValueError("no member called %r" % args.name)
             members.update(args.name, **pick(args))
             print("Updated %s." % args.name)
-        elif args.cmd == "members" and args.action == "revoke":
+        elif args.cmd == "members" and args.action in ("revoke", "remove"):
             m = members.get(args.name)
             if not m:
                 raise ValueError("no member called %r" % args.name)
-            members.revoke(args.name)
+            members.revoke(args.name, args.reason)
             gone = [sid for sid, meta in store.shares() if meta.get("owner", OWNER) == m["id"]]
             for sid in gone:
                 store.delete(sid)
-            print("Revoked %s; %d share(s) deleted." % (args.name, len(gone)))
+            if cloud_store:
+                (cloud_store.purge_owner if args.delete_files else lambda i: cloud_store.transfer(i, OWNER))(m["id"])
+            print("Removed %s; %d share(s) deleted." % (args.name, len(gone)))
+        elif args.cmd == "members" and args.action == "disable":
+            if not members.get(args.name):
+                raise ValueError("no member called %r" % args.name)
+            members.disable(args.name, args.reason)
+            print("Paused %s." % args.name)
+        elif args.cmd == "members" and args.action == "enable":
+            if not members.get(args.name):
+                raise ValueError("no member called %r" % args.name)
+            members.enable(args.name)
+            print("%s may use the server again." % args.name)
         elif args.cmd == "invite":
             print("Invitation for %s (valid %d days, single use; using it gives them a new key):\n  %s"
                   % (args.name, INVITE_DAYS, members.invite_link(members.invite(args.name))))
@@ -752,7 +1034,7 @@ def cli(cfg, argv):
             print("%-20s %-8s %-18s %-8s %-9s %s" % ("NAME", "STATE", "SPACE", "SHARES", "MAX FILE", "MAX LIFE"))
             for m in [{"id": OWNER, "name": "owner", "revoked": 0, "key_hash": "-"}] + members.all():
                 lim = members.limits(m)
-                state = "revoked" if m["revoked"] else ("active" if m["key_hash"] else "invited")
+                state = "removed" if m["revoked"] else "paused" if m.get("disabled") else ("active" if m["key_hash"] else "invited")
                 print("%-20s %-8s %-18s %-8s %-9s %s" % (
                     m["name"], state, "%d / %d MB" % (store.used(m["id"]) // MB, lim["quota"] // MB),
                     "%d / %s" % (store.active(m["id"]), lim["max_active"] or "-"), "%d MB" % (lim["max_file"] // MB),

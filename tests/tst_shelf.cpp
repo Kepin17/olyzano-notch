@@ -136,6 +136,142 @@ private slots:
         QCOMPARE(shelf.items()->index(24, 0).data(FileItemModel::ExpiresTextRole).toString(), QStringLiteral("kept, never expires"));
     }
 
+    // A big drop: the folder is listed and looked at on a worker, the files go on the shelf a few at a time, and the panel keeps being
+    // given back to the event loop; the copy of a big file says how far it is.
+    void bigDropKeepsTheEventLoopFree()
+    {
+        QTemporaryDir dir, src;
+        QVERIFY(dir.isValid() && src.isValid());
+        NotchController shelf(dir.path());
+        QVERIFY(shelf.start());
+        constexpr int Folders = 5, PerFolder = 160;
+        for (int f = 0; f < Folders; ++f) {
+            QVERIFY(QDir().mkpath(src.filePath(QStringLiteral("big/sub%1").arg(f))));
+            for (int i = 0; i < PerFolder; ++i) {
+                QFile file(src.filePath(QStringLiteral("big/sub%1/file%2.txt").arg(f).arg(i)));
+                QVERIFY(file.open(QIODevice::WriteOnly));
+                file.write("hello " + QByteArray::number(i));
+            }
+        }
+        QFile huge(src.filePath(QStringLiteral("huge.bin"))); // 600 MB of nothing: the copy takes a moment and has bytes to count
+        QVERIFY(huge.open(QIODevice::WriteOnly));
+        QVERIFY(huge.resize(600LL << 20));
+        huge.close();
+
+        qint64 longest = 0, last = 0;
+        QElapsedTimer tick;
+        tick.start();
+        QTimer probe;
+        probe.setInterval(5);
+        connect(&probe, &QTimer::timeout, this, [&] { longest = qMax(longest, tick.elapsed() - last); last = tick.elapsed(); });
+        probe.start();
+        bool sawLabel = false, sawBytes = false;
+        connect(&shelf, &NotchController::copyProgressChanged, this, [&] {
+            sawLabel = sawLabel || !shelf.copyLabel().isEmpty();
+            sawBytes = sawBytes || shelf.copyDetail().contains(QStringLiteral(" of "));
+        });
+        shelf.addUrls({QUrl::fromLocalFile(src.filePath(QStringLiteral("big"))), QUrl::fromLocalFile(src.filePath(QStringLiteral("huge.bin")))});
+        QTRY_COMPARE_WITH_TIMEOUT(shelf.count(), Folders * PerFolder + 1, 60000);
+        QTRY_COMPARE_WITH_TIMEOUT(shelf.copying(), 0, 60000);
+        QTRY_VERIFY_WITH_TIMEOUT(shelf.copyLabel().isEmpty(), 10000); // it clears itself when done
+        qInfo() << "BENCH drop longest UI stall ms" << longest;
+        QVERIFY(sawLabel);
+        QVERIFY(sawBytes);
+        QVERIFY2(longest < 400, qPrintable(QString::number(longest)));
+        int categories = 0;
+        for (const QVariant &c : shelf.categories())
+            categories += c.toMap().value(QStringLiteral("name")).toString().startsWith(QLatin1String("sub"));
+        QCOMPARE(categories, Folders); // each folder is a category
+    }
+
+    // Stopping a drop in the middle leaves no half-copied file, no row stuck on "copying", and no empty category.
+    void cancelledDropLeavesNothingHalfDone()
+    {
+        QTemporaryDir dir, src;
+        QVERIFY(dir.isValid() && src.isValid());
+        NotchController shelf(dir.path());
+        QVERIFY(shelf.start());
+        QVERIFY(QDir().mkpath(src.filePath(QStringLiteral("many/inner"))));
+        for (int i = 0; i < 300; ++i) {
+            QFile file(src.filePath(QStringLiteral("many/inner/f%1.bin").arg(i)));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            QVERIFY(file.resize(8 << 20));
+        }
+        shelf.addUrls({QUrl::fromLocalFile(src.filePath(QStringLiteral("many")))});
+        QTRY_VERIFY_WITH_TIMEOUT(!shelf.copyLabel().isEmpty(), 10000);
+        shelf.cancelCopies();
+        QTRY_COMPARE_WITH_TIMEOUT(shelf.copying(), 0, 30000);
+        QTRY_VERIFY_WITH_TIMEOUT(shelf.copyLabel().isEmpty(), 10000);
+        QVERIFY(shelf.count() < 300); // some were done before the stop, not all
+        for (int r = 0; r < shelf.items()->rowCount(); ++r)
+            QCOMPARE(shelf.items()->index(r, 0).data(FileItemModel::StatusRole).toString(), QStringLiteral("available"));
+    }
+
+    // While one big file is copied, a shelf with thousands of files must not be shaken four times a second: the progress of a copy
+    // belongs to its own tile only (no count, category, index or chip work).
+    void copyProgressDoesNotChurnTheShelf()
+    {
+        QTemporaryDir dir, src;
+        QVERIFY(dir.isValid() && src.isValid());
+        NotchController shelf(dir.path());
+        QVERIFY(shelf.start());
+        for (int i = 0; i < 2000; ++i)
+            shelf.addTextNote(QStringLiteral("note %1").arg(i));
+        QTRY_COMPARE_WITH_TIMEOUT(shelf.count(), 2000, 120000);
+        QFile huge(src.filePath(QStringLiteral("huge.bin")));
+        QVERIFY(huge.open(QIODevice::WriteOnly));
+        QVERIFY(huge.resize(1200LL << 20));
+        huge.close();
+
+        int counts = 0, cats = 0;
+        connect(&shelf, &NotchController::countChanged, this, [&] { ++counts; });
+        connect(&shelf, &NotchController::categoriesChanged, this, [&] { ++cats; });
+        qint64 longest = 0, last = 0;
+        QElapsedTimer tick;
+        tick.start();
+        QTimer probe;
+        probe.setInterval(5);
+        connect(&probe, &QTimer::timeout, this, [&] { longest = qMax(longest, tick.elapsed() - last); last = tick.elapsed(); });
+        probe.start();
+        shelf.addUrls({QUrl::fromLocalFile(src.filePath(QStringLiteral("huge.bin")))});
+        QTRY_COMPARE_WITH_TIMEOUT(shelf.count(), 2001, 60000);
+        QTRY_COMPARE_WITH_TIMEOUT(shelf.copying(), 0, 60000);
+        QTRY_VERIFY_WITH_TIMEOUT(shelf.copyLabel().isEmpty(), 10000);
+        qInfo() << "BENCH copy on a big shelf: countChanged" << counts << "categoriesChanged" << cats << "longest stall ms" << longest;
+        QVERIFY2(counts <= 3, qPrintable(QString::number(counts)));
+        QVERIFY2(longest < 100, qPrintable(QString::number(longest)));
+    }
+
+    // A category with no file in it goes at once; one with its files in Recently removed stays until they are gone; a new one stays a moment.
+    void emptyCategoriesGoAtOnce()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        NotchController shelf(dir.path());
+        QVERIFY(shelf.start());
+        const auto names = [&] {
+            QStringList out;
+            for (const QVariant &c : shelf.categories())
+                out << c.toMap().value(QStringLiteral("name")).toString();
+            return out;
+        };
+        const QString a = shelf.createCategory(QStringLiteral("Alpha")), b = shelf.createCategory(QStringLiteral("Beta"));
+        shelf.addTextNote(QStringLiteral("one"), a);
+        shelf.addTextNote(QStringLiteral("two"), a);
+        QTRY_COMPARE_WITH_TIMEOUT(shelf.count(), 2, 20000);
+        QVERIFY(names().contains(QStringLiteral("Beta"))); // made a moment ago, nothing in it yet: it stays
+        shelf.setCategory(shelf.categoryItemIds(a), b);    // the last file leaves Alpha: it goes
+        QTRY_VERIFY_WITH_TIMEOUT(!names().contains(QStringLiteral("Alpha")), 5000);
+        QVERIFY(names().contains(QStringLiteral("Beta")));
+
+        shelf.removeItems(shelf.categoryItemIds(b)); // in Recently removed they still count: they can come back
+        QCOMPARE(shelf.removedCount(), 2);
+        shelf.setCategoryFilter({});
+        QVERIFY(names().contains(QStringLiteral("Beta")));
+        shelf.emptyRecentlyRemoved();
+        QTRY_VERIFY_WITH_TIMEOUT(!names().contains(QStringLiteral("Beta")), 5000);
+    }
+
     // Icons from the theme are made on the GUI thread, whichever thread asks (a race with it crashed Notch in KIconLoader).
     void iconProviderMakesImagesOnTheGuiThread()
     {

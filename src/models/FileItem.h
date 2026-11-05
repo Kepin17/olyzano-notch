@@ -29,4 +29,9 @@ struct FileItem {
     bool pinned = false;  // "kept": never auto-deleted
     QDateTime removedAt;  // set (UTC) while in Recently removed; invalid otherwise
     bool vault = false;   // stored in the encrypted vault (a locked category), not in the files dir
+
+    // What the model derives from the fields above, worked out the first time a view asks and then kept (a mime lookup or a
+    // locale format on every data() call is what a long scrolling list pays for). A changed item is a new FileItem: it starts empty.
+    mutable QString iconNameCache, sizeTextCache, addedTextCache;
+    mutable signed char isTextCache = -1;
 };

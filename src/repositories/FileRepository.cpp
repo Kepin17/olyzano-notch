@@ -60,6 +60,7 @@ bool FileRepository::open(const QString &dbPath)
     }
     q.finish();
     q.exec(QStringLiteral("PRAGMA journal_mode=WAL"));
+    q.exec(QStringLiteral("PRAGMA synchronous=NORMAL")); // with WAL: a commit does not wait for the disk (an app crash loses nothing; only a power cut can lose the last one)
     q.finish();
     if (!migrate(dbPath))
         return false;

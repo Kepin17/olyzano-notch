@@ -254,7 +254,9 @@ Window {
     }
     readonly property bool selecting: page === "shelf" && selection.length > 0
     readonly property bool inRemoved: notch.categoryFilter === "__removed__" // Recently removed view
-    readonly property bool anyMenu: menu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible
+    readonly property bool inCloud: notch.categoryFilter === "__cloud__"     // the cloud shelf (Settings → Files)
+    property string cloudNote: ""                                           // the last thing that went wrong there, in the host's or the server's words
+    readonly property bool anyMenu: menu.visible || sendMenu.visible || assignMenu.visible || categoryMenu.visible || cloudMenu.visible
                                     || toolsMenu.visible || extractPopup.visible || (settingsLoader.item !== null && settingsLoader.item.overlayOpen)
                                     || quickLookCard.visible || vaultPopup.visible || confirmDelete.visible || confirmClear.visible
                                     || (shareLoader.item !== null && shareLoader.item.visible) || incomingPopup.visible
@@ -649,6 +651,8 @@ Window {
             return { kind: "doomscroll", title: "Scrolling " + doomscroll.siteName, detail: doomscroll.minutes + " min", progress: -1, color: theme.warn }
         if (notch.batchLabel !== "") // a big remove / restore / delete in steps
             return { kind: "copy", title: notch.batchLabel + "…", detail: String(notch.count), progress: -1, color: theme.accent }
+        if (notch.copyLabel !== "") // a copy or zip with its progress, and a way to stop it
+            return { kind: "copy", title: notch.copyLabel, detail: notch.copyDetail, progress: notch.copyFraction, color: theme.accent, cancellable: true }
         if (notch.copying > 0)
             return { kind: "copy", title: "Copying " + notch.copying + (notch.copying === 1 ? " file" : " files"),
                      detail: String(notch.count), progress: -1, color: theme.accent }
@@ -1308,10 +1312,10 @@ Window {
         y: root.geoWidget ? Math.max(0, Math.min(root.height - height * scale - 2, root.widgetY - root.winRect.y)) : 0
         // Where the island is heading; width and height follow it with the springs below.
         readonly property real targetWidth: root.mode === "open" ? root.panelWidth : root.mode === "search" ? 560 : root.mode === "prompt" ? 440 : root.mode === "toast" ? 400
-             : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : 230)
+             : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : root.live && root.live.cancellable ? 380 : 230)
              : root.mode === "idle" ? (root.musicShown ? root.capWidth
                                        : root.infoShown ? (root.taskRadarCount > 1 ? 460 : 390) // room for the 3-deadline ticker
-                                       : systemEvents.batteryLevel >= 0 ? 230 : 180) : 150
+                                       : Math.max(systemEvents.batteryLevel >= 0 ? 230 : 180, idleRow.implicitWidth + 2 * (shoulder + 14) + 8)) : 150 // the cat, "⚡", the microphone and the camera need their room: it was cut off while charging
         readonly property real targetHeight: root.mode === "open" ? Math.max(panel.implicitHeight + (root.dragOver ? 8 : 0), root.shareNeed)
               : root.mode === "search" ? (searchPanelLoader.item ? searchPanelLoader.item.wantedHeight : 0) : root.mode === "prompt" ? 92 : root.mode === "toast" ? 56 : root.mode === "peek" ? 36 : root.mode === "idle" ? 48 : 0
         width: targetWidth
@@ -1767,11 +1771,32 @@ Window {
             Text {
                 textFormat: Text.PlainText // a name can look like markup
                 text: liveRow.l.detail
+                elide: Text.ElideRight
+                Layout.maximumWidth: 190
                 readonly property bool clockLike: liveRow.l.kind === "timer" || liveRow.l.kind === "break"
                 color: clockLike || liveRow.l.kind === "call" ? liveRow.l.color : root.textSecondary
                 font.pixelSize: 12
                 font.weight: clockLike ? Font.DemiBold : Font.Normal
                 font.family: clockLike ? "monospace" : Qt.application.font.family
+            }
+            Rectangle { // stop the copy or the zip
+                id: cancelCopyButton
+                visible: liveRow.l.cancellable === true
+                Layout.alignment: Qt.AlignVCenter
+                Layout.preferredWidth: 20
+                Layout.preferredHeight: 20
+                radius: 10
+                color: cancelCopyArea.containsMouse ? Qt.rgba(1, 1, 1, 0.22) : Qt.rgba(1, 1, 1, 0.12)
+                Accessible.role: Accessible.Button
+                Accessible.name: "Cancel the copy"
+                LineIcon { anchors.centerIn: parent; glyph: "close"; sourceSize: Qt.size(10, 10); color: root.textPrimary }
+                MouseArea {
+                    id: cancelCopyArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: notch.cancelCopies()
+                }
             }
         }
         // Its progress, as a hairline along the bottom of the pill.
@@ -2455,14 +2480,59 @@ Window {
                             spacing: 6
                             clip: true
                             boundsBehavior: Flickable.StopAtBounds
-                            model: [{ id: "", name: "All", count: notch.count }].concat(notch.categories)
+                            // One list that is edited in place: a count that changes does not rebuild the chips (a rebuild per file of a
+                            // drop of a thousand was most of what made the panel lag).
+                            model: ListModel {
+                                id: chipModel
+                                function sync() {
+                                    const rows = [{ cid: "", cname: "All", ccount: notch.count, cspecial: "", clocked: false }]
+                                    if (cloud.enabled)
+                                        rows.push({ cid: "__cloud__", cname: "Cloud", ccount: cloud.count, cspecial: "cloud", clocked: false })
+                                    for (const c of notch.categories)
+                                        rows.push({ cid: c.id, cname: c.name, ccount: c.count, cspecial: c.special || "", clocked: c.locked || false })
+                                    let same = rows.length === count
+                                    for (let i = 0; same && i < rows.length; ++i)
+                                        same = get(i).cid === rows[i].cid
+                                    if (!same) {
+                                        clear()
+                                        for (const r of rows) append(r)
+                                        return
+                                    }
+                                    for (let i = 0; i < rows.length; ++i) {
+                                        const r = rows[i], o = get(i)
+                                        if (o.cname !== r.cname) setProperty(i, "cname", r.cname)
+                                        if (o.ccount !== r.ccount) setProperty(i, "ccount", r.ccount)
+                                        if (o.cspecial !== r.cspecial) setProperty(i, "cspecial", r.cspecial)
+                                        if (o.clocked !== r.clocked) setProperty(i, "clocked", r.clocked)
+                                    }
+                                }
+                                Component.onCompleted: sync()
+                            }
+                            Connections {
+                                target: notch
+                                function onCategoriesChanged() { chipModel.sync() }
+                                function onCountChanged() { chipModel.sync() }
+                            }
+                            Connections {
+                                target: cloud
+                                function onChanged() {
+                                    chipModel.sync()
+                                    if (!cloud.enabled && root.inCloud)
+                                        notch.categoryFilter = ""
+                                }
+                                function onFailed(message) { root.cloudNote = message }
+                            }
                             delegate: Chip {
-                                required property var modelData
-                                catId: modelData.id
-                                text: modelData.name
-                                itemCount: modelData.count
-                                special: modelData.special || ""
-                                locked: modelData.locked || false
+                                required property string cid
+                                required property string cname
+                                required property int ccount
+                                required property string cspecial
+                                required property bool clocked
+                                catId: cid
+                                text: cname
+                                itemCount: ccount
+                                special: cspecial
+                                locked: clocked
                                 onDropDone: root.dragLive = false
                                 onDropHoverChanged: {
                                     root.chipDragOver = dropHover
@@ -2629,10 +2699,91 @@ Window {
                     }
                 }
 
+                // ---- Cloud shelf: what the members of the Share server keep together, encrypted on its storage ----
+                ColumnLayout {
+                    id: cloudView
+                    visible: root.page === "shelf" && root.inCloud
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
+                    spacing: 8
+                    onVisibleChanged: if (visible) { root.cloudNote = ""; cloud.syncNow() }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text {
+                            Layout.fillWidth: true
+                            elide: Text.ElideRight
+                            color: root.textSecondary
+                            font.pixelSize: 12
+                            text: cloud.usable ? (cloud.state === "syncing" ? "Syncing…" : "Using " + root.formatBytes(cloud.used) + (cloud.quota > 0 ? " of " + root.formatBytes(cloud.quota) : ""))
+                                               : cloud.stateMessage !== "" ? cloud.stateMessage : "Not connected"
+                        }
+                        PillButton { text: "Sync"; enabled: cloud.usable; onClicked: cloud.syncNow() }
+                    }
+                    Rectangle { // paused or removed by the host (with their reason), or something wrong with the connection
+                        visible: !cloud.usable || root.cloudNote !== ""
+                        Layout.fillWidth: true
+                        implicitHeight: bannerText.implicitHeight + 16
+                        radius: theme.radiusMd
+                        color: theme.dangerBg
+                        Text {
+                            id: bannerText
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            wrapMode: Text.Wrap
+                            textFormat: Text.PlainText // the host's reason is theirs to word
+                            color: theme.danger
+                            font.pixelSize: 12
+                            text: root.cloudNote !== "" ? root.cloudNote
+                                : cloud.state === "disabled" || cloud.state === "removed" ? cloud.stateMessage
+                                : cloud.state === "offline" ? "Cannot reach the server. Your files here will come back when it does."
+                                : cloud.stateMessage !== "" ? cloud.stateMessage : "The cloud shelf is not ready."
+                        }
+                    }
+                    Text {
+                        visible: cloud.usable && cloud.count === 0
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 110
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        wrapMode: Text.Wrap
+                        text: "Nothing on the cloud shelf yet. Drop files on the Cloud chip, or right-click a file → Send to cloud shelf."
+                        color: root.textSecondary
+                        font.pixelSize: 13
+                    }
+                    GridView {
+                        id: cloudGrid
+                        visible: cloud.count > 0
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.max(132, Math.min(contentHeight, 3 * cellHeight))
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        model: cloud.entries
+                        readonly property real usable: Math.max(96, width - 10)
+                        readonly property int perRow: Math.max(1, Math.floor(usable / 100))
+                        cellWidth: usable / perRow
+                        cellHeight: 132
+                        WheelHandler {
+                            target: null
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                            onWheel: (e) => {
+                                const d = e.pixelDelta.y !== 0 ? e.pixelDelta.y : e.angleDelta.y / 120 * cloudGrid.cellHeight / 2
+                                cloudGrid.contentY = Math.max(0, Math.min(Math.max(0, cloudGrid.contentHeight - cloudGrid.height), cloudGrid.contentY - d))
+                            }
+                        }
+                        interactive: false
+                        delegate: CloudTile {
+                            onOpenRequested: cloud.download(cloudId)
+                            onMenuRequested: { cloudMenu.cid = cloudId; cloudMenu.mine = mine; cloudMenu.popup() }
+                        }
+                    }
+                }
+
                 // ---- Shelf ----
                 Item {
                     id: emptyState
-                    visible: root.page === "shelf" && notch.count === 0 && !root.lockedClosed
+                    visible: root.page === "shelf" && notch.count === 0 && !root.lockedClosed && !root.inCloud
                     Layout.fillWidth: true
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
@@ -2702,7 +2853,7 @@ Window {
                 }
 
                 Text {
-                    visible: root.page === "shelf" && notch.count > 0 && list.count === 0 && !root.lockedClosed
+                    visible: root.page === "shelf" && notch.count > 0 && list.count === 0 && !root.lockedClosed && !root.inCloud
                     Layout.fillWidth: true
                     Layout.preferredHeight: 144
                     horizontalAlignment: Text.AlignHCenter
@@ -2718,6 +2869,7 @@ Window {
                 GridView {
                     id: list
                     visible: root.page === "shelf" && count > 0
+                    enabled: root.mode === "open" // the panel is closed: its tiles are not kept up to date for nobody
                     Layout.fillWidth: true
                     Layout.leftMargin: 6
                     Layout.rightMargin: 6
@@ -2725,8 +2877,12 @@ Window {
                     Layout.preferredHeight: Math.max(144, Math.min(contentHeight, maxRows * cellHeight))
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
+                    reuseItems: true // scrolling hands a tile that left on one side another file on the other, instead of building a new one
+                    cacheBuffer: 0
                     model: notch.items
                     property var selectedIds: root.selection
+                    // While files are being put on the shelf, tiles do not animate in and out (a thousand animations at once)
+                    readonly property bool busyIngest: notch.copyLabel !== "" || notch.batchLabel !== ""
                     // Tiles share the row exactly: as many whole tiles (>= 96 px) as fit, never a cut-off one.
                     readonly property real gap: 4
                     // The row is always this much narrower than the grid (room for the scrollbar, shown or not), so the cells
@@ -2785,14 +2941,17 @@ Window {
                         }
                     }
                     add: Transition {
+                        enabled: !list.busyIngest
                         NumberAnimation { property: "scale"; from: 0.4; to: 1; duration: 420; easing.type: Easing.OutBack; easing.overshoot: 2 }
                         NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 200 }
                     }
                     remove: Transition {
+                        enabled: !list.busyIngest
                         NumberAnimation { property: "scale"; to: 0.4; duration: 180; easing.type: Easing.InCubic }
                         NumberAnimation { property: "opacity"; to: 0; duration: 180 }
                     }
                     displaced: Transition {
+                        enabled: !list.busyIngest
                         NumberAnimation { properties: "x,y"; duration: 280; easing.type: Easing.OutCubic }
                     }
                 }
@@ -3206,6 +3365,7 @@ Window {
             }
         }
         Action { text: "Tools…"; onTriggered: root.openTools(menu.targets) }
+        Action { text: "Send to cloud shelf"; enabled: cloud.usable; onTriggered: cloud.uploadItems(menu.targets) }
         Action {
             text: menu.itemPinned ? "Allow auto-delete" : "Keep (never auto-delete)"
             onTriggered: notch.setPinned(menu.targets, !menu.itemPinned)
@@ -3556,6 +3716,15 @@ Window {
         Action { text: "Open"; onTriggered: notch.open(menu.itemId) }
         DarkSeparator {}
         Action { text: "Delete now"; onTriggered: { notch.deleteForever(removedMenu.targets); root.clearSelection() } }
+    }
+
+    DarkMenu {
+        id: cloudMenu
+        property string cid: ""
+        property bool mine: false
+        Action { text: "Download to my files"; onTriggered: cloud.download(cloudMenu.cid) }
+        DarkSeparator {}
+        Action { text: "Remove from the cloud shelf"; enabled: cloud.isHost || cloudMenu.mine; onTriggered: cloud.remove(cloudMenu.cid) }
     }
 
     DarkMenu {

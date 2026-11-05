@@ -10,12 +10,32 @@ services:
       MAX_TTL_HOURS: ${MAX_TTL_HOURS:-24}
       TRUST_PROXY: "1" # Caddy sits in front: take the client IP from X-Forwarded-For
       PUBLIC_URL: https://${DOMAIN} # only used to print invitation links
+      # The cloud shelf (optional): an S3-compatible store behind the relay. Without S3_* it is off.
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_BUCKET: ${S3_BUCKET:-notch}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      CLOUD_MAX_TOTAL_MB: ${CLOUD_MAX_TOTAL_MB:-${MAX_TOTAL_MB:-20480}}
     volumes:
       - relay-data:/data
     read_only: true
     tmpfs: [/tmp]
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
+
+  # Optional: a MinIO of your own for the cloud shelf. Not published: only the relay reaches it.
+  # Use it with  docker compose --profile minio up -d --build  and S3_ENDPOINT=http://minio:9000 in .env
+  minio:
+    image: minio/minio
+    profiles: [minio]
+    restart: unless-stopped
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:?set S3_ACCESS_KEY in .env}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?set S3_SECRET_KEY in .env}
+    volumes:
+      - minio-data:/data
 
   caddy:
     image: caddy:2-alpine
@@ -33,6 +53,7 @@ services:
       - caddy-config:/config
 
 volumes:
+  minio-data:
   relay-data:
   caddy-data:
   caddy-config:

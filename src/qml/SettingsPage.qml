@@ -46,7 +46,7 @@ RowLayout {
         ["alerts", "Prayer times", "prayer salat sholat solat adzan azan fajr subuh dhuhr zuhur asr ashar maghrib isha isya mosque muslim reminder city kemenag"], ["alerts", "Charger & Bluetooth alerts", "battery plug device connect low"], ["alerts", "Clock when idle", "time clock capsule"],
         ["alerts", "Downloads in the notch", "download browser progress"], ["alerts", "Phone calls & notifications", "kde connect phone"],
         ["alerts", "Microphone & camera indicators", "privacy dot mic camera"], ["alerts", "Notifications from this computer", "desktop apps slack"],
-        ["files", "Keep files for", "retention days expire delete"], ["files", "Sort new files by type", "rules category pdf images"],
+        ["files", "Cloud shelf", "cloud shelf sync minio s3 server shared team storage members encrypted"], ["files", "Keep files for", "retention days expire delete"], ["files", "Sort new files by type", "rules category pdf images"],
         ["files", "Storage folder", "where files are stored directory"], ["files", "Add new screenshots", "spectacle screenshot"],
         ["files", "Add new downloads", "browser downloads folder"], ["files", "Add files from KDE Connect", "phone"],
         ["dock", "Show the app dock", "dock enable"], ["dock", "Always show", "auto hide dock"], ["dock", "Position", "edge bottom left right"],
@@ -1016,6 +1016,67 @@ RowLayout {
                     caption: "Files your phone or tablet sends land in the 📱 KDE Connect category."
                     checked: notch.autoKdeConnect
                     onToggled: notch.autoKdeConnect = !notch.autoKdeConnect
+                }
+
+                SettingCard {
+                    title: "Cloud shelf"
+                    SettingToggle {
+                        title: "Cloud shelf"
+                        caption: "A shelf shared with the other members of one of your Share servers, kept encrypted on that server's storage. The host decides who may use it and how much space each person has."
+                        checked: cloud.enabled
+                        onToggled: cloud.enabled = !cloud.enabled
+                    }
+                    ColumnLayout {
+                        visible: cloud.enabled
+                        Layout.fillWidth: true
+                        spacing: 8
+                        SectionLabel { text: "Server" }
+                        Caption {
+                            visible: share.servers.length === 0
+                            Layout.fillWidth: true
+                            text: "Join a Share server first (Settings → Sharing → Join a server). It has to be a server whose host set up the cloud shelf."
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: 6
+                            Repeater {
+                                model: share.servers
+                                delegate: PillButton {
+                                    required property var modelData
+                                    text: modelData.name
+                                    checked: cloud.serverId === modelData.id
+                                    onClicked: cloud.serverId = modelData.id
+                                }
+                            }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Rectangle {
+                                Layout.preferredWidth: 8
+                                Layout.preferredHeight: 8
+                                radius: 4
+                                color: cloud.usable ? theme.success : cloud.state === "disabled" || cloud.state === "removed" || cloud.state === "needsKey" || cloud.state === "unsupported" ? theme.danger : theme.textFaint
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                textFormat: Text.PlainText // the host's reason is theirs to word
+                                wrapMode: Text.Wrap
+                                color: theme.text
+                                font.pixelSize: 12
+                                text: cloud.usable ? "Connected" + (cloud.quota > 0 ? " · using " + shell.formatBytes(cloud.used) + " of " + shell.formatBytes(cloud.quota) : "")
+                                    : cloud.state === "connecting" ? "Connecting…"
+                                    : cloud.state === "offline" ? "Cannot reach the server"
+                                    : cloud.stateMessage !== "" ? cloud.stateMessage : "Not connected"
+                            }
+                            PillButton { text: "Sync now"; enabled: cloud.usable; onClicked: cloud.syncNow() }
+                        }
+                        Caption {
+                            Layout.fillWidth: true
+                            text: cloud.isHost ? "You host this server: every invitation you make carries the shelf's key, so the people you invite can read it. Set each person's space, or pause or remove them, in Sharing → Members."
+                                              : "Names and contents are encrypted on this computer. The storage and the server only see sizes. The Cloud chip appears on the Files page."
+                        }
+                    }
                 }
             }
         }
@@ -2066,6 +2127,163 @@ RowLayout {
                                         PillButton { text: team.total > 0 ? "Manage" : "Add member"; iconName: team.total > 0 ? "" : "plus"; checked: true; onClicked: keysPopup.open() }
                                     }
 
+                                    // One member: how much space they have, pause them (they are shown the reason), or remove them.
+                                    Popup {
+                                        id: memberPopup
+                                        property var member: ({})
+                                        property int space: 1024
+                                        property int cloudSpace: 1024
+                                        property bool deleteFiles: false
+                                        property string note: ""
+                                        parent: settingsScroll
+                                        x: (settingsScroll.width - width) / 2
+                                        y: Math.max(0, (settingsScroll.height - height) / 2)
+                                        modal: true
+                                        dim: false
+                                        focus: true
+                                        padding: 16
+                                        width: Math.min(440, settingsScroll.width - 24)
+                                        onOpened: {
+                                            settingsScroll.keysOpen = true
+                                            note = ""
+                                            pauseReason.text = ""
+                                            removeReason.text = ""
+                                            deleteFiles = false
+                                            space = Math.max(1, Math.round((member.quota || 1073741824) / 1048576))
+                                            cloudSpace = Math.max(1, Math.round((member.cloudQuota || 1073741824) / 1048576))
+                                        }
+                                        onClosed: settingsScroll.keysOpen = false
+                                        Overlay.modal: Item {}
+                                        background: Rectangle { radius: 16; color: Qt.rgba(theme.surface.r, theme.surface.g, theme.surface.b, 1); border.color: theme.outline }
+                                        Connections {
+                                            target: share
+                                            function onMemberActionDone(id, name, ok, message) {
+                                                if (id !== srv.modelData.id || name !== memberPopup.member.name) return
+                                                if (ok) memberPopup.close()
+                                                else memberPopup.note = message
+                                            }
+                                        }
+                                        contentItem: ColumnLayout {
+                                            spacing: 10
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                SectionLabel { Layout.fillWidth: true; text: memberPopup.member.name || "" }
+                                                IconButton { iconName: "close"; Accessible.name: "Close"; onClicked: memberPopup.close() }
+                                            }
+                                            SectionLabel { text: "Space" }
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                spacing: 8
+                                                Caption { Layout.preferredWidth: 64; text: "Shares" }
+                                                Segmented {
+                                                    Layout.fillWidth: true
+                                                    model: [[512, "500 MB"], [1024, "1 GB"], [2048, "2 GB"], [5120, "5 GB"]]
+                                                    value: memberPopup.space
+                                                    onPicked: (v) => memberPopup.space = v
+                                                }
+                                            }
+                                            RowLayout {
+                                                visible: memberPopup.member.cloudOn === true
+                                                Layout.fillWidth: true
+                                                spacing: 8
+                                                Caption { Layout.preferredWidth: 64; text: "Cloud" }
+                                                Segmented {
+                                                    Layout.fillWidth: true
+                                                    model: [[512, "500 MB"], [1024, "1 GB"], [2048, "2 GB"], [5120, "5 GB"]]
+                                                    value: memberPopup.cloudSpace
+                                                    onPicked: (v) => memberPopup.cloudSpace = v
+                                                }
+                                            }
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Caption {
+                                                    Layout.fillWidth: true
+                                                    text: "Using " + sharing.mb(memberPopup.member.used || 0) + " in shares"
+                                                          + (memberPopup.member.cloudOn ? " and " + sharing.mb(memberPopup.member.cloudUsed || 0) + " on the cloud shelf. Lowering it below what they use stops new uploads; nothing is deleted." : ".")
+                                                }
+                                                PillButton { text: "Save space"; checked: true; onClicked: share.setMemberLimits(srv.modelData.id, memberPopup.member.name, memberPopup.space, memberPopup.cloudSpace) }
+                                            }
+                                            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: theme.hairline }
+                                            SectionLabel { text: memberPopup.member.disabled ? "Paused" : "Pause access" }
+                                            Text {
+                                                visible: memberPopup.member.disabled === true
+                                                Layout.fillWidth: true
+                                                wrapMode: Text.Wrap
+                                                textFormat: Text.PlainText
+                                                color: theme.warn
+                                                font.pixelSize: 12
+                                                text: "They are told: “" + (memberPopup.member.disabledReason || "") + "”"
+                                            }
+                                            RowLayout {
+                                                visible: memberPopup.member.disabled !== true
+                                                Layout.fillWidth: true
+                                                spacing: 6
+                                                TextField {
+                                                    id: pauseReason
+                                                    Layout.fillWidth: true
+                                                    Layout.minimumWidth: 0
+                                                    implicitHeight: 30
+                                                    leftPadding: 12
+                                                    placeholderText: "Why? They will see this"
+                                                    placeholderTextColor: theme.placeholder
+                                                    color: theme.text
+                                                    selectionColor: theme.accent
+                                                    font.pixelSize: 13
+                                                    maximumLength: 200
+                                                    background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: pauseReason.activeFocus ? theme.accent : theme.outline }
+                                                }
+                                                PillButton {
+                                                    text: "Pause"
+                                                    enabled: pauseReason.text.trim() !== ""
+                                                    onClicked: share.disableMember(srv.modelData.id, memberPopup.member.name, pauseReason.text)
+                                                }
+                                            }
+                                            RowLayout {
+                                                visible: memberPopup.member.disabled === true
+                                                Layout.fillWidth: true
+                                                Caption { Layout.fillWidth: true; text: "Their key still works; every call is refused until you let them back in." }
+                                                PillButton { text: "Let back in"; checked: true; onClicked: share.enableMember(srv.modelData.id, memberPopup.member.name) }
+                                            }
+                                            Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: theme.hairline }
+                                            SectionLabel { text: "Remove" }
+                                            TextField {
+                                                id: removeReason
+                                                Layout.fillWidth: true
+                                                implicitHeight: 30
+                                                leftPadding: 12
+                                                placeholderText: "Why? (optional, they will see this)"
+                                                placeholderTextColor: theme.placeholder
+                                                color: theme.text
+                                                selectionColor: theme.accent
+                                                font.pixelSize: 13
+                                                maximumLength: 200
+                                                background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: removeReason.activeFocus ? theme.accent : theme.outline }
+                                            }
+                                            RowLayout {
+                                                visible: memberPopup.member.cloudOn === true
+                                                Layout.fillWidth: true
+                                                spacing: 8
+                                                Caption { Layout.preferredWidth: 64; text: "Their files" }
+                                                Segmented {
+                                                    Layout.fillWidth: true
+                                                    model: [[false, "Keep, now mine"], [true, "Delete them"]]
+                                                    value: memberPopup.deleteFiles
+                                                    onPicked: (v) => memberPopup.deleteFiles = v
+                                                }
+                                            }
+                                            RowLayout {
+                                                Layout.fillWidth: true
+                                                Caption { Layout.fillWidth: true; text: "Their key stops working and their shares are deleted. This cannot be undone." }
+                                                PillButton {
+                                                    text: "Remove " + (memberPopup.member.name || "")
+                                                    iconName: "trash"
+                                                    onClicked: share.removeMember(srv.modelData.id, memberPopup.member.name, removeReason.text, memberPopup.deleteFiles)
+                                                }
+                                            }
+                                            Text { visible: memberPopup.note !== ""; Layout.fillWidth: true; text: memberPopup.note; color: theme.danger; font.pixelSize: 12; wrapMode: Text.Wrap }
+                                        }
+                                    }
+
                                     Popup {
                                         id: keysPopup
                                         parent: settingsScroll // inside the panel, not across the whole screen
@@ -2112,7 +2330,7 @@ RowLayout {
                                                     iconName: "plus"
                                                     checked: true
                                                     enabled: memberName.text.trim() !== ""
-                                                    onClicked: { team.note = ""; share.createMember(srv.modelData.id, memberName.text, team.hours, team.space) }
+                                                    onClicked: { team.note = ""; share.createMember(srv.modelData.id, memberName.text, team.hours, team.space, team.space) }
                                                 }
                                             }
                                             RowLayout {
@@ -2169,7 +2387,7 @@ RowLayout {
                                                             Layout.preferredWidth: 7
                                                             Layout.preferredHeight: 7
                                                             radius: 4
-                                                            color: row.ended ? theme.danger : row.modelData.joined ? theme.success : theme.textFaint
+                                                            color: row.ended ? theme.danger : row.modelData.disabled ? theme.warn : row.modelData.joined ? theme.success : theme.textFaint
                                                         }
                                                         ColumnLayout {
                                                             Layout.fillWidth: true
@@ -2178,10 +2396,13 @@ RowLayout {
                                                             Text { Layout.fillWidth: true; text: row.modelData.name; color: theme.text; font.pixelSize: 13; font.weight: Font.Medium; elide: Text.ElideRight }
                                                             Text {
                                                                 Layout.fillWidth: true
-                                                                color: theme.textDim
                                                                 font.pixelSize: 11
                                                                 elide: Text.ElideRight
-                                                                text: sharing.access(row.modelData) + " · " + sharing.mb(row.modelData.used) + " / " + sharing.mb(row.modelData.quota)
+                                                                textFormat: Text.PlainText // the reason is plain text
+                                                                color: row.modelData.disabled ? theme.warn : theme.textDim
+                                                                text: row.modelData.disabled ? "Paused: " + row.modelData.disabledReason
+                                                                    : sharing.access(row.modelData) + " · " + sharing.mb(row.modelData.used) + " / " + sharing.mb(row.modelData.quota)
+                                                                      + (row.modelData.cloudOn ? " · cloud " + sharing.mb(row.modelData.cloudUsed) + " / " + sharing.mb(row.modelData.cloudQuota) : "")
                                                             }
                                                         }
                                                         IconButton {
@@ -2203,12 +2424,12 @@ RowLayout {
                                                             onClicked: { row.copied = false; share.reinviteMember(srv.modelData.id, row.modelData.name) }
                                                         }
                                                         IconButton {
-                                                            iconName: "trash"
-                                                            Accessible.name: "Revoke " + row.modelData.name
+                                                            iconName: "gear"
+                                                            Accessible.name: "Manage " + row.modelData.name
                                                             ToolTip.visible: hovered
                                                             ToolTip.delay: 400
-                                                            ToolTip.text: "Revoke access"
-                                                            onClicked: share.revokeMember(srv.modelData.id, row.modelData.name)
+                                                            ToolTip.text: "Space, pause or remove"
+                                                            onClicked: { memberPopup.member = row.modelData; memberPopup.open() }
                                                         }
                                                     }
                                                 }

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include <QList>
 #include <QFile>
 #include <QString>
@@ -24,7 +26,10 @@ QString validateSource(const QString &path);
 
 // Streams src into itemDir/.notch-tmp, fsyncs, then atomically renames to itemDir/name.
 // On failure nothing is left behind.
-CopyResult copyInto(const QString &src, const QString &itemDir, const QString &name);
+// `done` (optional) is kept at the bytes copied so far, for a progress bar; `cancel` (optional) is looked at once per megabyte and
+// ends the copy with the error "cancelled", leaving nothing behind.
+CopyResult copyInto(const QString &src, const QString &itemDir, const QString &name, std::atomic<qint64> *done = nullptr,
+                    const std::atomic_bool *cancel = nullptr);
 
 // A name usable as one path component: no '/', no NUL, no leading dots, never empty.
 QString safeFileName(const QString &name, const QString &fallback = QStringLiteral("file"));
@@ -35,7 +40,7 @@ struct FolderEntry {
 };
 // Regular files under root (recursive, hidden files/folders skipped, symlinked folders not
 // followed), sorted by path. Stops after maxFiles and sets *truncated.
-QList<FolderEntry> expandFolder(const QString &root, int maxFiles, bool *truncated = nullptr);
+QList<FolderEntry> expandFolder(const QString &root, int maxFiles, bool *truncated = nullptr, const std::atomic_bool *cancel = nullptr);
 
 // File name for a download: last URL path segment, or "download", plus an extension
 // derived from mimeType when the name has none.

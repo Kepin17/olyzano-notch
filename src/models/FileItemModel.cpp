@@ -36,18 +36,33 @@ QVariant FileItemModel::data(const QModelIndex &index, int role) const
     switch (role) {
     case IdRole: return i.id;
     case NameRole: return i.originalName;
-    case SizeTextRole: return QLocale().formattedDataSize(i.sizeBytes);
-    case AddedTextRole: return QLocale().toString(i.addedAt.toLocalTime(), QLocale::ShortFormat);
+    case SizeTextRole:
+        if (i.sizeTextCache.isEmpty())
+            i.sizeTextCache = QLocale().formattedDataSize(i.sizeBytes);
+        return i.sizeTextCache;
+    case AddedTextRole:
+        if (i.addedTextCache.isEmpty())
+            i.addedTextCache = QLocale().toString(i.addedAt.toLocalTime(), QLocale::ShortFormat);
+        return i.addedTextCache;
     case ExpiresTextRole: return i.pinned ? QStringLiteral("kept, never expires") : expiresText(i.addedAt, m_retentionDays);
     case StatusRole: return i.status;
     case IconNameRole: {
-        const QMimeType mt = QMimeDatabase().mimeTypeForName(i.mimeType);
-        return mt.isValid() ? mt.iconName() : QStringLiteral("text-x-generic");
+        if (i.iconNameCache.isEmpty()) {
+            static const QMimeDatabase mimes;
+            const QMimeType mt = mimes.mimeTypeForName(i.mimeType);
+            i.iconNameCache = mt.isValid() ? mt.iconName() : QStringLiteral("text-x-generic");
+        }
+        return i.iconNameCache;
     }
     case FileUrlRole: return QUrl::fromLocalFile(FileService::storedPath(i.vault ? m_vaultDir : m_filesDir, i.storedName));
     case SourcePathRole: return i.sourcePath;
     case IsImageRole: return i.mimeType.startsWith(QLatin1String("image/"));
-    case IsTextRole: return QMimeDatabase().mimeTypeForName(i.mimeType).inherits(QStringLiteral("text/plain"));
+    case IsTextRole:
+        if (i.isTextCache < 0) {
+            static const QMimeDatabase mimes;
+            i.isTextCache = mimes.mimeTypeForName(i.mimeType).inherits(QStringLiteral("text/plain"));
+        }
+        return i.isTextCache == 1;
     case CategoryIdRole: return i.categoryId;
     case PinnedRole: return i.pinned;
     case VaultRole: return i.vault;
@@ -61,6 +76,7 @@ QVariant FileItemModel::data(const QModelIndex &index, int role) const
         const qint64 hours = qMax<qint64>(0, QDateTime::currentDateTimeUtc().secsTo(i.removedAt.addSecs(TrashHours * 3600)) / 3600);
         return hours > 0 ? QStringLiteral("deleted in %1h").arg(hours) : QStringLiteral("deleted soon");
     }
+    case CopyPercentRole: return m_copyPercent.value(i.id, -1);
     case ExpiringSoonRole:
         return !i.pinned && !i.removedAt.isValid()
                && QDateTime::currentDateTimeUtc().secsTo(i.addedAt.addDays(m_retentionDays)) < 24 * 3600;
@@ -91,6 +107,7 @@ QHash<int, QByteArray> FileItemModel::roleNames() const
         {RemovedRole, "removed"},
         {RemovedTextRole, "removedText"},
         {ExpiringSoonRole, "expiringSoon"},
+        {CopyPercentRole, "copyPercent"},
     };
 }
 
@@ -123,6 +140,18 @@ void FileItemModel::upsert(const FileItem &item)
     beginInsertRows({}, at, at);
     m_items.insert(at, item);
     endInsertRows();
+}
+
+// A copy that has just finished: the same row, with only what changed announced (not every role), so the category counts, the chips
+// and the search index are not all woken for it.
+void FileItemModel::finishCopy(const FileItem &item)
+{
+    const int row = indexOf(item.id);
+    if (row < 0)
+        return;
+    m_items[row] = item;
+    m_copyPercent.remove(item.id);
+    emit dataChanged(index(row), index(row), {StatusRole, SizeRole, SizeTextRole, ExpiresTextRole, IsImageRole, CopyPercentRole});
 }
 
 void FileItemModel::removeId(const QString &id)
@@ -237,4 +266,16 @@ void FileItemModel::vaultStateChanged()
 {
     if (!m_items.isEmpty())
         emit dataChanged(index(0), index(m_items.size() - 1), {VaultRole, FileUrlRole});
+}
+
+void FileItemModel::setCopyPercent(const QString &id, int percent)
+{
+    if (m_copyPercent.value(id, -1) == percent)
+        return;
+    if (percent < 0)
+        m_copyPercent.remove(id);
+    else
+        m_copyPercent.insert(id, percent);
+    if (const int row = indexOf(id); row >= 0)
+        emit dataChanged(index(row), index(row), {CopyPercentRole});
 }

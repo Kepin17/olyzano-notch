@@ -57,8 +57,9 @@ bool FileFilter::lessThan(const QModelIndex &left, const QModelIndex &right) con
 bool FileFilter::filterAcceptsRow(int row, const QModelIndex &parent) const
 {
     const QModelIndex i = sourceModel()->index(row, 0, parent);
-    const bool match = i.data(FileItemModel::NameRole).toString().contains(m_text, Qt::CaseInsensitive)
-                       || (!m_text.isEmpty() && m_contentIds.contains(i.data(FileItemModel::IdRole).toString()));
+    const bool match = m_text.isEmpty() // (nothing typed: no name to look at)
+                       || i.data(FileItemModel::NameRole).toString().contains(m_text, Qt::CaseInsensitive)
+                       || m_contentIds.contains(i.data(FileItemModel::IdRole).toString());
     if (!match)
         return false;
     // Vault files: only inside their own (locked) category, and only while the vault is open.

@@ -92,6 +92,32 @@ QByteArray open(const QByteArray &key, const QByteArray &iv, const QByteArray &a
 }
 }
 
+namespace {
+const QByteArray BlobAad("notch-blob");
+}
+
+QByteArray sealBlob(const QByteArray &key, const QByteArray &plain)
+{
+    QByteArray iv(12, 0);
+    if (key.size() != KeySize || RAND_bytes(reinterpret_cast<unsigned char *>(iv.data()), 12) != 1)
+        return {};
+    const QByteArray sealed = seal(key, iv, BlobAad, plain);
+    return sealed.isNull() ? QByteArray() : iv + sealed;
+}
+
+QByteArray openBlob(const QByteArray &key, const QByteArray &blob)
+{
+    if (key.size() != KeySize || blob.size() < 12 + TagSize)
+        return {};
+    return open(key, blob.left(12), BlobAad, blob.mid(12));
+}
+
+QByteArray keyFromFragment(const QString &fragment)
+{
+    const QByteArray raw = QByteArray::fromBase64(fragment.toLatin1(), QByteArray::Base64UrlEncoding | QByteArray::OmitTrailingEquals);
+    return raw.size() == KeySize ? raw : QByteArray();
+}
+
 QByteArray newKey()
 {
     QByteArray key(KeySize, 0);

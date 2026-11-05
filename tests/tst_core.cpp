@@ -711,6 +711,49 @@ private slots:
         QCOMPARE(FileService::textExtension(QStringLiteral("hello")), QStringLiteral("txt"));
     }
 
+    // More than 65535 files need Zip64's end record; progress counts the bytes; a cancel leaves no archive.
+    void zipWriterHandlesZip64AndStops()
+    {
+        const QString one = writeSample(QStringLiteral("z64"), pattern(10, 7));
+        QList<ZipWriter::Entry> many;
+        for (int i = 0; i < 66000; ++i)
+            many.append({one, QStringLiteral("d%1/f%2.txt").arg(i % 7).arg(i)});
+        const QString zip = m_tmp.filePath(QStringLiteral("many.zip"));
+        std::atomic<qint64> done{0};
+        QCOMPARE(ZipWriter::write(zip, many, &done), QString());
+        QCOMPARE(done.load(), qint64(66000) * 10);
+        QProcess py;
+        py.start(QStringLiteral("python3"), {QStringLiteral("-c"), QStringLiteral(
+            "import zipfile, sys\n"
+            "z = zipfile.ZipFile(sys.argv[1])\n"
+            "assert len(z.infolist()) == 66000\n"
+            "assert z.testzip() is None\n"
+            "print(len(z.read('d3/f65999.txt')))\n"), zip});
+        if (py.waitForFinished(60000)) {
+            QCOMPARE(QString::fromUtf8(py.readAllStandardError()), QString());
+            QCOMPARE(QString::fromUtf8(py.readAllStandardOutput()).trimmed(), QStringLiteral("10"));
+        }
+
+        const std::atomic_bool stop{true};
+        const QString never = m_tmp.filePath(QStringLiteral("never.zip"));
+        QCOMPARE(ZipWriter::write(never, {{writeSample(QStringLiteral("zc"), pattern(3 << 20, 1)), QStringLiteral("a")}}, nullptr, &stop), QStringLiteral("cancelled"));
+        QVERIFY(!QFile::exists(never));
+    }
+
+    void copyIntoCountsAndStops()
+    {
+        const QString src = writeSample(QStringLiteral("cp"), pattern(5 << 20, 9));
+        std::atomic<qint64> done{0};
+        const auto ok = FileService::copyInto(src, m_tmp.filePath(QStringLiteral("cp-ok")), QStringLiteral("a.bin"), &done);
+        QVERIFY(ok.ok);
+        QCOMPARE(done.load(), qint64(5 << 20));
+        const std::atomic_bool stop{true};
+        const auto no = FileService::copyInto(src, m_tmp.filePath(QStringLiteral("cp-no")), QStringLiteral("a.bin"), nullptr, &stop);
+        QVERIFY(!no.ok);
+        QCOMPARE(no.error, QStringLiteral("cancelled"));
+        QVERIFY(!QDir(m_tmp.filePath(QStringLiteral("cp-no"))).exists()); // nothing left behind
+    }
+
     void keptItemsNeverExpire()
     {
         const QDateTime now = QDateTime::currentDateTimeUtc();

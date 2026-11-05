@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(notch VERSION 0.16.1 LANGUAGES CXX)
+project(notch VERSION 0.17.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -72,7 +72,7 @@ target_link_libraries(notch_core PUBLIC Qt6::Core Qt6::Gui Qt6::Sql Qt6::Network
 qt_add_executable(notch
     src/main.cpp
     src/app/NotchController.h src/app/NotchController.cpp src/app/FileFilter.h src/app/FileFilter.cpp
-    src/app/ShareController.h src/app/ShareController.cpp
+    src/app/ShareController.h src/app/ShareController.cpp src/app/CloudController.h src/app/CloudController.cpp src/models/CloudModel.h
     src/app/ShareSession.h src/app/ShareSession.cpp
     src/app/NearbyController.h src/app/NearbyController.cpp
     src/services/CoverCache.h src/services/CoverCache.cpp
@@ -183,7 +183,7 @@ qt_add_qml_module(notch
     URI Notch
     VERSION 1.0
     QML_FILES
-        src/qml/Main.qml src/qml/FileItemDelegate.qml src/qml/Tray.qml src/qml/MediaCard.qml src/qml/Equalizer.qml
+        src/qml/Main.qml src/qml/FileItemDelegate.qml src/qml/CloudTile.qml src/qml/Tray.qml src/qml/MediaCard.qml src/qml/Equalizer.qml
         src/qml/AgentTab.qml src/qml/AgentSidebar.qml src/qml/AgentTodoCard.qml src/qml/AgentPlanCard.qml src/qml/AgentProviderEditor.qml src/qml/AgentChoice.qml src/qml/AgentCopyText.qml src/qml/AgentStep.qml src/qml/AgentBadge.qml src/qml/AgentSuggest.qml src/qml/AgentActivity.qml src/qml/FolderPicker.qml
         # shared controls
         src/qml/PillButton.qml src/qml/IconButton.qml src/qml/Toggle.qml src/qml/PulseDot.qml
@@ -194,7 +194,7 @@ qt_add_qml_module(notch
     RESOURCES
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg
         src/qml/images/traktir.jpeg src/qml/icons/info.svg src/qml/icons/grid.svg src/qml/icons/ethernet.svg src/qml/icons/eye.svg src/qml/icons/eye-off.svg src/qml/icons/external.svg src/qml/icons/undo.svg src/qml/icons/play.svg src/qml/icons/pause.svg src/qml/icons/stop.svg src/qml/icons/minus.svg src/qml/icons/check.svg src/qml/icons/copy.svg src/qml/icons/pin.svg src/qml/icons/image.svg src/qml/icons/eyedropper.svg src/qml/icons/unlock.svg src/qml/icons/trash.svg src/qml/icons/palette.svg src/qml/icons/pen.svg
-        src/qml/icons/gear.svg src/qml/icons/sort.svg src/qml/icons/camera.svg src/qml/icons/download.svg src/qml/icons/upload.svg
+        src/qml/icons/cloud.svg src/qml/icons/gear.svg src/qml/icons/sort.svg src/qml/icons/camera.svg src/qml/icons/download.svg src/qml/icons/upload.svg
         src/qml/icons/phone.svg src/qml/icons/search.svg src/qml/icons/share.svg src/qml/icons/wifi.svg src/qml/icons/server.svg src/qml/icons/notch.png src/qml/icons/laptop.svg src/qml/icons/folder.svg src/qml/icons/music.svg src/qml/icons/gamepad.svg src/qml/icons/dock.svg src/qml/icons/heart.svg src/qml/icons/panel.svg src/qml/icons/volume.svg src/qml/icons/volume-off.svg src/qml/icons/sun.svg src/qml/icons/chevron.svg src/qml/icons/bluetooth.svg src/qml/icons/headphones.svg
         src/qml/icons/timer.svg src/qml/icons/mic.svg src/qml/icons/lyrics.svg src/qml/icons/mic-off.svg src/qml/icons/notifications.svg
         # made by tools/make_sounds.py
@@ -330,6 +330,16 @@ if(NOT WIN32)
     target_include_directories(tst_shelf PRIVATE src)
     target_link_libraries(tst_shelf PRIVATE notch_core Qt6::Test Qt6::Gui Qt6::Quick Qt6::Network Qt6::Concurrent)
     add_test(NAME tst_shelf COMMAND tst_shelf)
+endif()
+# The cloud shelf against a real relay (server/relay.py with a fake S3, started by the test; skipped when python3 is missing).
+if(NOT WIN32)
+    qt_add_executable(tst_cloud tests/tst_cloud.cpp src/app/NotchController.h src/app/NotchController.cpp src/app/FileFilter.h src/app/FileFilter.cpp
+                      src/models/FileItemModel.h src/models/FileItemModel.cpp src/app/ShareController.h src/app/ShareController.cpp
+                      src/app/ShareSession.h src/app/ShareSession.cpp src/app/CloudController.h src/app/CloudController.cpp src/models/CloudModel.h)
+    target_include_directories(tst_cloud PRIVATE src)
+    target_compile_definitions(tst_cloud PRIVATE NOTCH_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+    target_link_libraries(tst_cloud PRIVATE notch_core Qt6::Test Qt6::Gui Qt6::Quick Qt6::Network Qt6::Concurrent)
+    add_test(NAME tst_cloud COMMAND tst_cloud)
 endif()
 qt_add_executable(tst_codingagent tests/tst_codingagent.cpp src/platform/CodingAgent.h src/platform/CodingAgent.cpp src/platform/AgentStore.h src/platform/AgentStore.cpp src/platform/AgentTools.h)
 target_include_directories(tst_codingagent PRIVATE src)

@@ -32,6 +32,7 @@ public:
         RemovedTextRole, // "deleted in 21h"
         ExpiringSoonRole,
         VaultRole,
+        CopyPercentRole, // 0-100 while it is being copied, else -1
     };
 
     explicit FileItemModel(const QString &filesDir, QObject *parent = nullptr);
@@ -42,6 +43,7 @@ public:
 
     void setItems(const QList<FileItem> &items);
     void upsert(const FileItem &item);
+    void finishCopy(const FileItem &item); // the copy of this item is done: only what that changes is announced
     void removeId(const QString &id);
     void removeIds(const QSet<QString> &ids); // one signal per run of neighbours, not per item
     const FileItem *find(const QString &id) const;
@@ -56,6 +58,7 @@ public:
     void setRemoved(const QStringList &ids, const QDateTime &at); // invalid at = restore
     void setRemoved(const QSet<QString> &ids, const QDateTime &at);
     void setVaultDir(const QString &dir) { m_vaultDir = dir; }
+    void setCopyPercent(const QString &id, int percent); // -1 when it is not being copied
     void vaultStateChanged(); // file URLs of vault items become (in)valid
     int shelfCount() const;   // items on the shelf: not in Recently removed, not in the vault
     int removedCount() const;
@@ -67,4 +70,5 @@ private:
     QString m_vaultDir;
     int m_retentionDays = DefaultRetentionDays;
     QList<FileItem> m_items;
+    QHash<QString, int> m_copyPercent;
 };

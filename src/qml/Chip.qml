@@ -35,7 +35,7 @@ AbstractButton {
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: chip.locked ? (notch.vaultUnlocked ? "unlock" : "lock")
                     : chip.special === "screenshots" ? "camera" : chip.special === "downloads" ? "download"
-                    : chip.special === "kdeconnect" ? "phone" : ""
+                    : chip.special === "kdeconnect" ? "phone" : chip.special === "cloud" ? "cloud" : ""
                 visible: glyph !== ""
                 sourceSize: Qt.size(13, 13)
                 color: chip.ink
@@ -67,20 +67,25 @@ AbstractButton {
     onClicked: notch.categoryFilter = catId
     TapHandler {
         acceptedButtons: Qt.RightButton
-        enabled: chip.catId !== ""
+        enabled: chip.catId !== "" && chip.special !== "cloud"
         onTapped: chip.menuRequested()
     }
 
-    // Drag the chip out: all files of the category go along (to Dolphin, a chat, …);
-    // dropped on another chip they move into that category.
+    // Drag the chip: the category becomes one .zip (made in the background, with its progress in the pill; when it is ready, drag
+    // that file out). With Ctrl held the files themselves go along (to Dolphin, a chat, …), and dropped on another chip they move
+    // into that category.
     property var draggedIds: []
     DragHandler {
         id: chipDragHandler
         target: null
-        enabled: chip.itemCount > 0
+        enabled: chip.itemCount > 0 && chip.special !== "cloud"
         onActiveChanged: {
             if (!active)
                 return
+            if (!(Qt.application.keyboardModifiers & Qt.ControlModifier)) {
+                notch.zipCategory(chip.catId)
+                return
+            }
             chip.draggedIds = notch.categoryItemIds(chip.catId)
             chip.Drag.mimeData = { "text/uri-list": notch.uriList(chip.draggedIds) }
             notch.setDragging(chip.draggedIds, true)
@@ -107,7 +112,13 @@ AbstractButton {
             chip.dropDone()
             if (d.source === chip)
                 return
-            if (d.source && d.source.draggedIds !== undefined) {
+            if (chip.special === "cloud") { // onto the cloud shelf: a copy of each file goes up
+                if (d.source && d.source.draggedIds !== undefined)
+                    cloud.uploadItems(d.source.draggedIds)
+                else if (d.hasUrls)
+                    cloud.uploadUrls(d.urls)
+                d.accept(Qt.CopyAction)
+            } else if (d.source && d.source.draggedIds !== undefined) {
                 notch.setCategory(d.source.draggedIds, chip.catId)
                 d.accept(Qt.CopyAction)
             } else if (!d.hasUrls && d.hasText) { // a text selection: becomes a note here

@@ -84,6 +84,12 @@ NotchController::NotchController(const QString &dataDir, QObject *parent)
 {
     m_model.setRetentionDays(m_retentionDays);
     m_proxy.setSourceModel(&m_model);
+    m_ingestPool.setMaxThreadCount(1); // one listing at a time, and not in the pool the rest of the app shares
+    m_copyPool.setMaxThreadCount(2);
+    m_ingestTimer.setSingleShot(true);
+    connect(&m_ingestTimer, &QTimer::timeout, this, &NotchController::ingestStep);
+    m_progressTimer.setInterval(250);
+    connect(&m_progressTimer, &QTimer::timeout, this, &NotchController::progressTick);
     m_batchTimer.setSingleShot(true);
     connect(&m_batchTimer, &QTimer::timeout, this, &NotchController::nextBatch);
     m_indexTimer.setSingleShot(true);
@@ -91,10 +97,20 @@ NotchController::NotchController(const QString &dataDir, QObject *parent)
     m_searchTimer.setSingleShot(true);
     m_searchTimer.setInterval(150);
     connect(&m_searchTimer, &QTimer::timeout, this, &NotchController::runSearch);
+    // a category that has had a file put in is no longer "just made"
+    connect(&m_model, &QAbstractItemModel::rowsInserted, this, [this](const QModelIndex &, int first, int last) {
+        for (int i = first; i <= last && !m_fresh.isEmpty(); ++i)
+            m_fresh.remove(m_model.items().at(i).categoryId);
+    });
     // a file that arrived, or finished copying, gets its text into the search index
     connect(&m_model, &QAbstractItemModel::rowsInserted, this, &NotchController::scheduleIndexing);
     connect(&m_model, &QAbstractItemModel::modelReset, this, &NotchController::scheduleIndexing);
-    connect(&m_model, &QAbstractItemModel::dataChanged, this, &NotchController::scheduleIndexing);
+    // (the progress of a copy is for its own tile only: no index, count or category work four times a second)
+    connect(&m_model, &QAbstractItemModel::dataChanged, this,
+            [this](const QModelIndex &, const QModelIndex &, const QList<int> &roles) {
+                if (!(roles.size() == 1 && roles.first() == FileItemModel::CopyPercentRole))
+                    scheduleIndexing();
+            });
     m_proxy.setSortMode(sortMode());
     connect(&m_screenshots, &FolderWatcher::fileReady, this, [this](const QString &path) {
         onWatchedFile(path, QStringLiteral("screenshotCategory"), tr("Screenshots"), tr("Screenshot added"));
@@ -105,10 +121,15 @@ NotchController::NotchController(const QString &dataDir, QObject *parent)
 
     // Per-category counts only change when files come, go, move or get removed; not on the
     // minute tick or a copy's status change. refreshCategories() also skips no-op updates.
-    for (auto signal : {&QAbstractItemModel::rowsInserted, &QAbstractItemModel::rowsRemoved}) {
-        connect(&m_model, signal, this, &NotchController::countChanged);
-        connect(&m_model, signal, this, &NotchController::refreshCategories);
-    }
+    // A drop of a thousand files inserts a thousand rows: the counts and the chips are brought up to date once for them, a moment after.
+    m_countsTimer.setSingleShot(true);
+    m_countsTimer.setInterval(40);
+    connect(&m_countsTimer, &QTimer::timeout, this, [this] {
+        refreshCategories();
+        emit countChanged();
+    });
+    for (auto signal : {&QAbstractItemModel::rowsInserted, &QAbstractItemModel::rowsRemoved})
+        connect(&m_model, signal, this, [this] { if (!m_countsTimer.isActive()) m_countsTimer.start(); });
     connect(&m_model, &QAbstractItemModel::modelReset, this, &NotchController::countChanged);
     connect(&m_model, &QAbstractItemModel::modelReset, this, &NotchController::refreshCategories);
     connect(&m_model, &QAbstractItemModel::dataChanged, this,
@@ -127,7 +148,11 @@ NotchController::NotchController(const QString &dataDir, QObject *parent)
         m_lastRemoved.clear(); // the files stay in Recently removed; only the toast goes
         emit undoCountChanged();
     });
-    connect(&m_model, &QAbstractItemModel::dataChanged, this, &NotchController::countChanged);
+    connect(&m_model, &QAbstractItemModel::dataChanged, this,
+            [this](const QModelIndex &, const QModelIndex &, const QList<int> &roles) {
+                if (!(roles.size() == 1 && roles.first() == FileItemModel::CopyPercentRole))
+                    emit countChanged();
+            });
 }
 
 bool NotchController::start()
@@ -286,11 +311,53 @@ FileItem NotchController::newItem(const QString &name, const QString &categoryId
     return item;
 }
 
+namespace {
+// What a worker makes of a drop: the files (a folder's files with its name), each looked at once, and what could not be used.
+NotchController::Prepared prepareDrop(const QStringList &paths, const QStringList &errors, const QString &filesCanon, const QString &vaultCanon,
+                                      const std::atomic_bool *cancel)
+{
+    NotchController::Prepared out;
+    out.errors = errors;
+    QMimeDatabase mimes;
+    const auto add = [&](const QString &path, const QString &folder, bool fromFolder) {
+        const QFileInfo fi(path);
+        if (const QString err = FileService::validateSource(path); !err.isEmpty()) {
+            out.errors << fi.fileName() + QStringLiteral(": ") + err;
+            return;
+        }
+        const QString canonical = fi.canonicalFilePath();
+        if (canonical.startsWith(filesCanon + u'/') || (!vaultCanon.isEmpty() && canonical.startsWith(vaultCanon + u'/')))
+            return; // dropped back from Notch itself
+        out.items.append({fi.absoluteFilePath(), fi.fileName(), mimes.mimeTypeForFile(fi).name(), folder, fromFolder, fi.size()});
+    };
+    for (const QString &path : paths) {
+        if (cancel && cancel->load())
+            break;
+        if (!QFileInfo(path).isDir()) {
+            add(path, {}, false);
+            continue;
+        }
+        bool truncated = false;
+        const auto entries = FileService::expandFolder(path, MaxFolderFiles, &truncated, cancel);
+        if (truncated)
+            out.errors << NotchController::tr("%1: only the first %2 files were added").arg(QFileInfo(path).fileName()).arg(MaxFolderFiles);
+        if (entries.isEmpty())
+            out.errors << NotchController::tr("%1: folder has no files").arg(QFileInfo(path).fileName());
+        for (const auto &e : entries) {
+            if (cancel && cancel->load())
+                break;
+            add(e.path, e.category, true);
+        }
+    }
+    return out;
+}
+}
+
 void NotchController::addUrls(const QList<QUrl> &urls, const QString &categoryId)
 {
     if (!m_ready)
         return;
-    QStringList errors;
+    QStringList errors, paths;
     for (const QUrl &url : urls) {
         const QString scheme = url.scheme();
         if (scheme == QLatin1String("http") || scheme == QLatin1String("https") || scheme == QLatin1String("data")) {
@@ -301,22 +368,90 @@ void NotchController::addUrls(const QList<QUrl> &urls, const QString &categoryId
             errors << tr("%1: unsupported location").arg(url.toDisplayString());
             continue;
         }
-        const QString path = url.toLocalFile();
-        if (!QFileInfo(path).isDir()) {
-            addLocalFile(path, categoryId, errors);
+        paths << url.toLocalFile();
+    }
+    if (paths.isEmpty()) {
+        if (!errors.isEmpty())
+            setError(errors.join(u'\n'));
+        return;
+    }
+    // Listing a folder and looking at every file can take long (a big folder, a slow disk): a worker does it, and the panel
+    // says so meanwhile.
+    m_ingestCancel = false;
+    ++m_preparing;
+    progressTick();
+    const QString filesCanon = QDir(m_filesDir).canonicalPath();
+    const QString vaultCanon = m_vault.isUnlocked() ? QDir(m_vault.mountDir()).canonicalPath() : QString();
+    auto *watcher = new QFutureWatcher<Prepared>(this);
+    connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, categoryId] {
+        Prepared r = watcher->result();
+        watcher->deleteLater();
+        --m_preparing;
+        if (m_ingestCancel) // stopped while it was being listed
+            r.items.clear();
+        qint64 need = 0;
+        for (const Prep &p : std::as_const(r.items))
+            need += p.size;
+        const QStorageInfo storage(m_filesDir);
+        if (need > 0 && storage.isValid() && storage.bytesAvailable() >= 0 && storage.bytesAvailable() < need) {
+            r.errors << tr("Not enough disk space: these files need %1 and %2 is free")
+                            .arg(QLocale().formattedDataSize(need), QLocale().formattedDataSize(storage.bytesAvailable()));
+            r.items.clear();
+        }
+        if (!r.errors.isEmpty())
+            setError(r.errors.join(u'\n'));
+        if (!r.items.isEmpty()) {
+            m_ingest.append({r.items, categoryId, 0});
+            ingestStep();
+        } else {
+            progressTick();
+        }
+    });
+    watcher->setFuture(QtConcurrent::run(&m_ingestPool, [paths, errors, filesCanon, vaultCanon, cancel = &m_ingestCancel] {
+        return prepareDrop(paths, errors, filesCanon, vaultCanon, cancel);
+    }));
+}
+
+// A few files at a time go on the shelf (a row each), so the panel keeps drawing while a thousand arrive.
+void NotchController::ingestStep()
+{
+    constexpr int perStep = 10;
+    QStringList errors;
+    int n = 0;
+    while (!m_ingest.isEmpty() && n < perStep) {
+        Ingest &batch = m_ingest.first();
+        if (batch.next >= batch.items.size()) {
+            m_ingest.removeFirst();
             continue;
         }
-        bool truncated = false;
-        const auto entries = FileService::expandFolder(path, MaxFolderFiles, &truncated);
-        if (truncated)
-            errors << tr("%1: only the first %2 files were added").arg(QFileInfo(path).fileName()).arg(MaxFolderFiles);
-        if (entries.isEmpty())
-            errors << tr("%1: folder has no files").arg(QFileInfo(path).fileName());
-        for (const auto &e : entries)
-            addLocalFile(e.path, createCategory(e.category), errors);
+        ingestOne(batch.items.at(batch.next++), batch.categoryId, errors);
+        ++n;
     }
     if (!errors.isEmpty())
         setError(errors.join(u'\n'));
+    if (!m_ingest.isEmpty())
+        m_ingestTimer.start(8);
+    else
+        progressTick();
+}
+
+void NotchController::ingestOne(const Prep &p, const QString &categoryId, QStringList &errors)
+{
+    FileItem item = newItem(p.name, p.fromFolder ? createCategory(p.folder) : categoryId);
+    item.mimeType = p.mime;
+    item.categoryId = ruledCategory(item.categoryId, item.mimeType);
+    item.sizeBytes = p.size;
+    item.sourcePath = p.path;
+    if (QString why; !assignStorage(item, &why)) {
+        errors << item.originalName + QStringLiteral(": ") + why;
+        return;
+    }
+    if (!m_repo.insert(item)) {
+        errors << item.originalName + QStringLiteral(": ") + m_repo.errorString();
+        return;
+    }
+    m_model.upsert(item);
+    startCopy(item);
 }
 
 void NotchController::addDrop(const QList<QUrl> &urls, const QString &html, const QString &categoryId)
@@ -371,16 +506,23 @@ void NotchController::startCopy(const FileItem &item)
     auto *watcher = new QFutureWatcher<FileService::CopyResult>(this);
     ++m_copying;
     emit copyingChanged();
+    Transfer t;
+    t.done = std::make_shared<std::atomic<qint64>>(0);
+    t.cancel = std::make_shared<std::atomic_bool>(false);
+    t.total = item.sizeBytes;
+    t.title = item.originalName;
+    beginTransfer(item.id, t);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, item] {
         const FileService::CopyResult r = watcher->result();
         watcher->deleteLater();
         --m_copying;
         emit copyingChanged();
+        endTransfer(item.id);
         if (r.ok && m_repo.markAvailable(item.id, r.bytes)) {
             FileItem done = item;
             done.status = Status::Available;
             done.sizeBytes = r.bytes;
-            m_model.upsert(done);
+            m_model.finishCopy(done);
             return;
         }
         const QString reason = r.ok ? m_repo.errorString() : r.error;
@@ -388,10 +530,123 @@ void NotchController::startCopy(const FileItem &item)
             FileService::removeManaged(baseDir(item), item.storedName);
         m_repo.remove(item.id);
         m_model.removeId(item.id);
-        setError(item.originalName + QStringLiteral(": ") + reason);
+        if (reason != QLatin1String("cancelled"))
+            setError(item.originalName + QStringLiteral(": ") + reason);
+        expireEmptyCategories();
     });
     const QString src = item.sourcePath, dir = baseDir(item) + u'/' + item.id, name = item.originalName;
-    watcher->setFuture(QtConcurrent::run([src, dir, name] { return FileService::copyInto(src, dir, name); }));
+    watcher->setFuture(QtConcurrent::run(&m_copyPool, [src, dir, name, done = t.done, cancel = t.cancel] {
+        return FileService::copyInto(src, dir, name, done.get(), cancel.get());
+    }));
+}
+
+void NotchController::beginTransfer(const QString &id, const Transfer &t)
+{
+    m_transfers.insert(id, t);
+    m_xferTotal += t.total;
+    if (!t.zip && t.verb.isEmpty())
+        ++m_xferFiles;
+    if (!m_progressTimer.isActive()) {
+        m_lastDone = m_xferBase;
+        m_lastTickMs = QDateTime::currentMSecsSinceEpoch();
+        m_rate = 0;
+        m_progressTimer.start();
+    }
+    progressTick();
+}
+
+void NotchController::endTransfer(const QString &id)
+{
+    const auto it = m_transfers.constFind(id);
+    if (it == m_transfers.cend())
+        return;
+    m_xferBase += it->total; // counted as done, so the bar never goes back when one is cancelled or fails
+    if (!it->zip && it->verb.isEmpty())
+        ++m_xferFinished;
+    m_transfers.erase(it);
+    m_model.setCopyPercent(id, -1);
+    progressTick();
+}
+
+// A few times a second: how far everything is, in words and as a fraction, and each file's own percent. (Not once per megabyte.)
+void NotchController::progressTick()
+{
+    if (m_transfers.isEmpty() && m_ingest.isEmpty() && m_preparing == 0) {
+        m_progressTimer.stop();
+        m_xferBase = m_xferTotal = m_lastDone = 0;
+        m_xferFiles = m_xferFinished = 0;
+        m_ingestCancel = false;
+        if (!m_copyLabel.isEmpty() || m_copyFraction >= 0) {
+            m_copyLabel.clear();
+            m_copyDetail.clear();
+            m_copyFraction = -1;
+            emit copyProgressChanged();
+        }
+        return;
+    }
+    qint64 done = m_xferBase;
+    bool zipOnly = true; // nothing but jobs named in the pill (a zip, a cloud upload or download)
+    QString zipTitle, jobVerb;
+    int jobs = 0;
+    for (auto it = m_transfers.cbegin(); it != m_transfers.cend(); ++it) {
+        const qint64 d = it->done->load();
+        done += d;
+        if (it->zip || !it->verb.isEmpty()) {
+            zipTitle = it->title;
+            jobVerb = it->zip ? tr("Zipping") : it->verb;
+            ++jobs;
+        } else {
+            zipOnly = false;
+            m_model.setCopyPercent(it.key(), it->total > 0 ? int(qMin<qint64>(99, d * 100 / it->total)) : -1);
+        }
+    }
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - m_lastTickMs >= 200) {
+        const double rate = double(done - m_lastDone) * 1000.0 / double(now - m_lastTickMs);
+        m_rate = m_rate <= 0 ? rate : m_rate * 0.7 + rate * 0.3;
+        m_lastDone = done;
+        m_lastTickMs = now;
+    }
+    QString label, detail;
+    double fraction = m_xferTotal > 0 ? qBound(0.0, double(done) / double(m_xferTotal), 1.0) : -1;
+    if (m_transfers.isEmpty()) {
+        label = tr("Reading files");
+        fraction = -1;
+    } else {
+        const int files = m_xferFiles;
+        label = zipOnly ? (jobs > 1 ? tr("%1 %2 files").arg(jobVerb).arg(jobs) : tr("%1 %2").arg(jobVerb, zipTitle))
+                        : tr("Copying %1 of %2").arg(qMin(m_xferFinished + 1, qMax(1, files))).arg(qMax(1, files));
+        if (m_xferTotal > 0) {
+            detail = tr("%1 of %2").arg(QLocale().formattedDataSize(done), QLocale().formattedDataSize(m_xferTotal));
+            if (m_rate > 1024 && m_xferTotal > done) {
+                const qint64 secs = qint64(double(m_xferTotal - done) / m_rate);
+                detail += secs >= 3600 ? tr(" · %1 h %2 min left").arg(secs / 3600).arg(secs % 3600 / 60)
+                        : secs >= 60   ? tr(" · %1 min left").arg(secs / 60 + 1)
+                                       : tr(" · %1 s left").arg(qMax<qint64>(1, secs));
+            }
+        }
+    }
+    if (label != m_copyLabel || detail != m_copyDetail || !qFuzzyCompare(fraction + 2, m_copyFraction + 2)) {
+        m_copyLabel = label;
+        m_copyDetail = detail;
+        m_copyFraction = fraction;
+        emit copyProgressChanged();
+    }
+}
+
+void NotchController::cancelCopies()
+{
+    m_ingestCancel = true; // the listing of a folder
+    m_ingest.clear();      // and what was listed but not on the shelf yet
+    for (const Transfer &t : std::as_const(m_transfers))
+        t.cancel->store(true);
+    progressTick();
+}
+
+void NotchController::cancelCopy(const QString &id)
+{
+    if (const auto it = m_transfers.constFind(id); it != m_transfers.cend())
+        it->cancel->store(true);
 }
 
 // Streams a URL into managed storage with the same lifecycle as a copy (row "copying" ->
@@ -712,6 +967,7 @@ void NotchController::remove(const QString &id)
 }
 
 namespace {
+constexpr int FreshCategorySeconds = 30;
 constexpr int kBatch = 10;       // items per step of a big remove / restore / delete
 constexpr int kBatchPauseMs = 8; // the panel gets this long between steps to draw and answer
 }
@@ -826,7 +1082,10 @@ void NotchController::restoreBatch(const QStringList &chunk)
 
 void NotchController::deleteForever(const QStringList &ids)
 {
-    runBatches(tr("Deleting"), ids, [this](const QStringList &chunk) { deleteBatch(chunk); }, [this] { emit countChanged(); });
+    runBatches(tr("Deleting"), ids, [this](const QStringList &chunk) { deleteBatch(chunk); }, [this] {
+        emit countChanged();
+        expireEmptyCategories();
+    });
 }
 
 void NotchController::emptyRecentlyRemoved()
@@ -952,6 +1211,7 @@ QString NotchController::createCategory(const QString &name)
         setError(tr("Cannot create category: %1").arg(m_repo.errorString()));
         return {};
     }
+    m_fresh.insert(c.id, QDateTime::currentDateTimeUtc());
     reloadCategories();
     return c.id;
 }
@@ -1007,6 +1267,8 @@ void NotchController::setCategory(const QStringList &ids, const QString &categor
     m_model.setCategory(done, categoryId);
     if (done.size() != ids.size())
         setError(tr("Some files could not be moved: %1").arg(m_repo.errorString()));
+    m_fresh.remove(categoryId); // it has its files now
+    expireEmptyCategories();    // and the ones they left may be empty
 }
 
 void NotchController::runCleanup()
@@ -1016,18 +1278,20 @@ void NotchController::runCleanup()
     expireEmptyCategories();
 }
 
-// A category with no file in it for a day goes away (its files are the point of it). Kept: locked ones
-// and those a "sort new files by type" rule files into. The ones Notch makes itself (Screenshots,
-// Downloads, Nearby, ...) come back when they are next needed.
+// A category with no file in it goes away at once (its files are the point of it); files in Recently removed still count, they
+// can come back. Kept: locked ones, those a "sort new files by type" rule files into, and one made a moment ago (it is made first,
+// its files are put in next). The ones Notch makes itself (Screenshots, Downloads, Nearby, ...) come back when next needed.
 void NotchController::expireEmptyCategories()
 {
     const QDateTime now = QDateTime::currentDateTimeUtc();
+    for (auto it = m_fresh.begin(); it != m_fresh.end();)
+        it = it.value().secsTo(now) > FreshCategorySeconds ? m_fresh.erase(it) : std::next(it);
     const QVariantMap rules = typeRules();
     QStringList keep;
     for (auto it = rules.cbegin(); it != rules.cend(); ++it)
         keep << it.value().toString();
-    for (const QString &id : m_repo.staleCategories(now, now.addSecs(-24 * 3600)))
-        if (!keep.contains(id) && !isLockedCategory(id))
+    for (const QString &id : m_repo.staleCategories(now, now))
+        if (!keep.contains(id) && !m_fresh.contains(id) && !isLockedCategory(id))
             deleteCategory(id);
 }
 
@@ -1774,19 +2038,33 @@ void NotchController::saveTo(const QStringList &ids, const QUrl &folder)
 
 void NotchController::zipItems(const QStringList &ids)
 {
+    QString base = QStringLiteral("Olyzano Notch");
+    for (const Category &c : std::as_const(m_categoryList))
+        if (c.id == m_categoryFilter)
+            base = c.name;
+    startZip(ids, base, m_categoryFilter);
+}
+
+void NotchController::zipCategory(const QString &categoryId)
+{
+    QString base = tr("Folder");
+    for (const Category &c : std::as_const(m_categoryList))
+        if (c.id == categoryId)
+            base = c.name;
+    startZip(categoryItemIds(categoryId), base, categoryId);
+}
+
+void NotchController::startZip(const QStringList &ids, const QString &base, const QString &categoryId)
+{
     QList<const FileItem *> items;
     for (const QString &id : ids)
         if (const FileItem *item = available(id))
             items << item;
     if (items.isEmpty())
         return;
-    QString base = QStringLiteral("Olyzano Notch");
-    for (const Category &c : std::as_const(m_categoryList))
-        if (c.id == m_categoryFilter)
-            base = c.name;
     FileItem zip = newItem(QStringLiteral("%1 (%2 %3).zip").arg(base).arg(items.size())
                                .arg(items.size() == 1 ? tr("file") : tr("files")),
-                           m_categoryFilter);
+                           categoryId);
     zip.mimeType = QStringLiteral("application/zip");
     zip.sourcePath = tr("Compressed in Olyzano Notch");
     if (QString why; !assignStorage(zip, &why)) {
@@ -1803,7 +2081,9 @@ void NotchController::zipItems(const QStringList &ids)
     // Two files may share a name (report.pdf from two folders): the second becomes "report (1).pdf".
     QList<ZipWriter::Entry> entries;
     QStringList used;
+    qint64 totalBytes = 0;
     for (const FileItem *item : items) {
+        totalBytes += item->sizeBytes;
         const QString name = FileService::uniqueAmong(item->originalName, [&](const QString &n) { return used.contains(n); });
         used << name;
         entries.append({pathOf(*item), name});
@@ -1811,6 +2091,13 @@ void NotchController::zipItems(const QStringList &ids)
     m_model.upsert(zip);
     ++m_copying;
     emit copyingChanged();
+    Transfer t;
+    t.done = std::make_shared<std::atomic<qint64>>(0);
+    t.cancel = std::make_shared<std::atomic_bool>(false);
+    t.total = totalBytes;
+    t.zip = true;
+    t.title = zip.originalName;
+    beginTransfer(zip.id, t);
 
     auto *watcher = new QFutureWatcher<QString>(this);
     connect(watcher, &QFutureWatcher<QString>::finished, this, [this, watcher, zip, out] {
@@ -1818,6 +2105,7 @@ void NotchController::zipItems(const QStringList &ids)
         watcher->deleteLater();
         --m_copying;
         emit copyingChanged();
+        endTransfer(zip.id);
         const QString final = pathOf(zip);
         const qint64 size = QFileInfo(out).size();
         if (why.isEmpty() && QFile::rename(out, final) && m_repo.markAvailable(zip.id, size)) {
@@ -1825,16 +2113,20 @@ void NotchController::zipItems(const QStringList &ids)
             ready.status = Status::Available;
             ready.sizeBytes = size;
             m_model.upsert(ready);
-            emit notice(tr("Zip ready"), zip.originalName, QStringLiteral("application-zip"), QString());
+            emit notice(tr("Zip ready: drag it out"), zip.originalName, QStringLiteral("application-zip"), QString());
             return;
         }
         QFile::remove(out);
         FileService::removeManaged(baseDir(zip), zip.storedName);
         m_repo.remove(zip.id);
         m_model.removeId(zip.id);
-        setError(tr("Could not create zip: %1").arg(why));
+        if (why != QLatin1String("cancelled"))
+            setError(tr("Could not create zip: %1").arg(why));
+        expireEmptyCategories();
     });
-    watcher->setFuture(QtConcurrent::run([entries, out] { return ZipWriter::write(out, entries); }));
+    watcher->setFuture(QtConcurrent::run(&m_copyPool, [entries, out, done = t.done, cancel = t.cancel] {
+        return ZipWriter::write(out, entries, done.get(), cancel.get());
+    }));
 }
 
 void NotchController::clearError()
@@ -1850,4 +2142,10 @@ void NotchController::setError(const QString &message)
         return;
     m_error = message;
     emit errorMessageChanged();
+}
+
+QString NotchController::storedPath(const QString &id) const
+{
+    const FileItem *item = m_model.find(id);
+    return item && item->status == Status::Available ? pathOf(*item) : QString();
 }

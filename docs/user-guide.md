@@ -27,6 +27,10 @@ Optional extras (OCR, KDE Connect, PDF tools on Windows): [optional components](
 4. **Tidy up:** categories (the chips under the header), sort, search (names and text inside notes), *Keep* (right-click, Keep) to stop auto-delete; *Sort → Expiring first* puts what goes soonest at the top, kept files last.
 5. **Mistakes:** removed files wait 24 hours in *Recently removed*; **Ctrl+Z** undoes the last removal.
 
+Dropping a big folder or file is safe: the pill under the notch shows *Reading files*, then how many files and gigabytes are done and how long is left, and its **✕** stops the copy and removes what was half done. Each file shows its own percent.
+
+**A folder out as a zip:** drag a category chip (a folder you dropped) and Notch makes one `.zip` of it in the background; when the pill says *Zip ready: drag it out*, drag that file to its destination and extract it there. Hold **Ctrl** while dragging to carry the files themselves. A category with no file left goes away on its own (files in *Recently removed* still count).
+
 Files are deleted after the retention period (default 7 days; *Settings → Keep files for*). Each file shows the days it has left, or *Kept*; a ⏳ badge means *due within a day*.
 
 ## 3. Tools on files
@@ -39,6 +43,12 @@ appear next to the originals.
 With more than one monitor, *Settings → General → Monitors* shows them as they stand next to each other. Click a monitor to switch Notch off or on there (the notch, the status bar and the dock go together). A monitor you plug in shows up straight away, and one monitor always keeps Notch.
 
 Click a monitor (not its tick) to choose it, then set what is different there: capsule size, capsule mode, dock and status bar. *As general* follows the settings elsewhere; colours, sounds and the dock's apps stay the same on every monitor.
+
+### Cloud shelf
+
+*Settings → Files → Cloud shelf* shares a shelf with the other members of one of your Share servers, kept on that server's S3 storage (MinIO, Backblaze B2, Wasabi, Cloudflare R2, AWS S3...). Pick the server (join it first under *Sharing → Join a server*) and a **Cloud** chip appears on the Files page. Drop files on it, or right-click a file → *Send to cloud shelf*; click a file on the shelf to fetch it into your own Files. Names and contents are encrypted on your computer with the shelf key (the host's invitations carry it); the server and the storage see only sizes.
+
+**Host:** set `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY` and `S3_SECRET_KEY` on the relay (`server/README.md`, or `docker compose --profile minio up -d --build` for a MinIO of your own). Under *Settings → Sharing → Members* the ⚙ of a member sets how much space they have (shares and cloud), **pauses** them with a reason they are shown, lets them back in, or **removes** them (with a reason; their cloud files are deleted or become yours). Members never hold the storage's key, so a pause or removal is immediate. Create each member's key in the same window: it carries the shelf's key, so it must be sent privately.
 
 ### The cat
 
