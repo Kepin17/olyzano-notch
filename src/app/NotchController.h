@@ -148,6 +148,8 @@ public:
     Q_INVOKABLE void pasteClipboard(const QString &categoryId = {});
     void keepBytes(const QString &name, const QString &mimeType, const QByteArray &bytes, const QString &source); // into the category being viewed
     QString keepBytesId(const QString &name, const QString &mimeType, const QByteArray &bytes, const QString &source); // the same, and the new item's id ("" when it failed)
+    // A finished file already on disk becomes a shelf item right away (moved, Available); returns its id ("" when it failed).
+    QString adoptLocalFile(const QString &path, const QString &name, const QString &source, const QString &categoryId = {});
     // Text dropped on Notch (no file): saved as a note named after its first line.
     Q_INVOKABLE void addTextNote(const QString &text, const QString &categoryId = {});
     Q_INVOKABLE void copyFiles(const QStringList &ids);
@@ -264,7 +266,7 @@ private:
     bool addBytes(const QString &name, const QString &mimeType, const QByteArray &bytes, const QString &source,
                   const QString &categoryId, QString *idOut = nullptr);
     // Moves a finished file (e.g. a tool's output) into managed storage as a new item.
-    bool adoptFile(const QString &path, const QString &name, const QString &source, const QString &categoryId);
+    bool adoptFile(const QString &path, const QString &name, const QString &source, const QString &categoryId, QString *idOut = nullptr);
     void updateWatchers();
     void onWatchedFile(const QString &path, const QString &settingKey, const QString &categoryName, const QString &title);
     QString autoCategory(const QString &settingKey, const QString &name); // remembered by id, recreated if deleted

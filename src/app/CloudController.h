@@ -53,7 +53,8 @@ public:
     // Shelf files (by id) or files from anywhere (paths) go to the cloud shelf; one at a time to two at a time, each with its progress in the pill.
     Q_INVOKABLE void uploadItems(const QStringList &itemIds);
     Q_INVOKABLE void uploadUrls(const QList<QUrl> &urls);
-    Q_INVOKABLE void download(const QString &cloudId);       // into the local shelf
+    // thenShare: fetch into the local shelf, then readyToShare with the new item's id (for Share via QR).
+    Q_INVOKABLE void download(const QString &cloudId, bool thenShare = false);
     Q_INVOKABLE void remove(const QString &cloudId);
     Q_INVOKABLE void rename(const QString &cloudId, const QString &name);
 
@@ -61,6 +62,7 @@ signals:
     void changed();
     void notice(const QString &title, const QString &detail);
     void failed(const QString &message);
+    void readyToShare(const QString &itemId); // a cloud file finished downloading for Share via QR
 
 private:
     struct Raw {

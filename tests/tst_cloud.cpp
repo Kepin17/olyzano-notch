@@ -118,6 +118,36 @@ private slots:
         QCOMPARE(cloud.entries()->index(0, 0).data(CloudModel::MineRole).toBool(), false);
         QVERIFY(cloud.quota() > 0);
 
+        // ---- Share via QR from the cloud shelf: fetch it, then share it with a key of its own ----
+        QSignalSpy readyToShare(&cloud, &CloudController::readyToShare);
+        const int before = notch.count();
+        cloud.download(cloud.entries()->index(0, 0).data(CloudModel::IdRole).toString(), true);
+        QTRY_COMPARE_WITH_TIMEOUT(readyToShare.count(), 1, 20000);
+        const QString localId = readyToShare.first().first().toString();
+        QVERIFY(!localId.isEmpty());
+        QCOMPARE(notch.count(), before + 1);
+        const QString sharedPath = notch.storedPath(localId); // available at once, so a share can start
+        QVERIFY2(!sharedPath.isEmpty(), "the fetched file must be Available");
+        QFile shared(sharedPath);
+        QVERIFY(shared.open(QIODevice::ReadOnly));
+        QCOMPARE(shared.readAll(), QByteArray("secret contents of the plan"));
+        const QString sessionId = share.start({localId}, QStringLiteral("relay"), 3600, QStringLiteral("none"), QString(), false, QString(), memberId);
+        QVERIFY(!sessionId.isEmpty());
+        QString link;
+        QTRY_VERIFY_WITH_TIMEOUT(
+            [&] {
+                for (int r = 0; r < share.rowCount(); ++r)
+                    if (share.index(r).data(ShareController::IdRole).toString() == sessionId
+                        && share.index(r).data(ShareController::StatusRole).toString() == QLatin1String("ready")) {
+                        link = share.index(r).data(ShareController::UrlRole).toString();
+                        return true;
+                    }
+                return false;
+            }(),
+            30000);
+        QVERIFY2(link.contains(QLatin1String("/s/")) && link.contains(u'#'), qPrintable(link));
+        QVERIFY(!link.contains(ShareCrypto::keyToFragment(share.shelfKey(memberId)))); // the shelf's key never goes into a link
+
         // ---- the host pauses the member, with a reason ----
         ask(QStringLiteral("disable alice over the agreed space"));
         share.testServer(memberId);

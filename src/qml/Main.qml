@@ -2521,6 +2521,10 @@ Window {
                                         notch.categoryFilter = ""
                                 }
                                 function onFailed(message) { root.cloudNote = message }
+                                function onReadyToShare(itemId) {
+                                    if (itemId)
+                                        root.shareFiles([itemId])
+                                }
                             }
                             delegate: Chip {
                                 required property string cid
@@ -2775,7 +2779,13 @@ Window {
                         interactive: false
                         delegate: CloudTile {
                             onOpenRequested: cloud.download(cloudId)
-                            onMenuRequested: { cloudMenu.cid = cloudId; cloudMenu.mine = mine; cloudMenu.popup() }
+                            onMenuRequested: {
+                                cloudMenu.cid = cloudId
+                                cloudMenu.mine = mine
+                                cloudMenu.locked = locked
+                                cloudMenu.busy = busy
+                                cloudMenu.popup()
+                            }
                         }
                     }
                 }
@@ -3722,7 +3732,15 @@ Window {
         id: cloudMenu
         property string cid: ""
         property bool mine: false
-        Action { text: "Download to my files"; onTriggered: cloud.download(cloudMenu.cid) }
+        property bool locked: false // needs the shelf key: cannot be read here
+        property bool busy: false   // already being fetched or sent
+        readonly property bool canFetch: cloud.usable && !locked && !busy
+        Action { text: "Download to my files"; enabled: cloudMenu.canFetch; onTriggered: cloud.download(cloudMenu.cid) }
+        Action {
+            text: "Share via QR…"
+            enabled: cloudMenu.canFetch
+            onTriggered: cloud.download(cloudMenu.cid, true) // fetch, then open the share dialog
+        }
         DarkSeparator {}
         Action { text: "Remove from the cloud shelf"; enabled: cloud.isHost || cloudMenu.mine; onTriggered: cloud.remove(cloudMenu.cid) }
     }

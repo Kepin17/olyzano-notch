@@ -1715,7 +1715,7 @@ void NotchController::runSearch()
     m_proxy.setContentIds(m_repo.searchText(m_filter));
 }
 
-bool NotchController::adoptFile(const QString &path, const QString &name, const QString &source, const QString &categoryId)
+bool NotchController::adoptFile(const QString &path, const QString &name, const QString &source, const QString &categoryId, QString *idOut)
 {
     FileItem item = newItem(name, categoryId);
     item.mimeType = QMimeDatabase().mimeTypeForFile(path).name();
@@ -1736,7 +1736,15 @@ bool NotchController::adoptFile(const QString &path, const QString &name, const 
         return false;
     }
     m_model.upsert(item);
+    if (idOut)
+        *idOut = item.id;
     return true;
+}
+
+QString NotchController::adoptLocalFile(const QString &path, const QString &name, const QString &source, const QString &categoryId)
+{
+    QString id;
+    return adoptFile(path, name, source, categoryId, &id) ? id : QString();
 }
 
 QStringList NotchController::mimeTypes(const QStringList &ids) const

@@ -436,7 +436,7 @@ void CloudController::startUpload(const Job &job)
 
 // ---- fetching and changing -------------------------------------------------------------------------------------
 
-void CloudController::download(const QString &cloudId)
+void CloudController::download(const QString &cloudId, bool thenShare)
 {
     const CloudModel::Entry *entry = m_model.find(cloudId);
     if (!entry || entry->locked || entry->busy || !usable())
@@ -484,7 +484,7 @@ void CloudController::download(const QString &cloudId)
         if (t.cancel->load())
             reply->abort();
     });
-    connect(reply, &QNetworkReply::finished, this, [this, reply, enc, name, category, tmpDir, done, t] {
+    connect(reply, &QNetworkReply::finished, this, [this, reply, enc, name, category, tmpDir, done, t, thenShare] {
         reply->deleteLater();
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (status == 200 || status == 206)
@@ -499,14 +499,20 @@ void CloudController::download(const QString &cloudId)
         // decrypt on a worker, then the file goes on the local shelf like any other
         auto *watcher = new QFutureWatcher<QString>(this);
         auto names = std::make_shared<QStringList>();
-        connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, names, tmpDir, name, category, done] {
+        connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, names, tmpDir, name, category, done, thenShare] {
             const QString err = watcher->result();
             watcher->deleteLater();
             if (!err.isEmpty() || names->isEmpty())
                 return done(tr("%1: %2").arg(name, err.isEmpty() ? tr("the file could not be opened") : err));
             const QString catId = category.isEmpty() ? QString() : m_notch->createCategory(category);
-            m_notch->addUrls({QUrl::fromLocalFile(tmpDir + QStringLiteral("/out/") + names->first())}, catId);
+            // Adopt straight onto the shelf (Available at once) so Share via QR can open without waiting on a copy.
+            const QString localId = m_notch->adoptLocalFile(tmpDir + QStringLiteral("/out/") + names->first(), names->first(),
+                                                            tr("From the cloud shelf"), catId);
+            if (localId.isEmpty())
+                return done(tr("%1: %2").arg(name, tr("cannot save")));
             emit notice(tr("Fetched from the cloud shelf"), name);
+            if (thenShare)
+                emit readyToShare(localId);
             done({});
         });
         const QString in = tmpDir + QStringLiteral("/file.enc"), out = tmpDir + QStringLiteral("/out");
