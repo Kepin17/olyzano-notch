@@ -31,12 +31,19 @@ AbstractButton {
             id: chipRow
             anchors.centerIn: parent
             spacing: 5
+            BusyIndicator {
+                anchors.verticalCenter: parent.verticalCenter
+                visible: chip.special === "cloud" && cloud.uploadsPending > 0
+                running: visible
+                width: 13
+                height: 13
+            }
             LineIcon {
                 anchors.verticalCenter: parent.verticalCenter
                 glyph: chip.locked ? (notch.vaultUnlocked ? "unlock" : "lock")
                     : chip.special === "screenshots" ? "camera" : chip.special === "downloads" ? "download"
                     : chip.special === "kdeconnect" ? "phone" : chip.special === "cloud" ? "cloud" : ""
-                visible: glyph !== ""
+                visible: glyph !== "" && !(chip.special === "cloud" && cloud.uploadsPending > 0)
                 sourceSize: Qt.size(13, 13)
                 color: chip.ink
             }

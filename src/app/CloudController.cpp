@@ -339,6 +339,7 @@ void CloudController::uploadItems(const QStringList &itemIds)
         m_queue.append({path, item->originalName, item->mimeType, category});
     }
     pump();
+    emit changed();
 }
 
 void CloudController::uploadUrls(const QList<QUrl> &urls)
@@ -350,6 +351,7 @@ void CloudController::uploadUrls(const QList<QUrl> &urls)
             m_queue.append({fi.absoluteFilePath(), fi.fileName(), mimes.mimeTypeForFile(fi).name(), QString()});
     }
     pump();
+    emit changed();
 }
 
 void CloudController::pump()
@@ -358,6 +360,7 @@ void CloudController::pump()
         emit failed(m_state == QLatin1String("disabled") || m_state == QLatin1String("removed") ? m_message
                                                                                                : tr("The cloud shelf is not ready: %1").arg(m_message.isEmpty() ? m_state : m_message));
         m_queue.clear();
+        emit changed();
         return;
     }
     while (m_active < Parallel && !m_queue.isEmpty()) {
@@ -387,6 +390,7 @@ void CloudController::startUpload(const Job &job)
         if (!error.isEmpty())
             emit failed(error);
         pump();
+        emit changed();
     };
     // First the file is encrypted to a temporary file (a worker: it can be big), then that is sent.
     auto *watcher = new QFutureWatcher<QString>(this);

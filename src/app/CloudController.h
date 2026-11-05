@@ -31,6 +31,7 @@ class CloudController : public QObject
     Q_PROPERTY(bool isHost READ isHost NOTIFY changed)
     Q_PROPERTY(bool usable READ usable NOTIFY changed)                // can send and fetch right now
     Q_PROPERTY(int count READ count NOTIFY changed)
+    Q_PROPERTY(int uploadsPending READ uploadsPending NOTIFY changed)
     Q_PROPERTY(QAbstractItemModel *entries READ entries CONSTANT)
 
 public:
@@ -47,6 +48,7 @@ public:
     bool isHost() const;
     bool usable() const;
     int count() const { return int(m_model.rowCount()); }
+    int uploadsPending() const { return m_active + int(m_queue.size()); }
     QAbstractItemModel *entries() { return &m_model; }
 
     Q_INVOKABLE void syncNow();

@@ -2725,6 +2725,33 @@ Window {
                         }
                         PillButton { text: "Sync"; enabled: cloud.usable; onClicked: cloud.syncNow() }
                     }
+                    Rectangle {
+                        visible: cloud.uploadsPending > 0
+                        Layout.fillWidth: true
+                        implicitHeight: uploadStatus.implicitHeight + 16
+                        radius: theme.radiusMd
+                        color: theme.accentFaint
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.margins: 8
+                            spacing: 8
+                            BusyIndicator {
+                                visible: cloud.uploadsPending > 0
+                                running: visible
+                                Layout.preferredWidth: 18
+                                Layout.preferredHeight: 18
+                            }
+                            Text {
+                                id: uploadStatus
+                                Layout.fillWidth: true
+                                wrapMode: Text.Wrap
+                                color: root.textPrimary
+                                font.pixelSize: 12
+                                text: cloud.uploadsPending === 1 ? "Uploading 1 file to the cloud shelf…"
+                                    : "Uploading " + cloud.uploadsPending + " files to the cloud shelf…"
+                            }
+                        }
+                    }
                     Rectangle { // paused or removed by the host (with their reason), or something wrong with the connection
                         visible: !cloud.usable || root.cloudNote !== ""
                         Layout.fillWidth: true
@@ -2746,7 +2773,7 @@ Window {
                         }
                     }
                     Text {
-                        visible: cloud.usable && cloud.count === 0
+                        visible: cloud.usable && cloud.count === 0 && cloud.uploadsPending === 0
                         Layout.fillWidth: true
                         Layout.preferredHeight: 110
                         horizontalAlignment: Text.AlignHCenter
