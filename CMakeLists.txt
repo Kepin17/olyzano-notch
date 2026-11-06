@@ -362,8 +362,8 @@ set(CPACK_PACKAGE_NAME notch)
 set(CPACK_PACKAGE_CONTACT "kevien.oj@gmail.com")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Temporary file shelf for KDE Plasma")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "libqt6sql6-sqlite, layer-shell-qt, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-window, qml6-module-qtqml-workerscript, qml6-module-qtquick-templates, qml6-module-qtquick-shapes, qml6-module-qtquick-effects, qml6-module-qtquick-dialogs, qml6-module-qt-labs-platform, qml6-module-qtcore, pulseaudio-utils, poppler-utils, ghostscript, gocryptfs, fuse3, qt6-svg-plugins, qt6-image-formats-plugins, fonts-noto-cjk")
-set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "tesseract-ocr, qml6-module-qtmultimedia, ffmpeg, libreoffice-core | libreoffice") # the Camera page (loaded only when it is opened); ffmpeg: audio and video conversion; LibreOffice: Office documents
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "libqt6sql6-sqlite, layer-shell-qt, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-window, qml6-module-qtqml-workerscript, qml6-module-qtquick-templates, qml6-module-qtquick-shapes, qml6-module-qtquick-effects, qml6-module-qtquick-dialogs, qml6-module-qt-labs-platform, qml6-module-qtcore, pulseaudio-utils, poppler-utils, ghostscript, unzip, gocryptfs, fuse3, qt6-svg-plugins, qt6-image-formats-plugins, fonts-noto-cjk")
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "tesseract-ocr, qml6-module-qtmultimedia, ffmpeg, libreoffice-core | libreoffice, p7zip-full") # the Camera page (loaded only when it is opened); ffmpeg: audio and video conversion; LibreOffice: Office documents; p7zip: extracting .7z / .rar
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 include(CPack)
 endif()

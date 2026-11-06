@@ -186,10 +186,14 @@ public:
     Q_INVOKABLE QString readText(const QString &id);
     Q_INVOKABLE bool saveNote(const QString &id, const QString &name, const QString &text);
     // Document/image tools (DocTools) on stored files; results become new items in the current
-    // category, originals stay. kind: merge | images-pdf | compress | split | extract (option: page
-    // ranges) | ocr-copy | ocr-note | convert (option: png/jpg/webp) | resize (option: max width).
+    // category, originals stay. kind: merge | images-pdf | compress (option: low | medium | max) |
+    // split | extract (option: page ranges) | unzip | ocr-copy | ocr-note | convert (option: png/jpg/webp) |
+    // resize (option: max width) | compress-image (option: low | medium | max).
     Q_INVOKABLE void runTool(const QString &kind, const QStringList &ids, const QString &option = {});
     Q_INVOKABLE QStringList mimeTypes(const QStringList &ids) const;
+    // Coarse file type of a mime type (FileService::typeGroup): pdf | image | video | audio | document |
+    // archive | text, or "" for anything else.
+    Q_INVOKABLE QString typeGroup(const QString &mimeType) const;
     // What the selected files can be converted to: [{id, label, group, available, hint}], empty for a mixed selection.
     Q_INVOKABLE QVariantList convertTargets(const QStringList &ids) const;
     Q_INVOKABLE int pageCount(const QString &id) const;

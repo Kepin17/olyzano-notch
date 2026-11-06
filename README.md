@@ -43,7 +43,7 @@ Then move the mouse to the top-centre of the screen. Full steps, updates, and re
 | | |
 |---|---|
 | **Keep files for a moment** | Drop files, folders, images, links, or text. Sort into categories, search, undo, and a 24-hour *Recently removed* bin |
-| **Tools for files** | Merge, split, and compress PDFs. Images to PDF. Convert, resize, OCR, zip, QR codes |
+| **Tools for files** | Merge, split and compress PDFs (low / medium / max). Images to PDF. Convert, resize, compress images, OCR, zip and unzip, QR codes |
 | **Share** | QR code to a phone over WiFi or your own encrypted server. Send to another computer (Nearby) or a phone (KDE Connect) |
 | **Live activities** | Timer, Pomodoro, downloads, now-playing with a real equalizer, calls, Discord mute / deafen |
 | **Coding assistant (desktop)** | Dev → Agent: MiMo, DeepSeek, Claude, OpenAI and custom providers; Plan, Manual and Auto modes, with [Karpathy-style working principles](#credits), `@` files, `!` commands, `/` commands, a to-do list and context auto-compact. [Setup and safety](docs/coding-assistant.md) |
@@ -205,7 +205,7 @@ Controls that a platform cannot offer are hidden or greyed out.
 | **Organizing** | Categories you can drag files onto, multi-select, rename, sort, rules that file new PDFs / images into a category, search inside text files |
 | **Safety nets** | Undo, a 24-hour *Recently removed* bin, an "expiring soon" badge with **Keep**, names that never overwrite |
 | **Looking** | Preview, Quick Look (hold Space), an in-place note editor with a small toolkit |
-| **Working** | Merge / split / compress PDFs, images → PDF, convert and resize images, OCR, zip, save to folder |
+| **Working** | Merge / split / compress PDFs, images → PDF, convert, resize and compress images, OCR, zip, extract archives, save to folder |
 | **Sharing** | QR code to a phone over WiFi or through your own server, with PIN or password and an expiry; several shares at once |
 | **Privacy** | Locked categories encrypted on disk; server shares are end-to-end encrypted; dots show when the microphone or a camera is on |
 | **Dock** | A macOS-style dock on the bottom, left, or right edge: pinned and running apps, folders as stacks, Trash, badges, glass look |
@@ -292,16 +292,18 @@ good. **Undo** in the toast or Ctrl+Z brings back the last removal. In the bin, 
 
 Right-click → **Tools…** (or **Tools** while selecting). New files appear next to the originals.
 
-- **PDF:** merge in the order you picked, images → PDF (one A4 page per image), compress, split into pages, extract
-  pages ("1-3, 5, 8-").
+- **PDF:** merge in the order you picked, images → PDF (one A4 page per image), compress at **low / medium / max**
+  (best quality → smallest file), split into pages, extract pages ("1-3, 5, 8-").
 - **Convert to** (a submenu that lists only what the selected files can become; a format whose program is missing is greyed with its name):
   - Images and SVG: PNG, JPG, WebP, BMP, TIFF, ICO, PDF (Qt, nothing to install).
   - PDF: PNG or JPG, one per page (up to 200 pages), or text (Poppler).
   - Text, Markdown, HTML, CSV: PDF (Qt).
   - Word, Excel, PowerPoint, OpenDocument, RTF: PDF and the other office formats (needs LibreOffice).
   - Audio: MP3, WAV, FLAC, OGG, M4A, Opus. Video: MP4, WebM, MKV, animated GIF, a smaller MP4, or just the audio (needs ffmpeg).
-- **Images:** resize to 1920 / 1280 / 800 px wide (never upscales).
+- **Images:** compress at **low / medium / max** (JPG and WebP keep their format, a PNG becomes JPG — or WebP when it
+  has transparency), resize to 1920 / 1280 / 800 px wide (never upscales).
 - **OCR:** copy the text, or make it a note, from an image or a scanned PDF.
+- **Archives:** *Extract files* unpacks a `.zip`, `.tar` / `.tar.gz` / `.tgz` / …, `.7z` or `.rar` onto the shelf.
 - **Zip:** *Compress to .zip*, or *Zip category*. **Save to…** copies files out to a folder without overwriting.
 - **Copy** puts files on the clipboard as files; *Copy contents* copies a text file's text; *Copy path* the path.
 

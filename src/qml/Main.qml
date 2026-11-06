@@ -3801,7 +3801,12 @@ Window {
             title: "PDF tools"
             enabled: toolsMenu.allPdf
             Action { text: "Merge PDFs"; enabled: toolsMenu.n >= 2; onTriggered: root.runTool("merge") }
-            Action { text: "Compress PDF"; onTriggered: root.runTool("compress") }
+            DarkMenu {
+                title: "Compress PDF"
+                Action { text: "Low (best quality)"; onTriggered: root.runTool("compress", "low") }
+                Action { text: "Medium"; onTriggered: root.runTool("compress", "medium") }
+                Action { text: "Max (smallest file)"; onTriggered: root.runTool("compress", "max") }
+            }
             Action { text: "Split into pages"; enabled: toolsMenu.n === 1; onTriggered: root.runTool("split") }
             Action {
                 text: "Extract pages…"
@@ -3817,9 +3822,20 @@ Window {
             title: "Images"
             enabled: toolsMenu.allImages
             Action { text: "Images → one PDF"; onTriggered: root.runTool("images-pdf") }
+            DarkMenu {
+                title: "Compress image"
+                Action { text: "Low (best quality)"; onTriggered: root.runTool("compress-image", "low") }
+                Action { text: "Medium"; onTriggered: root.runTool("compress-image", "medium") }
+                Action { text: "Max (smallest file)"; onTriggered: root.runTool("compress-image", "max") }
+            }
             Action { text: "Resize to 1920 px wide"; onTriggered: root.runTool("resize", "1920") }
             Action { text: "Resize to 1280 px wide"; onTriggered: root.runTool("resize", "1280") }
             Action { text: "Resize to 800 px wide"; onTriggered: root.runTool("resize", "800") }
+        }
+        DarkMenu {
+            title: "Archives"
+            enabled: toolsMenu.n > 0 && toolsMenu.mimes.every(m => notch.typeGroup(m) === "archive")
+            Action { text: "Extract files"; onTriggered: root.runTool("unzip") }
         }
         DarkMenu {
             title: "Text (OCR)"

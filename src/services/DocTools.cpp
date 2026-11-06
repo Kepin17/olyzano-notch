@@ -17,6 +17,7 @@
 #include <QPdfWriter>
 #include <QRegularExpression>
 #include <QSet>
+#include <QStandardPaths>
 #include <QTemporaryDir>
 
 namespace DocTools {
@@ -37,8 +38,18 @@ QString run(const QString &program, const QStringList &args, QByteArray *stdOut 
     if (r.ok)
         return {};
     if (r.failedToStart)
-        return QStringLiteral("%1 is not installed (see the README for the PDF and OCR tools)").arg(program);
+        return QStringLiteral("%1 is not installed (see the README)").arg(program);
     return r.error;
+}
+
+// A PNG's colour type in its IHDR chunk: 4 (grey + alpha) and 6 (RGBA) carry transparency.
+bool pngHasAlpha(const QString &path)
+{
+    QFile f(path);
+    if (!f.open(QIODevice::ReadOnly) || f.read(8) != QByteArray::fromHex("89504e470d0a1a0a") || !f.seek(25))
+        return false;
+    const QByteArray type = f.read(1);
+    return type.size() == 1 && (uchar(type.at(0)) == 4 || uchar(type.at(0)) == 6);
 }
 }
 
@@ -82,11 +93,20 @@ QString imagesToPdf(const QStringList &images, const QString &out)
     return {};
 }
 
-QString compressPdf(const QString &pdf, const QString &out)
+QString compressPdf(const QString &pdf, const QString &out, const QString &level)
 {
+    // low keeps the most (300 dpi), max throws the most away (72 dpi)
+    const QString settings = level == QLatin1String("low")    ? QStringLiteral("/printer")
+                           : level == QLatin1String("max")    ? QStringLiteral("/screen")
+                                                              : QStringLiteral("/ebook");
     const QString err = run(QStringLiteral("gs"),
                             {QStringLiteral("-sDEVICE=pdfwrite"), QStringLiteral("-dCompatibilityLevel=1.5"),
-                             QStringLiteral("-dPDFSETTINGS=/ebook"), QStringLiteral("-dNOPAUSE"), QStringLiteral("-dBATCH"),
+                             QStringLiteral("-dPDFSETTINGS=") + settings,
+                             // The presets alone do not rank: /screen may store the picture uncompressed and
+                             // /printer passes a JPEG through untouched, so re-encode every colour image.
+                             QStringLiteral("-dAutoFilterColorImages=false"), QStringLiteral("-dColorImageFilter=/DCTEncode"),
+                             QStringLiteral("-dPassThroughJPEGImages=false"),
+                             QStringLiteral("-dNOPAUSE"), QStringLiteral("-dBATCH"),
                              QStringLiteral("-dQUIET"), QStringLiteral("-sOutputFile=") + out, pdf},
                             nullptr, 600000);
     if (!err.isEmpty())
@@ -96,6 +116,48 @@ QString compressPdf(const QString &pdf, const QString &out)
         return QStringLiteral("already as small as it gets");
     }
     return {};
+}
+
+QString extractArchive(const QString &file, const QString &outDir)
+{
+    const QString suffix = QFileInfo(file).suffix().toLower();
+    QDir().mkpath(outDir);
+    const auto tar = [&](const QString &program) { return run(program, {QStringLiteral("-xf"), file, QStringLiteral("-C"), outDir}); };
+
+    if (suffix == QLatin1String("zip")) {
+#ifdef Q_OS_WIN
+        // Windows 10 and newer ship bsdtar as tar.exe, and it reads zip.
+        const QString err = tar(QStringLiteral("tar"));
+#else
+        // -P "" so an encrypted entry fails at once instead of prompting on stdin forever.
+        const QString err = run(QStringLiteral("unzip"),
+                                {QStringLiteral("-o"), QStringLiteral("-q"), QStringLiteral("-P"), QString(),
+                                 QStringLiteral("-d"), outDir, file});
+#endif
+        if (err.isEmpty())
+            return {};
+        // Info-ZIP exits 1 on warnings (it skips "../" entries for security): accept what it wrote.
+        return QDir(outDir).entryList(QDir::Files | QDir::Dirs | QDir::NoDotAndDotDot).isEmpty() ? err : QString();
+    }
+    if (suffix == QLatin1String("tar") || suffix == QLatin1String("gz") || suffix == QLatin1String("tgz")
+        || suffix == QLatin1String("bz2") || suffix == QLatin1String("tbz2") || suffix == QLatin1String("xz")
+        || suffix == QLatin1String("txz") || suffix == QLatin1String("zst"))
+        return tar(QStringLiteral("tar"));
+    if (suffix == QLatin1String("7z") || suffix == QLatin1String("rar")) {
+        QStringList extra;
+#ifdef Q_OS_WIN
+        extra << QStringLiteral("C:/Program Files/7-Zip") << QStringLiteral("C:/Program Files (x86)/7-Zip");
+#endif
+        QString program = QStandardPaths::findExecutable(QStringLiteral("7z"), extra);
+        if (program.isEmpty())
+            program = QStandardPaths::findExecutable(QStringLiteral("7za"), extra);
+        if (program.isEmpty())
+            return QStringLiteral("7-Zip is not installed (see the README)");
+        // -p: an empty password, so an encrypted archive fails instead of prompting.
+        return run(program, {QStringLiteral("x"), QStringLiteral("-y"), QStringLiteral("-p"),
+                             QStringLiteral("-o") + outDir, file});
+    }
+    return QStringLiteral("cannot extract .%1").arg(suffix);
 }
 
 int pdfPageCount(const QString &pdf)
@@ -165,7 +227,7 @@ QString recognizeText(const QString &file, bool isPdf, QString *text)
     return text->isEmpty() ? QStringLiteral("no text found") : QString();
 }
 
-QString convertImage(const QString &image, const QString &format, int maxWidth, const QString &out)
+QString convertImage(const QString &image, const QString &format, int maxWidth, const QString &out, int quality)
 {
     QImageReader reader(image);
     reader.setAutoTransform(true);
@@ -188,8 +250,9 @@ QString convertImage(const QString &image, const QString &format, int maxWidth, 
         img = flat;
     }
     // For PNG Qt reads "quality" as (inverse) compression: keep its default, which compresses well.
-    const int quality = (format == QLatin1String("png") || format == QLatin1String("bmp") || format == QLatin1String("ico") || format == QLatin1String("tiff")) ? -1 : 90;
-    return img.save(out, format.toLatin1().constData(), quality) ? QString() : QStringLiteral("cannot write %1").arg(format);
+    const bool fixedFormat = format == QLatin1String("png") || format == QLatin1String("bmp") || format == QLatin1String("ico") || format == QLatin1String("tiff");
+    const int saveQuality = fixedFormat ? -1 : (quality >= 0 ? quality : 90);
+    return img.save(out, format.toLatin1().constData(), saveQuality) ? QString() : QStringLiteral("cannot write %1").arg(format);
 }
 
 namespace {
@@ -388,9 +451,63 @@ ToolResult runTool(const QString &kind, const QList<ToolInput> &inputs, const QS
         qint64 before = 0, after = 0;
         for (const ToolInput &in : inputs) {
             const QString target = out(in.base + QStringLiteral(" (compressed).pdf"));
-            if (const QString err = compressPdf(in.path, target); !err.isEmpty()) {
+            if (const QString err = compressPdf(in.path, target, option); !err.isEmpty()) {
                 r.outputs.removeLast();
                 r.error = in.name + QStringLiteral(": ") + err;
+                continue;
+            }
+            before += QFileInfo(in.path).size();
+            after += QFileInfo(target).size();
+        }
+        if (!r.outputs.isEmpty())
+            r.summary = QStringLiteral("Compressed: %1 → %2")
+                            .arg(QLocale().formattedDataSize(before), QLocale().formattedDataSize(after));
+    } else if (kind == QLatin1String("unzip")) {
+        int archive = 0;
+        for (const ToolInput &in : inputs) {
+            ++archive;
+            const QString dir = workDir + QStringLiteral("/extract-") + QString::number(archive);
+            if (const QString err = extractArchive(in.path, dir); !err.isEmpty()) {
+                r.error = in.name + QStringLiteral(": ") + err;
+                continue;
+            }
+            // Only what came out of the archive and sits under `dir` is taken onto the shelf.
+            int taken = 0;
+            const auto files = FileService::expandFolder(dir, 1000);
+            for (const FileService::FolderEntry &entry : files) {
+                const QString target = workDir + u'/'
+                                       + FileService::uniqueName(workDir, FileService::safeFileName(QFileInfo(entry.path).fileName()));
+                if (QFile::rename(entry.path, target)) {
+                    r.outputs << qMakePair(target, QFileInfo(target).fileName());
+                    ++taken;
+                } else if (r.error.isEmpty()) {
+                    r.error = in.name + QStringLiteral(": cannot write ") + QFileInfo(entry.path).fileName();
+                }
+            }
+            if (taken == 0 && r.error.isEmpty())
+                r.error = in.name + QStringLiteral(": the archive has no files");
+        }
+        r.summary = QStringLiteral("Extracted %1 file%2").arg(r.outputs.size()).arg(r.outputs.size() == 1 ? QString() : QStringLiteral("s"));
+    } else if (kind == QLatin1String("compress-image")) {
+        // jpg/webp keep their format, png becomes jpg (webp when it carries transparency), the rest become jpg
+        const int quality = option == QLatin1String("low") ? 85 : option == QLatin1String("max") ? 40 : 65;
+        qint64 before = 0, after = 0;
+        for (const ToolInput &in : inputs) {
+            const QString suffix = QFileInfo(in.name).suffix().toLower();
+            const QString format = suffix == QLatin1String("jpg") || suffix == QLatin1String("jpeg") ? QStringLiteral("jpg")
+                                 : suffix == QLatin1String("webp") ? QStringLiteral("webp")
+                                 : suffix == QLatin1String("png")  ? (pngHasAlpha(in.path) ? QStringLiteral("webp") : QStringLiteral("jpg"))
+                                                                  : QStringLiteral("jpg");
+            const QString target = out(in.base + QStringLiteral(" (compressed).") + format);
+            if (const QString err = convertImage(in.path, format, 0, target, quality); !err.isEmpty()) {
+                r.outputs.removeLast();
+                r.error = in.name + QStringLiteral(": ") + err;
+                continue;
+            }
+            if (QFileInfo(target).size() >= QFileInfo(in.path).size()) { // nothing gained: no point keeping it
+                QFile::remove(target);
+                r.outputs.removeLast();
+                r.error = in.name + QStringLiteral(": already as small as it gets");
                 continue;
             }
             before += QFileInfo(in.path).size();

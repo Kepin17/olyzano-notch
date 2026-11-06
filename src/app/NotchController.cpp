@@ -1760,6 +1760,11 @@ QStringList NotchController::mimeTypes(const QStringList &ids) const
     return out;
 }
 
+QString NotchController::typeGroup(const QString &mimeType) const
+{
+    return FileService::typeGroup(mimeType);
+}
+
 QVariantList NotchController::convertTargets(const QStringList &ids) const
 {
     QList<ConvertModel::Pick> picks;

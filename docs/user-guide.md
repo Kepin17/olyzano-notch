@@ -35,7 +35,7 @@ Files are deleted after the retention period (default 7 days; *Settings → Keep
 
 ## 3. Tools on files
 
-Right-click → **Tools…**: **Convert to** (the formats the selected files can become: images, PDF → PNG/JPG per page or text, Office documents → PDF/DOCX/ODT…, text and Markdown → PDF, audio, video → MP4/WebM/GIF/MP3), **PDF tools** (merge, split, extract, compress), **Images** (images → one PDF, resize), **Text (OCR)**, zip. Results
+Right-click → **Tools…**: **Convert to** (the formats the selected files can become: images, PDF → PNG/JPG per page or text, Office documents → PDF/DOCX/ODT…, text and Markdown → PDF, audio, video → MP4/WebM/GIF/MP3), **PDF tools** (merge, split, extract, compress at low / medium / max), **Images** (images → one PDF, compress at low / medium / max, resize), **Archives** (extract .zip, .tar*, .7z, .rar), **Text (OCR)**, zip. Results
 appear next to the originals.
 
 ### Monitors

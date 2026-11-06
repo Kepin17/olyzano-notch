@@ -2675,16 +2675,115 @@ private slots:
     {
         if (QStandardPaths::findExecutable(QStringLiteral("gs")).isEmpty())
             QSKIP("ghostscript not installed");
-        QImage noise(1800, 1800, QImage::Format_RGB32); // incompressible enough to be large
+        // Big enough that every level downsamples it (about 360 dpi on an A4 page)
+        QImage noise(3000, 3000, QImage::Format_RGB32); // incompressible enough to be large
         for (int y = 0; y < noise.height(); ++y)
             for (int x = 0; x < noise.width(); ++x)
                 noise.setPixel(x, y, QRandomGenerator::global()->generate());
         const QString img = m_tmp.filePath(QStringLiteral("noise.png"));
         QVERIFY(noise.save(img));
-        const QString big = m_tmp.filePath(QStringLiteral("big.pdf")), small = m_tmp.filePath(QStringLiteral("small.pdf"));
+        const QString big = m_tmp.filePath(QStringLiteral("big.pdf"));
         QCOMPARE(DocTools::imagesToPdf({img}, big), QString());
-        QCOMPARE(DocTools::compressPdf(big, small), QString());
-        QVERIFY(QFileInfo(small).size() < QFileInfo(big).size());
+
+        // low keeps the most (300 dpi), max throws the most away (72 dpi): all shrink, max is the smallest
+        const QStringList levels{QStringLiteral("low"), QStringLiteral("medium"), QStringLiteral("max")};
+        qint64 sizes[3] = {};
+        for (int i = 0; i < levels.size(); ++i) {
+            const QString out = m_tmp.filePath(QStringLiteral("level-%1.pdf").arg(levels.at(i)));
+            const QString err = DocTools::compressPdf(big, out, levels.at(i));
+            QVERIFY2(err.isEmpty(), qPrintable(levels.at(i) + QStringLiteral(": ") + err));
+            sizes[i] = QFileInfo(out).size();
+            QVERIFY2(sizes[i] > 0 && sizes[i] < QFileInfo(big).size(), qPrintable(levels.at(i)));
+        }
+        QVERIFY2(sizes[2] <= sizes[1] && sizes[1] <= sizes[0],
+                 qPrintable(QStringLiteral("max %1, medium %2, low %3").arg(sizes[2]).arg(sizes[1]).arg(sizes[0])));
+        // no level means medium
+        const QString plain = m_tmp.filePath(QStringLiteral("plain.pdf"));
+        QCOMPARE(DocTools::compressPdf(big, plain), QString());
+        QCOMPARE(QFileInfo(plain).size(), sizes[1]);
+    }
+
+    void extractArchive()
+    {
+        if (QStandardPaths::findExecutable(QStringLiteral("unzip")).isEmpty())
+            QSKIP("unzip not installed");
+        const QString top = m_tmp.filePath(QStringLiteral("top.txt")), nested = m_tmp.filePath(QStringLiteral("nested.txt"));
+        {
+            QFile a(top), b(nested);
+            QVERIFY(a.open(QIODevice::WriteOnly));
+            a.write("top");
+            a.close();
+            QVERIFY(b.open(QIODevice::WriteOnly));
+            b.write("nested");
+            b.close();
+        }
+        const QString zip = m_tmp.filePath(QStringLiteral("sample.zip"));
+        // ZipWriter takes any name inside: this one tries to climb out of the extraction folder
+        QCOMPARE(ZipWriter::write(zip, {{top, QStringLiteral("top.txt")},
+                                        {nested, QStringLiteral("sub/nested.txt")},
+                                        {nested, QStringLiteral("../../escape.txt")}}),
+                 QString());
+
+        const QString work = m_tmp.filePath(QStringLiteral("unzip-work"));
+        QDir().mkpath(work);
+        const DocTools::ToolInput in{zip, QStringLiteral("sample"), QStringLiteral("sample.zip")};
+        const auto r = DocTools::runTool(QStringLiteral("unzip"), {in}, {}, work);
+        QVERIFY2(r.error.isEmpty(), qPrintable(r.error));
+        QStringList names;
+        for (const auto &out : r.outputs) {
+            names << out.second;
+            QCOMPARE(QFileInfo(out.first).absolutePath(), QFileInfo(work).absoluteFilePath()); // stays in the work folder
+        }
+        QVERIFY(names.size() >= 2); // the folder inside is flattened away; unzip may keep or drop the climbing name
+        QVERIFY(names.contains(QStringLiteral("top.txt")));
+        QVERIFY(names.contains(QStringLiteral("nested.txt")));
+        QVERIFY(!QFile::exists(m_tmp.filePath(QStringLiteral("escape.txt")))); // zip-slip goes nowhere near the shelf
+
+        const DocTools::ToolInput plain{top, QStringLiteral("top"), QStringLiteral("top.txt")};
+        QVERIFY(!DocTools::runTool(QStringLiteral("unzip"), {plain}, {}, work).error.isEmpty()); // not an archive
+    }
+
+    void compressImage()
+    {
+        QImage noise(1600, 1600, QImage::Format_RGB32);
+        for (int y = 0; y < noise.height(); ++y)
+            for (int x = 0; x < noise.width(); ++x)
+                noise.setPixel(x, y, QRandomGenerator::global()->generate());
+        const QString png = m_tmp.filePath(QStringLiteral("photo.png"));
+        QVERIFY(noise.save(png)); // no transparency: compressing turns it into a jpg
+        QImage clear(800, 800, QImage::Format_ARGB32); // with transparency it becomes webp
+        clear.fill(qRgba(10, 120, 200, 120));
+        const QString transparent = m_tmp.filePath(QStringLiteral("clear.png"));
+        QVERIFY(clear.save(transparent));
+        const QString jpg = m_tmp.filePath(QStringLiteral("camera.jpg"));
+        QVERIFY(noise.save(jpg, "jpg", 95));
+
+        const QString work = m_tmp.filePath(QStringLiteral("compress-work"));
+        QDir().mkpath(work);
+        const auto run = [&](const QString &path, const QString &base, const QString &ext) {
+            return DocTools::runTool(QStringLiteral("compress-image"), {{path, base, base + ext}}, QStringLiteral("max"), work);
+        };
+
+        const auto pngRun = run(png, QStringLiteral("photo"), QStringLiteral(".png"));
+        QVERIFY2(pngRun.error.isEmpty(), qPrintable(pngRun.error));
+        QCOMPARE(pngRun.outputs.size(), 1);
+        QCOMPARE(pngRun.outputs.first().second, QStringLiteral("photo (compressed).jpg"));
+        QVERIFY2(QFileInfo(pngRun.outputs.first().first).size() < QFileInfo(png).size(),
+                 qPrintable(QStringLiteral("%1 >= %2").arg(QFileInfo(pngRun.outputs.first().first).size()).arg(QFileInfo(png).size())));
+        QVERIFY(QFile::exists(png)); // the original stays
+        QCOMPARE(QImageReader(pngRun.outputs.first().first).size(), noise.size()); // only the file got smaller
+
+        const auto clearRun = run(transparent, QStringLiteral("clear"), QStringLiteral(".png"));
+        QVERIFY2(clearRun.error.isEmpty(), qPrintable(clearRun.error));
+        QCOMPARE(clearRun.outputs.size(), 1);
+        QCOMPARE(clearRun.outputs.first().second, QStringLiteral("clear (compressed).webp"));
+
+        const auto jpgRun = run(jpg, QStringLiteral("camera"), QStringLiteral(".jpg"));
+        QVERIFY2(jpgRun.error.isEmpty(), qPrintable(jpgRun.error));
+        QCOMPARE(jpgRun.outputs.size(), 1);
+        QCOMPARE(jpgRun.outputs.first().second, QStringLiteral("camera (compressed).jpg"));
+        QVERIFY2(QFileInfo(jpgRun.outputs.first().first).size() < QFileInfo(jpg).size(),
+                 qPrintable(QStringLiteral("%1 >= %2").arg(QFileInfo(jpgRun.outputs.first().first).size()).arg(QFileInfo(jpg).size())));
     }
 
     void convertAndOcr()
