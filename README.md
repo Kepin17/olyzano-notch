@@ -149,6 +149,7 @@ Olyzano Notch runs without these; each one switches on a feature. It finds them 
 | **ffmpeg** | *Convert to* audio and video | recommended by the `.deb` | [ffmpeg builds](https://www.gyan.dev/ffmpeg/builds/): add `bin` to `PATH` |
 | **LibreOffice** | *Convert to* for Word, Excel, PowerPoint | recommended by the `.deb` | [LibreOffice](https://www.libreoffice.org/download/download-libreoffice/): found in its default folder |
 | **Ghostscript** | *Compress PDF* | included in the `.deb` | [Ghostscript](https://ghostscript.com/releases/gsdnld.html) (64-bit AGPL); installer adds to `PATH` |
+| **7-Zip** | *Extract files* for `.7z` / `.rar` (`.zip` and `.tar*` work without it) | `sudo apt install p7zip-full` (`unzip` and `tar` are already there) | [7-Zip](https://www.7-zip.org/); `.zip` and `.tar*` use the built-in `tar` |
 | **KDE Connect** | *Send to device*, files from phone, calls, notifications | `sudo apt install kdeconnect` + [Android](https://play.google.com/store/apps/details?id=org.kde.kdeconnect_tp) / [iOS](https://apps.apple.com/app/kde-connect/id1580245991); pair once | [KDE Connect for Windows](https://kdeconnect.kde.org/download.html) (installer; Store version is not found) + same phone app |
 | **KWin** | Dock: real running apps, window list | part of Plasma | built in (Windows windows) |
 | **Plasma blur** | Frosted-glass behind the dock | *System Settings → Desktop Effects → Blur* | – |
