@@ -1385,18 +1385,20 @@ Window {
         property real fromH: 0
         property bool transitioning: false
         Timer { id: transitionEnd; interval: 900; onTriggered: island.transitioning = false }
-        // How much of the way from the old size to the new one the background has gone, 0..1.
-        readonly property real covered: {
-            const dh = targetHeight - fromH, dw = targetWidth - fromW
-            const ch = Math.abs(dh) < 2 ? 1 : (height - fromH) / dh
-            const cw = Math.abs(dw) < 2 ? 1 : (width - fromW) / dw
-            return Math.max(0, Math.min(1, Math.min(ch, cw))) // both axes there, so content never shows outside the shape
-        }
+        // How much of the way from the old size to the new one the background has gone, 0..1 (by each side, and by the slower of the two).
+        readonly property real coveredH: Math.abs(targetHeight - fromH) < 2 ? 1 : Math.max(0, Math.min(1, (height - fromH) / (targetHeight - fromH)))
+        readonly property real coveredW: Math.abs(targetWidth - fromW) < 2 ? 1 : Math.max(0, Math.min(1, (width - fromW) / (targetWidth - fromW)))
+        readonly property real covered: Math.min(coveredH, coveredW) // both axes there, so content never shows outside the shape
         function fade(mode) {
             if (!transitioning)
                 return root.mode === mode ? 1 : 0
-            if (root.mode === mode)
+            if (root.mode === mode) {
+                // The open panel is clipped to the island and the island grows over it, so it can show as soon as the island starts to open (by whichever side is further), not
+                // when the slower side is there: a tall empty box waiting for its width was the delay that was seen.
+                if (mode === "open")
+                    return Math.max(0, Math.min(1, (Math.max(coveredH, coveredW) - 0.06) / 0.25))
                 return Math.max(0, Math.min(1, (covered - 0.4) / 0.4))
+            }
             return prevMode === mode ? Math.max(0, 1 - covered * 2.4) : 0
         }
 

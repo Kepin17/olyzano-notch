@@ -33,7 +33,14 @@ jobs:
         uses: ilammy/msvc-dev-cmd@v1
 
       - name: OpenSSL (AES-GCM for encrypted shares)
-        run: vcpkg install openssl:x64-windows
+        # vcpkg downloads its build tools (Strawberry Perl) from GitHub, which sometimes answers 504: try again a few times before failing.
+        run: |
+          for ($i = 1; $i -le 3; $i++) {
+            vcpkg install openssl:x64-windows
+            if ($LASTEXITCODE -eq 0) { break }
+            Start-Sleep -Seconds (20 * $i)
+          }
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Configure
         # The Discord app for "muted / deafened" comes from repository secrets (Settings -> Secrets -> Actions:
