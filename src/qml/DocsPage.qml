@@ -97,6 +97,7 @@ Item {
             scopeRef: !!page.picked && page.picked.kind === "item" ? page.picked.id : ""
             hint: !!page.picked && page.picked.kind === "item" ? "Ask about " + (page.info.name || "this PDF") : "Ask about your files and recordings"
             onOpenSource: (s) => page.openSource(s)
+            onGrew: Qt.callLater(() => { const f = askScroll.contentItem; f.contentY = Math.max(0, f.contentHeight - f.height + 18) })
         }
     }
 

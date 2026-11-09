@@ -210,6 +210,7 @@ public:
     // The PDFs that are ready on the shelf, newest first (at most 40): [{id, name, sizeText, addedText}]
     Q_INVOKABLE QVariantList pdfItems() const;
     // A toast: "Summary ready".
+    Q_INVOKABLE void debugLog(const QString &what); // a line in height.log (data folder), for a layout that goes wrong only in real use
     Q_INVOKABLE void announce(const QString &title, const QString &detail, const QString &icon = {}) { emit notice(title, detail, icon, QString()); }
     // Note editor toolkit (see TextTools.h): {ok, text, error}.
     Q_INVOKABLE QVariantMap transformText(const QString &kind, const QString &text) const;

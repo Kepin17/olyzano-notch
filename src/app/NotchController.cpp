@@ -1,4 +1,5 @@
 #include "NotchController.h"
+#include "platform/NotchPaths.h"
 
 #include "services/CleanupService.h"
 #ifdef Q_OS_WIN
@@ -1329,6 +1330,16 @@ void NotchController::expireEmptyCategories()
     for (const QString &id : m_repo.staleCategories(now, now))
         if (!keep.contains(id) && !m_fresh.contains(id) && !isLockedCategory(id))
             deleteCategory(id);
+}
+
+void NotchController::debugLog(const QString &what)
+{
+    const QString path = NotchPaths::dataDir() + QStringLiteral("/height.log");
+    if (QFileInfo(path).size() > 200 * 1024)
+        QFile::remove(path);
+    QFile f(path);
+    if (f.open(QIODevice::Append | QIODevice::Text))
+        f.write((QDateTime::currentDateTime().toString(Qt::ISODate) + u' ' + what + u'\n').toUtf8());
 }
 
 void NotchController::showOnly(const QStringList &ids)

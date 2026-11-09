@@ -5,6 +5,8 @@
 #include "platform/NotchPaths.h"
 #include "platform/ProcessRunner.h"
 #include "services/Chunker.h"
+#include "services/LanguageSettings.h"
+#include "services/Languages.h"
 #include "services/DocSummarize.h"
 #include "services/DocSummaryModel.h"
 #include "services/KnowledgeStore.h"
@@ -16,6 +18,7 @@
 #include <QFileInfo>
 #include <QMetaObject>
 #include <QMimeDatabase>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QUuid>
 #include <QtConcurrent>
@@ -553,6 +556,7 @@ void KnowledgeController::ask(const QString &questionRaw, const QVariantMap &sco
         return;
     if (!modelReady()) {
         m_askError = tr("Download the language model first: Settings → AI.");
+        ++m_answerSerial;
         emit changed();
         return;
     }
@@ -572,6 +576,8 @@ void KnowledgeController::ask(const QString &questionRaw, const QVariantMap &sco
                 m_asking = false;
                 m_stage.clear();
                 m_askError = why;
+                if (!why.isEmpty())
+                    ++m_answerSerial; // a reply (an error is one too); stopping by hand is not
                 emit changed();
             }, Qt::QueuedConnection);
         };
@@ -583,6 +589,10 @@ void KnowledgeController::ask(const QString &questionRaw, const QVariantMap &sco
             return;
         }
         Audio::Ask::Query q = Audio::Ask::understand(understanding, question, now);
+        // the reply is in the language the person wrote in (among the languages in use), else the model follows the question
+        const QString detected = Lang::detect(question, LanguageSettings::enabled());
+        static const QRegularExpression idLike(QStringLiteral(R"(\b(berapa|apa|siapa|kapan|bagaimana|mengapa|kenapa|yang|dan|di|ke|dari|untuk|dengan|ada|saya|tolong)\b)"), QRegularExpression::CaseInsensitiveOption);
+        const QString answerLanguage = !detected.isEmpty() ? Lang::englishName(detected) : idLike.match(question).hasMatch() ? QStringLiteral("Indonesian") : QString();
         if (m_cancelAsk) { m_jobRunning = false; fail(QString()); return; }
         stage(QStringLiteral("searching"));
         KnowledgeStore store(uniqueName());
@@ -628,7 +638,7 @@ void KnowledgeController::ask(const QString &questionRaw, const QVariantMap &sco
             const Audio::ChatFn base = chatFn(900);
             QString raw;
             const Audio::ChatFn spy = [&](const QString &s, const QString &u, const QJsonObject &sc) { raw = base(s, u, sc); return raw; };
-            a = Audio::Ask::answer(spy, question, sources);
+            a = Audio::Ask::answer(spy, question, sources, answerLanguage);
             if (qEnvironmentVariableIsSet("NOTCH_ASK_DEBUG"))
                 qWarning().noquote() << "ASK-DEBUG sources" << sources.size() << "raw:" << raw.left(900);
         }
@@ -638,8 +648,11 @@ void KnowledgeController::ask(const QString &questionRaw, const QVariantMap &sco
         if (m_cancelAsk) { fail(QString()); return; }
         QVariantList shown;
         QSet<int> cited;
-        for (const Audio::Ask::Citation &c : a.citations)
+        QHash<int, int> markOf;
+        for (const Audio::Ask::Citation &c : a.citations) {
             cited.insert(c.n);
+            markOf.insert(c.n, c.mark);
+        }
         for (const Audio::Ask::Source &s : std::as_const(sources)) {
             const bool isCited = cited.contains(s.n);
             if (!isCited && a.supported())
@@ -652,17 +665,28 @@ void KnowledgeController::ask(const QString &questionRaw, const QVariantMap &sco
             shown.append(QVariantMap{{QStringLiteral("n"), s.n}, {QStringLiteral("name"), s.hit.name}, {QStringLiteral("kind"), meeting ? QStringLiteral("recording") : QStringLiteral("file")},
                                      {QStringLiteral("ref"), s.hit.ref}, {QStringLiteral("page"), s.hit.page}, {QStringLiteral("startSec"), s.hit.startSec},
                                      {QStringLiteral("where"), meeting ? Audio::clock(s.hit.startSec >= 0 ? s.hit.startSec : 0) : s.hit.page > 0 ? tr("page %1").arg(s.hit.page) : QString()},
-                                     {QStringLiteral("quote"), quote}, {QStringLiteral("snippet"), s.hit.text.left(300)}, {QStringLiteral("cited"), isCited}});
+                                     {QStringLiteral("quote"), quote}, {QStringLiteral("snippet"), s.hit.text.left(300)}, {QStringLiteral("cited"), isCited},
+                                     {QStringLiteral("mark"), isCited ? markOf.value(s.n) : 0}});
             if (!a.supported() && shown.size() >= 3)
                 break;
         }
-        const QVariantMap result{{QStringLiteral("question"), question}, {QStringLiteral("text"), a.supported() ? a.text : QString()}, {QStringLiteral("notFound"), !a.supported()}, {QStringLiteral("figuresUnchecked"), a.figuresUnchecked},
+        std::sort(shown.begin(), shown.end(), [](const QVariant &x, const QVariant &y) { // the ones the reply marks first, in the order of its markers
+            const int a1 = x.toMap().value(QStringLiteral("mark")).toInt(), b1 = y.toMap().value(QStringLiteral("mark")).toInt();
+            return a1 != b1 ? (a1 == 0 ? false : b1 == 0 ? true : a1 < b1) : x.toMap().value(QStringLiteral("n")).toInt() < y.toMap().value(QStringLiteral("n")).toInt();
+        });
+        static const QRegularExpression idWords(QStringLiteral(R"(\b(berapa|apa|siapa|kapan|bagaimana|mengapa|kenapa|yang|dan|di|ke|dari|untuk|dengan|ada|saya|tolong)\b)"), QRegularExpression::CaseInsensitiveOption);
+        const bool indonesian = detected == QLatin1String("id") || detected == QLatin1String("ms") || (detected.isEmpty() && idWords.match(question).hasMatch());
+        const auto say = [indonesian](const char *id, const char *en) { return QString::fromUtf8(indonesian ? id : en); };
+        const QVariantMap result{{QStringLiteral("notFoundText"), say("Saya tidak menemukannya di %1.", "I could not find this in %1.").arg(indonesian ? (kind == QLatin1String("file") ? QStringLiteral("berkas ini") : kind == QLatin1String("recording") ? QStringLiteral("rekaman ini") : kind == QLatin1String("files") ? QStringLiteral("berkas Anda") : kind == QLatin1String("recordings") ? QStringLiteral("rekaman Anda") : QStringLiteral("berkas dan rekaman Anda")) : scopeText)},
+                                 {QStringLiteral("closestText"), say("Bagian yang paling dekat:", "The closest passages:")}, {QStringLiteral("checkNumbersText"), say("Periksa angkanya: sebagian tidak ada di sumber.", "Check the numbers: some are not in the sources.")},
+                                 {QStringLiteral("question"), question}, {QStringLiteral("text"), a.supported() ? a.text : QString()}, {QStringLiteral("notFound"), !a.supported()}, {QStringLiteral("figuresUnchecked"), a.figuresUnchecked},
                                  {QStringLiteral("sources"), shown}, {QStringLiteral("scopeText"), scopeText}, {QStringLiteral("seconds"), double(clock.elapsed()) / 1000.0},
                                  {QStringLiteral("chips"), chips(q)}};
         QMetaObject::invokeMethod(this, [this, result] {
             m_asking = false;
             m_stage.clear();
             m_answer = result;
+            ++m_answerSerial;
             emit changed();
         }, Qt::QueuedConnection);
     });

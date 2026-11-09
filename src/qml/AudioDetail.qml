@@ -109,6 +109,7 @@ Item {
                     scopeKind: "recording"
                     scopeRef: String(audioIntel.current)
                     hint: "Ask about this recording"
+                    onGrew: Qt.callLater(() => { const f = askArea.contentItem; f.contentY = Math.max(0, f.contentHeight - f.height + 18) })
                     onOpenSource: (s) => {
                         if (s.kind === "recording" && parseInt(s.ref) === audioIntel.current) detail.page.playAt(s.startSec)
                         else if (s.kind === "recording") { detail.page.shell.audioOpen = { id: parseInt(s.ref), sec: s.startSec } }

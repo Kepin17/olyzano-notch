@@ -677,6 +677,27 @@ Window {
     // Settings and the share window are built the first time they are needed, not at start-up (memory).
     function settingsPage() { settingsLoader.active = true; return settingsLoader.item }
     function sharePopup() { shareLoader.active = true; return shareLoader.item }
+    // The open Files page is short; a panel that stays tall on it (seen only in real use) writes down what makes it tall, in height.log of the data folder.
+    function heightReport() {
+        const parts = []
+        for (let i = 0; i < panel.children.length; ++i) {
+            const c = panel.children[i]
+            if (c.visible && c.height > 40)
+                parts.push(i + ":" + String(c).split("(")[0] + " h=" + Math.round(c.height) + " ih=" + Math.round(c.implicitHeight))
+        }
+        return page + " island=" + Math.round(island.height) + " target=" + Math.round(island.targetHeight) + " panel=" + Math.round(panel.implicitHeight) + " share=" + Math.round(shareNeed)
+               + " dialogs=" + dialogs + " win=" + Math.round(root.height) + " scale=" + island.scale.toFixed(2) + " transitioning=" + island.transitioning
+               + " children{" + parts.join("; ") + "}"
+    }
+    Timer {
+        id: tallWatch
+        interval: 2500
+        running: root.mode === "open" && root.page === "shelf" && !island.transitioning && island.height > 420
+        repeat: true
+        property int logged: 0
+        onTriggered: if (logged++ < 3) notch.debugLog(root.heightReport())
+        onRunningChanged: if (!running) logged = 0
+    }
     // `notch --ui-check`: what must hold on every page once it has settled. Each rule comes from a layout bug that really happened.
     // -> a list of problems (empty: fine).
     function uiCheck() {
@@ -1409,6 +1430,17 @@ Window {
         // (invisible at that size).
         Behavior on height { enabled: activities.animations; SpringAnimation { spring: island.closing ? 7 : 5.5; damping: root.damp(island.closing ? 0.9 : root.mode === "idle" ? 0.8 : root.pillLook ? 0.6 : 0.32); epsilon: 0.4 } }
         Behavior on width { enabled: activities.animations; SpringAnimation { spring: island.closing ? 6 : 4.8; damping: root.damp(island.closing ? 0.9 : root.mode === "idle" ? 0.8 : root.pillLook ? 0.6 : 0.3); epsilon: 0.4 } }
+        // A panel that stays taller than its page needs (it was seen after a long job, with the old page's height) is brought back to its size: the
+        // height is set to the target once more, and bound again.
+        Timer {
+            id: heal
+            interval: 1500
+            running: root.mode === "open" && !island.transitioning && island.height > island.targetHeight + 16
+            onTriggered: {
+                island.height = island.targetHeight
+                island.height = Qt.binding(() => island.targetHeight)
+            }
+        }
         onTargetWidthChanged: root.maskMoving()
         onTargetHeightChanged: root.maskMoving()
         Connections { target: activities; function onSettingsChanged() { root.maskMoving() } }

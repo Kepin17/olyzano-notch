@@ -37,6 +37,7 @@ class KnowledgeController : public QObject
     Q_PROPERTY(QString askStage READ askStage NOTIFY changed)     // understanding | searching | reading | ""
     Q_PROPERTY(QVariantMap answer READ answer NOTIFY changed)     // {question, text, notFound, sources:[...], scopeText}
     Q_PROPERTY(QString askError READ askError NOTIFY changed)
+    Q_PROPERTY(int answerSerial READ answerSerial NOTIFY changed) // grows with each answer: a panel that keeps the conversation adds one message when it changes
 
 public:
     KnowledgeController(NotchController *notch, AudioController *audio, QObject *parent = nullptr);
@@ -61,6 +62,7 @@ public:
     QString askStage() const { return m_stage; }
     QVariantMap answer() const { return m_answer; }
     QString askError() const { return m_askError; }
+    int answerSerial() const { return m_answerSerial; }
 
     Q_INVOKABLE void rescan();                                    // look for what changed now
     Q_INVOKABLE void rebuild();                                   // forget the index and make it again
@@ -96,6 +98,7 @@ private:
     bool m_indexing = false, m_smartBusy = false, m_asking = false;
     QString m_status, m_stage, m_askError;
     QVariantMap m_stats, m_smart, m_answer;
+    int m_answerSerial = 0;
     Audio::Ask::Query m_smartQuery;
     QString m_smartSentence;
     bool m_smartPlain = false;

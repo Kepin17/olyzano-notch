@@ -1858,8 +1858,17 @@ private slots:
         a.kind = QStringLiteral("shelf"); a.name = QStringLiteral("Tagihan.pdf"); a.page = 2; a.text = QStringLiteral("Tagihan listrik bulan Oktober sebesar Rp 450.000, jatuh tempo 20 Oktober.");
         b.kind = QStringLiteral("meeting"); b.name = QStringLiteral("Rapat"); b.startSec = 125; b.text = QStringLiteral("Ani: Anggaran listrik kantor naik sepuluh persen tahun depan.");
         const QList<Ask::Source> sources{{1, a}, {2, b}};
-        QCOMPARE(Ask::cleanAnswerText(QStringLiteral("Rp 450.000. [S1]'}")), QStringLiteral("Rp 450.000."));
-        QCOMPARE(Ask::cleanAnswerText(QStringLiteral("Dua [S1 | Tagihan.pdf | p. 2] hal [S2].")), QStringLiteral("Dua hal."));
+        QCOMPARE(Ask::cleanAnswerText(QStringLiteral("Rp 450.000. [S1]'}")), QStringLiteral("Rp 450.000. [S1]"));
+        {   // the markers of a reply: kept where a quote was found, numbered in the order they come, dropped otherwise, added when forgotten
+            QList<int> order;
+            QCOMPARE(Ask::markCitations(QStringLiteral("Dua [S5 | Tagihan.pdf | p. 2] hal [S2] dan [S9]."), {5, 2}, &order), QStringLiteral("Dua [1] hal [2] dan."));
+            QCOMPARE(order, (QList<int>{5, 2}));
+            order.clear();
+            QCOMPARE(Ask::markCitations(QStringLiteral("Tanpa tanda."), {3}, &order), QStringLiteral("Tanpa tanda. [1]"));
+            order.clear();
+            QCOMPARE(Ask::markCitations(QStringLiteral("Sama [S1] dua kali [1]."), {1}, &order), QStringLiteral("Sama [1] dua kali [1]."));
+            QCOMPARE(Ask::stripMarkers(QStringLiteral("Rp 450.000 [S1] ya [2].")), QStringLiteral("Rp 450.000 ya."));
+        }
         {   // the model copied the whole label as the source
             const Audio::ChatFn copied = [](const QString &, const QString &, const QJsonObject &) {
                 return QStringLiteral("{\"answer\":\"Rp 450.000\",\"citations\":[{\"source\":\"S1 | Tagihan.pdf | p. 2\",\"quote\":\"sebesar Rp 450.000\"}],\"not_found\":false}");
@@ -2016,7 +2025,8 @@ private slots:
         Audio::Ask::Answer a = Audio::Ask::answer(slip, QStringLiteral("berapa sewa?"), sources);
         QVERIFY(a.supported() && !a.figuresUnchecked);
         QCOMPARE(a.citations[0].quote, QStringLiteral("Biaya sewa Rp 24.000.000 per tahun, dibayar di muka."));
-        QCOMPARE(a.text, QStringLiteral("Rp 24.000.000 per tahun."));
+        QCOMPARE(a.text, QStringLiteral("Rp 24.000.000 per tahun. [1]"));
+        QCOMPARE(a.citations[0].mark, 1);
         const Audio::ChatFn invented = [](const QString &, const QString &, const QJsonObject &) {
             return QStringLiteral("{\"answer\":\"Rp 30.000.000 per tahun.\",\"citations\":[{\"source\":\"S1\",\"quote\":\"Biaya sewa Rp 24.000.000 per tahun\"}],\"not_found\":false}");
         };
