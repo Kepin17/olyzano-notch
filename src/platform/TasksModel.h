@@ -34,9 +34,64 @@ enum class DueState { None, Later, Critical, Soon, Overdue };
 
 // "17:30", "tomorrow", "tomorrow 9:00", "today 18:00", "fri", "fri 17:00", "12 nov", "12/11 17:00", "2026-11-02 09:00", "in 30m", "in 2h", "in 3d".
 // A date without a time means 09:00; a bare time that has already passed today means tomorrow. Invalid when unclear.
-inline QDateTime parseDue(const QString &text, const QDateTime &now)
+// Indonesian said the way people write deadlines ("Jumat, 14 November 2026 pukul 17.00", "besok jam 9", "Jumat minggu depan", "3 hari lagi") turned
+// into the forms parseDue knows; English passes through unchanged.
+inline QString localizeDue(const QString &text, bool *nextWeek)
 {
-    const QString t = text.trimmed().toLower();
+    QString t = text.trimmed().toLower();
+    t.replace(u',', u' ');
+    *nextWeek = false;
+    static const QRegularExpression nextWeekRe(QStringLiteral(R"(\b(minggu depan|pekan depan|next week)\b)"));
+    if (nextWeekRe.match(t).hasMatch()) {
+        *nextWeek = true;
+        t.remove(nextWeekRe);
+    }
+    static const QRegularExpression agoRe(QStringLiteral(R"(\b(\d{1,3})\s*(hari|jam|menit)\s+lagi\b)"));
+    if (auto m = agoRe.match(t); m.hasMatch())
+        return QStringLiteral("in %1%2").arg(m.captured(1), m.captured(2) == QLatin1String("hari") ? QStringLiteral("d") : m.captured(2) == QLatin1String("jam") ? QStringLiteral("h") : QStringLiteral("m"));
+    static const QRegularExpression clockRe(QStringLiteral(R"(\b(?:jam|pukul|pkl)\s+(\d{1,2})(?:[.:](\d{2}))?)"));
+    t.replace(clockRe, QStringLiteral("\\1:\\2"));
+    static const QRegularExpression emptyMinutes(QStringLiteral(R"((\d{1,2}):(?=\s|$))"));
+    t.replace(emptyMinutes, QStringLiteral("\\1:00"));
+    t.replace(QRegularExpression(QStringLiteral(R"(\bhari ini\b)")), QStringLiteral("today"));
+    t.replace(QRegularExpression(QStringLiteral(R"(\bbesok\b)")), QStringLiteral("tomorrow"));
+    t.replace(QRegularExpression(QStringLiteral(R"(\bnanti malam\b)")), QStringLiteral("today 20:00"));
+    static const QRegularExpression filler(QStringLiteral(R"(\b(hari|tanggal|tgl|pada|paling lambat|selambat-lambatnya|sampai|sebelum|batas|di|on|by|before|until|at)\b)"));
+    t.remove(filler);
+    static const QList<QPair<QString, QString>> months{{"januari", "jan"}, {"februari", "feb"}, {"maret", "mar"}, {"april", "apr"}, {"mei", "may"}, {"juni", "jun"}, {"juli", "jul"},
+                                                       {"agustus", "aug"}, {"agu", "aug"}, {"agt", "aug"}, {"september", "sep"}, {"sept", "sep"}, {"oktober", "oct"}, {"okt", "oct"},
+                                                       {"nopember", "nov"}, {"november", "nov"}, {"desember", "dec"}, {"des", "dec"}};
+    for (const auto &m : months)
+        t.replace(QRegularExpression(QStringLiteral("\\b%1\\b").arg(m.first)), m.second);
+    static const QRegularExpression dateWithMonth(QStringLiteral(R"(\b\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b)"));
+    static const QList<QPair<QString, QString>> days{{"senin", "mon"}, {"selasa", "tue"}, {"rabu", "wed"}, {"kamis", "thu"}, {"jumat", "fri"}, {"jum'at", "fri"}, {"sabtu", "sat"}, {"minggu", "sun"}, {"ahad", "sun"}};
+    const bool hasDate = dateWithMonth.match(t).hasMatch();
+    for (const auto &d : days) {
+        const QRegularExpression re(QStringLiteral("\\b%1\\b").arg(d.first));
+        if (hasDate)
+            t.remove(re); // a date says the day already: "Jumat, 14 November" is the 14th
+        else
+            t.replace(re, d.second);
+    }
+    return t.simplified();
+}
+
+inline QDateTime parseDue(const QString &text, const QDateTime &nowIn)
+{
+    bool nextWeek = false;
+    QString t = localizeDue(text, &nextWeek);
+    QDateTime now = nowIn;
+    if (nextWeek) // the weekday of next week: counted from the Sunday that ends this week
+        now = QDateTime(nowIn.date().addDays(8 - nowIn.date().dayOfWeek()).addDays(-1), QTime(23, 59, 59));
+    if (t == QLatin1String("lusa")) {
+        const QDate d = nowIn.date().addDays(2);
+        return QDateTime(d, QTime(9, 0));
+    }
+    if (t.startsWith(QLatin1String("lusa "))) {
+        static const QRegularExpression hm(QStringLiteral(R"(^lusa\s+(\d{1,2})[:.](\d{2})$)"));
+        if (auto m = hm.match(t); m.hasMatch())
+            return QDateTime(nowIn.date().addDays(2), QTime(m.captured(1).toInt(), m.captured(2).toInt()));
+    }
     static const QRegularExpression timeRe(QStringLiteral(R"(^(\d{1,2})[:.](\d{2})$)"));
     static const QRegularExpression inRe(QStringLiteral(R"(^in\s+(\d{1,3})\s*(m|min|mins|h|hr|hrs|d|day|days)$)"));
     static const QRegularExpression dayTimeRe(QStringLiteral(R"(^(today|tomorrow)(?:\s+(\d{1,2})[:.](\d{2}))?$)"));

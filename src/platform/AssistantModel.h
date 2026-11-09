@@ -301,9 +301,9 @@ inline QString siteUrlHeard(const QString &said)
         if (phrase.size() < 4)
             continue;
         double sc = 0;
-        const QString near = AssistantText::nearest(phrase, names, &sc, take == 1 ? 0.84 : 0.9);
-        if (!near.isEmpty())
-            return siteTable().value(near);
+        const QString closestName = AssistantText::nearest(phrase, names, &sc, take == 1 ? 0.84 : 0.9);
+        if (!closestName.isEmpty())
+            return siteTable().value(closestName);
     }
     return {};
 }
@@ -475,8 +475,8 @@ inline Intent parseExact(const QString &said)
                 static const QStringList kinds{QStringLiteral("video"), QStringLiteral("videos"), QStringLiteral("vidio"), QStringLiteral("channel"),
                                                QStringLiteral("channels"), QStringLiteral("saluran"), QStringLiteral("kanal")};
                 double fsc = 0;
-                const QString near = q.first().size() >= 5 ? AssistantText::nearest(q.first(), kinds, &fsc, 0.84) : QString(); // "viddeo", "khannel"
-                const QString f = near.isEmpty() ? q.first() : near;
+                const QString closestName = q.first().size() >= 5 ? AssistantText::nearest(q.first(), kinds, &fsc, 0.84) : QString(); // "viddeo", "khannel"
+                const QString f = closestName.isEmpty() ? q.first() : closestName;
                 if (f == QLatin1String("video") || f == QLatin1String("videos") || f == QLatin1String("vidio")) {
                     in.filter = QStringLiteral("video");
                     q.removeFirst();

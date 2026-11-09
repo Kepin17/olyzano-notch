@@ -50,6 +50,8 @@ Item {
             text: !root.live ? "" : root.live.notice !== "" ? root.live.notice : "Loading the speech model… the recording is already running."
         }
 
+        Caption { visible: !!root.live && root.live.engine !== ""; Layout.fillWidth: true; text: root.live ? "Speech: " + root.live.engine : "" }
+
         // ---------------- languages ----------------
         Rectangle {
             Layout.fillWidth: true
@@ -88,21 +90,15 @@ Item {
                     LanguagePicker { value: root.live ? root.live.target : "en"; allowAuto: false; onPicked: (c) => root.live.target = c
                         onMoreRequested: { root.page.shell.settingsCategory = "languages"; root.page.shell.page = "settings" } }
                     Item { width: 1; height: 1 }
-                    Flow {
-                        Layout.fillWidth: true
-                        spacing: 6
-                        PillButton { text: "Translate what they say"; checked: !!root.live && root.live.translate; enabled: !!root.live && root.live.llmReady
-                            onClicked: root.live.translate = !root.live.translate }
-                        PillButton { text: "Translate what I say"; checked: !!root.live && root.live.translateMine; enabled: !!root.live && root.live.llmReady
-                            onClicked: root.live.translateMine = !root.live.translateMine }
-                    }
+                    PillButton { text: "Translate everything into " + (root.live ? languages.label(root.live.target) : ""); checked: !!root.live && root.live.translate; enabled: !!root.live && root.live.llmReady
+                        onClicked: root.live.translate = !root.live.translate }
                     Item { width: 1; height: 1 }
                     Text {
                         visible: !!root.live && !root.live.llmReady
                         Layout.fillWidth: true
                         wrapMode: Text.Wrap
                         color: theme.textFaint; font.pixelSize: 11
-                        text: "Translation and answers need the language model: download it in Settings → AI → Audio Intelligence."
+                        text: "Translation and answers need the language model: download it in Settings → AI."
                     }
                 }
             }
@@ -133,6 +129,7 @@ Item {
                 required property string text
                 required property string translation
                 required property string language
+                required property bool partial
                 width: lines.width
                 implicitHeight: bubble.implicitHeight
                 readonly property bool mine: side === 0
@@ -150,8 +147,8 @@ Item {
                         id: bubbleCol
                         anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12; topMargin: 8 }
                         spacing: 3
-                        Text { text: (row.mine ? "You" : "Others") + "  ·  " + row.startText; color: theme.textFaint; font.pixelSize: 10 }
-                        Text { Layout.fillWidth: true; text: row.text; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: theme.text; font.pixelSize: 13; lineHeight: 1.15
+                        Text { text: (row.mine ? "You" : "Others") + "  ·  " + row.startText + (row.partial ? "  ·  listening…" : ""); color: theme.textFaint; font.pixelSize: 10 }
+                        Text { Layout.fillWidth: true; text: row.text; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: row.partial ? theme.textSoft : theme.text; font.pixelSize: 13; lineHeight: 1.15; font.italic: row.partial
                             horizontalAlignment: languages.rtl(row.language) ? Text.AlignRight : Text.AlignLeft }
                         Text { Layout.fillWidth: true; visible: row.translation !== ""; text: row.translation; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: theme.textSoft; font.pixelSize: 12; font.italic: true; lineHeight: 1.15 }
                     }

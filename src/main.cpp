@@ -2,7 +2,11 @@
 #include "app/NearbyController.h"
 #include "app/CloudController.h"
 #include "audio/AudioController.h"
+#include "audio/Hardware.h"
 #include "app/DocSummaryController.h"
+#include "app/KnowledgeController.h"
+#include "app/TaskSuggestController.h"
+#include "app/VisionController.h"
 #include "app/LanguageController.h"
 #include "app/ShareController.h"
 #include "services/QrImage.h"
@@ -243,6 +247,8 @@ int main(int argc, char *argv[])
     AudioController audioIntel;
     LanguageController languages(&audioIntel);
     DocSummaryController docSummary(&controller, &audioIntel);
+    VisionController vision(&controller, &audioIntel);
+    KnowledgeController knowledge(&controller, &audioIntel);
     NearbyController nearby(&controller);
 
     DesktopIntegration desktop;
@@ -274,6 +280,7 @@ int main(int argc, char *argv[])
     Launcher launcher(&dock);
     Doomscroll doomscroll(&dock, &media, &wellbeing);
     Tasks tasks;
+    TaskSuggestController taskSuggest(&controller, &audioIntel, &tasks);
     ApiTester apiTester;
     SshManager sshManager;
     DatabaseManager dbManager;
@@ -428,6 +435,8 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("audio"), &audio);
     engine.rootContext()->setContextProperty(QStringLiteral("audioIntel"), &audioIntel);
     engine.rootContext()->setContextProperty(QStringLiteral("docSummary"), &docSummary);
+    engine.rootContext()->setContextProperty(QStringLiteral("vision"), &vision);
+    engine.rootContext()->setContextProperty(QStringLiteral("knowledge"), &knowledge);
     engine.rootContext()->setContextProperty(QStringLiteral("languages"), &languages);
     engine.rootContext()->setContextProperty(QStringLiteral("kdeconnect"), &kdeconnect);
     engine.rootContext()->setContextProperty(QStringLiteral("theme"), &theme);
@@ -455,6 +464,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("updates"), &updates);
     engine.rootContext()->setContextProperty(QStringLiteral("assistant"), &assistant);
     engine.rootContext()->setContextProperty(QStringLiteral("tasks"), &tasks);
+    engine.rootContext()->setContextProperty(QStringLiteral("taskSuggest"), &taskSuggest);
     engine.rootContext()->setContextProperty(QStringLiteral("apiTester"), &apiTester);
     engine.rootContext()->setContextProperty(QStringLiteral("sshManager"), &sshManager);
     engine.rootContext()->setContextProperty(QStringLiteral("dbManager"), &dbManager);
@@ -733,7 +743,7 @@ int main(int argc, char *argv[])
                             QWheelEvent ev(QPointF(520, 300), w->mapToGlobal(QPointF(520, 300)), {}, QPoint(0, -120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
                             QCoreApplication::sendEvent(w, &ev);
                         }
-                    QTimer::singleShot(300, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+                    QTimer::singleShot(qEnvironmentVariableIsSet("NOTCH_SHOT_BOTTOM") ? 1500 : 300, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
                 });
             }
             w->setProperty("page", page.startsWith(QLatin1String("timer")) ? QStringLiteral("timer") : page);

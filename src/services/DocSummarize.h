@@ -3,6 +3,8 @@
 #include "DocSummaryModel.h"
 #include "audio/Summarize.h" // ChatFn
 
+#include <QByteArray>
+#include <QMap>
 #include <QStringList>
 
 #include <atomic>
@@ -22,6 +24,8 @@ public:
     // The page read as a picture, in the best language there is; "" with *error when it could not be (no OCR program, ...)
     virtual QString recognize(int page, const QString &language, const std::atomic_bool *cancel, QString *error) = 0;
     virtual QString ocrLanguages() { return QStringLiteral("eng"); } // what recognize will use ("ind+eng"), for the notes to say
+    virtual QMap<int, int> picturePages() { return {}; }               // pages that hold a figure -> how many (for the picture model)
+    virtual QByteArray renderPage(int page, int dpi, QString *error) { Q_UNUSED(page) Q_UNUSED(dpi) Q_UNUSED(error) return {}; } // the page as PNG
 };
 
 struct Options {
@@ -33,12 +37,18 @@ struct Options {
     int firstPage = 1, lastPage = 0;           // 0 = to the end
     int maxPages = 150;
     int chunkChars = 6000;
+    // The picture model, when the person asked for the figures to be described: it is shown each page that has a figure (up to maxFigurePages) and
+    // gives back the text to add to the page ("" with *error when it could not); `doneFigures` is called when it is no longer needed.
+    bool figures = false;
+    int maxFigurePages = 20;
+    std::function<QString(const QByteArray &png, QString *error)> describePage;
+    std::function<void()> doneFigures;
 };
 
 struct Result {
     QString error; // "" when the notes are made; "cancelled" when stopped
     Notes notes;
-    int pages = 0, ocrPages = 0, parts = 0, failedParts = 0;
+    int pages = 0, ocrPages = 0, parts = 0, failedParts = 0, figurePages = 0;
     QStringList warnings;
 };
 
@@ -56,6 +66,8 @@ public:
     QString textLayer(int page) override;
     QString recognize(int page, const QString &language, const std::atomic_bool *cancel, QString *error) override;
     QString ocrLanguages() override;
+    QMap<int, int> picturePages() override;
+    QByteArray renderPage(int page, int dpi, QString *error) override;
     static QStringList installedOcrLanguages(); // from `tesseract --list-langs`
 
 private:

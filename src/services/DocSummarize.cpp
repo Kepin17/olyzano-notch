@@ -2,6 +2,7 @@
 
 #include "DocTools.h"
 #include "OcrPacks.h"
+#include "audio/VisionPrompt.h"
 #include "platform/ProcessRunner.h"
 
 #include <QCryptographicHash>
@@ -57,10 +58,12 @@ Result summarize(IPageSource &source, const QString &cacheDir, const Options &op
     QJsonObject cached = loadJson(pagesFile).value(QStringLiteral("pages")).toObject();
     QList<Pdf::Page> pages;
     int emptyPages = 0;
+    const bool withFigures = opt.figures && opt.describePage;
+    const double pagesShare = withFigures ? 0.1 : 0.2; // the figures take the rest of the first fifth
     for (int n = first; n <= last; ++n) {
         if (stopped())
             return cancelled();
-        report("pages", 0.2 * double(n - first) / r.pages);
+        report("pages", pagesShare * double(n - first) / r.pages);
         Pdf::Page page;
         page.number = n;
         const QJsonObject c = cached.value(QString::number(n)).toObject();
@@ -81,7 +84,7 @@ Result summarize(IPageSource &source, const QString &cacheDir, const Options &op
                 } else if (!err.isEmpty() && !r.warnings.contains(err)) {
                     r.warnings << err;
                 }
-                report("ocr", 0.2 * double(n - first + 1) / r.pages);
+                report("ocr", pagesShare * double(n - first + 1) / r.pages);
             }
             cached.insert(QString::number(n), QJsonObject{{QStringLiteral("t"), page.text}, {QStringLiteral("o"), page.ocr}});
             saveJson(pagesFile, QJsonObject{{QStringLiteral("pages"), cached}});
@@ -91,6 +94,52 @@ Result summarize(IPageSource &source, const QString &cacheDir, const Options &op
         if (Pdf::looksScanned(page.text))
             ++emptyPages;
         pages << page;
+    }
+    // ---- the figures: pages with a picture that words do not carry are shown to the picture model, and what it says goes into the page ----
+    if (withFigures) {
+        QSet<int> readAsPicture;
+        for (const Pdf::Page &p : std::as_const(pages))
+            if (p.ocr)
+                readAsPicture.insert(p.number);
+        const QList<int> picks = Audio::Vision::pickFigurePages(source.picturePages(), readAsPicture, first, last, opt.maxFigurePages);
+        const QString figFile = cacheDir + QStringLiteral("/figures.json");
+        QJsonObject figCache = loadJson(figFile).value(QStringLiteral("f")).toObject();
+        for (int i = 0; i < picks.size(); ++i) {
+            if (stopped()) {
+                if (opt.doneFigures)
+                    opt.doneFigures();
+                return cancelled();
+            }
+            report("ocr", 0.1 + 0.1 * double(i) / picks.size());
+            const int n = picks[i];
+            QString text;
+            if (figCache.contains(QString::number(n))) {
+                text = figCache.value(QString::number(n)).toString();
+            } else {
+                QString err;
+                const QByteArray png = source.renderPage(n, 120, &err);
+                if (!png.isEmpty())
+                    text = opt.describePage(png, &err);
+                if (stopped())
+                    continue;
+                if (text.isEmpty() && !err.isEmpty()) {
+                    if (!r.warnings.contains(err))
+                        r.warnings << err;
+                    continue; // not saved: a later run tries this page again
+                }
+                figCache.insert(QString::number(n), text);
+                saveJson(figFile, QJsonObject{{QStringLiteral("f"), figCache}});
+            }
+            if (text.isEmpty())
+                continue;
+            for (Pdf::Page &p : pages)
+                if (p.number == n) {
+                    p.text += QStringLiteral("\n") + text;
+                    ++r.figurePages;
+                }
+        }
+        if (opt.doneFigures)
+            opt.doneFigures();
     }
     pages = Pdf::clean(pages);
     int letterTotal = 0;
@@ -205,6 +254,26 @@ QStringList PdfPageSource::installedOcrLanguages() { return OcrPacks::systemLang
 
 // the languages the pages are read in: the one asked for (when the person chose one) and those in use that have a pack, English too
 QString PdfPageSource::ocrLanguages() { return OcrPacks::current(m_firstTess).languages; }
+
+QMap<int, int> PdfPageSource::picturePages()
+{
+    const auto res = ProcessRunner::run(QStringLiteral("pdfimages"), {QStringLiteral("-list"), m_pdf}, 60000);
+    return res.ok ? Audio::Vision::picturePages(res.out) : QMap<int, int>();
+}
+
+QByteArray PdfPageSource::renderPage(int page, int dpi, QString *error)
+{
+    QTemporaryDir tmp;
+    const QString prefix = tmp.filePath(QStringLiteral("page"));
+    const auto render = ProcessRunner::run(QStringLiteral("pdftoppm"), {QStringLiteral("-r"), QString::number(dpi), QStringLiteral("-f"), QString::number(page), QStringLiteral("-l"), QString::number(page),
+                                                                         QStringLiteral("-png"), QStringLiteral("-singlefile"), m_pdf, prefix}, 120000);
+    if (!render.ok) {
+        *error = render.error.isEmpty() ? QObject::tr("The page could not be drawn for the picture model") : render.error;
+        return {};
+    }
+    QFile f(prefix + QStringLiteral(".png"));
+    return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+}
 
 QString PdfPageSource::recognize(int page, const QString &language, const std::atomic_bool *cancel, QString *error)
 {

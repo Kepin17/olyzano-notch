@@ -37,6 +37,7 @@ class NotchController : public QObject
     Q_PROPERTY(QString batchLabel READ batchLabel NOTIFY batchLabelChanged) // "Removing 340 of 1000" while a big remove/restore/delete runs, else ""
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged)
+    Q_PROPERTY(bool smartActive READ smartActive NOTIFY filterChanged) // a smart search decides what the list shows
     Q_PROPERTY(QVariantList categories READ categories NOTIFY categoriesChanged) // [{id, name, count}]
     Q_PROPERTY(QString categoryFilter READ categoryFilter WRITE setCategoryFilter NOTIFY categoryFilterChanged)
     Q_PROPERTY(int retentionDays READ retentionDays WRITE setRetentionDays NOTIFY retentionDaysChanged)
@@ -77,6 +78,11 @@ public:
     int copying() const { return m_copying; }
     QString errorMessage() const { return m_error; }
     QString filter() const { return m_filter; }
+    bool smartActive() const { return m_smart; }
+    // The files the knowledge index can read, as a snapshot (id, name, path, mime, size, mtime, added): not in the vault, not removed, not being copied.
+    QVariantList knowledgeItems() const;
+    Q_INVOKABLE void showOnly(const QStringList &ids); // the list shows these files only (a smart search)
+    Q_INVOKABLE void showAll();                         // ... and back to everything
     QString batchLabel() const { return m_batchLabel; }
     QString copyLabel() const { return m_copyLabel; }
     QString copyDetail() const { return m_copyDetail; }
@@ -373,6 +379,7 @@ private:
     FileFilter m_proxy;
     PageLimit m_paged;
     QString m_filter;
+    bool m_smart = false;
     QString m_categoryFilter;
     QNetworkAccessManager *m_net = nullptr;
     QSet<QString> m_dragging;

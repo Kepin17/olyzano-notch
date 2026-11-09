@@ -22,6 +22,8 @@ public:
     void setSortMode(const QString &mode);
     // Items whose text matches the search (from the FTS index): shown besides the ones whose name matches.
     void setContentIds(const QSet<QString> &ids);
+    // Only these items (a smart search found them): nothing else shows, whatever is typed. `active` false: back to the normal filter.
+    void setOnlyIds(const QSet<QString> &ids, bool active);
     void setVaultUnlocked(bool unlocked);
 
 protected:
@@ -47,7 +49,8 @@ private:
     QString m_text;
     QString m_category;
     QString m_sort = QStringLiteral("date");
-    QSet<QString> m_contentIds;
+    QSet<QString> m_contentIds, m_onlyIds;
+    bool m_only = false;
     bool m_vaultUnlocked = false;
 };
 

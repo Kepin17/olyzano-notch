@@ -1,11 +1,13 @@
 #include "AudioEngines.h"
 
 #include "EngineParse.h"
+#include "Hardware.h"
 #include "Summarize.h"
 #include "SystemMemory.h"
 #include "platform/ChildLife.h"
 
 #include <QDir>
+#include <cmath>
 #include <QElapsedTimer>
 #include <QEventLoop>
 #include <QFileInfo>
@@ -108,23 +110,29 @@ QString WhisperAsr::prepare(const QString &quality)
     if (!Whisper::compiled())
         return QObject::tr("This build of Notch has no speech recognition");
     const QString id = modelFor(quality);
-    if (m_loaded == id && m_whisper.loaded())
+    const Audio::HwPlan plan = Audio::Hardware::instance().plan(!m_store->path(LlamaSession::gpuHelperId()).isEmpty());
+    const bool wantGpu = plan.whisperGpu && !Whisper::gpus().isEmpty(); // a build without GPU support has none to offer
+    if (m_loaded == id && m_whisper.loaded() && m_gpu == wantGpu)
         return {};
     const QString path = m_store->path(id);
     if (path.isEmpty())
-        return QObject::tr("The speech model (%1) is not installed. Download it in Settings → AI → Audio Intelligence.").arg(m_store->item(id).title);
+        return QObject::tr("The speech model (%1) is not installed. Download it in Settings → AI.").arg(m_store->item(id).title);
     if (const QString why = memoryWarning(m_store->item(id).memory, m_store->item(id).title); !why.isEmpty())
         return why;
-    if (!m_whisper.load(path))
+    if (!m_whisper.load(path, wantGpu))
         return QObject::tr("The speech model could not be loaded: the file may be damaged. Delete it in Settings and download it again.");
+    if (wantGpu && m_whisper.fellBack())
+        Audio::Hardware::instance().markFailed(QStringLiteral("whisper"), QObject::tr("The speech model could not use the graphics card; it runs on the processor."));
     m_loaded = id;
+    m_gpu = wantGpu && !m_whisper.fellBack();
+    Audio::Hardware::instance().report(QStringLiteral("speech"), m_whisper.backend());
     return {};
 }
 
 QString WhisperAsr::transcribe(const QVector<float> &samples, const QString &language, const std::atomic_bool *cancel, QList<Segment> *segments, QString *detectedLanguage)
 {
     QList<Whisper::Piece> pieces;
-    const QString err = m_whisper.transcribeSegments(samples, Lang::known(language) ? Lang::whisperCode(language) : language, m_threads(), cancel, &pieces, detectedLanguage, m_languages ? m_languages() : QStringList());
+    const QString err = m_whisper.transcribeSegments(samples, Lang::known(language) ? Lang::whisperCode(language) : language, m_threads(), cancel, &pieces, detectedLanguage, m_languages ? m_languages() : QStringList(), m_fast);
     if (!err.isEmpty())
         return err;
     for (const Whisper::Piece &p : std::as_const(pieces))
@@ -271,13 +279,55 @@ void LlamaSession::stop()
     }
 }
 
+bool LlamaSession::embedAvailable(const ModelStore *store)
+{
+    return !store->path(LlamaSummarizer::helperId()).isEmpty() && !store->path(QStringLiteral("embed-qwen3")).isEmpty();
+}
+
+bool LlamaSession::visionAvailable(const ModelStore *store)
+{
+    return !store->path(LlamaSummarizer::helperId()).isEmpty() && !store->path(QStringLiteral("vision-qwen3vl")).isEmpty() && !store->path(QStringLiteral("vision-mmproj")).isEmpty();
+}
+
+QString LlamaSession::gpuHelperId()
+{
+#ifdef Q_OS_WIN
+    return QStringLiteral("gpu-llama-windows");
+#else
+    return QStringLiteral("gpu-llama-linux");
+#endif
+}
+
+// On a graphics card when the hardware plan says so (and the Vulkan program is installed); when that does not start, on the processor, and
+// the failure is remembered so that the card is not tried again at every start.
 QString LlamaSession::start(const std::atomic_bool *cancel)
 {
-    if (!available(m_store))
-        return QObject::tr("The language model is not installed");
-    if (const QString why = memoryWarning(m_store->item(QStringLiteral("qwen3-4b")).memory, m_store->item(QStringLiteral("qwen3-4b")).title); !why.isEmpty())
+    const QString modelId = m_embed ? QStringLiteral("embed-qwen3") : m_vision ? QStringLiteral("vision-qwen3vl") : QStringLiteral("qwen3-4b");
+    if (m_embed ? !embedAvailable(m_store) : m_vision ? !visionAvailable(m_store) : !available(m_store))
+        return m_embed ? QObject::tr("The search model is not installed") : m_vision ? QObject::tr("The picture model is not installed") : QObject::tr("The language model is not installed");
+    if (const QString why = memoryWarning(m_store->item(modelId).memory, m_store->item(modelId).title); !why.isEmpty())
         return why;
-    const QString program = m_store->path(LlamaSummarizer::helperId()), folder = m_store->folder(LlamaSummarizer::helperId()), model = m_store->path(QStringLiteral("qwen3-4b"));
+    const Audio::HwPlan plan = Audio::Hardware::instance().plan(!m_store->path(gpuHelperId()).isEmpty());
+    if (plan.llmVulkan) {
+        const QString err = startWith(gpuHelperId(), plan.llmLayers, cancel);
+        if (err.isEmpty()) {
+            Audio::Hardware::instance().report(m_embed ? QStringLiteral("search") : m_vision ? QStringLiteral("vision") : QStringLiteral("notes"), QStringLiteral("GPU: ") + plan.device + (plan.llmLayers >= 99 ? QString() : QObject::tr(" (part of the model)")));
+            return {};
+        }
+        if (err == QLatin1String("cancelled"))
+            return err;
+        stop();
+        Audio::Hardware::instance().markFailed(QStringLiteral("llm"), QObject::tr("The language model could not use the graphics card (%1); it runs on the processor.").arg(err.left(200)));
+    }
+    const QString err = startWith(LlamaSummarizer::helperId(), 0, cancel);
+    if (err.isEmpty())
+        Audio::Hardware::instance().report(m_embed ? QStringLiteral("search") : m_vision ? QStringLiteral("vision") : QStringLiteral("notes"), QStringLiteral("CPU"));
+    return err;
+}
+
+QString LlamaSession::startWith(const QString &helper, int layers, const std::atomic_bool *cancel)
+{
+    const QString program = m_store->path(helper), folder = m_store->folder(helper), model = m_store->path(m_embed ? QStringLiteral("embed-qwen3") : m_vision ? QStringLiteral("vision-qwen3vl") : QStringLiteral("qwen3-4b"));
     // a free port on this computer only, and a token that only this program and the server know
     int port = 0;
     {
@@ -298,9 +348,14 @@ QString LlamaSession::start(const std::atomic_bool *cancel)
     m_server.setProcessEnvironment(env);
     m_server.setWorkingDirectory(folder);
     ChildLife::dieWithParent(m_server);
-    m_server.start(program, {QStringLiteral("-m"), model, QStringLiteral("--host"), QStringLiteral("127.0.0.1"), QStringLiteral("--port"), QString::number(port), QStringLiteral("--api-key"),
-                             QString::fromLatin1(m_token), QStringLiteral("-c"), QStringLiteral("8192"), QStringLiteral("-t"), QString::number(m_threads()), QStringLiteral("--jinja"),
-                             QStringLiteral("--no-webui")});
+    QStringList args{QStringLiteral("-m"), model, QStringLiteral("--host"), QStringLiteral("127.0.0.1"), QStringLiteral("--port"), QString::number(port), QStringLiteral("--api-key"),
+                             QString::fromLatin1(m_token), QStringLiteral("-c"), QStringLiteral("8192"), QStringLiteral("-t"), QString::number(layers >= 99 ? qMin(m_threads(), 4) : m_threads()), QStringLiteral("--jinja"),
+                             QStringLiteral("--no-webui"), QStringLiteral("-ngl"), QString::number(layers)};
+    if (m_vision)
+        args << QStringLiteral("--mmproj") << m_store->path(QStringLiteral("vision-mmproj"));
+    if (m_embed) // vectors, not text: the last token of each text is its vector; a text is cut at 2048 tokens
+        args << QStringLiteral("--embedding") << QStringLiteral("--pooling") << QStringLiteral("last") << QStringLiteral("-ub") << QStringLiteral("2048") << QStringLiteral("-b") << QStringLiteral("2048");
+    m_server.start(program, args);
     if (!m_server.waitForStarted(15000))
         return QObject::tr("The language model program could not be started");
     m_base = QUrl(QStringLiteral("http://127.0.0.1:%1").arg(port));
@@ -326,11 +381,60 @@ QString LlamaSession::start(const std::atomic_bool *cancel)
     return QObject::tr("The language model did not become ready in time: %1").arg(tail(log));
 }
 
+QList<QVector<float>> LlamaSession::embed(const QStringList &texts, const std::atomic_bool *cancel)
+{
+    QList<QVector<float>> out;
+    if (!m_embed || texts.isEmpty())
+        return out;
+    QJsonArray input;
+    for (const QString &t : texts)
+        input.append(t.left(6000));
+    const QJsonObject body{{QStringLiteral("model"), QStringLiteral("local")}, {QStringLiteral("input"), input}};
+    QByteArray answer;
+    int status = 0;
+    const QString err = postJsonBlocking(m_base.resolved(QUrl(QStringLiteral("/v1/embeddings"))), m_token, QJsonDocument(body).toJson(QJsonDocument::Compact), 5 * 60 * 1000, cancel, &answer, &status);
+    if (!err.isEmpty() || status != 200)
+        return out;
+    const QJsonArray data = QJsonDocument::fromJson(answer).object().value(QStringLiteral("data")).toArray();
+    for (const QJsonValue &d : data) {
+        const QJsonArray e = d.toObject().value(QStringLiteral("embedding")).toArray();
+        QVector<float> v;
+        v.reserve(512);
+        double norm = 0;
+        for (int i = 0; i < e.size() && i < 512; ++i) { // the first 512 numbers are a whole vector (the model is trained so)
+            v.append(float(e[i].toDouble()));
+            norm += double(v.last()) * v.last();
+        }
+        norm = std::sqrt(norm);
+        if (norm > 0)
+            for (float &x : v)
+                x = float(x / norm);
+        out.append(v);
+    }
+    return out.size() == texts.size() ? out : QList<QVector<float>>();
+}
+
 QString LlamaSession::chat(const QString &system, const QString &user, const QJsonObject &schema, const std::atomic_bool *cancel, int maxTokens)
 {
+    return complete(QJsonArray{QJsonObject{{QStringLiteral("role"), QStringLiteral("system")}, {QStringLiteral("content"), system}},
+                               QJsonObject{{QStringLiteral("role"), QStringLiteral("user")}, {QStringLiteral("content"), QStringLiteral("/no_think\n") + user}}},
+                    schema, cancel, maxTokens);
+}
+
+QString LlamaSession::chatImage(const QString &system, const QString &user, const QByteArray &image, const QString &mime, const QJsonObject &schema, const std::atomic_bool *cancel, int maxTokens)
+{
+    const QString url = QStringLiteral("data:%1;base64,%2").arg(mime, QString::fromLatin1(image.toBase64()));
+    return complete(QJsonArray{QJsonObject{{QStringLiteral("role"), QStringLiteral("system")}, {QStringLiteral("content"), system}},
+                               QJsonObject{{QStringLiteral("role"), QStringLiteral("user")},
+                                           {QStringLiteral("content"), QJsonArray{QJsonObject{{QStringLiteral("type"), QStringLiteral("image_url")}, {QStringLiteral("image_url"), QJsonObject{{QStringLiteral("url"), url}}}},
+                                                                                  QJsonObject{{QStringLiteral("type"), QStringLiteral("text")}, {QStringLiteral("text"), user}}}}}},
+                    schema, cancel, maxTokens);
+}
+
+QString LlamaSession::complete(const QJsonArray &messages, const QJsonObject &schema, const std::atomic_bool *cancel, int maxTokens)
+{
     const QJsonObject body{{QStringLiteral("model"), QStringLiteral("local")},
-                           {QStringLiteral("messages"), QJsonArray{QJsonObject{{QStringLiteral("role"), QStringLiteral("system")}, {QStringLiteral("content"), system}},
-                                                                   QJsonObject{{QStringLiteral("role"), QStringLiteral("user")}, {QStringLiteral("content"), QStringLiteral("/no_think\n") + user}}}},
+                           {QStringLiteral("messages"), messages},
                            {QStringLiteral("temperature"), 0.2},
                            {QStringLiteral("max_tokens"), maxTokens},
                            {QStringLiteral("stream"), false},

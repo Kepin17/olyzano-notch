@@ -24,6 +24,8 @@ Item {
     property string length: "medium"
     property string language: "auto"
     property string ocr: "auto"
+    property string mode: "notes"       // notes: study notes from a PDF | ask: questions about your files and recordings
+    property string figures: vision.ready ? "describe" : "skip" // figures, charts and diagrams: described by the picture model when it is downloaded
     property string firstPage: "1"
     property string lastPage: ""
     readonly property bool ready: audioIntel.readiness.summary
@@ -40,7 +42,7 @@ Item {
     function pickPath(url) { picked = { kind: "path", path: url }; adopt(docSummary.inspectPath(url)) }
     function clearPick() { picked = null; info = ({}); docSummary.clearError() }
     function begin() {
-        const options = { style: style, length: length, language: language, ocr: ocr, firstPage: parseInt(firstPage) || 1, lastPage: parseInt(lastPage) || 0 }
+        const options = { style: style, length: length, language: language, ocr: ocr, figures: figures, firstPage: parseInt(firstPage) || 1, lastPage: parseInt(lastPage) || 0 }
         if (picked.kind === "item") docSummary.start(picked.id, options)
         else docSummary.startPath(picked.path, options)
     }
@@ -60,6 +62,8 @@ Item {
 
     FileDialog {
         id: fileDialog
+        onVisibleChanged: page.shell.dialogs += visible ? 1 : -1
+        Component.onDestruction: if (visible) page.shell.dialogs -= 1 // a page closed under an open dialog must not leave the notch below the windows
         title: "Choose a PDF"
         fileMode: FileDialog.OpenFile
         nameFilters: ["PDF (*.pdf)"]
@@ -67,9 +71,39 @@ Item {
         onAccepted: page.pickPath(selectedFile.toString())
     }
 
+    function openSource(s) {
+        if (s.kind === "recording") { shell.audioOpen = { id: parseInt(s.ref), sec: s.startSec }; shell.page = "audio" }
+        else notch.open(s.ref)
+    }
+
+    AudioTabs {
+        id: modeTabs
+        anchors { left: parent.left; right: parent.right; top: parent.top; rightMargin: 10 }
+        model: [["notes", "Study notes"], ["ask", "Ask your files"]]
+        value: page.mode
+        onPicked: (v) => page.mode = v
+    }
+
+    ScrollView {
+        id: askScroll
+        visible: page.mode === "ask"
+        anchors { left: parent.left; right: parent.right; top: modeTabs.bottom; topMargin: 8; bottom: parent.bottom }
+        contentWidth: availableWidth
+        bottomPadding: 18
+        clip: true
+        AskPanel {
+            width: askScroll.availableWidth - 10
+            scopeKind: !!page.picked && page.picked.kind === "item" ? "file" : "all"
+            scopeRef: !!page.picked && page.picked.kind === "item" ? page.picked.id : ""
+            hint: !!page.picked && page.picked.kind === "item" ? "Ask about " + (page.info.name || "this PDF") : "Ask about your files and recordings"
+            onOpenSource: (s) => page.openSource(s)
+        }
+    }
+
     ScrollView {
         id: scroll
-        anchors.fill: parent
+        visible: page.mode === "notes"
+        anchors { left: parent.left; right: parent.right; top: modeTabs.bottom; topMargin: 8; bottom: parent.bottom }
         contentWidth: availableWidth
         bottomPadding: 18 // the panel's rounded edge covers the last pixels of the view
         clip: true
@@ -86,9 +120,13 @@ Item {
                     Text { text: "Study notes from a PDF, made on this computer"; color: theme.textDim; font.pixelSize: 11 }
                 }
                 Item { Layout.fillWidth: true }
+                PillButton { visible: !page.working && !!page.picked && page.picked.kind === "item" && page.mode === "notes"; text: taskSuggest.busy ? "Looking…" : "Find tasks"; iconName: "check"; enabled: !taskSuggest.busy
+                    onClicked: taskSuggest.findInPdf(page.picked.id); Accessible.description: "Find deadlines and things to do in this PDF and offer them on the Tasks page" }
                 PillButton { visible: !page.working && !!page.picked; text: "Another PDF"; onClicked: page.clearPick() }
                 PillButton { visible: !page.working && !page.picked; text: "Choose a PDF…"; iconName: "upload"; checked: true; onClicked: fileDialog.open() }
             }
+
+            Caption { visible: page.mode === "notes" && taskSuggest.status !== ""; Layout.fillWidth: true; text: taskSuggest.status + (taskSuggest.count > 0 ? " See them on the Tasks page." : "") }
 
             // ---------------- working ----------------
             Rectangle {
@@ -231,6 +269,13 @@ Item {
                             ColumnLayout { Layout.fillWidth: true; spacing: 4
                                 Caption { text: "Pages that are pictures" }
                                 Segmented { Layout.fillWidth: true; model: [["auto", "Read them"], ["always", "Read all"], ["never", "Skip"]]; value: page.ocr; onPicked: (v) => page.ocr = v } }
+                            ColumnLayout { Layout.fillWidth: true; spacing: 4
+                                visible: !!page.info.ok && (page.info.figurePages > 0 || !vision.ready)
+                                Caption { text: "Figures, charts and diagrams" }
+                                Segmented { Layout.fillWidth: true; enabled: vision.ready; model: [["skip", "Skip"], ["describe", "Describe (AI)"]]; value: vision.ready ? page.figures : "skip"; onPicked: (v) => page.figures = v }
+                                Caption { Layout.fillWidth: true; visible: vision.ready && page.figures === "describe" && page.info.figurePages > 0
+                                          text: page.info.figurePages + (page.info.figurePages === 1 ? " page has" : " pages have") + " figures: the picture model looks at them first (about " + Math.ceil(page.info.figurePages * 1.2) + " min more on the processor)" }
+                                Caption { Layout.fillWidth: true; visible: !vision.ready; text: "Download the picture model in Settings → AI to have charts and diagrams described." } }
                             ColumnLayout { Layout.fillWidth: true; spacing: 4
                                 Caption { text: "Pages" }
                                 RowLayout {

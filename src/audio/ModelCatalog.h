@@ -11,7 +11,7 @@
 // Nothing here is downloaded without the person clicking Download.
 namespace Audio {
 
-enum class Kind { Whisper, Llm, Segmentation, Embedding, Helper, Ocr };
+enum class Kind { Whisper, Llm, Segmentation, Embedding, Helper, Ocr, Vision, Embedder };
 
 struct CatalogItem {
     QString id;
@@ -43,6 +43,18 @@ inline QList<CatalogItem> fullCatalog()
          QStringLiteral("The language model that writes the notes. Q4, about 3.5 GB of memory while it runs."), QStringLiteral("Qwen3-4B-Q4_K_M.gguf"),
          hf + QStringLiteral("Qwen/Qwen3-4B-GGUF/resolve/main/Qwen3-4B-Q4_K_M.gguf"), 2497280256,
          QStringLiteral("7485fe6f11af29433bc51cab58009521f205840f5b4ae3a32fa7f92e8534fdf5"), {}, {}, Q_INT64_C(7) << 29},
+        {QStringLiteral("embed-qwen3"), Kind::Embedder, QStringLiteral("Qwen3 Embedding 0.6B (finds by meaning)"),
+         QStringLiteral("Lets the search follow what a sentence means, not only its words (it also finds a file written in another language). Optional. Q8, about 1 GB of memory while it runs; Apache-2.0 licence."),
+         QStringLiteral("Qwen3-Embedding-0.6B-Q8_0.gguf"), hf + QStringLiteral("Qwen/Qwen3-Embedding-0.6B-GGUF/resolve/main/Qwen3-Embedding-0.6B-Q8_0.gguf"), 639150592,
+         QStringLiteral("06507c7b42688469c4e7298b0a1e16deff06caf291cf0a5b278c308249c3e439"), {}, {}, Q_INT64_C(1) << 30},
+        {QStringLiteral("vision-qwen3vl"), Kind::Vision, QStringLiteral("Qwen3-VL 4B (reads pictures)"),
+         QStringLiteral("Looks at a picture and says what is in it, reads the writing in it, tables and charts. Optional. Q4, about 4.5 GB of memory while it runs; Apache-2.0 licence."),
+         QStringLiteral("Qwen3VL-4B-Instruct-Q4_K_M.gguf"), hf + QStringLiteral("Qwen/Qwen3-VL-4B-Instruct-GGUF/resolve/main/Qwen3VL-4B-Instruct-Q4_K_M.gguf"), 2497281664,
+         QStringLiteral("66358cb18bb6b3b1b6675aa412c7a88ef01d228f481184d13668e5201c730a0a"), {}, {}, Q_INT64_C(9) << 29},
+        {QStringLiteral("vision-mmproj"), Kind::Vision, QStringLiteral("Qwen3-VL 4B picture reader (mmproj)"),
+         QStringLiteral("The part of Qwen3-VL that turns a picture into something the model can read. Needed with it."),
+         QStringLiteral("mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf"), hf + QStringLiteral("Qwen/Qwen3-VL-4B-Instruct-GGUF/resolve/main/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf"), 453974304,
+         QStringLiteral("30ba2c7dd3127a4561b6cba9d13d0f711c91bdb38742e2f56d73c8cb596bd06d"), {}, {}, 0},
         {QStringLiteral("llama-server-linux"), Kind::Helper, QStringLiteral("llama.cpp server (b12202)"),
          QStringLiteral("Runs the language model on this computer only (127.0.0.1). MIT licence."), QStringLiteral("llama-b12202-bin-ubuntu-x64.tar.gz"),
          gh + QStringLiteral("ggml-org/llama.cpp/releases/download/b12202/llama-b12202-bin-ubuntu-x64.tar.gz"), 23066943,
@@ -51,6 +63,16 @@ inline QList<CatalogItem> fullCatalog()
          QStringLiteral("Runs the language model on this computer only (127.0.0.1). MIT licence."), QStringLiteral("llama-b12202-bin-win-cpu-x64.zip"),
          gh + QStringLiteral("ggml-org/llama.cpp/releases/download/b12202/llama-b12202-bin-win-cpu-x64.zip"), 24759273,
          QStringLiteral("75d108e6f91907638fef0cbdf4cc230e56bd9eac71bbffb209ae8da1f932590e"), QStringLiteral("windows"), QStringLiteral("llama-server.exe"), 0},
+        {QStringLiteral("gpu-llama-linux"), Kind::Helper, QStringLiteral("llama.cpp server for graphics cards (Vulkan, b12202)"),
+         QStringLiteral("The same program built to run the language model on a graphics card (NVIDIA, AMD or Intel). Only useful if this computer has one. MIT licence."),
+         QStringLiteral("llama-b12202-bin-ubuntu-vulkan-x64.tar.gz"),
+         gh + QStringLiteral("ggml-org/llama.cpp/releases/download/b12202/llama-b12202-bin-ubuntu-vulkan-x64.tar.gz"), 35880958,
+         QStringLiteral("c1eaf8fcaf0b17c1fe9097f7ff08bad484cd451533e7f2075381d18d220694e7"), QStringLiteral("linux"), QStringLiteral("llama-server"), 0},
+        {QStringLiteral("gpu-llama-windows"), Kind::Helper, QStringLiteral("llama.cpp server for graphics cards (Vulkan, b12202)"),
+         QStringLiteral("The same program built to run the language model on a graphics card (NVIDIA, AMD or Intel). Only useful if this computer has one. MIT licence."),
+         QStringLiteral("llama-b12202-bin-win-vulkan-x64.zip"),
+         gh + QStringLiteral("ggml-org/llama.cpp/releases/download/b12202/llama-b12202-bin-win-vulkan-x64.zip"), 37715166,
+         QStringLiteral("ab526ddd4cacca463b73a385ede310c9888818d084efb57f3d113b4d3e79c404"), QStringLiteral("windows"), QStringLiteral("llama-server.exe"), 0},
         {QStringLiteral("sherpa-linux"), Kind::Helper, QStringLiteral("sherpa-onnx speaker diarization (2.0.1)"),
          QStringLiteral("Tells the speakers of a recording apart. Apache-2.0 licence."), QStringLiteral("sherpa-onnx-v2.0.1-linux-x64-shared-no-tts.tar.bz2"),
          gh + QStringLiteral("k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-v2.0.1-linux-x64-shared-no-tts.tar.bz2"), 25289904,

@@ -29,6 +29,28 @@ Item {
     readonly property alias player: playerLoader
     property var transcriptList: null // set by the transcript, to make it follow the audio again
     property real rate: 1
+    property real pendingSeek: -1
+    // An answer pointed at a recording and a minute: open it there
+    function takeRequest() {
+        const r = shell.audioOpen
+        if (!r)
+            return
+        shell.audioOpen = null
+        openMeeting(r.id)
+        pendingSeek = r.sec >= 0 ? r.sec : -1
+    }
+    Component.onCompleted: takeRequest()
+    Connections { target: shell; function onAudioOpenChanged() { page.takeRequest() } }
+    Timer { // the player appears when the recording has loaded
+        interval: 300
+        repeat: true
+        running: page.pendingSeek >= 0
+        property int tries: 0
+        onTriggered: {
+            if (player.item && page.info.audioUrl) { page.playAt(page.pendingSeek); page.pendingSeek = -1; tries = 0 }
+            else if (++tries > 20) { page.pendingSeek = -1; tries = 0 }
+        }
+    }
 
     property string tab: audioIntel.firstTab
     property bool showHistory: false
@@ -134,6 +156,8 @@ Item {
 
     FileDialog {
         id: fileDialog
+        onVisibleChanged: page.shell.dialogs += visible ? 1 : -1
+        Component.onDestruction: if (visible) page.shell.dialogs -= 1 // a page closed under an open dialog must not leave the notch below the windows
         title: "Choose recordings"
         fileMode: FileDialog.OpenFiles
         nameFilters: ["Audio (*.mp3 *.wav *.m4a *.flac *.ogg *.opus *.webm *.aac *.mp4)", "All files (*)"]

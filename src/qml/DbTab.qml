@@ -923,6 +923,8 @@ ColumnLayout {
     // SQLite file picker — typing a Windows path by hand is miserable.
     FileDialog {
         id: sqliteDialog
+        onVisibleChanged: tab.shell.dialogs += visible ? 1 : -1
+        Component.onDestruction: if (visible) tab.shell.dialogs -= 1 // a page closed under an open dialog must not leave the notch below the windows
         title: "Pick a SQLite database"
         fileMode: FileDialog.OpenFile
         currentFolder: StandardPaths.writableLocation(StandardPaths.HomeLocation)

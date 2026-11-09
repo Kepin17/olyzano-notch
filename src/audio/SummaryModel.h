@@ -346,7 +346,7 @@ inline Summary validate(Summary s, const QList<Segment> &segments, const QString
     QStringList speakerNorm;
     for (const QString &sp : speakers)
         speakerNorm << normalize(sp);
-    auto find = [&](const QString &quote, double near) -> int { // index of the segment holding the quote, nearest to `near` first
+    auto find = [&](const QString &quote, double around) -> int { // index of the segment holding the quote, nearest to `around` first
         const QString q = normalize(quote);
         if (q.size() < 6)
             return -1;
@@ -355,7 +355,7 @@ inline Summary validate(Summary s, const QList<Segment> &segments, const QString
         for (int i = 0; i < segments.size(); ++i) {
             if (!norm[i].contains(q))
                 continue;
-            const double gap = near < 0 ? 0 : std::abs(segments[i].start - near);
+            const double gap = around < 0 ? 0 : std::abs(segments[i].start - around);
             if (gap < bestGap) {
                 bestGap = gap;
                 best = i;

@@ -7,7 +7,15 @@
 #include "platform/ChildLife.h"
 #include "platform/MonitorModel.h"
 #include "audio/Aligner.h"
+#include "audio/AskPrompt.h"
+#include "audio/HardwarePlan.h"
+#include "services/Chunker.h"
+#include "services/Evidence.h"
+#include "services/TaskSuggest.h"
+#include "services/KnowledgeStore.h"
+#include "services/Retrieval.h"
 #include "audio/LivePrompt.h"
+#include "audio/VisionPrompt.h"
 #include "audio/LiveSegmenter.h"
 #include "audio/AudioPipeline.h"
 #include "audio/AudioJson.h"
@@ -19,6 +27,7 @@
 #include "services/PdfText.h"
 #include "audio/NameHints.h"
 #include "audio/EngineParse.h"
+#include "audio/ModelCatalog.h"
 #include "audio/ModelStore.h"
 #include "audio/Summarize.h"
 #include "audio/SummaryModel.h"
@@ -358,7 +367,7 @@ public:
                     const QByteArray body = all.mid(from);
                     QByteArray head = ranged ? "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes " + QByteArray::number(from) + "-" + QByteArray::number(all.size() - 1) + "/"
                                                    + QByteArray::number(all.size()) + "\r\n"
-                                             : "HTTP/1.1 200 OK\r\n";
+                                             : QByteArray("HTTP/1.1 200 OK\r\n"); // (MSVC will not pick between a QByteArray and a literal)
                     head += "Content-Length: " + QByteArray::number(body.size()) + "\r\nConnection: close\r\n\r\n";
                     s->write(head);
                     if (dropAfter >= 0) {
@@ -1485,6 +1494,13 @@ private slots:
         QVERIFY(u[0].endMs > 2900 && u[0].endMs < 3400);          // the words, and a short tail of silence
         QVERIFY(qAbs(u[1].startMs - 4100) < 250);
         QVERIFY(u[1].samples.size() > 16000);
+        // while someone speaks, what has been said so far can be read; when they stop, nothing is left
+        Audio::LiveSegmenter now;
+        qint64 n = 0;
+        liveFeed(now, liveTone(0.5, 0.0005) + liveTone(1.5, 0.3), n);
+        QVERIFY(now.speaking() && now.current().size() > 20000);
+        liveFeed(now, liveTone(1.0, 0.0005), n);
+        QVERIFY(!now.speaking() && now.current().isEmpty());
         // a blip, and a room that only hums: nobody spoke
         Audio::LiveSegmenter quiet;
         qint64 t = 0;
@@ -1561,6 +1577,451 @@ private slots:
             lines << QStringLiteral("You: line %1 with some words").arg(i);
         const QStringList tail = Live::tail(lines, 1000);
         QVERIFY(tail.last().contains(QStringLiteral("399")) && tail.join(u'\n').size() <= 1100 && tail.size() < lines.size());
+    }
+
+    void graphicsCardsAreRecognizedFromWhatTheSystemSays()
+    {
+        const QList<Gpu::Device> nv = Gpu::parseNvidiaSmi("NVIDIA GeForce RTX 4060 Laptop GPU, 8188, 512\n\nnot a line\nTesla T4, 15360, 0\n");
+        QCOMPARE(nv.size(), 2);
+        QCOMPARE(nv[0].name, QStringLiteral("NVIDIA GeForce RTX 4060 Laptop GPU"));
+        QCOMPARE(nv[0].vramTotal, Q_INT64_C(8188) << 20);
+        QCOMPARE(nv[0].vramFree, Q_INT64_C(7676) << 20);
+        QVERIFY(!nv[0].integrated);
+        // an AMD processor with 512 MB of its own and 8 GB shared: integrated, the shared memory counts
+        Gpu::Sysfs ig;
+        ig.vendor = QStringLiteral("0x1002"); ig.device = QStringLiteral("0x1900");
+        ig.vramTotal = 536870912; ig.vramUsed = 481427456; ig.gttTotal = 7987654656; ig.gttUsed = 1000000000;
+        const Gpu::Device a = Gpu::fromSysfs(ig);
+        QVERIFY(a.integrated);
+        QCOMPARE(a.vendor, QStringLiteral("amd"));
+        QCOMPARE(a.vramTotal, qint64(7987654656));
+        QCOMPARE(a.vramFree, qint64(6987654656));
+        // a card of its own: its memory
+        Gpu::Sysfs dg;
+        dg.vendor = QStringLiteral("0x1002"); dg.device = QStringLiteral("0x744c");
+        dg.vramTotal = Q_INT64_C(16) << 30; dg.vramUsed = Q_INT64_C(1) << 30; dg.gttTotal = Q_INT64_C(32) << 30;
+        const Gpu::Device d = Gpu::fromSysfs(dg);
+        QVERIFY(!d.integrated);
+        QCOMPARE(d.vramFree, Q_INT64_C(15) << 30);
+        QCOMPARE(Gpu::vendorOf(QStringLiteral("0x10DE")), QStringLiteral("nvidia"));
+        QCOMPARE(Gpu::vendorOf(QStringLiteral("0x8086")), QStringLiteral("intel"));
+    }
+
+    void theHardwarePlanDoesNotGuess()
+    {
+        using namespace Audio;
+        const auto dev = [](const char *name, qint64 gb, bool integrated) {
+            Gpu::Device x; x.vendor = QStringLiteral("nvidia"); x.name = QString::fromLatin1(name); x.vramTotal = x.vramFree = gb << 30; x.integrated = integrated; return x;
+        };
+        HwNeeds needs;
+        Gpu::Info none; none.vulkan = true;
+        QVERIFY(!planHardware(none, HwSetting::Auto, {}, needs, {}, true).whisperGpu);                  // no card
+        Gpu::Info big; big.vulkan = true; big.devices = {dev("iGPU", 8, true), dev("RTX", 12, false)};
+        HwPlan p = planHardware(big, HwSetting::Auto, {}, needs, {}, true);
+        QVERIFY(p.whisperGpu && p.llmVulkan && p.llmLayers == 99);                                        // the card of its own, both fit
+        QCOMPARE(p.device, QStringLiteral("RTX"));
+        QVERIFY(!planHardware(big, HwSetting::Cpu, {}, needs, {}, true).whisperGpu);                      // the person said no
+        Gpu::Info novk = big; novk.vulkan = false;
+        QVERIFY(!planHardware(novk, HwSetting::Gpu, {}, needs, {}, true).whisperGpu);                     // no driver, even if asked
+        Gpu::Info tiny; tiny.vulkan = true; tiny.devices = {dev("RTX", 2, false)};
+        p = planHardware(tiny, HwSetting::Auto, {}, needs, {}, true);
+        QVERIFY(p.whisperGpu && !p.llmVulkan);                                                            // room for the speech model only: it goes, the notes stay
+        Gpu::Info mid; mid.vulkan = true; mid.devices = {dev("RTX", 4, false)};
+        p = planHardware(mid, HwSetting::Auto, {}, needs, {}, true);
+        QVERIFY(p.whisperGpu && p.llmLayers > 4 && p.llmLayers < 36 && p.llmVulkan);                       // part of the notes model
+        QVERIFY(!planHardware(big, HwSetting::Auto, {}, needs, {}, false).llmVulkan);                     // no GPU program installed
+        QVERIFY(!planHardware(big, HwSetting::Auto, {}, needs, {QStringLiteral("llm")}, true).llmVulkan); // it failed before
+        // an integrated one: only when measured quicker
+        Gpu::Info igpu; igpu.vulkan = true; igpu.devices = {dev("Radeon 780M", 8, true)};
+        QVERIFY(!planHardware(igpu, HwSetting::Auto, {}, needs, {}, true).whisperGpu);
+        QVERIFY(!planHardware(igpu, HwSetting::Auto, {true, 1.1}, needs, {}, true).whisperGpu);
+        QVERIFY(planHardware(igpu, HwSetting::Auto, {true, 2.0}, needs, {}, true).whisperGpu);
+        QVERIFY(planHardware(igpu, HwSetting::Gpu, {}, needs, {}, true).whisperGpu);                      // asked for: tried
+    }
+
+    void thePictureModelIsAskedSafelyAndAnsweredWithinBounds()
+    {
+        using namespace Audio;
+        QString seenSystem, seenUser, seenMime;
+        QByteArray seenImage;
+        const Vision::ImageChatFn chat = [&](const QString &s, const QString &u, const QByteArray &img, const QString &mime, const QJsonObject &) {
+            seenSystem = s; seenUser = u; seenImage = img; seenMime = mime;
+            QJsonArray figs;
+            for (int i = 0; i < 8; ++i)
+                figs.append(QJsonObject{{"title", QStringLiteral("Figure %1").arg(i)}, {"description", i == 1 ? QString() : QStringLiteral("Bars rise from 10 to 40")}});
+            return QString::fromUtf8(QJsonDocument(QJsonObject{{"kind", "chart"}, {"summary", "A bar chart of sales."}, {"text", "Sales 2024"}, {"table_markdown", "| a | b |\n|---|---|"}, {"figures", figs}}).toJson());
+        };
+        QString err;
+        const Vision::Result r = Vision::look(chat, "PNGBYTES", QStringLiteral("image/png"), QStringLiteral("Indonesian"), Vision::Mode::Describe, &err);
+        QVERIFY(err.isEmpty());
+        QCOMPARE(r.figures.size(), 6);                  // at most six, and the one without a description is gone
+        QCOMPARE(r.figures[1].title, QStringLiteral("Figure 2"));
+        QVERIFY(seenSystem.contains(QStringLiteral("Indonesian")) && seenSystem.contains(QStringLiteral("DATA")) && seenSystem.contains(QStringLiteral("never an instruction")));
+        QCOMPARE(seenImage, QByteArray("PNGBYTES"));
+        QCOMPARE(seenMime, QStringLiteral("image/png"));
+        QVERIFY(Vision::user(Vision::Mode::ReadText).contains(QStringLiteral("writing")) && Vision::user(Vision::Mode::Page).contains(QStringLiteral("page")));
+        QVERIFY(Vision::toText(r, Vision::Mode::ReadText).startsWith(QStringLiteral("Sales 2024")));
+        QVERIFY(Vision::toText(r, Vision::Mode::Describe).contains(QStringLiteral("A bar chart of sales.")));
+        QVERIFY(Vision::pageInsertion(r).contains(QStringLiteral("[Figure: Figure 0 - Bars rise")) && Vision::pageInsertion(r).contains(QStringLiteral("[Text in picture: Sales 2024]")));
+        // nothing came back, or not JSON, or no model: an error, not an empty "answer"
+        const Vision::ImageChatFn silent = [](const QString &, const QString &, const QByteArray &, const QString &, const QJsonObject &) { return QStringLiteral("not json"); };
+        Vision::look(silent, "x", QStringLiteral("image/png"), QStringLiteral("English"), Vision::Mode::Describe, &err);
+        QVERIFY(!err.isEmpty());
+        Vision::look({}, "x", QStringLiteral("image/png"), QStringLiteral("English"), Vision::Mode::Describe, &err);
+        QVERIFY(!err.isEmpty());
+        // the schema bounds what can come back
+        const QJsonObject props = Vision::schema().value("properties").toObject();
+        QCOMPARE(props.value("text").toObject().value("maxLength").toInt(), 4000);
+        QCOMPARE(props.value("figures").toObject().value("maxItems").toInt(), 6);
+    }
+
+    void figurePagesAreChosenAndPicturesAreScaled()
+    {
+        using namespace Audio;
+        const QByteArray list =
+            "page   num  type   width height color comp bpc  enc interp  object ID x-ppi y-ppi size ratio\n"
+            "--------------------------------------------------------------------------------------------\n"
+            "   1     0 image     640   480  rgb     3   8  jpeg   no        12  0   96  96 40.5K 4.3%\n"
+            "   1     1 smask     640   480  gray    1   8  image  no        12  0   96  96  5.0K 1.0%\n"
+            "   2     2 image      32    32  rgb     3   8  image  no        14  0   96  96  1.0K 9.0%\n"
+            "   3     3 image    1200   800  rgb     3   8  jpeg   no        20  0  150 150  120K 4.0%\n"
+            "   3     4 image     400   300  rgb     3   8  jpeg   no        21  0  150 150   30K 4.0%\n"
+            "   5     5 image     900   600  rgb     3   8  jpeg   no        30  0  150 150   90K 4.0%\n";
+        const QMap<int, int> pages = Vision::picturePages(list);
+        QCOMPARE(pages.keys(), (QList<int>{1, 3, 5}));    // the icon (32 px) and the mask are not figures
+        QCOMPARE(pages.value(3), 2);
+        QCOMPARE(Vision::pickFigurePages(pages, {5}, 1, 0, 20), (QList<int>{1, 3}));  // page 5 was read as a whole picture already
+        QCOMPARE(Vision::pickFigurePages(pages, {}, 2, 4, 20), (QList<int>{3}));        // inside the asked range
+        QCOMPARE(Vision::pickFigurePages(pages, {}, 1, 0, 2), (QList<int>{1, 3}));      // at most two
+        QTemporaryDir dir;
+        QImage big(3000, 1000, QImage::Format_RGB32);
+        big.fill(Qt::red);
+        const QString path = dir.filePath(QStringLiteral("big.png"));
+        QVERIFY(big.save(path));
+        QString err;
+        const QByteArray png = Vision::scaledPng(path, 1568, &err);
+        QVERIFY(err.isEmpty());
+        const QImage back = QImage::fromData(png, "PNG");
+        QCOMPARE(back.width(), 1568);
+        QVERIFY(qAbs(back.height() - 523) <= 1); // the shape is kept
+        QVERIFY(Vision::scaledPng(dir.filePath(QStringLiteral("nothing.png")), 1568, &err).isEmpty() && !err.isEmpty());
+    }
+
+    void thePictureModelIsInTheCatalogAndNotLoadedWithoutBeingAsked()
+    {
+        int found = 0;
+        for (const Audio::CatalogItem &i : Audio::fullCatalog())
+            if (i.id.startsWith(QStringLiteral("vision-"))) {
+                ++found;
+                QCOMPARE(i.kind, Audio::Kind::Vision);
+                QCOMPARE(i.sha256.size(), 64);
+                QVERIFY(i.url.startsWith(QStringLiteral("https://huggingface.co/Qwen/Qwen3-VL-4B-Instruct-GGUF/resolve/main/")));
+                QVERIFY(i.size > 100000000);
+            }
+        QCOMPARE(found, 2);
+    }
+
+    void textIsCutIntoPassagesThatKeepWhereTheyCameFrom()
+    {
+        QString page;
+        for (int i = 0; i < 30; ++i)
+            page += QStringLiteral("This is sentence number %1 of the page and it says something about the electricity bill. ").arg(i);
+        const QList<Knowledge::Chunk> chunks = Knowledge::chunkPage(3, page);
+        QVERIFY(chunks.size() >= 3);
+        for (const Knowledge::Chunk &c : chunks) {
+            QCOMPARE(c.page, 3);
+            QVERIFY(c.text.size() <= 1100 && !c.text.isEmpty());
+            QVERIFY(c.text.endsWith(u'.')); // never cut in the middle of a sentence
+        }
+        QVERIFY(chunks[1].text.startsWith(QStringLiteral("This is sentence number")));
+        // overlap: the end of one is the start of the next
+        const QString lastOfFirst = Knowledge::sentences(chunks[0].text).last();
+        QVERIFY(chunks[1].text.contains(lastOfFirst));
+        QVERIFY(Knowledge::chunkPage(1, QString()).isEmpty());
+        QCOMPARE(Knowledge::chunkPage(1, QStringLiteral("Short.")).size(), 1);
+        // a recording: about a minute of talk, with the time and the speaker
+        QList<Knowledge::Utterance> lines;
+        for (int i = 0; i < 30; ++i)
+            lines.append({double(i) * 10, i % 2 ? QStringLiteral("Budi") : QStringLiteral("Ani"), QStringLiteral("Line %1 about the budget.").arg(i)});
+        const QList<Knowledge::Chunk> talk = Knowledge::chunkTranscript(lines);
+        QVERIFY(talk.size() >= 4);
+        QCOMPARE(talk[0].startSec, 0.0);
+        QCOMPARE(talk[1].startSec, 60.0);
+        QVERIFY(talk[0].text.startsWith(QStringLiteral("Ani: Line 0")) && talk[0].text.contains(QStringLiteral("Budi: Line 1")));
+    }
+
+    void theKnowledgeStoreFindsRanksAndForgets()
+    {
+        QTemporaryDir dir;
+        KnowledgeStore store(QStringLiteral("knowledge-test"));
+        QVERIFY2(store.open(dir.filePath(QStringLiteral("k.db"))).isEmpty(), "FTS5 is needed");
+        const QDateTime oct = QDateTime(QDate(2026, 10, 15), QTime(10, 0), Qt::UTC), nov = QDateTime(QDate(2026, 11, 2), QTime(10, 0), Qt::UTC);
+        QVERIFY(store.setDoc(QStringLiteral("shelf"), QStringLiteral("a"), QStringLiteral("Tagihan listrik.pdf"), oct, QStringLiteral("f1"),
+                             {{1, -1, {}, QStringLiteral("Tagihan listrik bulan Oktober sebesar Rp 450.000, jatuh tempo 20 Oktober.")}, {2, -1, {}, QStringLiteral("Rincian pemakaian kWh.")}}));
+        QVERIFY(store.setDoc(QStringLiteral("shelf"), QStringLiteral("b"), QStringLiteral("Catatan kuliah.pdf"), nov, QStringLiteral("f2"), {{4, -1, {}, QStringLiteral("Kuliah tentang listrik statis dan hukum Coulomb.")}}));
+        QVERIFY(store.setDoc(QStringLiteral("meeting"), QStringLiteral("7"), QStringLiteral("Rapat anggaran"), nov, QStringLiteral("f3"), {{0, 125.0, QStringLiteral("Ani"), QStringLiteral("Ani: Anggaran listrik kantor naik.")}}));
+        const QString match = KnowledgeStore::matchQuery({QStringLiteral("tagihan"), QStringLiteral("listrik"), QStringLiteral("x"), QStringLiteral("LISTRIK")});
+        QCOMPARE(match, QStringLiteral("\"tagihan\"* OR \"listrik\"*"));  // one letter and repeats are left out
+        QList<KnowledgeStore::Hit> hits = store.search(match, {});
+        QCOMPARE(hits.size(), 3);
+        QCOMPARE(hits[0].ref, QStringLiteral("a"));                          // the one with both words first
+        QCOMPARE(hits[0].page, 1);
+        QVERIFY(hits[0].score > hits[1].score);
+        KnowledgeStore::Filter f;
+        f.kinds = {QStringLiteral("meeting")};
+        hits = store.search(match, f);
+        QCOMPARE(hits.size(), 1);
+        QCOMPARE(hits[0].startSec, 125.0);
+        QCOMPARE(hits[0].who, QStringLiteral("Ani"));
+        f = {};
+        f.from = QDateTime(QDate(2026, 10, 1), QTime(0, 0), Qt::UTC);
+        f.to = QDateTime(QDate(2026, 10, 31), QTime(23, 59), Qt::UTC);
+        hits = store.search(match, f);
+        QCOMPARE(hits.size(), 1);                                            // only what was added in October
+        QCOMPARE(hits[0].name, QStringLiteral("Tagihan listrik.pdf"));
+        f = {};
+        f.refs = {QStringLiteral("b")};
+        QCOMPARE(store.search(match, f).size(), 1);
+        // fingerprint, replacing, forgetting
+        QCOMPARE(store.fingerprint(QStringLiteral("shelf"), QStringLiteral("a")), QStringLiteral("f1"));
+        QVERIFY(store.setDoc(QStringLiteral("shelf"), QStringLiteral("a"), QStringLiteral("Tagihan listrik.pdf"), oct, QStringLiteral("f1b"), {{1, -1, {}, QStringLiteral("Isi yang baru tentang air.")}}));
+        QCOMPARE(store.search(KnowledgeStore::matchQuery({QStringLiteral("tagihan")}), {}).size(), 0);
+        QCOMPARE(store.stats().docs, 3);
+        QVERIFY(store.removeDoc(QStringLiteral("shelf"), QStringLiteral("a")));
+        QCOMPARE(store.stats().docs, 2);
+        QVERIFY(store.refs(QStringLiteral("shelf")) == QSet<QString>{QStringLiteral("b")});
+        QVERIFY(store.search(match, {}).size() == 2);
+        // vectors
+        const QList<qint64> todo = store.chunksWithoutVector(10);
+        QCOMPARE(todo.size(), 2);
+        QVERIFY(store.setVector(todo[0], QByteArray(8, 'x')));
+        QCOMPARE(store.chunksWithoutVector(10).size(), 1);
+        QVERIFY(store.clear());
+        QCOMPARE(store.stats().chunks, 0);
+    }
+
+    void aSentenceBecomesASearchWithATimeThatTheProgramWorksOut()
+    {
+        using namespace Audio;
+        const QDateTime now(QDate(2026, 11, 9), QTime(10, 0)); // a Monday
+        QDateTime from, to;
+        QVERIFY(Ask::resolvePeriod(QStringLiteral("last_month"), 0, 0, now, &from, &to));
+        QCOMPARE(from.date(), QDate(2026, 10, 1));
+        QCOMPARE(to.date(), QDate(2026, 10, 31));
+        QVERIFY(Ask::resolvePeriod(QStringLiteral("this_week"), 0, 0, now, &from, &to));
+        QCOMPARE(from.date(), QDate(2026, 11, 9));
+        QCOMPARE(to.date(), QDate(2026, 11, 15));
+        QVERIFY(Ask::resolvePeriod(QStringLiteral("last_week"), 0, 0, now, &from, &to));
+        QCOMPARE(from.date(), QDate(2026, 11, 2));
+        QCOMPARE(to.date(), QDate(2026, 11, 8));
+        QVERIFY(Ask::resolvePeriod(QStringLiteral("yesterday"), 0, 0, now, &from, &to));
+        QCOMPARE(from.date(), QDate(2026, 11, 8));
+        QVERIFY(Ask::resolvePeriod(QStringLiteral("month_of_year"), 0, 12, now, &from, &to)); // December has not come: last year's
+        QCOMPARE(from.date(), QDate(2025, 12, 1));
+        QVERIFY(Ask::resolvePeriod(QStringLiteral("month_of_year"), 2024, 2, now, &from, &to));
+        QCOMPARE(to.date(), QDate(2024, 2, 29));
+        QVERIFY(!Ask::resolvePeriod(QStringLiteral("none"), 0, 0, now, &from, &to));
+        int month = 0;
+        QCOMPARE(Ask::periodFromText(QStringLiteral("cari kuitansi listrik bulan lalu"), &month), QStringLiteral("last_month"));
+        QCOMPARE(Ask::periodFromText(QStringLiteral("tagihan bulan Oktober"), &month), QStringLiteral("month_of_year"));
+        QCOMPARE(month, 10);
+        QCOMPARE(Ask::periodFromText(QStringLiteral("find the contract I got last week")), QStringLiteral("last_week"));
+        QCOMPARE(Ask::periodFromText(QStringLiteral("tagihan listrik")), QStringLiteral("none"));
+        QCOMPARE(Ask::plainKeywords(QStringLiteral("Cari kuitansi listrik bulan lalu")), (QStringList{QStringLiteral("kuitansi"), QStringLiteral("listrik")}));
+        // no model: the words and the period of the sentence itself
+        Ask::Query q = Ask::plainQuery(QStringLiteral("kuitansi listrik bulan lalu"), now);
+        QCOMPARE(q.keywords, (QStringList{QStringLiteral("kuitansi"), QStringLiteral("listrik")}));
+        QCOMPARE(q.from.date(), QDate(2026, 10, 1));
+        // the model's answer: its words and synonyms are bounded, its period is worked out here, and what is odd is ignored
+        const Audio::ChatFn chat = [](const QString &system, const QString &user, const QJsonObject &) {
+            Q_ASSERT(system.contains(QStringLiteral("DATA")) && user.contains(QStringLiteral("<question>")));
+            return QStringLiteral("{\"keywords\":[\"Listrik\",\"tagihan\",\"bulan\"],\"synonyms\":[\"PLN\",\"listrik\",\"PLN\",\"electricity bill\"],\"kinds\":[\"file\"]}");
+        };
+        q = Ask::understand(chat, QStringLiteral("tagihan listrik bulan lalu"), now);
+        QCOMPARE(q.keywords, (QStringList{QStringLiteral("listrik"), QStringLiteral("tagihan")}));
+        QCOMPARE(q.synonyms, (QStringList{QStringLiteral("pln"), QStringLiteral("electricity bill")})); // not the word it already has, none twice
+        QCOMPARE(q.kinds, (QStringList{QStringLiteral("shelf")}));
+        QCOMPARE(q.to.date(), QDate(2026, 10, 31));
+        // a model that invents a time the sentence does not say is not believed
+        q = Ask::understand(chat, QStringLiteral("tagihan listrik"), now);
+        QVERIFY(!q.from.isValid());
+        const Audio::ChatFn nonsense = [](const QString &, const QString &, const QJsonObject &) { return QStringLiteral("nope"); };
+        q = Ask::understand(nonsense, QStringLiteral("rapat anggaran kemarin"), now);
+        QCOMPARE(q.keywords, (QStringList{QStringLiteral("rapat"), QStringLiteral("anggaran")}));
+        QCOMPARE(q.from.date(), QDate(2026, 11, 8));
+    }
+
+    void anAnswerIsTrustedOnlyWhereTheFilesSupportIt()
+    {
+        using namespace Audio;
+        KnowledgeStore::Hit a, b;
+        a.kind = QStringLiteral("shelf"); a.name = QStringLiteral("Tagihan.pdf"); a.page = 2; a.text = QStringLiteral("Tagihan listrik bulan Oktober sebesar Rp 450.000, jatuh tempo 20 Oktober.");
+        b.kind = QStringLiteral("meeting"); b.name = QStringLiteral("Rapat"); b.startSec = 125; b.text = QStringLiteral("Ani: Anggaran listrik kantor naik sepuluh persen tahun depan.");
+        const QList<Ask::Source> sources{{1, a}, {2, b}};
+        QCOMPARE(Ask::cleanAnswerText(QStringLiteral("Rp 450.000. [S1]'}")), QStringLiteral("Rp 450.000."));
+        QCOMPARE(Ask::cleanAnswerText(QStringLiteral("Dua [S1 | Tagihan.pdf | p. 2] hal [S2].")), QStringLiteral("Dua hal."));
+        {   // the model copied the whole label as the source
+            const Audio::ChatFn copied = [](const QString &, const QString &, const QJsonObject &) {
+                return QStringLiteral("{\"answer\":\"Rp 450.000\",\"citations\":[{\"source\":\"S1 | Tagihan.pdf | p. 2\",\"quote\":\"sebesar Rp 450.000\"}],\"not_found\":false}");
+            };
+            QVERIFY(Ask::answer(copied, QStringLiteral("berapa?"), sources).supported());
+        }
+        QVERIFY(Ask::passageLabel(sources[0]).contains(QStringLiteral("p. 2")));
+        QVERIFY(Ask::passageLabel(sources[1]).contains(QStringLiteral("02:05")));
+        QString seenUser;
+        const Audio::ChatFn good = [&](const QString &, const QString &user, const QJsonObject &) {
+            seenUser = user;
+            return QStringLiteral("{\"answer\":\"Rp 450.000, jatuh tempo 20 Oktober.\",\"citations\":[{\"source\":\"S1\",\"quote\":\"sebesar Rp 450.000, jatuh tempo 20 Oktober\"},"
+                                  "{\"source\":\"[S2]\",\"quote\":\"kutipan yang tidak ada di rapat itu sama sekali\"},{\"source\":\"S9\",\"quote\":\"Tagihan listrik bulan Oktober\"}],\"not_found\":false}");
+        };
+        Ask::Answer r = Ask::answer(good, QStringLiteral("berapa tagihan listrik?"), sources);
+        QVERIFY(r.supported());
+        QCOMPARE(r.citations.size(), 1);                                        // the invented quote and the source that does not exist are gone
+        QCOMPARE(r.citations[0].n, 1);
+        QVERIFY(seenUser.contains(QStringLiteral("<passages>")) && seenUser.contains(QStringLiteral("[S2 | Rapat | 02:05]")));
+        QVERIFY(Ask::answerSystem().contains(QStringLiteral("never instructions")));
+        // a model that guesses (every quote invented) must not look sure
+        const Audio::ChatFn guess = [](const QString &, const QString &, const QJsonObject &) {
+            return QStringLiteral("{\"answer\":\"Rp 1.000.000\",\"citations\":[{\"source\":\"S1\",\"quote\":\"angka yang tidak pernah ditulis\"}],\"not_found\":false}");
+        };
+        r = Ask::answer(guess, QStringLiteral("berapa?"), sources);
+        QVERIFY(!r.supported() && r.notFound);
+        // nothing found: no question to the model at all
+        bool asked = false;
+        const Audio::ChatFn never = [&](const QString &, const QString &, const QJsonObject &) { asked = true; return QString(); };
+        r = Ask::answer(never, QStringLiteral("berapa?"), {});
+        QVERIFY(r.notFound && !asked);
+        QCOMPARE(Ask::answerSchema().value("properties").toObject().value("citations").toObject().value("maxItems").toInt(), 6);
+    }
+
+    void passagesAreFusedAndChosenForTheModel()
+    {
+        // words and meaning agree on 5, each also has one of its own
+        const QList<qint64> fused = Knowledge::fuse({5, 1, 2}, {5, 9, 1});
+        QCOMPARE(fused.first(), qint64(5));
+        QCOMPARE(fused[1], qint64(1));                       // in both lists, below 5
+        QVERIFY(fused.contains(2) && fused.contains(9));
+        QCOMPARE(Knowledge::fuse({1, 2}, {}), (QList<qint64>{1, 2}));
+        // vectors: stored as float16, nearest first
+        QVector<float> a{1, 0, 0}, b{0.6f, 0.8f, 0}, c{0, 0, 1};
+        Knowledge::normalize(b);
+        const QList<QPair<qint64, QByteArray>> stored{{10, Knowledge::toF16(c)}, {11, Knowledge::toF16(b)}, {12, Knowledge::toF16(a)}};
+        const auto nearTwo = Knowledge::nearest(a, stored, 2);
+        QCOMPARE(nearTwo.size(), 2);
+        QCOMPARE(nearTwo[0].first, qint64(12));
+        QCOMPARE(nearTwo[1].first, qint64(11));
+        QVERIFY(qAbs(nearTwo[1].second - 0.6) < 0.01);
+        QCOMPARE(Knowledge::fromF16(Knowledge::toF16({0.5f, -2.0f}))[1], -2.0f);
+        // the passages that go to the model: a few of each document, a few in all, not too much text
+        QList<KnowledgeStore::Hit> ranked;
+        for (int i = 0; i < 10; ++i) {
+            KnowledgeStore::Hit h;
+            h.chunkId = i;
+            h.docId = i < 6 ? 1 : 2;
+            h.ref = i < 6 ? QStringLiteral("a") : QStringLiteral("b");
+            h.text = QString(100, u'x');
+            ranked.append(h);
+        }
+        QList<KnowledgeStore::Hit> picked = Knowledge::pickSources(ranked, 8, 3, 6500);
+        QCOMPARE(picked.size(), 6);                          // 3 of a, 3 of b
+        QCOMPARE(picked[0].chunkId, qint64(0));
+        QCOMPARE(Knowledge::pickSources(ranked, 4, 3, 6500).size(), 4);
+        QCOMPARE(Knowledge::pickSources(ranked, 8, 3, 250).size(), 2);   // 100 + 100 and the next would pass 250
+        QCOMPARE(Knowledge::docRefsInOrder(ranked), (QStringList{QStringLiteral("a"), QStringLiteral("b")}));
+    }
+
+    void deadlinesInIndonesianAreUnderstood()
+    {
+        const QDateTime now(QDate(2026, 11, 9), QTime(10, 0)); // Monday
+        const auto due = [&](const char *s) { return TasksModel::parseDue(QString::fromUtf8(s), now); };
+        QCOMPARE(due("Jumat, 14 November 2026 pukul 17.00"), QDateTime(QDate(2026, 11, 14), QTime(17, 0)));
+        QCOMPARE(due("28 November 2026"), QDateTime(QDate(2026, 11, 28), QTime(9, 0)));
+        QCOMPARE(due("besok pukul 9"), QDateTime(QDate(2026, 11, 10), QTime(9, 0)));
+        QCOMPARE(due("besok jam 08.30"), QDateTime(QDate(2026, 11, 10), QTime(8, 30)));
+        QCOMPARE(due("lusa"), QDateTime(QDate(2026, 11, 11), QTime(9, 0)));
+        QCOMPARE(due("hari ini 18.00"), QDateTime(QDate(2026, 11, 9), QTime(18, 0)));
+        QCOMPARE(due("Jumat minggu depan"), QDateTime(QDate(2026, 11, 20), QTime(9, 0)));
+        QCOMPARE(due("Senin depan"), QDateTime());                                  // not a form it knows: never a guess
+        QCOMPARE(due("jumat"), QDateTime(QDate(2026, 11, 13), QTime(9, 0)));
+        QCOMPARE(due("senin"), QDateTime(QDate(2026, 11, 16), QTime(9, 0)));         // today is Monday: the next one
+        QCOMPARE(due("5 Desember"), QDateTime(QDate(2026, 12, 5), QTime(9, 0)));
+        QCOMPARE(due("3 hari lagi"), now.addDays(3));
+        QCOMPARE(due("sebelum tanggal 5 Desember"), QDateTime(QDate(2026, 12, 5), QTime(9, 0)));
+        QVERIFY(!due("kapan-kapan").isValid());
+        // English is as it was
+        QCOMPARE(due("fri 17:00"), QDateTime(QDate(2026, 11, 13), QTime(17, 0)));
+        QCOMPARE(due("12 nov"), QDateTime(QDate(2026, 11, 12), QTime(9, 0)));
+        QCOMPARE(TasksModel::parseQuick(QStringLiteral("Kumpulkan laporan Jumat 17.00"), now).due, QDateTime(QDate(2026, 11, 13), QTime(17, 0)));
+    }
+
+    void tasksAreOfferedOnlyWhereTheSourceSupportsThemAndNeverAddedAlone()
+    {
+        const QDateTime now(QDate(2026, 11, 9), QTime(10, 0));
+        // from the notes of a recording
+        Audio::ActionItem a, b, done;
+        a.task = QStringLiteral("Siapkan proposal penghematan energi"); a.assignee = QStringLiteral("Budi"); a.deadline = QStringLiteral("5 Desember"); a.timestamp = 60; a.quote = QStringLiteral("proposal penghematan");
+        b.task = QStringLiteral("Kumpulkan data tagihan"); b.deadline = QStringLiteral("Jumat minggu depan");
+        done.task = QStringLiteral("Sudah selesai"); done.done = true;
+        const QList<TaskSuggest::Suggestion> m = TaskSuggest::fromActions(7, QStringLiteral("Rapat anggaran"), {a, b, done}, now);
+        QCOMPARE(m.size(), 2);
+        QCOMPARE(m[0].title, QStringLiteral("Siapkan proposal penghematan energi (Budi)"));
+        QCOMPARE(m[0].due, QDateTime(QDate(2026, 12, 5), QTime(9, 0)));
+        QCOMPARE(m[1].due, QDateTime(QDate(2026, 11, 20), QTime(9, 0)));
+        QCOMPARE(m[0].id, TaskSuggest::idOf(QStringLiteral("meeting"), QStringLiteral("7"), QStringLiteral("siapkan  Proposal penghematan energi")));  // the same task has the same id
+        // from a page: only what the page says
+        const QString page = QStringLiteral("Tugas 2 Basis Data: kumpulkan laporan normalisasi paling lambat Jumat, 14 November 2026 pukul 17.00 melalui e-learning. Kuis 1 akan diadakan Senin.");
+        const QString json = QStringLiteral("{\"tasks\":[{\"title\":\"Kumpulkan laporan normalisasi\",\"due_text\":\"Jumat, 14 November 2026 pukul 17.00\",\"quote\":\"kumpulkan laporan normalisasi paling lambat Jumat\"},"
+                                             "{\"title\":\"Bayar uang kuliah\",\"due_text\":\"besok\",\"quote\":\"bayar uang kuliah paling lambat besok pagi\"},{\"title\":\"\",\"due_text\":\"\",\"quote\":\"kuis 1 akan diadakan Senin\"}]}");
+        const QList<TaskSuggest::Suggestion> p = TaskSuggest::parseTasks(json, page, 3, QStringLiteral("Tugas.pdf"), QStringLiteral("item1"), now);
+        QCOMPARE(p.size(), 1);                                                                    // the payment is not on the page; the one without a title is nothing
+        QCOMPARE(p[0].due, QDateTime(QDate(2026, 11, 14), QTime(17, 0)));
+        QCOMPARE(p[0].page, 3);
+        const Audio::ChatFn chat = [&](const QString &system, const QString &user, const QJsonObject &) { Q_ASSERT(system.contains(QStringLiteral("DATA")) && user.contains(QStringLiteral("<document>"))); return json; };
+        QCOMPARE(TaskSuggest::findTasks(chat, page, 3, QStringLiteral("Tugas.pdf"), QStringLiteral("item1"), now).size(), 1);
+        QVERIFY(TaskSuggest::findTasks({}, page, 1, {}, {}, now).isEmpty());
+        // what is worth offering
+        TaskSuggest::Suggestion old = m[0];
+        old.id = QStringLiteral("old"); old.due = QDateTime(QDate(2026, 10, 1), QTime(9, 0));       // long past
+        const QList<TaskSuggest::Suggestion> found{m[0], m[1], p[0], old, m[0]};
+        QList<TaskSuggest::Suggestion> offer = TaskSuggest::worthOffering(found, {}, {}, {}, now);
+        QCOMPARE(offer.size(), 3);                                                                // not twice, not the long past one
+        offer = TaskSuggest::worthOffering(found, {QStringLiteral("kumpulkan laporan normalisasi")}, {m[1].id}, {}, now);
+        QCOMPARE(offer.size(), 1);                                                                // the one on the list, the one turned down: gone
+        QCOMPARE(offer[0].id, m[0].id);
+        QVERIFY(TaskSuggest::worthOffering(found, {}, {}, {m[0], m[1], p[0]}, now).isEmpty());    // already on offer
+        QVERIFY(TaskSuggest::similar(QStringLiteral("Kumpulkan laporan normalisasi"), QStringLiteral("kumpulkan laporan  normalisasi!")));
+        QVERIFY(!TaskSuggest::similar(QStringLiteral("Kumpulkan laporan"), QStringLiteral("Bayar listrik")));
+        // kept in a file and read again
+        const TaskSuggest::Suggestion back = TaskSuggest::fromJson(TaskSuggest::toJson(m[0]));
+        QCOMPARE(back.title, m[0].title);
+        QCOMPARE(back.due, m[0].due);
+        QCOMPARE(back.timestamp, 60.0);
+    }
+
+    void aWrongNumberInAQuoteIsCaught()
+    {
+        const QString page = QStringLiteral("Biaya sewa Rp 24.000.000 per tahun, dibayar di muka. Uang jaminan Rp 5.000.000 dikembalikan di akhir masa sewa. Pembayaran pukul 17.00.");
+        QCOMPARE(Evidence::numbersIn(QStringLiteral("Rp 24.000.000, jam 17.00. Tahun 2027.")), (QStringList{QStringLiteral("24.000.000"), QStringLiteral("17.00"), QStringLiteral("2027")}));
+        QVERIFY(Evidence::numbersStand(QStringLiteral("Biaya sewa Rp 24.000.000 per tahun"), page));
+        QVERIFY(!Evidence::numbersStand(QStringLiteral("Biaya sewa Rp 24.000.000.000 per tahun"), page));
+        QVERIFY(Evidence::numbersStand(QStringLiteral("tanpa angka"), page));
+        QCOMPARE(Evidence::closestSentence(page, QStringLiteral("biaya sewa Rp 24.000.000.000 per tahun dibayar")), QStringLiteral("Biaya sewa Rp 24.000.000 per tahun, dibayar di muka."));
+        // an answer with that slip in its quote shows the page's own sentence; one with a number nowhere in its sources is flagged
+        KnowledgeStore::Hit h;
+        h.kind = QStringLiteral("shelf"); h.name = QStringLiteral("Kontrak.pdf"); h.page = 1; h.text = page;
+        const QList<Audio::Ask::Source> sources{{1, h}};
+        const Audio::ChatFn slip = [](const QString &, const QString &, const QJsonObject &) {
+            return QStringLiteral("{\"answer\":\"Rp 24.000.000 per tahun. [S1]'}\",\"citations\":[{\"source\":\"S1\",\"quote\":\"Biaya sewa Rp 24.000.000.000 per tahun, dibayar di muka\"}],\"not_found\":false}");
+        };
+        Audio::Ask::Answer a = Audio::Ask::answer(slip, QStringLiteral("berapa sewa?"), sources);
+        QVERIFY(a.supported() && !a.figuresUnchecked);
+        QCOMPARE(a.citations[0].quote, QStringLiteral("Biaya sewa Rp 24.000.000 per tahun, dibayar di muka."));
+        QCOMPARE(a.text, QStringLiteral("Rp 24.000.000 per tahun."));
+        const Audio::ChatFn invented = [](const QString &, const QString &, const QJsonObject &) {
+            return QStringLiteral("{\"answer\":\"Rp 30.000.000 per tahun.\",\"citations\":[{\"source\":\"S1\",\"quote\":\"Biaya sewa Rp 24.000.000 per tahun\"}],\"not_found\":false}");
+        };
+        a = Audio::Ask::answer(invented, QStringLiteral("berapa sewa?"), sources);
+        QVERIFY(a.supported() && a.figuresUnchecked);
     }
 
     void aMomentOfNoiseIsNotASpeaker()

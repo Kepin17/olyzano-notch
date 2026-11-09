@@ -1,5 +1,6 @@
 #include "LiveSession.h"
 
+#include "Hardware.h"
 #include "LivePrompt.h"
 #include "../services/LanguageSettings.h"
 #include "../services/Languages.h"
@@ -23,6 +24,7 @@ QVariant LiveModel::data(const QModelIndex &index, int role) const
     case TextRole: return l.text;
     case TranslationRole: return l.translation;
     case LanguageRole: return l.language;
+    case PartialRole: return l.partial;
     }
     return {};
 }
@@ -50,6 +52,35 @@ void LiveModel::setTranslation(qint64 id, const QString &t)
         }
 }
 
+void LiveModel::setPartial(int side, qint64 startMs, const QString &text, const QString &language)
+{
+    for (int i = 0; i < m_lines.size(); ++i)
+        if (m_lines[i].partial && m_lines[i].side == side) {
+            m_lines[i].text = text;
+            m_lines[i].language = language;
+            emit dataChanged(index(i), index(i), {TextRole, LanguageRole});
+            return;
+        }
+    Line l;
+    l.side = side;
+    l.startMs = l.endMs = startMs;
+    l.text = text;
+    l.language = language;
+    l.partial = true;
+    add(l);
+}
+
+void LiveModel::clearPartial(int side, qint64 beforeMs)
+{
+    for (int i = 0; i < m_lines.size(); ++i)
+        if (m_lines[i].partial && m_lines[i].side == side && m_lines[i].startMs < beforeMs) {
+            beginRemoveRows({}, i, i);
+            m_lines.removeAt(i);
+            endRemoveRows();
+            return;
+        }
+}
+
 void LiveModel::clear()
 {
     beginResetModel();
@@ -67,9 +98,26 @@ LiveSession::LiveSession(ModelStore *store, std::function<int()> threads, QObjec
     , m_asr(store, [threads] { return qBound(2, threads(), 6); }, [] { return LanguageSettings::whisperCodes(LanguageSettings::enabled()); })
     , m_llama(store, [threads] { return qBound(2, threads(), 6); })
 {
+    m_asr.setFast(true); // live: greedy decoding, the lines come sooner
+    // The better speech model (Large v3 Turbo, 9 times slower than Small on the processor) is for live only when a graphics card runs it: about a second
+    // for twenty seconds of speech on a Radeon 780M. It needs the room, and it must be downloaded.
+    {
+        const Audio::HwPlan plan = Audio::Hardware::instance().plan(!store->path(Audio::LlamaSession::gpuHelperId()).isEmpty());
+        qint64 room = 0;
+        for (const Whisper::GpuDevice &g : Whisper::gpus())
+            room = qMax(room, g.freeBytes);
+        if (plan.whisperGpu && room >= (Q_INT64_C(5) << 29) && !store->path(Audio::WhisperAsr::modelFor(QStringLiteral("high"))).isEmpty())
+            m_quality = QStringLiteral("high");
+    }
     m_asrPool.setMaxThreadCount(1);
     m_llmPool.setMaxThreadCount(1);
     m_llmReady = Audio::LlamaSession::available(store);
+    // the speech model loads now, while the person is still settling in, not when the first words come
+    (void)QtConcurrent::run(&m_asrPool, [this] {
+        const QString err = m_asr.prepare(m_quality);
+        const QString engine = err.isEmpty() ? m_store->item(Audio::WhisperAsr::modelFor(m_quality)).title + QStringLiteral(" · ") + Audio::Hardware::instance().reported(QStringLiteral("speech")) : QString();
+        QMetaObject::invokeMethod(this, [this, err, engine] { m_engine = engine; setStatus(err.isEmpty() ? QStringLiteral("listening") : QStringLiteral("failed"), err); }, Qt::QueuedConnection);
+    });
     const QStringList on = LanguageSettings::enabled();
     m_target = on.isEmpty() ? QStringLiteral("en") : on.first();
 }
@@ -95,8 +143,23 @@ void LiveSession::setStatus(const QString &status, const QString &notice)
 void LiveSession::setMine(const QString &c) { if (c != m_mine) { { QMutexLocker lock(&m_lock); m_mine = c; } emit optionsChanged(); } }
 void LiveSession::setTheirs(const QString &c) { if (c != m_theirs) { { QMutexLocker lock(&m_lock); m_theirs = c; } emit optionsChanged(); } }
 void LiveSession::setTarget(const QString &c) { if (c != m_target) { m_target = c; emit optionsChanged(); } }
-void LiveSession::setTranslate(bool on) { if (on != m_translate) { m_translate = on; emit optionsChanged(); } }
-void LiveSession::setTranslateMine(bool on) { if (on != m_translateMine) { m_translateMine = on; emit optionsChanged(); } }
+void LiveSession::setTranslate(bool on) { if (on != m_translate) { m_translate = on; emit optionsChanged(); if (on) warmLlm(); } }
+
+void LiveSession::warmLlm()
+{
+    if (!m_llmReady || m_finished)
+        return;
+    (void)QtConcurrent::run(&m_llmPool, [this] {
+        if (m_cancelLlm || m_llmStarted)
+            return;
+        m_llmStarted = true;
+        const QString err = m_llama.start(&m_cancelLlm);
+        if (!err.isEmpty()) {
+            m_llmFailed = true;
+            QMetaObject::invokeMethod(this, [this, err] { setStatus(m_status, err); }, Qt::QueuedConnection);
+        }
+    });
+}
 
 QString LiveSession::languageOf(int side) const { return side == 0 ? m_mine : m_theirs; }
 
@@ -105,12 +168,15 @@ void LiveSession::audio(int side, const QByteArray &s16le, qint64 endMs)
     if (m_finished || side < 0 || side > 1)
         return;
     enqueue(m_seg[side].feed(s16le, endMs));
+    maybePartial(side);
 }
 
 void LiveSession::enqueue(const QList<Utterance> &list)
 {
     if (list.isEmpty())
         return;
+    ++m_gen[list.first().side]; // what a reading in progress was about has ended
+    m_partialLen[list.first().side] = 0;
     bool launch = false;
     int dropped = 0;
     {
@@ -128,10 +194,58 @@ void LiveSession::enqueue(const QList<Utterance> &list)
         (void)QtConcurrent::run(&m_asrPool, [this] { drain(); });
 }
 
+// A first reading of what is being said, every second or so while a side talks, so the words appear while they are said and not only
+// after the sentence is over. Only when the recognizer has nothing else to do: finished utterances always come first.
+void LiveSession::maybePartial(int side)
+{
+    const Audio::LiveSegmenter &s = m_seg[side];
+    if (m_finished || m_partialRunning || !s.speaking())
+        return;
+    const qint64 n = s.current().size();
+    if (n < Audio::LiveSegmenter::Rate || n - m_partialLen[side] < Audio::LiveSegmenter::Rate * 4 / 5)
+        return;
+    QString lang;
+    {
+        QMutexLocker lock(&m_lock);
+        if (m_draining || !m_queue.isEmpty())
+            return;
+        lang = side == 0 ? m_mine : m_theirs;
+    }
+    if (lang == QLatin1String("auto") && !m_lastLang[side].isEmpty())
+        lang = m_lastLang[side]; // detecting again every second costs time: the language of the last finished line will do
+    constexpr qint64 Keep = qint64(Audio::LiveSegmenter::Rate) * 15;
+    QVector<float> pcm = s.current();
+    qint64 start = s.currentStartMs();
+    if (pcm.size() > Keep) {
+        start += (pcm.size() - Keep) * 1000 / Audio::LiveSegmenter::Rate;
+        pcm = pcm.mid(int(pcm.size() - Keep));
+    }
+    m_partialRunning = true;
+    m_partialLen[side] = n;
+    const int gen = m_gen[side];
+    (void)QtConcurrent::run(&m_asrPool, [this, side, pcm, start, lang, gen] {
+        QString text, detected;
+        if (!m_cancelAsr && m_asr.prepare(m_quality).isEmpty()) {
+            QList<Audio::Segment> segments;
+            if (m_asr.transcribe(pcm, lang, &m_cancelAsr, &segments, &detected).isEmpty()) {
+                QStringList words;
+                for (const Audio::Segment &sg : std::as_const(segments))
+                    words << sg.text;
+                text = words.join(u' ').simplified();
+            }
+        }
+        QMetaObject::invokeMethod(this, [this, side, start, text, detected, gen] {
+            m_partialRunning = false;
+            if (gen == m_gen[side] && !m_finished && !text.isEmpty())
+                m_model.setPartial(side, start, text, detected);
+        }, Qt::QueuedConnection);
+    });
+}
+
 // on the recognizer's thread
 void LiveSession::drain()
 {
-    const QString err = m_asr.prepare(QStringLiteral("standard"));
+    const QString err = m_asr.prepare(m_quality);
     if (!err.isEmpty()) {
         {
             QMutexLocker lock(&m_lock);
@@ -162,20 +276,26 @@ void LiveSession::drain()
         for (const Audio::Segment &s : std::as_const(segments))
             words << s.text;
         const QString text = words.join(u' ').simplified();
-        if (!text.isEmpty())
-            QMetaObject::invokeMethod(this, [this, u, text, detected] { heard(u, text, detected); }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(this, [this, u, text, detected] { heard(u, text, detected); }, Qt::QueuedConnection); // even when nothing was heard: the first reading goes
     }
 }
 
 // on the main thread
 void LiveSession::heard(const Utterance &u, const QString &text, const QString &detected)
 {
+    if (text.isEmpty()) {
+        m_model.clearPartial(u.side, u.endMs);
+        return;
+    }
     LiveModel::Line l;
     l.side = u.side;
     l.startMs = u.startMs;
     l.endMs = u.endMs;
     l.text = text;
     l.language = detected;
+    m_model.clearPartial(u.side, u.endMs);
+    if (!detected.isEmpty())
+        m_lastLang[u.side] = detected;
     const qint64 id = m_model.add(l);
     bool idle;
     {
@@ -189,7 +309,7 @@ void LiveSession::heard(const Utterance &u, const QString &text, const QString &
 
 void LiveSession::translateLine(qint64 id, int side, const QString &text, const QString &detected)
 {
-    if (side == 0 ? !m_translateMine : !m_translate)
+    if (!m_translate)
         return;
     if (!m_llmReady || m_llmFailed || m_llmWaiting >= 6) // too far behind: the original stays
         return;
@@ -202,20 +322,16 @@ void LiveSession::translateLine(qint64 id, int side, const QString &text, const 
                 return l.english;
         return QString();
     };
-    QString from, to;
-    if (side == 1) {
-        from = m_theirs != QLatin1String("auto") ? nameOf(m_theirs) : nameOf(detected);
-        to = nameOf(m_target);
-    } else {
-        from = m_mine != QLatin1String("auto") ? nameOf(m_mine) : nameOf(detected);
-        to = m_theirs != QLatin1String("auto") ? nameOf(m_theirs) : QString();
-    }
+    // every line, yours and theirs, goes into the one language chosen; one that is in it already is left as it is
+    const QString spoken = side == 0 ? m_mine : m_theirs;
+    const QString from = spoken != QLatin1String("auto") ? nameOf(spoken) : nameOf(detected);
+    const QString to = nameOf(m_target);
     if (to.isEmpty() || (!from.isEmpty() && from == to))
         return;
     QStringList before;
     const auto &lines = m_model.lines();
     for (int i = int(lines.size()) - 1; i >= 0 && before.size() < 2; --i)
-        if (lines[i].id != id && lines[i].side == side)
+        if (lines[i].id != id && lines[i].side == side && !lines[i].partial)
             before.prepend(lines[i].text);
     ++m_llmWaiting;
     (void)QtConcurrent::run(&m_llmPool, [this, id, from, to, before, text] {
@@ -243,12 +359,13 @@ void LiveSession::suggestAnswer(const QString &note)
     if (m_suggesting)
         return;
     if (!m_llmReady) {
-        setStatus(m_status, tr("Smart answer needs the language model: download it in Settings → AI → Audio Intelligence."));
+        setStatus(m_status, tr("Smart answer needs the language model: download it in Settings → AI."));
         return;
     }
     QStringList lines;
     for (const LiveModel::Line &l : m_model.lines())
-        lines << QStringLiteral("%1: %2").arg(l.side == 0 ? tr("You") : tr("Others"), l.text);
+        if (!l.partial)
+            lines << QStringLiteral("%1: %2").arg(l.side == 0 ? tr("You") : tr("Others"), l.text);
     if (lines.isEmpty())
         return;
     lines = Audio::Live::tail(lines);
@@ -309,6 +426,7 @@ QList<Audio::Segment> LiveSession::segments() const
 {
     QList<Audio::Segment> out;
     for (const LiveModel::Line &l : m_model.lines())
-        out.append({double(l.startMs) / 1000.0, double(l.endMs) / 1000.0, l.text, l.side == 0 ? tr("You") : tr("Others"), false});
+        if (!l.partial)
+            out.append({double(l.startMs) / 1000.0, double(l.endMs) / 1000.0, l.text, l.side == 0 ? tr("You") : tr("Others"), false});
     return out;
 }

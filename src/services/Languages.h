@@ -269,7 +269,9 @@ inline const Words &words(const QString &code)
         {QStringLiteral("ko"), {QStringLiteral("개요"), QStringLiteral("학습 목표"), QStringLiteral("목차"), QStringLiteral("핵심 요점"), QStringLiteral("용어와 정의"), QStringLiteral("공식, 규칙, 예시"), QStringLiteral("연습 문제"),
                                 QStringLiteral("플래시카드"), QStringLiteral("정답"), QStringLiteral("%1쪽"), QStringLiteral("%1–%2쪽")}},
     };
-    return table.contains(code) ? table[code] : table[QStringLiteral("en")];
+    // (a const QHash's operator[] gives a copy: a reference to it would dangle)
+    const auto it = table.constFind(code);
+    return it != table.constEnd() ? it.value() : table.constFind(QStringLiteral("en")).value();
 }
 inline bool hasWords(const QString &code)
 {

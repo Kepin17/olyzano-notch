@@ -38,6 +38,8 @@ public:
     void setBarReserve(QWindow *window, int reserve);
     // The notch above the status bar (both sit on the top edge): in the overlay layer while the bar is on, else the top layer.
     void setAboveBar(QWindow *notchWindow, bool above);
+    // A file dialog is open: the notch steps under the windows (Wayland: the bottom layer; Windows: not topmost), so the dialog is not hidden by the panel; back on top after.
+    Q_INVOKABLE void setBelowWindows(QWindow *notchWindow, bool below);
     // Windows/X11: put a tool window back above other always-on-top peers (z-order drifts when apps or the shell re-sort).
     Q_INVOKABLE void raiseOnTop(QWindow *window);
     // Move a dock to another edge. Call while it is hidden: a layer-shell surface takes anchors when mapped.
@@ -88,4 +90,5 @@ private:
     void updateWinReserveStrip(QWindow *notchWindow, int logicalPx);
 #endif
     bool m_layerShell = false;
+    bool m_below = false;
 };

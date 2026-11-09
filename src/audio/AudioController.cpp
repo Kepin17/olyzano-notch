@@ -1,6 +1,7 @@
 #include "AudioController.h"
 
 #include "EngineParse.h"
+#include "Hardware.h"
 #include "NameHints.h"
 #include "services/LanguageSettings.h"
 #include "WavFile.h"
@@ -8,6 +9,8 @@
 
 #include <QClipboard>
 #include <QDateTime>
+#include <QElapsedTimer>
+#include <cmath>
 #include <QDir>
 #include <QFileInfo>
 #include <QGuiApplication>
@@ -30,6 +33,8 @@ QString kindName(Audio::Kind k)
     case Audio::Kind::Embedding: return QStringLiteral("speakers");
     case Audio::Kind::Helper: return QStringLiteral("program");
     case Audio::Kind::Ocr: return QStringLiteral("ocr");
+    case Audio::Kind::Vision: return QStringLiteral("vision");
+    case Audio::Kind::Embedder: return QStringLiteral("embedder");
     }
     return {};
 }
@@ -62,6 +67,10 @@ AudioController::AudioController(QObject *parent)
     connect(&m_recorder, &MeetingRecorder::levelChanged, this, &AudioController::recordingChanged);
     connect(&m_recorder, &MeetingRecorder::failed, this, [this](const QString &why) { setError(why); });
     connect(&m_recorder, &MeetingRecorder::limitReached, this, [this] { stopRecording(false); });
+    (void)QtConcurrent::run([this] { // what graphics cards there are, found without making the window wait
+        Audio::Hardware::instance().info();
+        QMetaObject::invokeMethod(this, &AudioController::hardwareChanged, Qt::QueuedConnection);
+    });
     m_tick.setInterval(500);
     connect(&m_tick, &QTimer::timeout, this, &AudioController::recordingChanged);
 }
@@ -208,13 +217,132 @@ QVariantMap AudioController::readiness() const
             {QStringLiteral("summary"), m_sum.available()}, {QStringLiteral("ffmpeg"), ffmpeg}, {QStringLiteral("messages"), messages}};
 }
 
+QVariantList AudioController::knowledgeMeetings() const
+{
+    QVariantList out;
+    for (const AudioStore::Meeting &m : m_store.meetings())
+        if (m.segments > 0)
+            out.append(QVariantMap{{QStringLiteral("id"), m.id}, {QStringLiteral("title"), m.title}, {QStringLiteral("created"), m.created.toSecsSinceEpoch()},
+                                   {QStringLiteral("fingerprint"), QStringLiteral("%1|%2|%3").arg(m.segments).arg(m.updated.toSecsSinceEpoch()).arg(m.title)}});
+    return out;
+}
+
+QList<Knowledge::Utterance> AudioController::transcriptLines(qlonglong id) const
+{
+    QList<Knowledge::Utterance> out;
+    for (const AudioStore::SegmentRow &s : m_store.segments(id))
+        out.append({s.start, s.who(), s.text()});
+    return out;
+}
+
+QList<Audio::ActionItem> AudioController::actionItemsOf(qlonglong id) const
+{
+    QList<Audio::ActionItem> out;
+    for (const AudioStore::ActionRow &r : m_store.actions(id))
+        out.append(r.item);
+    return out;
+}
+
+QVariantMap AudioController::hardware() const
+{
+    Audio::Hardware &hw = Audio::Hardware::instance();
+    QVariantList devices;
+    const Gpu::Info info = hw.known();
+    for (const Gpu::Device &d : info.devices)
+        devices.append(QVariantMap{{QStringLiteral("name"), d.name}, {QStringLiteral("vendor"), d.vendor}, {QStringLiteral("integrated"), d.integrated},
+                                   {QStringLiteral("memory"), QLocale().formattedDataSize(d.vramTotal)}});
+    const Audio::HwPlan plan = hw.detected() ? hw.plan(!m_models.path(Audio::LlamaSession::gpuHelperId()).isEmpty()) : Audio::HwPlan{};
+    const Audio::HwBench bench = hw.detected() ? hw.bench() : Audio::HwBench{};
+    return {{QStringLiteral("detected"), hw.detected()}, {QStringLiteral("setting"), hw.setting()}, {QStringLiteral("devices"), devices}, {QStringLiteral("vulkan"), info.vulkan},
+            {QStringLiteral("built"), !Whisper::gpus().isEmpty() || Whisper::gpusBuilt()}, {QStringLiteral("reason"), plan.reason}, {QStringLiteral("speech"), hw.reported(QStringLiteral("speech"))},
+            {QStringLiteral("notes"), hw.reported(QStringLiteral("notes"))}, {QStringLiteral("failure"), hw.lastFailure()}, {QStringLiteral("benchKnown"), bench.known},
+            {QStringLiteral("speedup"), bench.speedup}, {QStringLiteral("testing"), m_testing.load()}, {QStringLiteral("testResult"), m_testResult},
+            {QStringLiteral("helperId"), Audio::LlamaSession::gpuHelperId()}, {QStringLiteral("helperReady"), !m_models.path(Audio::LlamaSession::gpuHelperId()).isEmpty()}};
+}
+
+void AudioController::setHardwareMode(const QString &mode)
+{
+    Audio::Hardware::instance().setSetting(mode);
+    emit hardwareChanged();
+}
+
+void AudioController::detectHardware()
+{
+    (void)QtConcurrent::run([this] {
+        Audio::Hardware::instance().refresh();
+        QMetaObject::invokeMethod(this, &AudioController::hardwareChanged, Qt::QueuedConnection);
+    });
+}
+
+// The speech model on the processor and on the best card, on the same 10 s of sound: how many times quicker the card was. It decides "Auto" for an
+// integrated card, which shares the computer's memory and is not always quicker. The words do not matter, the work of the model does.
+void AudioController::speedTest()
+{
+    if (m_testing.exchange(true))
+        return;
+    m_testResult.clear();
+    emit hardwareChanged();
+    (void)QtConcurrent::run([this] {
+        QString result;
+        const QString path = m_models.path(Audio::WhisperAsr::modelFor(QStringLiteral("standard")));
+        if (!Whisper::compiled()) {
+            result = tr("This build of Notch has no speech recognition.");
+        } else if (Whisper::gpus().isEmpty()) {
+            result = tr("This build or this computer has no graphics card the speech model can use.");
+        } else if (path.isEmpty()) {
+            result = tr("Download the speech model first.");
+        } else {
+            QVector<float> sound(16000 * 10);
+            for (int i = 0; i < sound.size(); ++i) { // something like a voice: a low tone that swells and fades
+                const double t = i / 16000.0;
+                sound[i] = float(0.25 * std::sin(2 * M_PI * 180.0 * t) * (0.5 + 0.5 * std::sin(2 * M_PI * 2.5 * t)) + 0.08 * std::sin(2 * M_PI * 1200.0 * t));
+            }
+            const auto timeIt = [&](bool gpu, double *ms, QString *backend) {
+                Whisper w;
+                if (!w.load(path, gpu))
+                    return false;
+                if (gpu && w.fellBack())
+                    return false;
+                QList<Whisper::Piece> pieces;
+                QString detected;
+                std::atomic_bool never{false};
+                w.transcribeSegments(sound.mid(0, 16000 * 2), QStringLiteral("en"), qMax(2, threads()), &never, &pieces, &detected, {}, true); // warm up
+                QElapsedTimer t;
+                t.start();
+                w.transcribeSegments(sound, QStringLiteral("en"), qMax(2, threads()), &never, &pieces, &detected, {}, true);
+                *ms = double(t.elapsed());
+                *backend = w.backend();
+                return true;
+            };
+            double cpu = 0, gpu = 0;
+            QString b1, b2;
+            if (!timeIt(false, &cpu, &b1))
+                result = tr("The speech model could not be loaded.");
+            else if (!timeIt(true, &gpu, &b2))
+                result = tr("The speech model could not use the graphics card.");
+            else if (cpu <= 0 || gpu <= 0)
+                result = tr("The test was too quick to measure.");
+            else {
+                const double speedup = cpu / gpu;
+                Audio::Hardware::instance().setBench(speedup);
+                result = tr("%1 took %2 s, the processor %3 s: %4 times %5").arg(b2).arg(gpu / 1000.0, 0, 'f', 1).arg(cpu / 1000.0, 0, 'f', 1).arg(speedup, 0, 'f', 1).arg(speedup >= 1 ? tr("quicker") : tr("slower"));
+            }
+        }
+        QMetaObject::invokeMethod(this, [this, result] {
+            m_testResult = result;
+            m_testing = false;
+            emit hardwareChanged();
+        }, Qt::QueuedConnection);
+    });
+}
+
 QString AudioController::readinessProblem(const QString &quality) const
 {
     if (!Whisper::compiled())
         return tr("This build of Notch has no speech recognition.");
     const QString id = Audio::WhisperAsr::modelFor(quality);
     if (m_models.path(id).isEmpty())
-        return tr("The speech model (%1) is not installed. Download it in Settings → AI → Audio Intelligence.").arg(m_models.item(id).title);
+        return tr("The speech model (%1) is not installed. Download it in Settings → AI.").arg(m_models.item(id).title);
     const qint64 limit = qint64(ramLimitMb()) << 20;
     if (limit > 0 && m_models.item(id).memory > limit)
         return tr("%1 needs about %2 of memory, more than the limit you set (%3).")
@@ -597,7 +725,7 @@ void AudioController::regenerateNotes(qlonglong id, const QString &tmplId)
     m_store.updateMeeting(m);
     if (!m_sum.available()) {
         emit currentChanged();
-        setError(tr("The notes need the language model and its program: download both under Summary, or in Settings → Audio AI."));
+        setError(tr("The notes need the language model and its program: download both under Summary, or in Settings → AI."));
         return;
     }
     if (m_busy && m_busy != id) {

@@ -1,5 +1,7 @@
 #include "DocSummaryController.h"
 
+#include "audio/VisionPrompt.h"
+
 #include "app/NotchController.h"
 #include "platform/NotchPaths.h"
 #include "services/DocSummarize.h"
@@ -135,7 +137,8 @@ QVariantMap DocSummaryController::describe(const QString &path, const QString &n
         warnings << tr("Most pages are pictures and tesseract (OCR) is not installed.");
     else if (pictureShare > 0.4 && !ocrLanguages.contains(QLatin1String("ind")))
         warnings << tr("Most pages are pictures. For Indonesian text install tesseract-ocr-ind (it is read with English only now).");
-    return {{QStringLiteral("ok"), true}, {QStringLiteral("name"), name}, {QStringLiteral("pages"), pages},
+    const int figurePages = qMin<int>(src.picturePages().size(), 20); // pages with a figure: what the picture model would look at (at most 20)
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("name"), name}, {QStringLiteral("pages"), pages}, {QStringLiteral("figurePages"), figurePages},
             {QStringLiteral("pictureShare"), pictureShare}, {QStringLiteral("ocrLanguages"), ocrLanguages}, {QStringLiteral("ocrInstalled"), ocrInstalled},
             {QStringLiteral("estimateMinutes"), int(std::ceil(seconds / 60.0))}, {QStringLiteral("warning"), warnings.join(QStringLiteral(" "))}};
 }
@@ -192,6 +195,7 @@ void DocSummaryController::begin(const QString &path, const QString &name, const
     opt.ocr = options.value(QStringLiteral("ocr"), QStringLiteral("auto")).toString();
     opt.firstPage = options.value(QStringLiteral("firstPage"), 1).toInt();
     opt.lastPage = options.value(QStringLiteral("lastPage"), 0).toInt();
+    opt.figures = options.value(QStringLiteral("figures")).toString() == QLatin1String("describe") && Audio::LlamaSession::visionAvailable(m_audio->modelStore());
     const QFileInfo fi(path);
     const QString cacheDir = NotchPaths::dataDir(QStringLiteral("docsummary")) + u'/' + QString::fromLatin1(QCryptographicHash::hash((path + QString::number(fi.size()) + QString::number(fi.lastModified().toMSecsSinceEpoch())).toUtf8(), QCryptographicHash::Sha1).toHex().left(20));
 
@@ -217,6 +221,35 @@ void DocSummaryController::begin(const QString &path, const QString &name, const
             }, Qt::QueuedConnection);
         };
         DocSummary::PdfPageSource source(path, Lang::tessCode(opt.language));
+        // the picture model looks at the pages that have figures, before the language model is started (they are not kept in memory together)
+        Audio::LlamaSession vision(models, [threads] { return threads; }, true);
+        bool visionStarted = false;
+        QString visionError;
+        DocSummary::Options job = opt;
+        if (opt.figures) {
+            const QString language = Lang::known(opt.language) ? Lang::englishName(opt.language) : QStringLiteral("the language of the document (English when unknown)");
+            job.describePage = [&, language](const QByteArray &png, QString *error) -> QString {
+                if (!visionStarted) {
+                    visionStarted = true;
+                    visionError = vision.start(&m_cancel);
+                }
+                if (!visionError.isEmpty()) {
+                    *error = visionError == QLatin1String("cancelled") ? QString() : tr("The figures were left out: %1").arg(visionError);
+                    return {};
+                }
+                const Audio::Vision::ImageChatFn chatImage = [&](const QString &s, const QString &u, const QByteArray &img, const QString &mime, const QJsonObject &schema) {
+                    return vision.chatImage(s, u, img, mime, schema, &m_cancel);
+                };
+                QString err;
+                const Audio::Vision::Result r = Audio::Vision::look(chatImage, png, QStringLiteral("image/png"), language, Audio::Vision::Mode::Page, &err);
+                if (!err.isEmpty()) {
+                    *error = err;
+                    return {};
+                }
+                return Audio::Vision::pageInsertion(r);
+            };
+            job.doneFigures = [&] { vision.stop(); };
+        }
         Audio::LlamaSession session(models, [threads] { return threads; });
         QString sessionError;
         bool started = false;
@@ -228,7 +261,7 @@ void DocSummaryController::begin(const QString &path, const QString &name, const
             }
             return sessionError.isEmpty() ? session.chat(system, user, schema, &m_cancel, 1800) : QString();
         };
-        DocSummary::Result r = DocSummary::summarize(source, cacheDir, opt, chat, progress, &m_cancel);
+        DocSummary::Result r = DocSummary::summarize(source, cacheDir, job, chat, progress, &m_cancel);
         session.stop();
         QString error = r.error;
         if (!sessionError.isEmpty() && sessionError != QLatin1String("cancelled") && !error.isEmpty() && error != QLatin1String("cancelled"))
@@ -239,7 +272,8 @@ void DocSummaryController::begin(const QString &path, const QString &name, const
             const QString lang = r.notes.language;
             const QString meta = QStringLiteral("%1 · %2 · %3").arg(QFileInfo(path).fileName(), lang == QLatin1String("en") ? QStringLiteral("%1 pages").arg(r.pages) : QStringLiteral("%1 halaman").arg(r.pages),
                                                                      QLocale().toString(QDate::currentDate(), QLocale::ShortFormat))
-                                 + (r.ocrPages > 0 ? (lang == QLatin1String("en") ? QStringLiteral(" · %1 read by OCR").arg(r.ocrPages) : QStringLiteral(" · %1 dibaca dengan OCR").arg(r.ocrPages)) : QString());
+                                 + (r.ocrPages > 0 ? (lang == QLatin1String("en") ? QStringLiteral(" · %1 read by OCR").arg(r.ocrPages) : QStringLiteral(" · %1 dibaca dengan OCR").arg(r.ocrPages)) : QString())
+                                 + (r.figurePages > 0 ? (lang == QLatin1String("en") ? QStringLiteral(" · %1 with figures described").arg(r.figurePages) : QStringLiteral(" · %1 halaman bergambar dijelaskan").arg(r.figurePages)) : QString());
             r.notes.title = base;
             md = DocSummary::toMarkdown(r.notes, opt.style, base, meta).toUtf8();
             mdName = base + QStringLiteral(" (summary).md");

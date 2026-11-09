@@ -5,6 +5,7 @@
 #include <vector>
 
 #ifdef NOTCH_HAVE_WHISPER
+#include "ggml-backend.h"
 #include "whisper.h"
 #endif
 
@@ -12,7 +13,47 @@ struct Whisper::Impl {
 #ifdef NOTCH_HAVE_WHISPER
     whisper_context *ctx = nullptr;
 #endif
+    QString backend = QStringLiteral("CPU");
+    bool fellBack = false;
 };
+
+QList<Whisper::GpuDevice> Whisper::gpus()
+{
+    QList<GpuDevice> out;
+#ifdef NOTCH_HAVE_WHISPER
+    int cnt = 0; // whisper.cpp counts only the devices that are a GPU, in this order
+    for (size_t i = 0; i < ggml_backend_dev_count(); ++i) {
+        ggml_backend_dev_t dev = ggml_backend_dev_get(i);
+        const auto type = ggml_backend_dev_type(dev);
+        if (type != GGML_BACKEND_DEVICE_TYPE_GPU && type != GGML_BACKEND_DEVICE_TYPE_IGPU)
+            continue;
+        GpuDevice g;
+        g.index = cnt++;
+        g.name = QString::fromUtf8(ggml_backend_dev_description(dev));
+        g.integrated = type == GGML_BACKEND_DEVICE_TYPE_IGPU;
+        size_t free = 0, total = 0;
+        ggml_backend_dev_memory(dev, &free, &total);
+        g.freeBytes = qint64(free);
+        g.totalBytes = qint64(total);
+        if (g.name.contains(QLatin1String("llvmpipe"), Qt::CaseInsensitive) || g.name.contains(QLatin1String("software"), Qt::CaseInsensitive))
+            continue; // a processor pretending to be a card
+        out.append(g);
+    }
+#endif
+    return out;
+}
+
+bool Whisper::gpusBuilt()
+{
+#ifdef NOTCH_GPU_BUILT
+    return true;
+#else
+    return false;
+#endif
+}
+
+QString Whisper::backend() const { return d->backend; }
+bool Whisper::fellBack() const { return d->fellBack; }
 
 Whisper::Whisper() : d(std::make_unique<Impl>()) {}
 
@@ -45,22 +86,47 @@ void Whisper::unload()
 #endif
 }
 
-bool Whisper::load(const QString &modelPath)
+bool Whisper::load(const QString &modelPath, bool gpu)
 {
 #ifdef NOTCH_HAVE_WHISPER
     unload();
+    d->backend = QStringLiteral("CPU");
+    d->fellBack = false;
     whisper_context_params cp = whisper_context_default_params();
     cp.use_gpu = false;
+    QString gpuName;
+    if (gpu) {
+        const QList<GpuDevice> list = gpus();
+        const GpuDevice *best = nullptr; // a card of its own first, then the one with the most room
+        for (const GpuDevice &g : list)
+            if (!best || (best->integrated && !g.integrated) || (best->integrated == g.integrated && g.freeBytes > best->freeBytes))
+                best = &g;
+        if (best) {
+            cp.use_gpu = true;
+            cp.gpu_device = best->index;
+            gpuName = best->name;
+        } else {
+            d->fellBack = true; // asked for, but this build or this computer has none
+        }
+    }
     d->ctx = whisper_init_from_file_with_params(modelPath.toUtf8().constData(), cp);
+    if (!d->ctx && cp.use_gpu) { // the card would not take it: the processor will
+        cp.use_gpu = false;
+        d->fellBack = true;
+        d->ctx = whisper_init_from_file_with_params(modelPath.toUtf8().constData(), cp);
+    }
+    if (d->ctx && cp.use_gpu)
+        d->backend = QStringLiteral("GPU: ") + gpuName;
     return d->ctx != nullptr;
 #else
     Q_UNUSED(modelPath)
+    Q_UNUSED(gpu)
     return false;
 #endif
 }
 
 QString Whisper::transcribeSegments(const QVector<float> &samples, const QString &language, int threads, const std::atomic_bool *cancel, QList<Piece> *out,
-                                    QString *detectedLanguage, const QStringList &candidates)
+                                    QString *detectedLanguage, const QStringList &candidates, bool fast)
 {
 #ifdef NOTCH_HAVE_WHISPER
     if (!d->ctx)
@@ -121,10 +187,10 @@ QString Whisper::transcribeSegments(const QVector<float> &samples, const QString
 
     // Beam search reads speech more accurately than greedy decoding (fewer wrong words, fewer repeats) for about twice the time; and when
     // a window comes out unsure the model tries again with a little randomness (temperature fallback), which fixes most garbled ones.
-    whisper_full_params wp = whisper_full_default_params(WHISPER_SAMPLING_BEAM_SEARCH);
+    whisper_full_params wp = whisper_full_default_params(fast ? WHISPER_SAMPLING_GREEDY : WHISPER_SAMPLING_BEAM_SEARCH);
     wp.beam_search.beam_size = 5;
     wp.temperature = 0.0f;
-    wp.temperature_inc = 0.2f;
+    wp.temperature_inc = fast ? 0.0f : 0.2f;
     wp.entropy_thold = 2.4f;
     wp.logprob_thold = -1.0f;
     wp.no_speech_thold = 0.6f;

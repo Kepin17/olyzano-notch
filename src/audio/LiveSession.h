@@ -10,27 +10,31 @@
 #include <QVariantList>
 
 #include <atomic>
+#include <limits>
 
 // The lines of a live meeting, in the order they were said (a line is added when the recognizer has finished it; its translation follows).
 class LiveModel : public QAbstractListModel
 {
     Q_OBJECT
 public:
-    enum Role { SideRole = Qt::UserRole + 1, StartRole, TextRole, TranslationRole, LanguageRole };
+    enum Role { SideRole = Qt::UserRole + 1, StartRole, TextRole, TranslationRole, LanguageRole, PartialRole };
     struct Line {
         qint64 id = 0, startMs = 0, endMs = 0;
         int side = 0;
         QString text, translation, language;
+        bool partial = false; // a first reading of what is being said, replaced by the final line
     };
     explicit LiveModel(QObject *parent = nullptr) : QAbstractListModel(parent) {}
     int rowCount(const QModelIndex &parent = {}) const override { return parent.isValid() ? 0 : int(m_lines.size()); }
     QHash<int, QByteArray> roleNames() const override
     {
-        return {{SideRole, "side"}, {StartRole, "startText"}, {TextRole, "text"}, {TranslationRole, "translation"}, {LanguageRole, "language"}};
+        return {{SideRole, "side"}, {StartRole, "startText"}, {TextRole, "text"}, {TranslationRole, "translation"}, {LanguageRole, "language"}, {PartialRole, "partial"}};
     }
     QVariant data(const QModelIndex &index, int role) const override;
     qint64 add(const Line &line); // in time order; returns the id
     void setTranslation(qint64 id, const QString &t);
+    void setPartial(int side, qint64 startMs, const QString &text, const QString &language); // the reading of what a side is saying now
+    void clearPartial(int side, qint64 beforeMs = std::numeric_limits<qint64>::max());     // ... of the utterance that began before `beforeMs`
     const QList<Line> &lines() const { return m_lines; }
     void clear();
 
@@ -48,11 +52,11 @@ class LiveSession : public QObject
     Q_PROPERTY(QObject *model READ model CONSTANT)
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)        // loading | listening | behind | failed
     Q_PROPERTY(QString notice READ notice NOTIFY statusChanged)       // what to tell the person (why, or what is missing)
+    Q_PROPERTY(QString engine READ engine NOTIFY statusChanged)       // the speech model and where it runs ("Whisper Large v3 Turbo · GPU: …")
     Q_PROPERTY(QString mine READ mine WRITE setMine NOTIFY optionsChanged)         // language of "You": auto or a catalog code
     Q_PROPERTY(QString theirs READ theirs WRITE setTheirs NOTIFY optionsChanged)   // language of the others
     Q_PROPERTY(QString target READ target WRITE setTarget NOTIFY optionsChanged)   // the language to translate into (and to answer in)
     Q_PROPERTY(bool translate READ translate WRITE setTranslate NOTIFY optionsChanged)
-    Q_PROPERTY(bool translateMine READ translateMine WRITE setTranslateMine NOTIFY optionsChanged)
     Q_PROPERTY(QVariantList suggestions READ suggestions NOTIFY suggestionsChanged)
     Q_PROPERTY(bool suggesting READ suggesting NOTIFY suggestionsChanged)
     Q_PROPERTY(bool llmReady READ llmReady CONSTANT) // the language model is installed (translation and answers need it)
@@ -63,11 +67,11 @@ public:
     QObject *model() { return &m_model; }
     QString status() const { return m_status; }
     QString notice() const { return m_notice; }
+    QString engine() const { return m_engine; }
     QString mine() const { return m_mine; }
     QString theirs() const { return m_theirs; }
     QString target() const { return m_target; }
     bool translate() const { return m_translate; }
-    bool translateMine() const { return m_translateMine; }
     QVariantList suggestions() const { return m_suggestions; }
     bool suggesting() const { return m_suggesting; }
     bool llmReady() const { return m_llmReady; }
@@ -75,7 +79,6 @@ public:
     void setTheirs(const QString &c);
     void setTarget(const QString &c);
     void setTranslate(bool on);
-    void setTranslateMine(bool on);
 
     // The chunks of the recorder (side 0: microphone, 1: computer sound); `endMs` is the recording clock.
     void audio(int side, const QByteArray &s16le, qint64 endMs);
@@ -93,6 +96,8 @@ signals:
 private:
     void enqueue(const QList<Audio::Utterance> &list);
     void drain();
+    void maybePartial(int side);
+    void warmLlm(); // start the language model before it is needed
     void heard(const Audio::Utterance &u, const QString &text, const QString &detected);
     void translateLine(qint64 id, int side, const QString &text, const QString &detected);
     void setStatus(const QString &status, const QString &notice = {});
@@ -108,11 +113,16 @@ private:
     QMutex m_lock;
     QList<Audio::Utterance> m_queue;
     bool m_draining = false;
+    bool m_partialRunning = false;
+    qint64 m_partialLen[2] = {0, 0};
+    int m_gen[2] = {0, 0};
+    QString m_lastLang[2];
     std::atomic_bool m_cancelAsr{false}, m_cancelLlm{false};
     std::atomic_int m_llmWaiting{0};
     bool m_llmStarted = false, m_llmFailed = false, m_llmReady = false, m_finished = false;
     QString m_mine = QStringLiteral("auto"), m_theirs = QStringLiteral("auto"), m_target;
-    bool m_translate = false, m_translateMine = false, m_suggesting = false;
-    QString m_status = QStringLiteral("loading"), m_notice;
+    bool m_translate = false, m_suggesting = false;
+    QString m_status = QStringLiteral("loading"), m_notice, m_engine;
+    QString m_quality = QStringLiteral("standard"); // standard: Whisper Small; high: Large v3 Turbo (when a graphics card makes it quick enough for live)
     QVariantList m_suggestions;
 };

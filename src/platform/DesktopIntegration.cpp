@@ -203,9 +203,33 @@ void DesktopIntegration::moveDock(QWindow *window, const QString &side)
     placeDock(window);
 }
 
+void DesktopIntegration::setBelowWindows(QWindow *notchWindow, bool below)
+{
+    if (!notchWindow || below == m_below)
+        return;
+    m_below = below;
+#ifdef NOTCH_HAVE_LAYERSHELL
+    if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
+        if (auto *ls = LayerShellQt::Window::get(notchWindow))
+            ls->setLayer(below ? LayerShellQt::Window::LayerBottom : LayerShellQt::Window::LayerOverlay);
+        return;
+    }
+#endif
+#ifdef Q_OS_WIN
+    if (const HWND hwnd = reinterpret_cast<HWND>(notchWindow->winId())) {
+        SetWindowPos(hwnd, below ? HWND_NOTOPMOST : HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+        return;
+    }
+#endif
+    if (below)
+        notchWindow->lower();
+    else
+        raiseOnTop(notchWindow);
+}
+
 void DesktopIntegration::setAboveBar(QWindow *notchWindow, bool above)
 {
-    if (!notchWindow)
+    if (!notchWindow || m_below) // (while a dialog is open the notch stays under it)
         return;
 #ifdef NOTCH_HAVE_LAYERSHELL
     Q_UNUSED(above)

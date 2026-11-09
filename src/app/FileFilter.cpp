@@ -63,10 +63,17 @@ bool FileFilter::lessThan(const QModelIndex &left, const QModelIndex &right) con
     return a != b ? a > b : byId();
 }
 
+void FileFilter::setOnlyIds(const QSet<QString> &ids, bool active)
+{
+    changeFilter([&] { m_onlyIds = ids; m_only = active; });
+}
+
 bool FileFilter::filterAcceptsRow(int row, const QModelIndex &parent) const
 {
     const QModelIndex i = sourceModel()->index(row, 0, parent);
-    const bool match = m_text.isEmpty() // (nothing typed: no name to look at)
+    if (m_only && !m_onlyIds.contains(i.data(FileItemModel::IdRole).toString()))
+        return false;
+    const bool match = m_only || m_text.isEmpty() // (a smart search decided what shows; nothing typed: no name to look at)
                        || i.data(FileItemModel::NameRole).toString().contains(m_text, Qt::CaseInsensitive)
                        || m_contentIds.contains(i.data(FileItemModel::IdRole).toString());
     if (!match)

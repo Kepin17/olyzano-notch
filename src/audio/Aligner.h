@@ -31,7 +31,7 @@ inline double overlap(double a0, double a1, double b0, double b1) { return std::
 }
 
 // Each segment gets the speaker who talks longest during it. When someone else talks for a good part of it, it is cut into one piece per
-// speaker, the words shared out by how long each spoke (marked approx: the real boundary is somewhere near). A segment no turn touches takes
+// speaker, the words shared out by how long each spoke (marked approx: the real boundary is somewhere nearby). A segment no turn touches takes
 // the nearest turn within 2 s, else the speaker before it.
 inline QList<Segment> align(const QList<Segment> &asr, QList<Turn> turns)
 {
@@ -60,16 +60,16 @@ inline QList<Segment> align(const QList<Segment> &asr, QList<Turn> turns)
         Segment base = s;
         if (runs.isEmpty()) {
             double best = 2.0;
-            QString near = last;
+            QString closest = last;
             for (const Turn &t : std::as_const(turns)) {
                 const double gap = t.end < s.start ? s.start - t.end : t.start > s.end ? t.start - s.end : 0;
                 if (gap < best) {
                     best = gap;
-                    near = t.speaker;
+                    closest = t.speaker;
                 }
             }
-            base.speaker = near;
-            last = near;
+            base.speaker = closest;
+            last = closest;
             out.append(base);
             continue;
         }

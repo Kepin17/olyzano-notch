@@ -6,6 +6,7 @@
 #include "AudioPipeline.h"
 #include "AudioStore.h"
 #include "LiveSession.h"
+#include "services/Chunker.h"
 #include "MeetingRecorder.h"
 #include "ModelStore.h"
 
@@ -48,6 +49,7 @@ class AudioController : public QObject
     Q_PROPERTY(QString firstTab READ firstTab CONSTANT) // the tab a recording opens on (NOTCH_SHOT_TAB, for screenshots; else Summary)
     Q_PROPERTY(QStringList modelIds READ modelIds CONSTANT)           // the catalog's ids: a list that does not change while models download
     Q_PROPERTY(QVariantMap readiness READ readiness NOTIFY modelsChanged)
+    Q_PROPERTY(QVariantMap hardware READ hardware NOTIFY hardwareChanged) // the graphics cards, the setting, and what runs where
     Q_PROPERTY(int threads READ threads WRITE setThreads NOTIFY settingsChanged)
     Q_PROPERTY(QString quality READ quality WRITE setQuality NOTIFY settingsChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY settingsChanged)
@@ -92,9 +94,16 @@ public:
 #endif
     }
     QString firstTab() const { return qEnvironmentVariable("NOTCH_SHOT_TAB", QStringLiteral("summary")); }
-    QStringList modelIds() const { QStringList ids; for (const auto &i : m_models.items()) if (i.kind != Audio::Kind::Ocr) ids << i.id; return ids; }
+    QStringList modelIds() const { QStringList ids; for (const auto &i : m_models.items()) if (i.kind != Audio::Kind::Ocr && i.kind != Audio::Kind::Vision && i.kind != Audio::Kind::Embedder && !i.id.startsWith(QLatin1String("gpu-"))) ids << i.id; return ids; } // the graphics card program has its own place (Hardware)
     Q_INVOKABLE QVariantMap modelInfo(const QString &id) const { for (const QVariant &v : models()) if (v.toMap().value(QStringLiteral("id")).toString() == id) return v.toMap(); return {}; }
     QVariantMap readiness() const;
+    QVariantMap hardware() const;
+    // For the knowledge index: the recordings that have a transcript ({id, title, created, fingerprint}) and the lines of one (main thread).
+    QVariantList knowledgeMeetings() const;
+    QList<Knowledge::Utterance> transcriptLines(qlonglong id) const;
+    QList<Audio::ActionItem> actionItemsOf(qlonglong id) const; // the open tasks of a recording's notes
+    QString meetingTitle(qlonglong id) const { return m_store.meeting(id).title; }
+    bool processing() const { return m_busy != 0 || !m_queue.isEmpty() || m_recorder.recording(); } // the processor is busy with a recording
     int threads() const;
     void setThreads(int n);
     QString quality() const { return m_settings.value(QStringLiteral("quality"), QStringLiteral("standard")).toString(); }
@@ -142,6 +151,9 @@ public:
     Q_INVOKABLE void clearError() { setError({}); }
 
     Q_INVOKABLE void startRecording();
+    Q_INVOKABLE void setHardwareMode(const QString &mode); // auto | cpu | gpu
+    Q_INVOKABLE void detectHardware();                      // look again (and forget what failed)
+    Q_INVOKABLE void speedTest();                           // the speech model on the processor and on the card, for an integrated one
     Q_INVOKABLE void startLive(); // record, and transcribe (and translate) while it happens
     Q_INVOKABLE void stopRecording(bool process);
     Q_INVOKABLE void discardRecording();
@@ -162,6 +174,7 @@ signals:
     void settingsChanged();
     void recordingChanged();
     void liveChanged();
+    void hardwareChanged();
     void listChanged();
     void finished(qlonglong id, bool ok); // a job ended (the pill and toasts listen)
 
@@ -213,4 +226,6 @@ private:
     QHash<qlonglong, bool> m_notesOnly;
     QString m_recordingDir;
     std::unique_ptr<LiveSession> m_live;
+    std::atomic_bool m_testing{false};
+    QString m_testResult;
 };

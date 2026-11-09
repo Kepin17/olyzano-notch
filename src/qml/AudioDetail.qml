@@ -82,7 +82,7 @@ Item {
             visible: !!detail.info.hasTranscript
             Layout.fillWidth: true
             model: [["summary", "Summary"], ["transcript", "Transcript" + (detail.info.segments > 0 ? " · " + detail.info.segments : "")],
-                    ["actions", "Tasks" + (detail.info.actionCount > 0 ? " · " + detail.info.actionCount : "")]]
+                    ["actions", "Tasks" + (detail.info.actionCount > 0 ? " · " + detail.info.actionCount : "")], ["ask", "Ask"]]
             value: page.tab
             onPicked: (v) => page.tab = v
             IconButton { visible: page.tab === "transcript"; iconName: "search"; Accessible.name: "Find in the transcript"; implicitWidth: 26; implicitHeight: 26; onClicked: page.findOpen = !page.findOpen }
@@ -98,6 +98,24 @@ Item {
             AudioNotes { anchors.fill: parent; page: detail.page; visible: opacity > 0; opacity: page.tab === "summary" ? 1 : 0; Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 120 } } }
             AudioTranscript { anchors.fill: parent; page: detail.page; visible: opacity > 0; opacity: page.tab === "transcript" ? 1 : 0; Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 120 } } }
             AudioActions { anchors.fill: parent; page: detail.page; visible: opacity > 0; opacity: page.tab === "actions" ? 1 : 0; Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 120 } } }
+            ScrollView {
+                id: askArea
+                anchors.fill: parent
+                visible: page.tab === "ask"
+                contentWidth: availableWidth
+                clip: true
+                AskPanel {
+                    width: askArea.availableWidth - 10
+                    scopeKind: "recording"
+                    scopeRef: String(audioIntel.current)
+                    hint: "Ask about this recording"
+                    onOpenSource: (s) => {
+                        if (s.kind === "recording" && parseInt(s.ref) === audioIntel.current) detail.page.playAt(s.startSec)
+                        else if (s.kind === "recording") { detail.page.shell.audioOpen = { id: parseInt(s.ref), sec: s.startSec } }
+                        else notch.open(s.ref)
+                    }
+                }
+            }
         }
         Item { visible: !detail.info.hasTranscript; Layout.fillWidth: true; Layout.fillHeight: true }
     }

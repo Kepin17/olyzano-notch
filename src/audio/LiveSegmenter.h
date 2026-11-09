@@ -22,9 +22,9 @@ class LiveSegmenter
 public:
     static constexpr int Rate = 16000;
     static constexpr int Frame = 480;       // 30 ms
-    static constexpr int EndSilenceMs = 700;
+    static constexpr int EndSilenceMs = 500;
     static constexpr int MinSpeechMs = 300;
-    static constexpr int SoftMaxMs = 12000, HardMaxMs = 20000;
+    static constexpr int SoftMaxMs = 8000, HardMaxMs = 20000;
 
     explicit LiveSegmenter(int side = 0) : m_side(side) {}
 
@@ -57,6 +57,10 @@ public:
     }
 
     double level() const { return m_level; }
+    // What is being said right now (not closed yet), for a first reading of it while it goes on; empty when nobody speaks.
+    const QVector<float> &current() const { return m_cur; }
+    bool speaking() const { return m_inSpeech; }
+    qint64 currentStartMs() const { return m_curStartMs; }
 
 private:
     void push(float v, QList<Utterance> &out)

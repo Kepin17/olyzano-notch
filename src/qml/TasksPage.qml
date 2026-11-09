@@ -157,6 +157,68 @@ RowLayout {
             PillButton { text: "New"; iconName: "plus"; checked: true; onClicked: newTask.openFor(page.selectedDay) }
         }
 
+        // what the notch found in a recording's notes or a PDF: nothing is added until Add
+        Rectangle {
+            visible: taskSuggest.count > 0 && !page.selectedDay
+            Layout.fillWidth: true
+            implicitHeight: sugBody.implicitHeight + 16
+            radius: theme.radiusMd
+            color: Qt.alpha(theme.accent, 0.08)
+            border.width: 1
+            border.color: Qt.alpha(theme.accent, 0.35)
+            ColumnLayout {
+                id: sugBody
+                anchors { left: parent.left; right: parent.right; top: parent.top; margins: 8 }
+                spacing: 6
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    LineIcon { glyph: "ai"; sourceSize: Qt.size(13, 13); color: theme.accentText }
+                    Text { Layout.fillWidth: true; text: "SUGGESTED  ·  " + taskSuggest.count; color: theme.accentText; font.pixelSize: 10; font.weight: Font.DemiBold; font.letterSpacing: 1 }
+                    PillButton { text: "Add all"; onClicked: taskSuggest.acceptAll() }
+                    PillButton { text: "Dismiss all"; onClicked: taskSuggest.dismissAll() }
+                }
+                Flickable {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Math.min(sugCol.implicitHeight, 170)
+                    contentHeight: sugCol.implicitHeight
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded; padding: 2 }
+                    ColumnLayout {
+                        id: sugCol
+                        width: parent.width - 8
+                        spacing: 6
+                        Repeater {
+                            model: taskSuggest.list
+                            delegate: Rectangle {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                implicitHeight: sugRow.implicitHeight + 12
+                                radius: theme.radiusSm
+                                color: theme.surface
+                                RowLayout {
+                                    id: sugRow
+                                    anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 8 }
+                                    spacing: 8
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 2
+                                        Text { Layout.fillWidth: true; text: modelData.title; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: theme.text; font.pixelSize: 12; font.weight: Font.DemiBold }
+                                        Text { visible: modelData.dueLabel !== ""; text: (modelData.hasDue ? "Due " : "Said: ") + modelData.dueLabel; color: modelData.hasDue ? theme.info : theme.textDim; font.pixelSize: 11 }
+                                        Text { Layout.fillWidth: true; text: modelData.source; textFormat: Text.PlainText; elide: Text.ElideRight; color: theme.textFaint; font.pixelSize: 10 }
+                                        Text { visible: modelData.quote !== ""; Layout.fillWidth: true; text: "“" + modelData.quote + "”"; textFormat: Text.PlainText; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; color: theme.textSoft; font.pixelSize: 10; font.italic: true }
+                                    }
+                                    PillButton { text: "Add"; checked: true; onClicked: taskSuggest.accept(modelData.id) }
+                                    IconButton { iconName: "close"; Accessible.name: "Dismiss"; implicitWidth: 24; implicitHeight: 24; onClicked: taskSuggest.dismiss(modelData.id) }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         Text {
             visible: page.shown.length === 0
             Layout.fillWidth: true

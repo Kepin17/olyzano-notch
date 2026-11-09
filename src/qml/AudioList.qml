@@ -253,7 +253,7 @@ ScrollView {
                         Rectangle { width: parent.width * view.speech.progress; height: parent.height; radius: 1.5; color: theme.accent } }
                     Caption { visible: view.speech.state === "downloading"; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; text: view.speech.receivedText + (view.speech.speedText !== "" ? " · " + view.speech.speedText : "") + (view.speech.etaText !== "" ? " · " + view.speech.etaText : "") }
                     Text { visible: view.speech.error !== ""; Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap; color: theme.danger; font.pixelSize: 11; text: view.speech.error }
-                    Caption { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; text: "Downloaded once from Hugging Face, only when you press the button. More models: Settings → Audio AI." }
+                    Caption { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; text: "Downloaded once from Hugging Face, only when you press the button. More models: Settings → AI." }
                 }
                 Caption { Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter; text: "Only record when everyone who is heard agrees." }
             }

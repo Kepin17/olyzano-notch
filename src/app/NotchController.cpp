@@ -1331,6 +1331,40 @@ void NotchController::expireEmptyCategories()
             deleteCategory(id);
 }
 
+void NotchController::showOnly(const QStringList &ids)
+{
+    m_smart = true;
+    m_paged.reset();
+    m_proxy.setOnlyIds(QSet<QString>(ids.begin(), ids.end()), true);
+    emit filterChanged();
+}
+
+void NotchController::showAll()
+{
+    if (!m_smart)
+        return;
+    m_smart = false;
+    m_paged.reset();
+    m_proxy.setOnlyIds({}, false);
+    emit filterChanged();
+}
+
+QVariantList NotchController::knowledgeItems() const
+{
+    QVariantList out;
+    for (const FileItem &item : m_model.items()) {
+        if (item.status != Status::Available || item.vault || item.removedAt.isValid())
+            continue;
+        const QString path = pathOf(item);
+        const QFileInfo fi(path);
+        if (!fi.exists())
+            continue;
+        out.append(QVariantMap{{QStringLiteral("id"), item.id}, {QStringLiteral("name"), item.originalName}, {QStringLiteral("path"), path}, {QStringLiteral("mime"), item.mimeType},
+                               {QStringLiteral("size"), item.sizeBytes}, {QStringLiteral("mtime"), fi.lastModified().toSecsSinceEpoch()}, {QStringLiteral("added"), item.addedAt.toSecsSinceEpoch()}});
+    }
+    return out;
+}
+
 void NotchController::setFilter(const QString &text)
 {
     if (text == m_filter)

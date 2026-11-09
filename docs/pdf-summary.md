@@ -16,3 +16,9 @@ The language model and its program (the same two downloads as the notes of recor
 
 ## Time and limits
 About a minute a page of text on a CPU (measured: 2 pages in 3½ minutes with the Qwen3-4B model), plus about 3 seconds a page read by OCR; the window shows an estimate before it starts. A job that is stopped goes on from where it was when started again. Pictures, tables and formulas are not understood (only the text that OCR finds), and the quality of the notes is that of a 4 B model: read them against the document.
+
+## Figures, charts and diagrams (optional)
+The words of a PDF are read as text, and scanned pages with OCR. A chart, a diagram or a table that is a picture has no words to read, so by default it is skipped. With the optional **picture model** (Qwen3-VL 4B, about 2.9 GB, *Settings → AI → Reading images*, downloaded only when you press Download) the option **Figures: Describe (AI)** on the Documents page shows each page that holds a figure to the model first (at most 20 pages, drawn at 120 dpi): what it says about the figure (what it shows, the values it can read, the writing in it) is added to that page as `[Figure: …]`, and the notes are then made from the page as usual, so a claim in the notes still has to be supported by the page. The picture model and the notes model are not in memory together. On the processor this takes about a minute a page; on a graphics card much less. Pages already read as pictures by OCR are not shown again.
+
+## Pictures on the shelf
+Right-click a picture → **Tools → Image (AI)**: *Describe image* and *Read text* (each copied, or saved as a note). The writing in a picture is data to report, never an instruction to the model.

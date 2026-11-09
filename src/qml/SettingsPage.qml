@@ -33,7 +33,7 @@ RowLayout {
         ["alerts", "Alerts & activities", "notifications", "What the notch shows you: chargers, downloads, calls, the microphone and more.", ""],
         ["files", "Files", "folder", "How long files stay, where they go and what is added by itself.", "Files & sharing"],
         ["sharing", "Sharing & Nearby", "share", "Servers for Share via QR, and the name other computers see.", ""],
-        ["ai", "Audio AI", "mic", "Models for turning recordings into text and notes, all on this computer.", "You"],
+        ["ai", "AI", "ai", "Models and helpers for audio, documents and images, all on this computer.", "You"],
         ["languages", "Languages", "globe", "The languages you use for speech, notes and reading pictures, and what to download for them.", ""],
         ["wellbeing", "Wellbeing", "heart", "Break and eye reminders.", ""],
         ["about", "About", "info", "Version, author, links and support.", ""]
@@ -57,7 +57,7 @@ RowLayout {
         ["dock", "Magnification", "zoom"], ["dock", "Animation", "motion smooth spring"], ["dock", "Show running apps", "windows"],
         ["dock", "Show Trash", "bin"], ["dock", "Apps kept in the dock", "pinned"],
         ["sharing", "Nearby device name", "computer name receive"], ["sharing", "Sharing servers", "relay vps share qr server"], ["sharing", "Set up your own server (guide)", "tutorial guide how to setup server docker vps domain self host install key"],
-        ["languages", "Languages", "language languages translate ocr speech whisper download pack arabic chinese japanese korean hindi spanish french german portuguese russian turkish thai vietnamese"], ["ai", "Audio Intelligence models", "audio ai whisper transcript transcribe summary meeting model download qwen llama speaker diarization record"], ["ai", "Quality and threads", "quality standard high threads cpu ram limit language template"], ["wellbeing", "Stretch reminder", "break work minutes"], ["wellbeing", "Don't interrupt", "video call pomodoro"],
+        ["languages", "Languages", "language languages translate ocr speech whisper download pack arabic chinese japanese korean hindi spanish french german portuguese russian turkish thai vietnamese"], ["ai", "AI models", "audio ai whisper transcript transcribe summary meeting model download qwen llama speaker diarization record image vision picture describe ocr pdf gpu graphics card vulkan"], ["ai", "Quality and threads", "quality standard high threads cpu ram limit language template"], ["wellbeing", "Stretch reminder", "break work minutes"], ["wellbeing", "Don't interrupt", "video call pomodoro"],
         ["wellbeing", "20-20-20 eye reminder", "eyes"], ["wellbeing", "Today", "breaks count"]
     ]
     readonly property var results: {
@@ -1759,6 +1759,10 @@ RowLayout {
                     Segmented { Layout.fillWidth: true; model: [[0, "None"], [4096, "4 GB"], [8192, "8 GB"], [12288, "12 GB"]]; value: audioIntel.ramLimitMb; onPicked: (v) => audioIntel.ramLimitMb = v }
                 }
 
+                HardwareCard { Layout.fillWidth: true }
+                VisionCard { Layout.fillWidth: true }
+                KnowledgeCard { Layout.fillWidth: true }
+
                 SettingCard {
                     title: "Models and helpers"
                     ColumnLayout {
@@ -3065,6 +3069,8 @@ RowLayout {
 
     FolderDialog {
         id: folderDialog
+        onVisibleChanged: settingsScroll.shell.dialogs += visible ? 1 : -1
+        Component.onDestruction: if (visible) settingsScroll.shell.dialogs -= 1 // a page closed under an open dialog must not leave the notch below the windows
         title: "Choose where Olyzano Notch stores files"
         currentFolder: "file://" + notch.storageDir
         onAccepted: notch.setStorageDir(selectedFolder)

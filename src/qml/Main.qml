@@ -261,6 +261,9 @@ Window {
         cloudSelection = []
         cloudSelectionMode = false
     }
+    property int dialogs: 0                                                  // file dialogs open now: the notch steps under the windows so they are not hidden by it
+    onDialogsChanged: desktop.setBelowWindows(root, dialogs > 0)
+    property var audioOpen: null                                              // {id, sec}: a recording to open, at that second (from an answer): the Audio page takes it
     property string docsPick: ""                                            // a file of the shelf to summarize: the Documents page takes it when it opens
     property string cloudNote: ""                                           // the last thing that went wrong there, in the host's or the server's words
     // Dropdowns (AgentChoice) report here while their list is open: it hangs below the island, so without it the panel closes
@@ -661,6 +664,8 @@ Window {
             return { kind: "doomscroll", title: "Scrolling " + doomscroll.siteName, detail: doomscroll.minutes + " min", progress: -1, color: theme.warn }
         if (notch.batchLabel !== "") // a big remove / restore / delete in steps
             return { kind: "copy", title: notch.batchLabel + "…", detail: String(notch.count), progress: -1, color: theme.accent }
+        if (vision.busy) // the picture model is looking at a picture: it takes a while, and can be stopped
+            return { kind: "copy", title: vision.status, detail: "", progress: -1, color: theme.accent, cancellable: true, vision: true }
         if (notch.copyLabel !== "") // a copy or zip with its progress, and a way to stop it
             return { kind: "copy", title: notch.copyLabel, detail: notch.copyDetail, progress: notch.copyFraction, color: theme.accent, cancellable: true }
         if (notch.copying > 0)
@@ -1157,6 +1162,16 @@ Window {
         toolsMenu.popup()
     }
 
+    Connections { // the picture model could not read a picture: say why
+        target: vision
+        function onChanged() {
+            if (vision.lastError !== "") {
+                notch.announce("The picture was not read", vision.lastError, "dialog-error")
+                vision.clearError()
+            }
+        }
+    }
+
     function runTool(kind, option) {
         notch.runTool(kind, toolsMenu.targets, option || "")
         clearSelection()
@@ -1531,7 +1546,8 @@ Window {
         // one), the title and a dimmer line under it, a thin line along the bottom that runs out with the toast's time.
         Item {
             id: toastRow
-            anchors.fill: parent
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            height: Math.min(parent.height, 56) // its own height: while the island opens into a panel it stays at the top and fades, not drifting down with the middle
             opacity: island.fade("toast")
             visible: opacity > 0
             readonly property var t: root.shownToast || ({ kind: "", title: "", detail: "", icon: "", art: "", level: -1 })
@@ -1720,10 +1736,10 @@ Window {
         RowLayout {
             id: liveRow
             readonly property var l: root.live || ({ kind: "", title: "", detail: "", progress: -1, color: theme.accent })
-            anchors.fill: parent
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            height: Math.min(parent.height, 36) - (liveRow.l.progress >= 0 ? 4 : 0)
             anchors.leftMargin: island.shoulder + 16
             anchors.rightMargin: island.shoulder + 16
-            anchors.bottomMargin: liveRow.l.progress >= 0 ? 4 : 0
             spacing: 8
             opacity: island.fade("peek")
             visible: opacity > 0
@@ -1805,7 +1821,7 @@ Window {
                     anchors.fill: parent
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: notch.cancelCopies()
+                    onClicked: liveRow.l.vision === true ? vision.cancel() : notch.cancelCopies()
                 }
             }
         }
@@ -1834,7 +1850,8 @@ Window {
 
         // Idle: the time, the microphone and the battery, while nothing else is going on.
         RowLayout {
-            anchors.fill: parent
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            height: Math.min(parent.height, 48) // the idle bar's own height: it fades at the top while the panel opens
             anchors.leftMargin: island.shoulder + 14
             anchors.rightMargin: island.shoulder + 14
             spacing: 8
@@ -1927,11 +1944,11 @@ Window {
         // Idle with music: the cover, the song on two lines, the wave and a thin progress line, instead of the clock.
         RowLayout {
             id: capRow
-            anchors.fill: parent
+            anchors { left: parent.left; right: parent.right; top: parent.top }
+            height: Math.min(parent.height, 48) - 12 // the progress line runs below (9 px) and a little room above (3 px)
             anchors.leftMargin: island.shoulder + 14
             anchors.rightMargin: island.shoulder + 14
             anchors.topMargin: 3
-            anchors.bottomMargin: 9 // the progress line runs below
             spacing: 10
             opacity: root.musicShown ? island.fade("idle") : 0
             visible: opacity > 0
@@ -2592,6 +2609,7 @@ Window {
                     Layout.rightMargin: 8
                     spacing: 8
                     TextField {
+                        id: shelfSearch
                         Layout.fillWidth: true
                         implicitHeight: 30
                         leftPadding: 12
@@ -2603,7 +2621,8 @@ Window {
                         font.pixelSize: 12
                         text: notch.filter
                         // Debounced: the shelf is filtered once the typing pauses, not on every key.
-                        onTextEdited: text === "" ? applyFilter() : filterDebounce.restart()
+                        onTextEdited: { if (notch.smartActive) knowledge.clearSmart(); text === "" ? applyFilter() : filterDebounce.restart() }
+                        Keys.onPressed: (e) => { if ((e.key === Qt.Key_Return || e.key === Qt.Key_Enter) && (e.modifiers & Qt.ControlModifier) && text.trim() !== "") { knowledge.smartSearch(text); e.accepted = true } }
                         function applyFilter() {
                             filterDebounce.stop()
                             notch.filter = text
@@ -2628,6 +2647,12 @@ Window {
                             }
                         }
                     }
+                    IconButton {
+                        iconName: "ai"
+                        Accessible.name: "Smart search: describe what you are looking for in a sentence"
+                        enabled: shelfSearch.text.trim() !== "" && !knowledge.smartBusy
+                        onClicked: knowledge.smartSearch(shelfSearch.text)
+                    }
                     AgentChoice {
                         Layout.preferredWidth: 124
                         model: ["Date", "Name", "Size", "Type", "Expiring"]
@@ -2644,6 +2669,13 @@ Window {
                             confirmClear.open()
                         }
                     }
+                }
+
+                SmartChips {
+                    visible: root.page === "shelf" && !root.inCloud && (knowledge.smartBusy || notch.smartActive || (knowledge.smart.error !== undefined && knowledge.smart.error !== ""))
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 8
+                    Layout.rightMargin: 8
                 }
 
                 // ---- Clipboard: what was copied lately ----
@@ -3862,6 +3894,14 @@ Window {
             Action { text: "Extract files"; onTriggered: root.runTool("unzip") }
         }
         DarkMenu {
+            title: vision.ready ? "Image (AI)" : "Image (AI): download the picture model in Settings → AI"
+            enabled: toolsMenu.n === 1 && toolsMenu.allImages && vision.ready
+            Action { text: "Describe image (copy)"; enabled: vision.ready && !vision.busy; onTriggered: { vision.run("describe-copy", toolsMenu.targets[0]); root.clearSelection() } }
+            Action { text: "Describe image (to note)"; enabled: vision.ready && !vision.busy; onTriggered: { vision.run("describe-note", toolsMenu.targets[0]); root.clearSelection() } }
+            Action { text: "Read text (copy)"; enabled: vision.ready && !vision.busy; onTriggered: { vision.run("read-copy", toolsMenu.targets[0]); root.clearSelection() } }
+            Action { text: "Read text (to note)"; enabled: vision.ready && !vision.busy; onTriggered: { vision.run("read-note", toolsMenu.targets[0]); root.clearSelection() } }
+        }
+        DarkMenu {
             title: "Text (OCR)"
             enabled: toolsMenu.n === 1 && (toolsMenu.allImages || toolsMenu.allPdf)
             Action { text: "Copy text"; onTriggered: root.runTool("ocr-copy") }
@@ -4163,6 +4203,8 @@ Window {
 
     FileDialog {
         id: addDialog
+        onVisibleChanged: root.dialogs += visible ? 1 : -1
+        Component.onDestruction: if (visible) root.dialogs -= 1 // a page closed under an open dialog must not leave the notch below the windows
         title: "Add files"
         fileMode: FileDialog.OpenFiles
         currentFolder: StandardPaths.writableLocation(StandardPaths.HomeLocation)
@@ -4170,6 +4212,8 @@ Window {
     }
     FolderDialog {
         id: saveDialog
+        onVisibleChanged: root.dialogs += visible ? 1 : -1
+        Component.onDestruction: if (visible) root.dialogs -= 1 // a page closed under an open dialog must not leave the notch below the windows
         property var targetIds: []
         title: "Save to folder"
         currentFolder: StandardPaths.writableLocation(StandardPaths.DownloadLocation)

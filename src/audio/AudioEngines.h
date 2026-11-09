@@ -27,6 +27,7 @@ public:
     QString transcribe(const QVector<float> &samples, const QString &language, const std::atomic_bool *cancel, QList<Segment> *segments,
                        QString *detectedLanguage) override;
     void release() override { m_whisper.unload(); m_loaded.clear(); }
+    void setFast(bool on) { m_fast = on; } // for live use: greedy decoding
     static QString modelFor(const QString &quality);
 
 private:
@@ -35,6 +36,7 @@ private:
     std::function<QStringList()> m_languages; // the Whisper codes of the languages in use, for "auto"
     Whisper m_whisper;
     QString m_loaded;
+    bool m_fast = false, m_gpu = false; // m_gpu: what the loaded model runs on
 };
 
 class SherpaDiarizer : public IDiarizer {
@@ -57,19 +59,33 @@ private:
 // from a recording and what writes notes from a document.
 class LlamaSession {
 public:
-    LlamaSession(ModelStore *store, std::function<int()> threads) : m_store(store), m_threads(std::move(threads)) {}
+    // `vision`: the model that reads pictures (Qwen3-VL with its mmproj) instead of the one that writes notes
+    enum class Mode { Text, Vision, Embed };
+    LlamaSession(ModelStore *store, std::function<int()> threads, bool vision = false) : m_store(store), m_threads(std::move(threads)), m_vision(vision) {}
+    // `Mode::Embed`: the model that turns text into vectors of meaning (for finding what a sentence is about)
+    LlamaSession(ModelStore *store, std::function<int()> threads, Mode mode) : m_store(store), m_threads(std::move(threads)), m_vision(mode == Mode::Vision), m_embed(mode == Mode::Embed) {}
     ~LlamaSession() { stop(); }
     static bool available(const ModelStore *store);
+    static bool embedAvailable(const ModelStore *store);  // the embedding model and the program are downloaded
+    static bool visionAvailable(const ModelStore *store); // the picture model, its mmproj and the program are all downloaded
+    static QString gpuHelperId(); // the Vulkan build of the program (for graphics cards)
     // "" when it is ready, else why not ("cancelled" when stopped meanwhile)
     QString start(const std::atomic_bool *cancel);
     // The model's answer (JSON that fits `schema`), or "" when it did not answer.
     QString chat(const QString &system, const QString &user, const QJsonObject &schema, const std::atomic_bool *cancel, int maxTokens = 2048);
+    // Vectors for texts (normalised, 512 numbers each), in order; empty when the model did not answer. Only on a session made with Mode::Embed.
+    QList<QVector<float>> embed(const QStringList &texts, const std::atomic_bool *cancel);
+    // The same with one picture (PNG or JPEG bytes) in the question: only on a session made with `vision`.
+    QString chatImage(const QString &system, const QString &user, const QByteArray &image, const QString &mime, const QJsonObject &schema, const std::atomic_bool *cancel, int maxTokens = 1536);
     ChatFn chatFn(const std::atomic_bool *cancel) { return [this, cancel](const QString &s, const QString &u, const QJsonObject &sc) { return chat(s, u, sc, cancel); }; }
     void stop();
 
 private:
+    QString startWith(const QString &helper, int layers, const std::atomic_bool *cancel); // layers: how many go to the graphics card (0: none)
+    QString complete(const QJsonArray &messages, const QJsonObject &schema, const std::atomic_bool *cancel, int maxTokens);
     ModelStore *m_store;
     std::function<int()> m_threads;
+    bool m_vision = false, m_embed = false;
     QProcess m_server;
     QUrl m_base;
     QByteArray m_token;
