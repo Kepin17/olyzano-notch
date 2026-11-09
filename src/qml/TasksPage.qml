@@ -17,11 +17,10 @@ RowLayout {
     Layout.minimumHeight: 300
     spacing: 18
 
-    // the month on show (1-12), the day picked to filter by (null: all), and the course picked ("" = all)
+    // the month on show (1-12), the day picked to filter by (null: all), 
     property int viewYear: new Date().getFullYear()
     property int viewMonth: new Date().getMonth() + 1
     property var selectedDay: null
-    property string selectedCourse: ""
     function key(y, m, d) { return y * 10000 + m * 100 + d }
     function stepMonth(by) {
         const m = viewMonth - 1 + by
@@ -51,13 +50,11 @@ RowLayout {
         }
         return m
     }
-    // what the list shows: day filter AND course filter
+    // what the list shows: the day picked, if any (the course is only a badge on each task, not a filter)
     readonly property var shown: {
         let out = tasks.list
         if (selectedDay)
             out = out.filter(t => t.hasDue && sameDay(new Date(t.dueMs), selectedDay))
-        if (selectedCourse !== "")
-            out = out.filter(t => t.course === selectedCourse)
         return out
     }
 
@@ -160,23 +157,6 @@ RowLayout {
             PillButton { text: "New"; iconName: "plus"; checked: true; onClicked: newTask.openFor(page.selectedDay) }
         }
 
-        // Course filter: All + every course already used (free-text on the tasks).
-        Flow {
-            visible: tasks.courseSuggestions.length > 0
-            Layout.fillWidth: true
-            spacing: 6
-            PillButton { text: "All courses"; checked: page.selectedCourse === ""; onClicked: page.selectedCourse = "" }
-            Repeater {
-                model: tasks.courseSuggestions
-                delegate: PillButton {
-                    required property string modelData
-                    text: modelData
-                    checked: page.selectedCourse === modelData
-                    onClicked: page.selectedCourse = page.selectedCourse === modelData ? "" : modelData
-                }
-            }
-        }
-
         Text {
             visible: page.shown.length === 0
             Layout.fillWidth: true
@@ -210,7 +190,7 @@ RowLayout {
                                                        : modelData.hasDue ? theme.info : theme.textFaint
                         readonly property date due: new Date(modelData.dueMs)
                         Layout.fillWidth: true
-                        implicitHeight: 46
+                        implicitHeight: Math.max(46, rowBody.implicitHeight + 14) // a long title or time goes on to the next line, the row grows
                         radius: theme.radiusMd
                         color: rowHover.hovered ? theme.hoverFill : "transparent"
                         HoverHandler { id: rowHover }
@@ -221,7 +201,8 @@ RowLayout {
                             color: row.modelData.done ? theme.textFaint : row.tint
                         }
                         RowLayout {
-                            anchors { fill: parent; leftMargin: 14; rightMargin: 6 }
+                            id: rowBody
+                            anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 14; rightMargin: 6 }
                             spacing: 8
                             ColumnLayout {
                                 Layout.fillWidth: true
@@ -233,10 +214,12 @@ RowLayout {
                                     Rectangle { // course chip, free-text
                                         visible: row.modelData.course !== ""
                                         Layout.maximumWidth: 120
+                                        implicitWidth: courseText.implicitWidth + 12
                                         implicitHeight: 18
                                         radius: 9
                                         color: Qt.tint(theme.surface, Qt.rgba(shell.accent.r, shell.accent.g, shell.accent.b, 0.22))
                                         Text {
+                                            id: courseText
                                             anchors.centerIn: parent
                                             anchors.margins: 1
                                             text: row.modelData.course
@@ -254,7 +237,7 @@ RowLayout {
                                         font.pixelSize: 13
                                         font.weight: Font.DemiBold
                                         font.strikeout: row.modelData.done
-                                        elide: Text.ElideRight
+                                        wrapMode: Text.Wrap
                                     }
                                 }
                                 Text {
@@ -262,7 +245,7 @@ RowLayout {
                                     Layout.fillWidth: true
                                     color: theme.textDim
                                     font.pixelSize: 11
-                                    elide: Text.ElideRight
+                                    wrapMode: Text.Wrap
                                     text: (page.selectedDay || page.sameDay(row.due, new Date()) ? "" : Qt.formatDate(row.due, "ddd d MMM") + ", ")
                                           + Qt.formatTime(row.due, Qt.locale().timeFormat(Locale.ShortFormat))
                                           + (row.modelData.done ? "" : " · " + row.modelData.remaining)

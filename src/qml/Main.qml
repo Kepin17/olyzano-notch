@@ -37,7 +37,7 @@ Window {
     property bool devWide: false
     // The panel is as wide as its page needs, and never narrower than the row of section buttons (Files, Music, Timer, Tasks,
     // Color, Sharing, Lyrics, Note, Add): with every button there, it grows (up to the window) instead of cutting them off.
-    readonly property int panelWidth: Math.max(lyricsSplit ? 780 : page === "settings" ? 720 : page === "dev" ? (devWide ? 980 : 720) : page === "tasks" ? 620 : openWidth,
+    readonly property int panelWidth: Math.max(lyricsSplit ? 780 : page === "settings" ? 720 : page === "dev" ? (devWide ? 980 : 720) : page === "tasks" ? 620 : page === "audio" || page === "docs" ? 760 : openWidth,
                                                Math.min(width - 20, Math.max(actionBarLoader.item && actionBarLoader.item.visible ? Math.ceil(actionBarLoader.item.implicitWidth) + 44 : 0,
                                                                               Math.ceil(headerRow.implicitWidth) + 36)))
 
@@ -261,6 +261,7 @@ Window {
         cloudSelection = []
         cloudSelectionMode = false
     }
+    property string docsPick: ""                                            // a file of the shelf to summarize: the Documents page takes it when it opens
     property string cloudNote: ""                                           // the last thing that went wrong there, in the host's or the server's words
     // Dropdowns (AgentChoice) report here while their list is open: it hangs below the island, so without it the panel closes
     // when the pointer reaches the list and the part outside the island's shape is click-through.
@@ -2162,7 +2163,7 @@ Window {
                         text: root.selecting ? root.selection.length + " selected"
                             : root.page === "settings" ? "Settings" : root.page === "preview" ? root.preview.name
                             : root.page === "note" ? (root.noteId !== "" ? "Edit note" : "New note")
-                            : root.page === "timer" ? "Timer" : root.page === "tasks" ? "Tasks" : root.page === "music" ? "Now playing" : root.page === "color" ? "Color picker" : root.page === "clipboard" ? "Clipboard" : root.page === "camera" ? "Camera" : root.page === "dev" ? "Dev" : "Olyzano Notch"
+                            : root.page === "timer" ? "Timer" : root.page === "tasks" ? "Tasks" : root.page === "music" ? "Now playing" : root.page === "color" ? "Color picker" : root.page === "clipboard" ? "Clipboard" : root.page === "audio" ? "Audio" : root.page === "docs" ? "Documents" : root.page === "camera" ? "Camera" : root.page === "dev" ? "Dev" : "Olyzano Notch"
                         color: root.textPrimary
                         font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
                         font.pixelSize: 15
@@ -2313,7 +2314,7 @@ Window {
                         onClicked: assistant.start()
                     }
                     IconButton {
-                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "camera" || root.page === "dev") && !root.selecting
+                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "audio" || root.page === "docs" || root.page === "camera" || root.page === "dev") && !root.selecting
                         iconName: "gear"
                         Accessible.name: "Settings"
                         onClicked: root.page = "settings"
@@ -2332,7 +2333,7 @@ Window {
                 Loader {
                     id: actionBarLoader
                     visible: active
-                    active: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "camera" || root.page === "dev")
+                    active: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "audio" || root.page === "docs" || root.page === "camera" || root.page === "dev")
                     Layout.fillWidth: true
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
@@ -2654,6 +2655,28 @@ Window {
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
                     sourceComponent: ClipboardPage { shell: root }
+                }
+
+                // ---- Audio: record or import, transcript and notes ----
+                Loader {
+                    active: root.page === "audio"
+                    visible: active
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: 100000
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 12
+                    sourceComponent: AudioPage { shell: root }
+                }
+
+                // ---- Documents: study notes from a PDF ----
+                Loader {
+                    active: root.page === "docs"
+                    visible: active
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: 100000
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 12
+                    sourceComponent: DocsPage { shell: root }
                 }
 
                 // ---- Camera: a mirror, and a photo booth ----
@@ -3808,6 +3831,7 @@ Window {
                 Action { text: "Max (smallest file)"; onTriggered: root.runTool("compress", "max") }
             }
             Action { text: "Split into pages"; enabled: toolsMenu.n === 1; onTriggered: root.runTool("split") }
+            Action { text: "Summarize as study notes…"; enabled: toolsMenu.n === 1; onTriggered: { root.docsPick = toolsMenu.targets[0]; root.page = "docs" } }
             Action {
                 text: "Extract pages…"
                 enabled: toolsMenu.n === 1

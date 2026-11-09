@@ -1,11 +1,19 @@
 #include "FileRepository.h"
 
+#include <QElapsedTimer>
 #include <QFile>
 #include <QRegularExpression>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QUuid>
+
+// TEMP instrumentation: which GUI-thread call blocks during a big copy.
+static void slowLog(const char *what, qint64 ms, const QString &detail = {})
+{
+    if (ms >= 20)
+        qInfo() << "SLOW" << what << ms << "ms" << detail;
+}
 
 Q_LOGGING_CATEGORY(lcNotch, "notch")
 
@@ -60,6 +68,8 @@ bool FileRepository::open(const QString &dbPath)
     }
     q.finish();
     q.exec(QStringLiteral("PRAGMA journal_mode=WAL"));
+    if (q.next())
+        qInfo() << "SLOW repo journal_mode is" << q.value(0).toString(); // TEMP
     q.exec(QStringLiteral("PRAGMA synchronous=NORMAL")); // with WAL: a commit does not wait for the disk (an app crash loses nothing; only a power cut can lose the last one)
     q.finish();
     if (!migrate(dbPath))
@@ -130,8 +140,13 @@ bool FileRepository::inTransaction(const std::function<bool()> &work)
         m_error = db.lastError().text();
         return false;
     }
-    if (work() && db.commit())
+    QElapsedTimer t;
+    t.start();
+    if (work() && db.commit()) {
+        slowLog("repo.commit", t.elapsed());
         return true;
+    }
+    slowLog("repo.commit(failed/rolledback)", t.elapsed());
     if (m_error.isEmpty())
         m_error = db.lastError().text();
     db.rollback();
@@ -248,6 +263,8 @@ QSet<QString> FileRepository::searchText(const QString &words)
 
 bool FileRepository::exec(const QString &sql, const QVariantList &binds)
 {
+    QElapsedTimer t;
+    t.start();
     QSqlQuery q(QSqlDatabase::database(m_conn));
     q.prepare(sql);
     for (const QVariant &v : binds)
@@ -257,6 +274,7 @@ bool FileRepository::exec(const QString &sql, const QVariantList &binds)
         qCWarning(lcNotch) << "SQL failed:" << m_error;
         return false;
     }
+    slowLog("repo.exec", t.elapsed(), sql.left(70));
     return true;
 }
 

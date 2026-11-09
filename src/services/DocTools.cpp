@@ -1,4 +1,5 @@
 #include "DocTools.h"
+#include "OcrPacks.h"
 
 #include "platform/ProcessRunner.h"
 #include "services/ConvertModel.h"
@@ -217,9 +218,15 @@ QString recognizeText(const QString &file, bool isPdf, QString *text)
             images << tmp.filePath(name);
     }
     QStringList pages;
+    const OcrPacks::Setup packs = OcrPacks::current(); // the languages in use that have a pack (Settings → Languages), and English
     for (const QString &image : images) {
         QByteArray out;
-        if (const QString err = run(QStringLiteral("tesseract"), {image, QStringLiteral("stdout")}, &out, 120000); !err.isEmpty())
+        QStringList args{image, QStringLiteral("stdout")};
+        if (!packs.languages.isEmpty())
+            args << QStringLiteral("-l") << packs.languages;
+        if (!packs.tessdataDir.isEmpty())
+            args << QStringLiteral("--tessdata-dir") << packs.tessdataDir;
+        if (const QString err = run(QStringLiteral("tesseract"), args, &out, 120000); !err.isEmpty())
             return err;
         pages << QString::fromUtf8(out).trimmed();
     }

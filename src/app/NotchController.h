@@ -197,6 +197,14 @@ public:
     // What the selected files can be converted to: [{id, label, group, available, hint}], empty for a mixed selection.
     Q_INVOKABLE QVariantList convertTargets(const QStringList &ids) const;
     Q_INVOKABLE int pageCount(const QString &id) const;
+    // A shelf file made ready for a long job that reads it: {ok, path, name, base, vault}; ok is false when it is not there (or locked away).
+    Q_INVOKABLE QVariantMap documentInfo(const QString &id) const;
+    // Puts a document that was made on the shelf (in the open category). Whether it was added; *idOut is its id.
+    bool addDocument(const QString &name, const QString &mimeType, const QByteArray &bytes, const QString &note, QString *idOut = nullptr);
+    // The PDFs that are ready on the shelf, newest first (at most 40): [{id, name, sizeText, addedText}]
+    Q_INVOKABLE QVariantList pdfItems() const;
+    // A toast: "Summary ready".
+    Q_INVOKABLE void announce(const QString &title, const QString &detail, const QString &icon = {}) { emit notice(title, detail, icon, QString()); }
     // Note editor toolkit (see TextTools.h): {ok, text, error}.
     Q_INVOKABLE QVariantMap transformText(const QString &kind, const QString &text) const;
 

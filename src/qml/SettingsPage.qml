@@ -19,6 +19,7 @@ RowLayout {
     Layout.leftMargin: 12
     Layout.rightMargin: 12
     Layout.preferredHeight: 480
+    Layout.bottomMargin: 18 // the panel's rounded edge covers the last pixels: keep the end of the list and of a section above it
     spacing: 14
 
     // id, name, icon, what it is for
@@ -32,7 +33,9 @@ RowLayout {
         ["alerts", "Alerts & activities", "notifications", "What the notch shows you: chargers, downloads, calls, the microphone and more.", ""],
         ["files", "Files", "folder", "How long files stay, where they go and what is added by itself.", "Files & sharing"],
         ["sharing", "Sharing & Nearby", "share", "Servers for Share via QR, and the name other computers see.", ""],
-        ["wellbeing", "Wellbeing", "heart", "Break and eye reminders.", "You"],
+        ["ai", "Audio AI", "mic", "Models for turning recordings into text and notes, all on this computer.", "You"],
+        ["languages", "Languages", "globe", "The languages you use for speech, notes and reading pictures, and what to download for them.", ""],
+        ["wellbeing", "Wellbeing", "heart", "Break and eye reminders.", ""],
         ["about", "About", "info", "Version, author, links and support.", ""]
     ]
     // What a search can find: section, setting, words that also describe it.
@@ -54,7 +57,7 @@ RowLayout {
         ["dock", "Magnification", "zoom"], ["dock", "Animation", "motion smooth spring"], ["dock", "Show running apps", "windows"],
         ["dock", "Show Trash", "bin"], ["dock", "Apps kept in the dock", "pinned"],
         ["sharing", "Nearby device name", "computer name receive"], ["sharing", "Sharing servers", "relay vps share qr server"], ["sharing", "Set up your own server (guide)", "tutorial guide how to setup server docker vps domain self host install key"],
-        ["wellbeing", "Stretch reminder", "break work minutes"], ["wellbeing", "Don't interrupt", "video call pomodoro"],
+        ["languages", "Languages", "language languages translate ocr speech whisper download pack arabic chinese japanese korean hindi spanish french german portuguese russian turkish thai vietnamese"], ["ai", "Audio Intelligence models", "audio ai whisper transcript transcribe summary meeting model download qwen llama speaker diarization record"], ["ai", "Quality and threads", "quality standard high threads cpu ram limit language template"], ["wellbeing", "Stretch reminder", "break work minutes"], ["wellbeing", "Don't interrupt", "video call pomodoro"],
         ["wellbeing", "20-20-20 eye reminder", "eyes"], ["wellbeing", "Today", "breaks count"]
     ]
     readonly property var results: {
@@ -70,7 +73,7 @@ RowLayout {
         Layout.preferredWidth: 176
         Layout.maximumWidth: 176
         Layout.fillHeight: true
-        spacing: 8
+        spacing: 4
         TextField {
             id: searchField
             Layout.fillWidth: true
@@ -1725,6 +1728,154 @@ RowLayout {
                         }
                         PillButton { text: "Copy details"; iconName: "copy"; onClicked: notch.copyText(bugCard.details) }
                     }
+                }
+            }
+        }
+
+        Loader {
+            active: settingsScroll.category === "ai"
+            visible: active // an idle Loader is still a layout item: its spacing would leave a gap
+            Layout.fillWidth: true
+            sourceComponent: ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 16
+
+                SettingCard {
+                    title: "Recordings"
+                    Caption { Layout.fillWidth: true; text: "Audio is turned into text, speakers and notes on this computer. Nothing is sent anywhere. Models are downloaded only when you press Download." }
+                    SectionLabel { text: "Language" }
+                    LanguagePicker { value: audioIntel.language; onPicked: (c) => audioIntel.language = c; onMoreRequested: settingsScroll.category = "languages" }
+                    SectionLabel { text: "Quality" }
+                    Segmented { Layout.fillWidth: true; model: [["standard", "Standard"], ["high", "High quality"]]; value: audioIntel.quality; onPicked: (v) => audioIntel.quality = v }
+                    Caption { Layout.fillWidth: true; text: "High quality is slower and needs more memory." }
+                    SectionLabel { text: "Notes style" }
+                    Segmented { Layout.fillWidth: true; model: [["meeting", "Meeting"], ["lecture", "Lecture"], ["interview", "Interview"], ["general", "General"]]; value: audioIntel.tmpl; onPicked: (v) => audioIntel.tmpl = v }
+                    SectionLabel { text: "Telling speakers apart" }
+                    Segmented { Layout.fillWidth: true; model: [["fewer", "Fewer speakers"], ["balanced", "Balanced"], ["more", "More speakers"]]; value: audioIntel.speakerSplit; onPicked: (v) => audioIntel.speakerSplit = v }
+                    Caption { Layout.fillWidth: true; text: "If two people are taken for one, choose More; if one person is split into two, choose Fewer. It applies to the next recording you process." }
+                    SectionLabel { text: "CPU threads" }
+                    Segmented { Layout.fillWidth: true; model: [[2, "2"], [4, "4"], [6, "6"], [8, "8"], [12, "12"]]; value: audioIntel.threads; onPicked: (v) => audioIntel.threads = v }
+                    SectionLabel { text: "Memory limit" }
+                    Segmented { Layout.fillWidth: true; model: [[0, "None"], [4096, "4 GB"], [8192, "8 GB"], [12288, "12 GB"]]; value: audioIntel.ramLimitMb; onPicked: (v) => audioIntel.ramLimitMb = v }
+                }
+
+                SettingCard {
+                    title: "Models and helpers"
+                    ColumnLayout {
+                      Layout.fillWidth: true
+                      spacing: 10
+                      Repeater {
+                        model: audioIntel.modelIds // the rows stay while a download updates them (a changing list rebuilt them, and the card was cut off)
+                        delegate: ColumnLayout {
+                            id: mrow
+                            required property string modelData
+                            readonly property var info: { audioIntel.models; return audioIntel.modelInfo(modelData) }
+                            Layout.fillWidth: true
+                            spacing: 4
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 8
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 0
+                                    Text { Layout.fillWidth: true; text: mrow.info.title + " · " + mrow.info.sizeText; color: theme.text; font.pixelSize: 13; elide: Text.ElideRight }
+                                    Caption { Layout.fillWidth: true; text: mrow.info.ready ? "Installed" + (mrow.info.diskText !== "" ? " · " + mrow.info.diskText + " on disk" : "") : mrow.info.note }
+                                }
+                                PillButton {
+                                    visible: !mrow.info.ready && mrow.info.state !== "downloading" && mrow.info.state !== "verifying"
+                                    text: mrow.info.partial ? "Continue" : "Download"
+                                    iconName: "download"
+                                    onClicked: audioIntel.downloadModel(mrow.info.id)
+                                }
+                                PillButton { visible: mrow.info.state === "downloading"; text: "Cancel"; onClicked: audioIntel.cancelDownload(mrow.info.id) }
+                                Text { visible: mrow.info.state === "verifying"; text: "Checking…"; color: theme.textDim; font.pixelSize: 12 }
+                                PillButton { visible: mrow.info.ready; text: "Remove"; iconName: "trash"; onClicked: audioIntel.removeModel(mrow.info.id) }
+                            }
+                            Rectangle {
+                                visible: mrow.info.state === "downloading"
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 4
+                                radius: 2
+                                color: theme.surface
+                                Rectangle { width: parent.width * mrow.info.progress; height: parent.height; radius: 2; color: theme.accent }
+                            }
+                            Caption { visible: mrow.info.state === "downloading"; Layout.fillWidth: true; text: mrow.info.receivedText + (mrow.info.speedText !== "" ? " · " + mrow.info.speedText : " · starting…") + (mrow.info.etaText !== "" ? " · " + mrow.info.etaText : "") }
+                            Text { visible: mrow.info.error !== ""; Layout.fillWidth: true; text: mrow.info.error; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: theme.danger; font.pixelSize: 11 }
+                        }
+                      }
+                    }
+                }
+            }
+        }
+
+        Loader {
+            active: settingsScroll.category === "languages"
+            visible: active // an idle Loader is still a layout item: its spacing would leave a gap
+            Layout.fillWidth: true
+            sourceComponent: ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 16
+
+                SettingCard {
+                    title: "Languages in use"
+                    Caption { Layout.fillWidth: true; text: "The languages ticked here appear in the language choices of Audio and Documents, and \"Automatic\" picks among them. Speech and notes work in all of them without a download; reading pictures (OCR) needs one small pack per language, downloaded here only when you press Download." }
+                    TextField {
+                        id: langSearch
+                        Layout.fillWidth: true
+                        implicitHeight: 30
+                        leftPadding: 12
+                        placeholderText: "Search languages"
+                        placeholderTextColor: theme.placeholder
+                        color: theme.text
+                        selectionColor: theme.accent
+                        font.pixelSize: 13
+                        text: languages.search
+                        background: Rectangle { radius: 15; color: theme.surface; border.width: 1; border.color: langSearch.activeFocus ? theme.accent : theme.outline }
+                        onTextEdited: languages.search = text
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 2
+                        Repeater {
+                            model: languages.all
+                            delegate: ColumnLayout {
+                                id: lrow
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 3
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 10
+                                    Toggle {
+                                        checked: lrow.modelData.enabled
+                                        Accessible.name: "Use " + lrow.modelData.english
+                                        onToggled: languages.setEnabled(lrow.modelData.code, !lrow.modelData.enabled)
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        spacing: 0
+                                        Text { Layout.fillWidth: true; text: lrow.modelData.english + (lrow.modelData.native !== lrow.modelData.english ? " · " + lrow.modelData.native : ""); textFormat: Text.PlainText; elide: Text.ElideRight; color: theme.text; font.pixelSize: 13 }
+                                        Text {
+                                            Layout.fillWidth: true
+                                            font.pixelSize: 11
+                                            color: lrow.modelData.ocr === "missing" || lrow.modelData.ocr === "partial" ? theme.textDim : theme.success
+                                            text: lrow.modelData.ocr === "system" ? "Pictures: installed on this computer" : lrow.modelData.ocr === "ready" ? "Pictures: downloaded" : lrow.modelData.ocr === "downloading" ? "Downloading…"
+                                                  : "Pictures: needs a " + lrow.modelData.sizeText + " pack" + (lrow.modelData.hasWords ? "" : " · English headings in notes")
+                                        }
+                                    }
+                                    PillButton { visible: lrow.modelData.ocr === "missing" || lrow.modelData.ocr === "partial"; text: lrow.modelData.ocr === "partial" ? "Continue" : "Download"; iconName: "download"; onClicked: languages.downloadPack(lrow.modelData.code) }
+                                    PillButton { visible: lrow.modelData.ocr === "downloading"; text: "Cancel"; onClicked: languages.cancelPack(lrow.modelData.code) }
+                                    PillButton { visible: lrow.modelData.ocr === "ready"; text: "Remove"; iconName: "trash"; onClicked: languages.removePack(lrow.modelData.code) }
+                                }
+                                Rectangle { visible: lrow.modelData.ocr === "downloading"; Layout.fillWidth: true; Layout.preferredHeight: 3; radius: 1.5; color: theme.surface
+                                    Rectangle { width: parent.width * lrow.modelData.progress; height: parent.height; radius: 1.5; color: theme.accent } }
+                                Caption { visible: lrow.modelData.ocr === "downloading" && lrow.modelData.speedText !== ""; Layout.fillWidth: true; text: lrow.modelData.speedText }
+                                Text { visible: lrow.modelData.error !== ""; Layout.fillWidth: true; text: lrow.modelData.error; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: theme.danger; font.pixelSize: 11 }
+                                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: theme.hairline; opacity: 0.6 }
+                            }
+                        }
+                    }
+                    Caption { Layout.fillWidth: true; text: "Chinese, Japanese, Korean and Arabic text in the PDF made from the notes needs a font for that script on this computer (for example the package fonts-noto-cjk)." }
                 }
             }
         }

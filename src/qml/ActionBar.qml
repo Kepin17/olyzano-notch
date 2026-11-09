@@ -32,15 +32,20 @@ RowLayout {
             { id: "tasks", label: "Tasks", icon: "check", badge: bar.tasksBadge, on: true },
             { id: "color", label: "Color", icon: "palette", badge: 0, on: bar.colorAvailable },
             { id: "clipboard", label: "Clipboard", icon: "copy", badge: 0, on: true },
+            { id: "audio", label: "Audio", icon: "mic", badge: 0, on: true },
+            { id: "docs", label: "Docs", icon: "doc", badge: 0, on: true },
             { id: "camera", label: "Camera", icon: "camera", badge: 0, on: true },
             { id: "dev", label: "Dev", icon: "server", badge: 0, on: true }
         ].filter(p => p.on)
         readonly property int current: { for (let i = 0; i < pages.length; ++i) if (pages[i].id === bar.page) return i; return -1 }
         readonly property Item cur: current >= 0 ? segs.itemAt(current) : null
-        function at(x) { // the part under an x position (inside the row)
+        // The part under an x position (inside the row), by where the parts will be when they have stopped sliding: while the open one grows and
+        // the old one shrinks, a pointer that has not moved must not be taken for one that is over another part.
+        function at(x) {
+            let end = 0
             for (let i = 0; i < segs.count; ++i) {
-                const it = segs.itemAt(i)
-                if (x < it.x + it.width)
+                end += segs.itemAt(i).target
+                if (x < end)
                     return i
             }
             return pages.length - 1
@@ -89,7 +94,8 @@ RowLayout {
                     required property int index
                     readonly property bool open: index === slider.current
                     height: segRow.height
-                    width: open ? openRow.implicitWidth + 26 : 42
+                    readonly property real target: open ? openRow.implicitWidth + 26 : 42
+                    width: target
                     Behavior on width { enabled: activities.animations; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                     Row {
                         id: openRow
@@ -144,9 +150,10 @@ RowLayout {
         MouseArea {
             id: pointer
             anchors.fill: parent
+            property real downX: 0 // where the button went down, on the screen: the bar itself can move when the page changes (Note and Add come and go)
             function follow(m) { slider.go(slider.at(m.x - segRow.x)) }
-            onPressed: (m) => { slider.forceActiveFocus(); follow(m) }
-            onPositionChanged: (m) => { if (pressed) follow(m) }
+            onPressed: (m) => { downX = mapToGlobal(m.x, m.y).x; slider.forceActiveFocus(); follow(m) }
+            onPositionChanged: (m) => { if (pressed && Math.abs(mapToGlobal(m.x, m.y).x - downX) > 10) follow(m) } // a drag, not the shake of a click (or the bar moving under a still pointer)
             onWheel: (w) => slider.step((w.angleDelta.y || w.angleDelta.x) < 0 ? 1 : -1)
         }
     }

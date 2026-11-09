@@ -24,7 +24,7 @@ void releaseCom(T *&p)
 }
 }
 
-MicCapture::MicCapture(QObject *parent) : QObject(parent) {}
+MicCapture::MicCapture(QObject *parent, Source source) : QObject(parent), m_source(source) {}
 
 MicCapture::~MicCapture() { stop(); }
 
@@ -59,10 +59,10 @@ void MicCapture::run()
     WAVEFORMATEX *format = nullptr;
     bool ok = SUCCEEDED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL, __uuidof(IMMDeviceEnumerator),
                                          reinterpret_cast<void **>(&enumerator)))
-              && SUCCEEDED(enumerator->GetDefaultAudioEndpoint(eCapture, eConsole, &device))
+              && SUCCEEDED(enumerator->GetDefaultAudioEndpoint(m_source == SystemSound ? eRender : eCapture, eConsole, &device))
               && SUCCEEDED(device->Activate(__uuidof(IAudioClient), CLSCTX_ALL, nullptr, reinterpret_cast<void **>(&client)))
               && SUCCEEDED(client->GetMixFormat(&format))
-              && SUCCEEDED(client->Initialize(AUDCLNT_SHAREMODE_SHARED, 0, 2000000 /* 200 ms */, 0, format, nullptr))
+              && SUCCEEDED(client->Initialize(AUDCLNT_SHAREMODE_SHARED, m_source == SystemSound ? AUDCLNT_STREAMFLAGS_LOOPBACK : 0, 2000000 /* 200 ms */, 0, format, nullptr))
               && SUCCEEDED(client->GetService(__uuidof(IAudioCaptureClient), reinterpret_cast<void **>(&capture)))
               && SUCCEEDED(client->Start());
     bool isFloat = false;
@@ -77,7 +77,7 @@ void MicCapture::run()
     }
     if (!ok) {
         m_run = false;
-        QMetaObject::invokeMethod(this, [this] { emit failed(tr("The microphone could not be opened.")); }, Qt::QueuedConnection);
+        QMetaObject::invokeMethod(this, [this] { emit failed(m_source == SystemSound ? tr("The sound of the computer could not be captured.") : tr("The microphone could not be opened.")); }, Qt::QueuedConnection);
     } else {
         const int channels = qMax<int>(1, format->nChannels);
         const double step = double(format->nSamplesPerSec) / TargetRate; // input frames per output sample

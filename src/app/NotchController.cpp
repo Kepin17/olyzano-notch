@@ -34,6 +34,13 @@
 
 #include <memory>
 
+// TEMP instrumentation: which GUI-thread call blocks during a big copy.
+static void slowLog(const char *what, qint64 ms, const QString &detail = {})
+{
+    if (ms >= 20)
+        qInfo() << "SLOW" << what << ms << "ms" << detail;
+}
+
 // ponytail: folder drops are walked on the main thread; the cap keeps a huge tree from stalling the UI.
 constexpr int MaxFolderFiles = 1000;
 
@@ -385,6 +392,8 @@ void NotchController::addUrls(const QList<QUrl> &urls, const QString &categoryId
     const QString vaultCanon = m_vault.isUnlocked() ? QDir(m_vault.mountDir()).canonicalPath() : QString();
     auto *watcher = new QFutureWatcher<Prepared>(this);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, categoryId] {
+        QElapsedTimer slowT;
+        slowT.start();
         Prepared r = watcher->result();
         watcher->deleteLater();
         --m_preparing;
@@ -407,6 +416,7 @@ void NotchController::addUrls(const QList<QUrl> &urls, const QString &categoryId
         } else {
             progressTick();
         }
+        slowLog("prepare.finished", slowT.elapsed());
     });
     watcher->setFuture(QtConcurrent::run(&m_ingestPool, [paths, errors, filesCanon, vaultCanon, cancel = &m_ingestCancel] {
         return prepareDrop(paths, errors, filesCanon, vaultCanon, cancel);
@@ -416,6 +426,8 @@ void NotchController::addUrls(const QList<QUrl> &urls, const QString &categoryId
 // A few files at a time go on the shelf (a row each), so the panel keeps drawing while a thousand arrive.
 void NotchController::ingestStep()
 {
+    QElapsedTimer slowT;
+    slowT.start();
     constexpr int perStep = 10;
     QStringList errors;
     int n = 0;
@@ -430,6 +442,7 @@ void NotchController::ingestStep()
     }
     if (!errors.isEmpty())
         setError(errors.join(u'\n'));
+    slowLog("ingestStep", slowT.elapsed());
     if (!m_ingest.isEmpty())
         m_ingestTimer.start(8);
     else
@@ -438,9 +451,16 @@ void NotchController::ingestStep()
 
 void NotchController::ingestOne(const Prep &p, const QString &categoryId, QStringList &errors)
 {
+    QElapsedTimer t;
+    t.start();
     FileItem item = newItem(p.name, p.fromFolder ? createCategory(p.folder) : categoryId);
-    item.mimeType = p.mime;
-    item.categoryId = ruledCategory(item.categoryId, item.mimeType);
+    {
+        QElapsedTimer mt;
+        mt.start();
+        item.mimeType = p.mime;
+        item.categoryId = ruledCategory(item.categoryId, item.mimeType);
+        slowLog("ingestOne.mime/ruled", mt.elapsed());
+    }
     item.sizeBytes = p.size;
     item.sourcePath = p.path;
     if (QString why; !assignStorage(item, &why)) {
@@ -453,6 +473,7 @@ void NotchController::ingestOne(const Prep &p, const QString &categoryId, QStrin
     }
     m_model.upsert(item);
     startCopy(item);
+    slowLog("ingestOne.total", t.elapsed(), item.originalName);
 }
 
 void NotchController::addDrop(const QList<QUrl> &urls, const QString &html, const QString &categoryId)
@@ -514,6 +535,8 @@ void NotchController::startCopy(const FileItem &item)
     t.title = item.originalName;
     beginTransfer(item.id, t);
     connect(watcher, &QFutureWatcherBase::finished, this, [this, watcher, item] {
+        QElapsedTimer slowT;
+        slowT.start();
         const FileService::CopyResult r = watcher->result();
         watcher->deleteLater();
         --m_copying;
@@ -524,8 +547,10 @@ void NotchController::startCopy(const FileItem &item)
             done.status = Status::Available;
             done.sizeBytes = r.bytes;
             m_model.finishCopy(done);
+            slowLog("copy.finished", slowT.elapsed(), item.originalName);
             return;
         }
+        slowLog("copy.finished(failed)", slowT.elapsed(), item.originalName);
         const QString reason = r.ok ? m_repo.errorString() : r.error;
         if (r.ok)
             FileService::removeManaged(baseDir(item), item.storedName);
@@ -572,6 +597,8 @@ void NotchController::endTransfer(const QString &id)
 // A few times a second: how far everything is, in words and as a fraction, and each file's own percent. (Not once per megabyte.)
 void NotchController::progressTick()
 {
+    QElapsedTimer slowT;
+    slowT.start();
     if (m_transfers.isEmpty() && m_ingest.isEmpty() && m_preparing == 0) {
         m_progressTimer.stop();
         m_xferBase = m_xferTotal = m_lastDone = 0;
@@ -583,6 +610,7 @@ void NotchController::progressTick()
             m_copyFraction = -1;
             emit copyProgressChanged();
         }
+        slowLog("progressTick.clear", slowT.elapsed());
         return;
     }
     qint64 done = m_xferBase;
@@ -633,6 +661,7 @@ void NotchController::progressTick()
         m_copyFraction = fraction;
         emit copyProgressChanged();
     }
+    slowLog("progressTick", slowT.elapsed());
 }
 
 void NotchController::cancelCopies()
@@ -1158,6 +1187,8 @@ QStringList NotchController::visibleIds() const
 
 void NotchController::refreshCategories()
 {
+    QElapsedTimer slowT;
+    slowT.start();
     QHash<QString, int> counts;
     for (const FileItem &item : m_model.items())
         if (!item.removedAt.isValid())
@@ -1179,10 +1210,13 @@ void NotchController::refreshCategories()
         else
             out << entry;
     }
-    if (out == m_categories)
+    if (out == m_categories) {
+        slowLog("refreshCategories(noop)", slowT.elapsed());
         return;
+    }
     m_categories = out;
     emit categoriesChanged();
+    slowLog("refreshCategories(changed)", slowT.elapsed());
 }
 
 void NotchController::reloadCategories()
@@ -1692,6 +1726,8 @@ void NotchController::indexStep()
 {
     constexpr int PerStep = 10;
     constexpr qint64 MaxBytes = 64 * 1024;
+    QElapsedTimer t;
+    t.start();
     QList<QPair<QString, QString>> batch;
     bool more = false;
     for (const FileItem &item : m_model.items()) {
@@ -1704,12 +1740,16 @@ void NotchController::indexStep()
         QFile f(pathOf(item));
         batch.append({item.id, f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.read(MaxBytes)) : QString()}); // unreadable: empty text, not asked again
     }
+    const qint64 readMs = t.elapsed();
+    t.restart();
     if (!batch.isEmpty() && m_repo.indexTexts(batch)) {
-        for (const auto &t : batch)
-            m_indexed.insert(t.first);
+        for (const auto &t2 : batch)
+            m_indexed.insert(t2.first);
         if (!m_filter.trimmed().isEmpty())
             m_searchTimer.start(); // a search is open: what was just indexed may match it
     }
+    slowLog("indexStep.read", readMs);
+    slowLog("indexStep.sql", t.elapsed());
     if (more)
         m_indexTimer.start(50);
 }
@@ -1784,6 +1824,39 @@ int NotchController::pageCount(const QString &id) const
 {
     const FileItem *item = m_model.find(id);
     return item ? DocTools::pdfPageCount(pathOf(*item)) : -1;
+}
+
+QVariantMap NotchController::documentInfo(const QString &id) const
+{
+    const FileItem *item = available(id);
+    if (!item)
+        return {{QStringLiteral("ok"), false}};
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("path"), pathOf(*item)}, {QStringLiteral("name"), item->originalName},
+            {QStringLiteral("base"), QFileInfo(item->originalName).completeBaseName()}, {QStringLiteral("vault"), item->vault}};
+}
+
+bool NotchController::addDocument(const QString &name, const QString &mimeType, const QByteArray &bytes, const QString &note, QString *idOut)
+{
+    const QString category = m_categoryFilter == QLatin1String(RemovedView) ? QString() : m_categoryFilter;
+    return addBytes(name, mimeType, bytes, note, category, idOut);
+}
+
+QVariantList NotchController::pdfItems() const
+{
+    QList<const FileItem *> found;
+    for (const FileItem &item : m_model.items())
+        if (!item.removedAt.isValid() && available(item.id)
+            && (item.mimeType == QLatin1String("application/pdf") || item.originalName.endsWith(QLatin1String(".pdf"), Qt::CaseInsensitive)))
+            found << &item;
+    std::sort(found.begin(), found.end(), [](const FileItem *a, const FileItem *b) { return a->addedAt > b->addedAt; });
+    QVariantList out;
+    for (const FileItem *item : std::as_const(found)) {
+        if (out.size() >= 40)
+            break;
+        out.append(QVariantMap{{QStringLiteral("id"), item->id}, {QStringLiteral("name"), item->originalName}, {QStringLiteral("sizeText"), QLocale().formattedDataSize(item->sizeBytes)},
+                               {QStringLiteral("addedText"), QLocale().toString(item->addedAt.toLocalTime(), QLocale::ShortFormat)}});
+    }
+    return out;
 }
 
 void NotchController::runTool(const QString &kind, const QStringList &ids, const QString &option)

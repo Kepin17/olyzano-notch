@@ -1,6 +1,9 @@
 #include "app/NotchController.h"
 #include "app/NearbyController.h"
 #include "app/CloudController.h"
+#include "audio/AudioController.h"
+#include "app/DocSummaryController.h"
+#include "app/LanguageController.h"
 #include "app/ShareController.h"
 #include "services/QrImage.h"
 #include "services/GuiImageProvider.h"
@@ -50,7 +53,6 @@
 #endif
 
 #include <QDir>
-#include <QElapsedTimer>
 #include <QFileInfo>
 #include <QTimer>
 #include <QJSValue>
@@ -65,6 +67,8 @@
 #include <QQmlComponent>
 #include <QQmlContext>
 #include <QQuickImageProvider>
+#include <QQuickItem>
+#include <QWheelEvent>
 #include <QQuickWindow>
 #include <QScreen>
 #include <QSocketNotifier>
@@ -236,6 +240,9 @@ int main(int argc, char *argv[])
     controller.start(); // failures surface in the UI via errorMessage
     ShareController share(&controller);
     CloudController cloud(&controller, &share);
+    AudioController audioIntel;
+    LanguageController languages(&audioIntel);
+    DocSummaryController docSummary(&controller, &audioIntel);
     NearbyController nearby(&controller);
 
     DesktopIntegration desktop;
@@ -419,6 +426,9 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("systemEvents"), &systemEvents);
     engine.rootContext()->setContextProperty(QStringLiteral("media"), &media);
     engine.rootContext()->setContextProperty(QStringLiteral("audio"), &audio);
+    engine.rootContext()->setContextProperty(QStringLiteral("audioIntel"), &audioIntel);
+    engine.rootContext()->setContextProperty(QStringLiteral("docSummary"), &docSummary);
+    engine.rootContext()->setContextProperty(QStringLiteral("languages"), &languages);
     engine.rootContext()->setContextProperty(QStringLiteral("kdeconnect"), &kdeconnect);
     engine.rootContext()->setContextProperty(QStringLiteral("theme"), &theme);
     engine.rootContext()->setContextProperty(QStringLiteral("colorPicker"), &colorPicker);
@@ -668,7 +678,7 @@ int main(int argc, char *argv[])
     // `notch --shot-page file.png <timer|color|shelf|tasks|capsule>`: the open panel on that page, the same way.
     if (const int i = app.arguments().indexOf(QStringLiteral("--shot-page")); i >= 0 && i + 2 < app.arguments().size()) {
         const QString path = app.arguments().at(i + 1), page = app.arguments().at(i + 2);
-        QTimer::singleShot(1200, &app, [&windows, &app, &activities, &doomscroll, &assistant, path, page] {
+        QTimer::singleShot(1200, &app, [&windows, &app, &activities, &doomscroll, &assistant, &audioIntel, path, page] {
             QQuickWindow *w = windows.isEmpty() ? nullptr : windows.constBegin().value();
             if (!w)
                 return app.quit();
@@ -703,6 +713,28 @@ int main(int argc, char *argv[])
                 w->setProperty("page", QStringLiteral("dev"));
                 QMetaObject::invokeMethod(w, "debugDev", Q_ARG(QVariant, page.mid(4)));
                 return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 2000, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+            }
+            if (page.startsWith(QLatin1String("audio-"))) { // a recording open on the Audio page: audio-<id>; NOTCH_SHOT_TAB=summary|transcript|actions
+                audioIntel.open(page.mid(6).toLongLong());
+                w->setProperty("page", QStringLiteral("audio"));
+                return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 1800, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+            }
+            if (page.startsWith(QLatin1String("docs-"))) { // the Documents page with a PDF of the shelf chosen: docs-<item id>
+                w->setProperty("docsPick", page.mid(5));
+                w->setProperty("page", QStringLiteral("docs"));
+                return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 2200, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+            }
+            if (page.startsWith(QLatin1String("settings-"))) { // a Settings section: settings-ai | settings-files ...
+                w->setProperty("settingsCategory", page.mid(9));
+                w->setProperty("page", QStringLiteral("settings"));
+                return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 1500, &app, [w, &app, path] {
+                    if (qEnvironmentVariableIsSet("NOTCH_SHOT_BOTTOM")) // wheel to the end of the section, to see that all of it can be reached
+                        for (int n = 0; n < 400; ++n) {
+                            QWheelEvent ev(QPointF(520, 300), w->mapToGlobal(QPointF(520, 300)), {}, QPoint(0, -120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+                            QCoreApplication::sendEvent(w, &ev);
+                        }
+                    QTimer::singleShot(300, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+                });
             }
             w->setProperty("page", page.startsWith(QLatin1String("timer")) ? QStringLiteral("timer") : page);
             QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 1500, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
@@ -741,10 +773,10 @@ int main(int argc, char *argv[])
     if (app.arguments().contains(QStringLiteral("--ui-check"))) {
         struct Step { QString label, page, section; };
         auto steps = std::make_shared<QList<Step>>();
-        for (const QString &pg : {QStringLiteral("shelf"), QStringLiteral("timer"), QStringLiteral("tasks"), QStringLiteral("color"), QStringLiteral("clipboard"), QStringLiteral("dev")})
+        for (const QString &pg : {QStringLiteral("shelf"), QStringLiteral("timer"), QStringLiteral("tasks"), QStringLiteral("color"), QStringLiteral("clipboard"), QStringLiteral("audio"), QStringLiteral("docs"), QStringLiteral("dev")})
             steps->append({pg, pg, QString()});
         for (const QString &sec : {QStringLiteral("general"), QStringLiteral("appearance"), QStringLiteral("panel"), QStringLiteral("dock"), QStringLiteral("alerts"),
-                                   QStringLiteral("files"), QStringLiteral("sharing"), QStringLiteral("wellbeing"), QStringLiteral("about")})
+                                   QStringLiteral("files"), QStringLiteral("sharing"), QStringLiteral("ai"), QStringLiteral("languages"), QStringLiteral("wellbeing"), QStringLiteral("about")})
             steps->append({QStringLiteral("settings/") + sec, QStringLiteral("settings"), sec});
         steps->append({QStringLiteral("dev/agent"), QStringLiteral("dev"), QStringLiteral("agent")});
         steps->append({QStringLiteral("dev/agent-config"), QStringLiteral("dev"), QStringLiteral("agent-config")});

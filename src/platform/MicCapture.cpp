@@ -6,7 +6,7 @@
 
 #ifndef Q_OS_WIN
 
-MicCapture::MicCapture(QObject *parent) : QObject(parent)
+MicCapture::MicCapture(QObject *parent, Source source) : QObject(parent), m_source(source)
 {
     connect(&m_proc, &QProcess::readyReadStandardOutput, this, [this] {
         QByteArray data = m_rest + m_proc.readAllStandardOutput();
@@ -20,7 +20,7 @@ MicCapture::MicCapture(QObject *parent) : QObject(parent)
     });
     connect(&m_proc, &QProcess::finished, this, [this] {
         if (!m_got && m_proc.property("wanted").toBool())
-            emit failed(tr("The microphone could not be opened."));
+            emit failed(m_source == SystemSound ? tr("The sound of the computer could not be captured.") : tr("The microphone could not be opened."));
     });
 }
 
@@ -38,7 +38,7 @@ bool MicCapture::start()
     m_got = false;
     m_proc.setProperty("wanted", true);
     ChildLife::dieWithParent(m_proc);
-    m_proc.start(QStringLiteral("parec"), {QStringLiteral("--device=@DEFAULT_SOURCE@"), QStringLiteral("--raw"),
+    m_proc.start(QStringLiteral("parec"), {m_source == SystemSound ? QStringLiteral("--device=@DEFAULT_MONITOR@") : QStringLiteral("--device=@DEFAULT_SOURCE@"), QStringLiteral("--raw"),
                                            QStringLiteral("--format=s16le"), QStringLiteral("--rate=16000"),
                                            QStringLiteral("--channels=1"), QStringLiteral("--latency-msec=60"),
                                            QStringLiteral("--client-name=OlyzanoAssistant")});

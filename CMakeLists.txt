@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(notch VERSION 0.17.0 LANGUAGES CXX)
+project(notch VERSION 0.18.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -35,7 +35,7 @@ qt_add_library(notch_core STATIC
     src/services/CleanupService.h src/services/CleanupService.cpp
     src/services/FolderWatcher.h src/services/FolderWatcher.cpp
     src/services/TextTools.h
-    src/services/DocTools.h src/services/DocTools.cpp src/services/ConvertModel.h
+    src/services/DocTools.h src/services/DocTools.cpp src/services/ConvertModel.h src/services/Languages.h src/services/OcrPacks.h src/services/OcrPacks.cpp src/services/PdfText.h src/services/DocSummaryModel.h src/services/DocSummarize.h src/services/DocSummarize.cpp
     src/services/Vault.h src/services/Vault.cpp
     src/services/ShareCrypto.h src/services/ShareCrypto.cpp
     src/services/Signature.h src/services/Signature.cpp
@@ -46,6 +46,7 @@ qt_add_library(notch_core STATIC
     src/services/NearbyCrypto.h src/services/NearbyCrypto.cpp
     src/services/NearbyService.h src/services/NearbyService.cpp
     src/platform/Lyrics.h src/platform/Lyrics.cpp src/platform/LrcParser.h
+    src/audio/AudioStore.h src/audio/AudioStore.cpp src/audio/AudioPipeline.h src/audio/AudioPipeline.cpp src/audio/ModelCatalog.h src/audio/ModelStore.h src/audio/ModelStore.cpp src/audio/AudioJson.h src/audio/Summarize.h src/audio/Aligner.h src/audio/SummaryModel.h src/audio/Vad.h src/audio/WavFile.h src/audio/LiveSegmenter.h src/audio/LivePrompt.h
     third_party/qrcodegen.cpp
 )
 set_source_files_properties(third_party/qrcodegen.cpp PROPERTIES COMPILE_OPTIONS "-w") # vendored (MIT)
@@ -86,6 +87,8 @@ qt_add_executable(notch
     src/platform/ColorPicker.h
     src/platform/AppDock.h src/platform/AppDock.cpp src/platform/DockModel.h
     src/platform/Activities.h src/platform/Activities.cpp
+    src/app/DocSummaryController.h src/app/DocSummaryController.cpp src/app/LanguageController.h src/app/LanguageController.cpp src/audio/LiveSession.h src/audio/LiveSession.cpp src/audio/AudioController.h src/audio/AudioController.cpp src/audio/AudioModels.h src/audio/MeetingRecorder.h src/audio/MeetingRecorder.cpp src/audio/AudioPlayback.cpp src/audio/RecorderMath.h
+    src/audio/AudioEngines.h src/audio/AudioEngines.cpp src/audio/EngineParse.h src/audio/SystemMemory.h
     src/platform/Assistant.h src/platform/Assistant.cpp src/platform/MicCapture.h src/platform/MicCapture.cpp
     src/platform/AssistantModel.h src/platform/AssistantCorpus.h src/platform/UtteranceModel.h src/platform/WhisperEngine.h src/platform/WhisperEngine.cpp
     src/platform/Wellbeing.h src/platform/Wellbeing.cpp src/platform/WellbeingModel.h
@@ -189,14 +192,14 @@ qt_add_qml_module(notch
         src/qml/PillButton.qml src/qml/IconButton.qml src/qml/Toggle.qml src/qml/PulseDot.qml
         src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkMenuItem.qml src/qml/Mascot.qml src/qml/DarkSeparator.qml
         src/qml/SettingToggle.qml src/qml/Chip.qml src/qml/WheelScroller.qml
-        src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml src/qml/ActionBar.qml src/qml/Bar.qml src/qml/Segmented.qml src/qml/GlassLayer.qml src/qml/Launcher.qml src/qml/SignalIcon.qml src/qml/CircleAction.qml src/qml/ColorPage.qml src/qml/AppMenuPopup.qml src/qml/CalendarCard.qml src/qml/QuickSettings.qml src/qml/ClipboardPage.qml src/qml/SearchPanel.qml src/qml/CameraPage.qml src/qml/CameraView.qml src/qml/LyricsPanel.qml
+        src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml src/qml/ActionBar.qml src/qml/Bar.qml src/qml/Segmented.qml src/qml/GlassLayer.qml src/qml/Launcher.qml src/qml/SignalIcon.qml src/qml/CircleAction.qml src/qml/ColorPage.qml src/qml/AppMenuPopup.qml src/qml/CalendarCard.qml src/qml/QuickSettings.qml src/qml/ClipboardPage.qml src/qml/DocsPage.qml src/qml/LanguagePicker.qml src/qml/AudioPage.qml src/qml/AudioPlayer.qml src/qml/AudioPlayerLinux.qml src/qml/AudioList.qml src/qml/AudioLive.qml src/qml/AudioDetail.qml src/qml/AudioTranscript.qml src/qml/AudioNotes.qml src/qml/AudioActions.qml src/qml/AudioPlayerBar.qml src/qml/AudioJobStrip.qml src/qml/AudioSection.qml src/qml/AudioTimeLink.qml src/qml/AudioBullets.qml src/qml/AudioTopic.qml src/qml/AudioTabs.qml src/qml/AudioAvatar.qml src/qml/SearchPanel.qml src/qml/CameraPage.qml src/qml/CameraView.qml src/qml/LyricsPanel.qml
         src/qml/Dock.qml src/qml/TimerPage.qml src/qml/TasksPage.qml src/qml/ArtColor.qml src/qml/MarqueeText.qml src/qml/CoverArt.qml src/qml/DiscordBadge.qml src/qml/DevPage.qml src/qml/ApiPage.qml src/qml/ApiEnvEditor.qml src/qml/ApiRunPanel.qml src/qml/SshTab.qml src/qml/DbTab.qml src/qml/Field.qml src/qml/ConfirmDialog.qml src/qml/EmptyState.qml src/qml/Card.qml src/qml/SelectableRow.qml
     RESOURCES
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg
         src/qml/images/traktir.jpeg src/qml/icons/info.svg src/qml/icons/grid.svg src/qml/icons/ethernet.svg src/qml/icons/eye.svg src/qml/icons/eye-off.svg src/qml/icons/external.svg src/qml/icons/undo.svg src/qml/icons/play.svg src/qml/icons/pause.svg src/qml/icons/stop.svg src/qml/icons/minus.svg src/qml/icons/check.svg src/qml/icons/copy.svg src/qml/icons/pin.svg src/qml/icons/image.svg src/qml/icons/eyedropper.svg src/qml/icons/unlock.svg src/qml/icons/trash.svg src/qml/icons/palette.svg src/qml/icons/pen.svg
         src/qml/icons/cloud.svg src/qml/icons/gear.svg src/qml/icons/sort.svg src/qml/icons/camera.svg src/qml/icons/download.svg src/qml/icons/upload.svg
         src/qml/icons/phone.svg src/qml/icons/search.svg src/qml/icons/share.svg src/qml/icons/wifi.svg src/qml/icons/server.svg src/qml/icons/notch.png src/qml/icons/laptop.svg src/qml/icons/folder.svg src/qml/icons/music.svg src/qml/icons/gamepad.svg src/qml/icons/dock.svg src/qml/icons/heart.svg src/qml/icons/panel.svg src/qml/icons/volume.svg src/qml/icons/volume-off.svg src/qml/icons/sun.svg src/qml/icons/chevron.svg src/qml/icons/bluetooth.svg src/qml/icons/headphones.svg
-        src/qml/icons/timer.svg src/qml/icons/mic.svg src/qml/icons/lyrics.svg src/qml/icons/mic-off.svg src/qml/icons/notifications.svg
+        src/qml/icons/timer.svg src/qml/icons/doc.svg src/qml/icons/globe.svg src/qml/icons/mic.svg src/qml/icons/lyrics.svg src/qml/icons/mic-off.svg src/qml/icons/notifications.svg
         # made by tools/make_sounds.py
         src/qml/sounds/break-over.wav src/qml/sounds/device.wav src/qml/sounds/drop.wav src/qml/sounds/notify.wav src/qml/sounds/pick.wav
         src/qml/sounds/plug-in.wav src/qml/sounds/plug-out.wav src/qml/sounds/receive.wav src/qml/sounds/ring.wav src/qml/sounds/send.wav
@@ -363,7 +366,7 @@ set(CPACK_PACKAGE_CONTACT "kevien.oj@gmail.com")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Temporary file shelf for KDE Plasma")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "libqt6sql6-sqlite, layer-shell-qt, qml6-module-qtquick, qml6-module-qtquick-controls, qml6-module-qtquick-layouts, qml6-module-qtquick-window, qml6-module-qtqml-workerscript, qml6-module-qtquick-templates, qml6-module-qtquick-shapes, qml6-module-qtquick-effects, qml6-module-qtquick-dialogs, qml6-module-qt-labs-platform, qml6-module-qtcore, pulseaudio-utils, poppler-utils, ghostscript, unzip, gocryptfs, fuse3, qt6-svg-plugins, qt6-image-formats-plugins, fonts-noto-cjk")
-set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "tesseract-ocr, qml6-module-qtmultimedia, ffmpeg, libreoffice-core | libreoffice, p7zip-full") # the Camera page (loaded only when it is opened); ffmpeg: audio and video conversion; LibreOffice: Office documents; p7zip: extracting .7z / .rar
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "tesseract-ocr, tesseract-ocr-ind, qml6-module-qtmultimedia, ffmpeg, libreoffice-core | libreoffice, p7zip-full") # the Camera page (loaded only when it is opened); ffmpeg: audio and video conversion; LibreOffice: Office documents; p7zip: extracting .7z / .rar
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 include(CPack)
 endif()
