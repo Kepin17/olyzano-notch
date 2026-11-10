@@ -116,7 +116,7 @@ ColumnLayout {
             visible: colorPicker.supported
             text: "Pick from screen"
             iconName: "eyedropper"
-            checked: true
+            primary: true
             implicitHeight: 34
             implicitWidth: 160
             onClicked: {

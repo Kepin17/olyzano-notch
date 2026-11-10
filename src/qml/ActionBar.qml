@@ -63,9 +63,9 @@ RowLayout {
         Rectangle {
             anchors.fill: parent
             radius: height / 2
-            color: theme.well
-            border.width: 1
-            border.color: theme.washi ? theme.outline : theme.hairline
+            color: theme.surface
+            border.width: theme.washi ? 1 : 0
+            border.color: theme.outline
         }
         Rectangle { // the thumb
             visible: slider.cur !== null
@@ -74,8 +74,8 @@ RowLayout {
             width: slider.cur ? slider.cur.width : 0
             height: slider.height - 6
             radius: height / 2
-            color: Qt.alpha(theme.accent, pointer.pressed ? 0.28 : 0.18)
-            border.width: 1
+            color: Qt.alpha(theme.accent, pointer.pressed ? 0.32 : 0.22)
+            border.width: theme.washi ? 1 : 0
             border.color: Qt.alpha(theme.accent, 0.5)
             Behavior on x { enabled: activities.animations; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
             Behavior on width { enabled: activities.animations; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
@@ -94,17 +94,17 @@ RowLayout {
                     required property int index
                     readonly property bool open: index === slider.current
                     height: segRow.height
-                    readonly property real target: open ? openRow.implicitWidth + 26 : 42
+                    readonly property real target: open ? openRow.implicitWidth + 28 : 40
                     width: target
                     Behavior on width { enabled: activities.animations; NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
                     Row {
                         id: openRow
                         anchors.centerIn: parent
-                        spacing: 5
+                        spacing: 6
                         LineIcon {
                             anchors.verticalCenter: parent.verticalCenter
                             glyph: part.modelData.icon
-                            sourceSize: Qt.size(14, 14)
+                            sourceSize: Qt.size(15, 15)
                             color: part.open ? theme.accentText : pointerHover.hovered && slider.at(pointerHover.point.position.x - segRow.x) === part.index ? theme.text : theme.textSoft
                         }
                         Text {
@@ -112,7 +112,7 @@ RowLayout {
                             visible: part.open
                             text: part.modelData.label
                             color: theme.accentText
-                            font.pixelSize: 12
+                            font.pixelSize: 13
                             font.weight: Font.DemiBold
                         }
                         Rectangle { // the count, next to the name

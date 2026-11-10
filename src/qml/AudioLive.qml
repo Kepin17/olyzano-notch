@@ -34,7 +34,7 @@ Item {
                 Text { text: root.page.clock(audioIntel.recordSeconds); color: theme.text; font.pixelSize: 14; font.weight: Font.DemiBold; font.family: "monospace" }
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 4; radius: 2; color: theme.surface
                     Rectangle { width: parent.width * Math.min(1, audioIntel.recordLevel * 1.4); height: parent.height; radius: 2; color: theme.success } }
-                PillButton { text: "Stop and save"; checked: true; onClicked: audioIntel.stopRecording(false) }
+                PillButton { text: "Stop and save"; primary: true; onClicked: audioIntel.stopRecording(false) }
                 PillButton { text: "Improve"; onClicked: audioIntel.stopRecording(true); Accessible.description: "Stop, then make the full transcript and notes" }
                 IconButton { iconName: "trash"; Accessible.name: "Throw the recording away"; onClicked: audioIntel.discardRecording() }
             }
@@ -228,7 +228,7 @@ Item {
             PillButton { visible: root.answers; text: "Conversation"; onClicked: root.answers = false }
             PillButton {
                 text: root.answers ? "Suggest again" : "Suggest answer"
-                checked: true
+                primary: true
                 enabled: !!root.live && root.live.llmReady && !root.live.suggesting && lines.count > 0
                 onClicked: { root.answers = true; root.live.suggestAnswer(note.text) }
             }

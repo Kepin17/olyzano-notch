@@ -450,7 +450,7 @@ ColumnLayout {
                         spacing: 6
                         PillButton {
                             text: editing ? "Save" : "Add"
-                            checked: true
+                            primary: true
                             onClicked: tab.save()
                         }
                         PillButton {
@@ -826,7 +826,7 @@ ColumnLayout {
                                 Text { text: "Ctrl+Enter"; color: theme.textFaint; font.pixelSize: 10 }
                                 PillButton {
                                     text: dbManager.busy ? "Running…" : "Run"
-                                    checked: true
+                                    primary: true
                                     enabled: !dbManager.busy
                                     onClicked: dbManager.execute(sqlEdit.text)
                                 }

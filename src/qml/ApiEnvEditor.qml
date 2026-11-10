@@ -222,7 +222,7 @@ Popup {
                     onClicked: { const a = ed.vars.slice(); a.push({ key: "", value: "", enabled: true, secret: false }); ed.vars = a; ed.save(); varList.positionViewAtEnd() }
                 }
                 Item { Layout.fillWidth: true }
-                PillButton { text: "Done"; checked: true; onClicked: ed.close() }
+                PillButton { text: "Done"; primary: true; onClicked: ed.close() }
             }
         }
     }

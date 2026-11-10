@@ -71,7 +71,7 @@ Rectangle {
             PillButton { // waiting for a decision: on the line, so it works even when the details are folded
                 visible: act.waiting
                 text: act.isCommand ? "Run" : "Apply"
-                checked: true
+                primary: true
                 implicitHeight: 24
                 enabled: !codingAgent.busy && codingAgent.mode !== "plan"
                 onClicked: codingAgent.approveToolCall(act.msgId, act.call.id)

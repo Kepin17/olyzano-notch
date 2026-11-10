@@ -43,7 +43,7 @@ ColumnLayout {
                 font.pixelSize: 12
                 text: "Olyzano Notch can remember the text and pictures you copy, so you can copy them again later. It stays on this computer. Anything you copy is kept, so a password could be too (apps that mark theirs as secret are skipped). Off by default."
             }
-            PillButton { text: "Turn on"; iconName: "check"; checked: true; onClicked: clipboardHistory.enabled = true }
+            PillButton { text: "Turn on"; iconName: "check"; primary: true; onClicked: clipboardHistory.enabled = true }
         }
     }
 

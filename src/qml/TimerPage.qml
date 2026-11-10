@@ -258,7 +258,7 @@ ColumnLayout {
                     id: startCustom
                     text: "Start"
                     iconName: "play"
-                    checked: true
+                    primary: true
                     implicitHeight: 34
                     implicitWidth: 92
                     onClicked: {
@@ -297,7 +297,7 @@ ColumnLayout {
             RowLayout {
                 Layout.fillWidth: true
                 Caption { Layout.fillWidth: true; text: "Round after round until you stop it." }
-                PillButton { text: "Start"; iconName: "play"; checked: true; implicitHeight: 34; implicitWidth: 104; onClicked: activities.startPomodoro() }
+                PillButton { text: "Start"; iconName: "play"; primary: true; implicitHeight: 34; implicitWidth: 104; onClicked: activities.startPomodoro() }
             }
         }
 
@@ -306,7 +306,7 @@ ColumnLayout {
             visible: page.mode === "stopwatch"
             Layout.fillWidth: true
             Caption { Layout.fillWidth: true; text: "Counts up until you stop it." }
-            PillButton { text: "Start"; iconName: "play"; checked: true; implicitHeight: 34; implicitWidth: 104; onClicked: activities.startStopwatch() }
+            PillButton { text: "Start"; iconName: "play"; primary: true; implicitHeight: 34; implicitWidth: 104; onClicked: activities.startStopwatch() }
         }
         Item { Layout.preferredHeight: 2 }
     }

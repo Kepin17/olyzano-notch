@@ -44,10 +44,14 @@ void RecordController::setPref(const QString &key, const QVariant &value)
     emit prefsChanged();
 }
 
-void RecordController::publishState(const QString &phase, int elapsed, bool previewing, const QString &target, bool held)
+void RecordController::note(const QString &what) const { qInfo().noquote() << "notch: Recorder:" << what; }
+
+void RecordController::publishState(const QString &phase, int elapsed, bool previewing, const QString &target, bool held, bool picking, int countdown)
 {
-    if (phase == m_phase && elapsed == m_elapsed && previewing == m_previewing && target == m_target && held == m_held)
+    if (phase == m_phase && elapsed == m_elapsed && previewing == m_previewing && target == m_target && held == m_held && picking == m_picking && countdown == m_countdown)
         return;
+    m_picking = picking;
+    m_countdown = countdown;
     m_held = held;
     m_target = target;
     m_phase = phase;
@@ -198,12 +202,40 @@ void RecordController::mix(const QVariantMap &v)
         // the size and length of the main picture
         const auto probe = ProcessRunner::run(QStringLiteral("ffprobe"), {QStringLiteral("-v"), QStringLiteral("error"), QStringLiteral("-select_streams"), QStringLiteral("v:0"),
             QStringLiteral("-show_entries"), QStringLiteral("stream=width,height:format=duration"), QStringLiteral("-of"), QStringLiteral("json"), o.screen}, 30000);
+        // What each file really holds: a recorder that got nothing leaves a file with no streams (a camera that never gave a picture, a microphone
+        // that was not there), and ffmpeg fails on every filter that names such an input. Leave those out, and say so.
+        const auto kinds = [](const QString &file) {
+            QStringList out;
+            const auto r = ProcessRunner::run(QStringLiteral("ffprobe"), {QStringLiteral("-v"), QStringLiteral("error"), QStringLiteral("-show_entries"), QStringLiteral("stream=codec_type"),
+                                                                           QStringLiteral("-of"), QStringLiteral("csv=p=0"), file}, 15000);
+            for (const QString &k : QString::fromUtf8(r.out).split(u'\n', Qt::SkipEmptyParts))
+                out << k.trimmed();
+            return out;
+        };
+        QStringList dropped;
+        if (!o.camera.isEmpty() && !kinds(o.camera).contains(QLatin1String("video"))) {
+            o.camera.clear();
+            dropped << tr("the camera gave no picture");
+        }
+        if (!o.system.isEmpty() && !kinds(o.system).contains(QLatin1String("audio"))) {
+            o.system.clear();
+            dropped << tr("the sound of the computer was empty");
+        }
+        if (o.screenHasSound && !kinds(o.screen).contains(QLatin1String("audio"))) {
+            o.screenHasSound = false;
+            dropped << tr("the microphone gave no sound");
+        }
+        if (!dropped.isEmpty())
+            qInfo().noquote() << "notch: Recorder: put together without:" << dropped.join(QStringLiteral(", "));
         const QJsonObject j = QJsonDocument::fromJson(probe.out).object();
         const QJsonObject st = j.value(QStringLiteral("streams")).toArray().isEmpty() ? QJsonObject() : j.value(QStringLiteral("streams")).toArray().first().toObject();
         o.screenWidth = st.value(QStringLiteral("width")).toInt();
         o.screenHeight = st.value(QStringLiteral("height")).toInt();
         o.seconds = j.value(QStringLiteral("format")).toObject().value(QStringLiteral("duration")).toString().toDouble();
-        error = RecordMix::validate(o);
+        if (o.screenWidth < 16) // the file has sound at most: the screen (or the camera) gave no picture while it was recorded
+            error = tr("No picture was recorded. If the screen was chosen, check that sharing was allowed in the system's window; the files are kept.");
+        if (error.isEmpty())
+            error = RecordMix::validate(o);
         if (error.isEmpty() && o.screenWidth < 16)
             error = tr("The recording cannot be read.");
         if (error.isEmpty()) {
@@ -213,7 +245,7 @@ void RecordController::mix(const QVariantMap &v)
             else if (!r.ok)
                 error = tr("ffmpeg could not put the recording together: %1").arg(QString::fromUtf8(r.err).trimmed().right(300));
         }
-        QMetaObject::invokeMethod(this, [this, error, o, name, session] {
+        QMetaObject::invokeMethod(this, [this, error, o, name, session, dropped] {
             m_mixing = false;
             m_status.clear();
             QString shown = error;
@@ -221,7 +253,7 @@ void RecordController::mix(const QVariantMap &v)
                 shown.clear();
             } else if (error.isEmpty()) {
                 if (!m_notch->adoptLocalFile(o.output, name, tr("Recorded with Notch"), QString()).isEmpty()) {
-                    m_notch->announce(tr("Recording saved"), name, QStringLiteral("video-x-generic"));
+                    m_notch->announce(tr("Recording saved"), dropped.isEmpty() ? name : tr("%1 (without: %2)").arg(name, dropped.join(QStringLiteral(", "))), QStringLiteral("video-x-generic"));
                     discard(session);
                 } else {
                     shown = tr("The recording cannot be put on the shelf. The files are in %1").arg(session);

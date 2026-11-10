@@ -32,7 +32,7 @@ ScrollView {
             PillButton { visible: meetingList.count > 0 || page.showHistory; text: "History"; checked: page.showHistory; onClicked: page.showHistory = !page.showHistory }
             PillButton { text: "Import"; iconName: "upload"; onClicked: page.openFiles() }
             PillButton { text: "Live"; iconName: "mic"; enabled: !audioIntel.recording; onClicked: audioIntel.startLive(); Accessible.description: "Record and transcribe while the meeting happens" }
-            PillButton { text: "Record"; iconName: "mic"; checked: true; enabled: !audioIntel.recording; onClicked: audioIntel.startRecording() }
+            PillButton { text: "Record"; iconName: "mic"; primary: true; enabled: !audioIntel.recording; onClicked: audioIntel.startRecording() }
         }
 
         // ---------------- an error ----------------
@@ -130,7 +130,7 @@ ScrollView {
                     Layout.fillWidth: true
                     Item { Layout.fillWidth: true }
                     PillButton { visible: page.pendingMany.length === 0; text: "Import only"; enabled: !!page.pending.ok; onClicked: page.importPending(false) }
-                    PillButton { text: page.pendingMany.length > 0 ? "Process " + page.manyOk + " recordings" : "Import and process"; checked: true; enabled: page.pendingMany.length > 0 ? page.manyOk > 0 : !!page.pending.ok; onClicked: page.importPending(true) }
+                    PillButton { text: page.pendingMany.length > 0 ? "Process " + page.manyOk + " recordings" : "Import and process"; primary: true; enabled: page.pendingMany.length > 0 ? page.manyOk > 0 : !!page.pending.ok; onClicked: page.importPending(true) }
                 }
             }
         }
@@ -151,7 +151,7 @@ ScrollView {
                 Text { text: page.clock(audioIntel.recordSeconds); color: theme.text; font.pixelSize: 14; font.weight: Font.DemiBold; font.family: "monospace" }
                 Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 4; radius: 2; color: theme.surface
                     Rectangle { width: parent.width * Math.min(1, audioIntel.recordLevel * 1.4); height: parent.height; radius: 2; color: theme.success } }
-                PillButton { text: "Stop and process"; checked: true; onClicked: audioIntel.stopRecording(true) }
+                PillButton { text: "Stop and process"; primary: true; onClicked: audioIntel.stopRecording(true) }
                 PillButton { text: "Stop"; onClicked: audioIntel.stopRecording(false) }
                 IconButton { iconName: "trash"; Accessible.name: "Throw the recording away"; onClicked: audioIntel.discardRecording() }
             }
@@ -244,7 +244,7 @@ ScrollView {
                             visible: view.speech.state !== "downloading" && view.speech.state !== "verifying"
                             text: (view.speech.partial ? "Continue the download" : "Download") + " · " + view.speech.sizeText
                             iconName: "download"
-                            checked: true
+                            primary: true
                             onClicked: audioIntel.downloadModel("whisper-small")
                         }
                         PillButton { visible: view.speech.state === "downloading"; text: "Cancel"; onClicked: audioIntel.cancelDownload("whisper-small") }

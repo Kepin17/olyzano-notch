@@ -114,7 +114,7 @@ Rectangle { // the plan the agent wrote: read it, then decide
             PillButton {
                 text: "Accept · Manual"
                 iconName: "check"
-                checked: true
+                primary: true
                 implicitHeight: 30
                 enabled: !tab.locked
                 ToolTip.visible: hovered

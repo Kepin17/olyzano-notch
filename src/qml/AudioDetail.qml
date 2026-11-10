@@ -64,7 +64,7 @@ Item {
             }
             Text { visible: page.confirmDelete; text: "Delete this recording?"; color: theme.danger; font.pixelSize: 12 }
             PillButton { visible: page.confirmDelete; text: "Cancel"; onClicked: page.confirmDelete = false }
-            PillButton { visible: page.confirmDelete; text: "Delete"; checked: true; onClicked: { page.confirmDelete = false; page.removeCurrent() } }
+            PillButton { visible: page.confirmDelete; text: "Delete"; primary: true; onClicked: { page.confirmDelete = false; page.removeCurrent() } }
             IconButton { visible: !page.confirmDelete; iconName: "trash"; Accessible.name: "Delete this recording"; onClicked: page.confirmDelete = true }
         }
 

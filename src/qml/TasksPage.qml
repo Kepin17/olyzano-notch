@@ -154,7 +154,7 @@ RowLayout {
                 font.letterSpacing: page.selectedDay ? 0 : 1
             }
             PillButton { visible: page.selectedDay !== null; text: "All"; onClicked: page.selectedDay = null }
-            PillButton { text: "New"; iconName: "plus"; checked: true; onClicked: newTask.openFor(page.selectedDay) }
+            PillButton { text: "New"; iconName: "plus"; primary: true; onClicked: newTask.openFor(page.selectedDay) }
         }
 
         // what the notch found in a recording's notes or a PDF: nothing is added until Add
@@ -209,7 +209,7 @@ RowLayout {
                                         Text { Layout.fillWidth: true; text: modelData.source; textFormat: Text.PlainText; elide: Text.ElideRight; color: theme.textFaint; font.pixelSize: 10 }
                                         Text { visible: modelData.quote !== ""; Layout.fillWidth: true; text: "“" + modelData.quote + "”"; textFormat: Text.PlainText; wrapMode: Text.Wrap; maximumLineCount: 2; elide: Text.ElideRight; color: theme.textSoft; font.pixelSize: 10; font.italic: true }
                                     }
-                                    PillButton { text: "Add"; checked: true; onClicked: taskSuggest.accept(modelData.id) }
+                                    PillButton { text: "Add"; primary: true; onClicked: taskSuggest.accept(modelData.id) }
                                     IconButton { iconName: "close"; Accessible.name: "Dismiss"; implicitWidth: 24; implicitHeight: 24; onClicked: taskSuggest.dismiss(modelData.id) }
                                 }
                             }
@@ -506,7 +506,7 @@ RowLayout {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
                 PillButton { text: "Cancel"; onClicked: newTask.close() }
-                PillButton { text: "Add task"; iconName: "plus"; checked: true; enabled: titleField.text.trim() !== ""; onClicked: newTask.submit() }
+                PillButton { text: "Add task"; iconName: "plus"; primary: true; enabled: titleField.text.trim() !== ""; onClicked: newTask.submit() }
             }
         }
     }

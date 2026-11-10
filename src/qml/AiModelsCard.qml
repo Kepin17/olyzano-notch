@@ -24,7 +24,7 @@ Card {
         visible: !card.sum.active
         Layout.fillWidth: true
         spacing: 8
-        PillButton { visible: card.sum.recommendedLeft > 0; text: "Install recommended  ·  " + card.sum.recommendedText; iconName: "download"; checked: true; onClicked: audioIntel.installRecommended() }
+        PillButton { visible: card.sum.recommendedLeft > 0; text: "Install recommended  ·  " + card.sum.recommendedText; iconName: "download"; primary: true; onClicked: audioIntel.installRecommended() }
         PillButton { visible: card.sum.everythingLeft > card.sum.recommendedLeft; text: "Install everything  ·  " + card.sum.everythingText; iconName: "download"; onClicked: audioIntel.installEverything() }
         Text { visible: card.sum.everythingLeft === 0; text: "Everything is installed."; color: theme.success; font.pixelSize: 12 }
         Item { Layout.fillWidth: true }

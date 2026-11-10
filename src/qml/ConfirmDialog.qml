@@ -52,7 +52,7 @@ Popup {
             }
             PillButton {
                 text: dlg.confirmText
-                checked: true
+                primary: true
                 onClicked: {
                     dlg.confirmed()
                     dlg.close()

@@ -26,5 +26,5 @@ RowLayout {
         Text { text: step.title; color: step.done ? theme.textDim : theme.text; font.pixelSize: 12; font.weight: Font.Medium }
         Text { Layout.fillWidth: true; visible: !!text; text: step.detail; color: theme.textFaint; font.pixelSize: 11; elide: Text.ElideMiddle }
     }
-    PillButton { visible: !step.done && !!step.action; text: step.action; checked: true; onClicked: step.triggered() }
+    PillButton { visible: !step.done && !!step.action; text: step.action; primary: true; onClicked: step.triggered() }
 }

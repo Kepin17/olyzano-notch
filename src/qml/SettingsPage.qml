@@ -19,7 +19,7 @@ RowLayout {
     Layout.leftMargin: 12
     Layout.rightMargin: 12
     Layout.preferredHeight: 480
-    Layout.bottomMargin: 18 // the panel's rounded edge covers the last pixels: keep the end of the list and of a section above it
+    Layout.bottomMargin: 30 // the panel's rounded edge covers the last pixels: keep the end of the list and of a section above it
     spacing: 14
 
     // id, name, icon, what it is for
@@ -172,6 +172,7 @@ RowLayout {
         Layout.fillWidth: true
         Layout.fillHeight: true
         contentWidth: availableWidth
+        bottomPadding: 16
         clip: true
     ColumnLayout {
         id: settingsColumn
@@ -520,7 +521,7 @@ RowLayout {
                                 visible: assistant.modelState === "missing"
                                 text: "Download the model (" + assistant.modelSizeText + ")"
                                 iconName: "download"
-                                checked: true
+                                primary: true
                                 onClicked: assistant.downloadModel()
                             }
                             PillButton { visible: assistant.modelState === "downloading"; text: "Cancel"; onClicked: assistant.cancelDownload() }
@@ -588,7 +589,7 @@ RowLayout {
                         Layout.fillWidth: true
                         spacing: 8
                         Caption { Layout.fillWidth: true; text: memtune.lowMemory ? "Restart Notch to switch to low memory mode." : "Restart Notch to go back to the graphics card." }
-                        PillButton { text: "Restart now"; iconName: "undo"; checked: true; onClicked: memtune.restart() }
+                        PillButton { text: "Restart now"; iconName: "undo"; primary: true; onClicked: memtune.restart() }
                     }
                     Caption { visible: memtune.running && memtune.lowMemory; Layout.fillWidth: true; text: "Low memory mode is on." }
                 }
@@ -690,6 +691,8 @@ RowLayout {
                 Layout.fillWidth: true
                 spacing: 16
 
+                SettingCard {
+                    title: "In the notch"
                 SettingToggle {
                     title: "Charger & Bluetooth alerts"
                     caption: "Olyzano Notch peeks out when you plug in, a device connects, or a battery runs low."
@@ -733,8 +736,10 @@ RowLayout {
                         model: [[0, "Low"], [1, "Normal"], [2, "High"]]
                         PillButton { required property var modelData; text: modelData[1]; checked: activities.micSensitivity === modelData[0]; onClicked: activities.micSensitivity = modelData[0] }
                     }
-                    Caption { Layout.fillWidth: true; text: "How clearly a voice must stand out from the room before the microphone icon turns green. Lower it if it stays on, raise it if it misses you." }
+                    Item { Layout.fillWidth: true }
                 }
+                Caption { visible: Qt.platform.os === "linux" && activities.privacyIndicators; Layout.fillWidth: true; text: "How clearly a voice must stand out from the room before the microphone icon turns green. Lower it if it stays on, raise it if it misses you." }
+                } // (the card of the alerts)
 
                 SettingCard {
                     id: prayerCard
@@ -1534,7 +1539,7 @@ RowLayout {
                                     visible: !updates.installing
                                     text: "Update now"
                                     iconName: "download"
-                                    checked: true
+                                    primary: true
                                     enabled: updates.canInstall
                                     onClicked: updates.installNow()
                                 }
@@ -1560,7 +1565,7 @@ RowLayout {
                         Flow {
                             Layout.fillWidth: true
                             spacing: 6
-                            PillButton { visible: !updates.canInstall; text: "Download"; iconName: "download"; checked: true; onClicked: updates.download() }
+                            PillButton { visible: !updates.canInstall; text: "Download"; iconName: "download"; primary: true; onClicked: updates.download() }
                             PillButton { visible: updates.canInstall; text: "Download only"; iconName: "download"; onClicked: updates.download() }
                             PillButton { text: "Release page"; iconName: "external"; onClicked: Qt.openUrlExternally(updates.page) }
                             PillButton { visible: !updates.skipped; text: "Remind me in a week"; onClicked: updates.remindLater() }
@@ -1588,7 +1593,7 @@ RowLayout {
                     Flow {
                         Layout.fillWidth: true
                         spacing: 6
-                        PillButton { text: "Web demo"; iconName: "external"; checked: true; onClicked: Qt.openUrlExternally("https://kepin17.github.io/olyzano-notch/") }
+                        PillButton { text: "Web demo"; iconName: "external"; primary: true; onClicked: Qt.openUrlExternally("https://kepin17.github.io/olyzano-notch/") }
                         PillButton { text: "Source code"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch") }
                         PillButton { text: "Releases"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/releases") }
                         PillButton { text: "Report a problem"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/issues") }
@@ -1601,7 +1606,7 @@ RowLayout {
                     Flow {
                         Layout.fillWidth: true
                         spacing: 6
-                        PillButton { text: "How to contribute"; iconName: "external"; checked: true; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch#contributing") }
+                        PillButton { text: "How to contribute"; iconName: "external"; primary: true; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch#contributing") }
                         PillButton { text: "Developer guide"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/blob/main/docs/developer-guide.md") }
                         PillButton { text: "Open issues"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/issues") }
                         PillButton { text: "Send a pull request"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/pulls") }
@@ -1720,7 +1725,7 @@ RowLayout {
                         PillButton {
                             text: "Send on GitHub"
                             iconName: "external"
-                            checked: true
+                            primary: true
                             enabled: bugTitle.text.trim() !== ""
                             onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/issues/new?labels=bug&title="
                                                             + encodeURIComponent(bugTitle.text.trim())
@@ -2239,7 +2244,7 @@ RowLayout {
                                         Text { text: "Members"; color: theme.text; font.pixelSize: 12; font.weight: Font.DemiBold }
                                         Text { visible: team.total > 0; text: team.total; color: theme.textDim; font.pixelSize: 11 }
                                         Item { Layout.fillWidth: true }
-                                        PillButton { text: team.total > 0 ? "Manage" : "Add member"; iconName: team.total > 0 ? "" : "plus"; checked: true; onClicked: keysPopup.open() }
+                                        PillButton { text: team.total > 0 ? "Manage" : "Add member"; iconName: team.total > 0 ? "" : "plus"; primary: true; onClicked: keysPopup.open() }
                                     }
 
                                     // One member: how much space they have, pause them (they are shown the reason), or remove them.
@@ -2316,7 +2321,7 @@ RowLayout {
                                                     text: "Using " + sharing.mb(memberPopup.member.used || 0) + " in shares"
                                                           + (memberPopup.member.cloudOn ? " and " + sharing.mb(memberPopup.member.cloudUsed || 0) + " on the cloud shelf. Lowering it below what they use stops new uploads; nothing is deleted." : ".")
                                                 }
-                                                PillButton { text: "Save space"; checked: true; onClicked: share.setMemberLimits(srv.modelData.id, memberPopup.member.name, memberPopup.space, memberPopup.cloudSpace) }
+                                                PillButton { text: "Save space"; primary: true; onClicked: share.setMemberLimits(srv.modelData.id, memberPopup.member.name, memberPopup.space, memberPopup.cloudSpace) }
                                             }
                                             Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: theme.hairline }
                                             SectionLabel { text: memberPopup.member.disabled ? "Paused" : "Pause access" }
@@ -2357,7 +2362,7 @@ RowLayout {
                                                 visible: memberPopup.member.disabled === true
                                                 Layout.fillWidth: true
                                                 Caption { Layout.fillWidth: true; text: "Their key still works; every call is refused until you let them back in." }
-                                                PillButton { text: "Let back in"; checked: true; onClicked: share.enableMember(srv.modelData.id, memberPopup.member.name) }
+                                                PillButton { text: "Let back in"; primary: true; onClicked: share.enableMember(srv.modelData.id, memberPopup.member.name) }
                                             }
                                             Rectangle { Layout.fillWidth: true; implicitHeight: 1; color: theme.hairline }
                                             SectionLabel { text: "Remove" }
@@ -2443,7 +2448,7 @@ RowLayout {
                                                     id: createKey
                                                     text: "Create key"
                                                     iconName: "plus"
-                                                    checked: true
+                                                    primary: true
                                                     enabled: memberName.text.trim() !== ""
                                                     onClicked: { team.note = ""; share.createMember(srv.modelData.id, memberName.text, team.hours, team.space, team.space) }
                                                 }
@@ -2577,7 +2582,7 @@ RowLayout {
                         PillButton {
                             id: joinButton
                             text: "Join"
-                            checked: true
+                            primary: true
                             enabled: joinField.text.trim() !== ""
                             onClicked: { joinResult.text = ""; share.joinServer(joinField.text) }
                         }
@@ -2703,7 +2708,7 @@ RowLayout {
                                 spacing: 8
                                 PillButton { text: "Open the full guide"; iconName: "external"; onClicked: Qt.openUrlExternally("https://github.com/Kepin17/olyzano-notch/blob/main/server/README.md") }
                                 Item { Layout.fillWidth: true }
-                                PillButton { text: "Add a server"; iconName: "plus"; checked: true; onClicked: { serverGuide.close(); sharing.manual = true } }
+                                PillButton { text: "Add a server"; iconName: "plus"; primary: true; onClicked: { serverGuide.close(); sharing.manual = true } }
                             }
                         }
                     }
@@ -2758,7 +2763,7 @@ RowLayout {
                             Caption { id: addResult; Layout.fillWidth: true; color: theme.danger }
                             PillButton {
                                 text: "Add"
-                                checked: true
+                                primary: true
                                 onClicked: {
                                     addResult.text = share.addServer(nameField.text, urlField.text, keyField.text)
                                     if (addResult.text === "") {

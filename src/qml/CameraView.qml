@@ -51,7 +51,7 @@ ColumnLayout {
     // ---- the picture: live, or the finished one ----
     Rectangle {
         Layout.fillWidth: true
-        Layout.preferredHeight: Math.min(350, width * 0.75)
+        Layout.preferredHeight: Math.min(tuning.open ? 210 : 350, width * 0.75) // smaller while the adjustments are open: they need the room
         radius: theme.radiusMd
         color: "#000000"
         clip: true
@@ -195,7 +195,7 @@ ColumnLayout {
                 }
             }
         }
-        PillButton { text: "Flip"; iconName: "undo"; checked: root.mirror; onClicked: root.mirror = !root.mirror; ToolTip.visible: hovered; ToolTip.text: "Mirror the picture left to right" }
+        PillButton { text: "Mirror the picture left to right"; iconName: "undo"; iconOnly: true; checked: root.mirror; onClicked: root.mirror = !root.mirror }
     }
 
     ColumnLayout { // photo booth: template, filter, the shutter
@@ -229,7 +229,7 @@ ColumnLayout {
             PillButton {
                 text: root.busy ? "Taking…" : (photoBooth.shots(root.tmpl) > 1 ? "Take 4 photos" : "Take photo")
                 iconName: "camera"
-                checked: true
+                primary: true
                 enabled: !root.busy && root.hasCamera && camera.active && capture.readyForCapture
                 onClicked: root.start()
             }
@@ -241,7 +241,7 @@ ColumnLayout {
         spacing: 8
         Text { Layout.fillWidth: true; color: root.savedId !== "" ? theme.success : theme.warn; font.pixelSize: 12; text: root.savedId !== "" ? "Saved to Files." : "Could not save it to Files." }
         PillButton { visible: root.savedId !== ""; text: "Share (QR)"; iconName: "share"; onClicked: if (root.shell) root.shell.sharePopup().openFor([root.savedId]) }
-        PillButton { text: "Retake"; checked: true; onClicked: root.reset() }
+        PillButton { text: "Retake"; primary: true; onClicked: root.reset() }
     }
     Text { visible: root.problem !== ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.danger; font.pixelSize: 12; text: root.problem }
 

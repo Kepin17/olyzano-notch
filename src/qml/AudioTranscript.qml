@@ -88,8 +88,8 @@ ColumnLayout {
                 text: note.hint ? (note.hint.certain ? "Is " : "Maybe ") + page.speakerName(note.hint.speaker) + " " + note.hint.name + "?  “" + note.hint.quote + "” " + note.hint.timeText
                                 : "Only one speaker was found. If more people talk, say how many."
             }
-            PillButton { visible: !!note.hint; text: "Apply"; checked: true; onClicked: audioIntel.applyNameHint(note.hint.speaker, note.hint.name) }
-            PillButton { visible: !note.hint; text: "Detect again"; checked: true; onClicked: page.redetect = true }
+            PillButton { visible: !!note.hint; text: "Apply"; primary: true; onClicked: audioIntel.applyNameHint(note.hint.speaker, note.hint.name) }
+            PillButton { visible: !note.hint; text: "Detect again"; primary: true; onClicked: page.redetect = true }
             IconButton { visible: !!note.hint; iconName: "close"; implicitWidth: 24; implicitHeight: 24; Accessible.name: "Ignore"; onClicked: audioIntel.dismissNameHint(note.hint.speaker, note.hint.name) }
         }
     }
@@ -106,7 +106,7 @@ ColumnLayout {
             Caption { text: "People" }
             Segmented { visible: !page.info.stereo; Layout.fillWidth: true; model: page.speakerCounts; value: page.redetectCount; onPicked: (v) => page.redetectCount = v }
             Caption { visible: !!page.info.stereo; Layout.fillWidth: true; text: "You and the computer's sound are told apart by channel; more voices in either are found by voice." }
-            PillButton { text: "Detect"; checked: true; enabled: !audioIntel.busy; onClicked: { page.redetect = false; audioIntel.redetectSpeakers(audioIntel.current, page.info.stereo ? 0 : page.redetectCount) } }
+            PillButton { text: "Detect"; primary: true; enabled: !audioIntel.busy; onClicked: { page.redetect = false; audioIntel.redetectSpeakers(audioIntel.current, page.info.stereo ? 0 : page.redetectCount) } }
         }
     }
     TextField {
@@ -254,7 +254,7 @@ ColumnLayout {
             anchors { right: parent.right; bottom: parent.bottom; rightMargin: 16; bottomMargin: 8 }
             text: "Follow the audio"
             iconName: "play"
-            checked: true
+            primary: true
             onClicked: { list.following = true; list.showPlaying() }
         }
     }

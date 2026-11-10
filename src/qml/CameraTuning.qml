@@ -12,7 +12,7 @@ import QtQuick.Layouts
 ColumnLayout {
     id: tune
     property var camera: null
-    property bool open: false
+    property bool open: String(recorder.pref("adjustOpen", "false")) === "true" // (kept shut unless camera.conf says otherwise: for pictures of the open panel)
     property bool ready: false           // the size is set: the camera may start
     property string sizeText: ""
     property real brightness: Number(recorder.pref("brightness", 0))   // -0.3 .. 0.3

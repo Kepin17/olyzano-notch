@@ -618,7 +618,7 @@ ColumnLayout {
                                         }
                                         PillButton {
                                             text: tool.isCommand ? "Run" : "Apply"
-                                            checked: true
+                                            primary: true
                                             enabled: !codingAgent.busy && codingAgent.mode !== "plan"
                                             onClicked: codingAgent.approveToolCall(message.msg.id, tool.modelData.id)
                                         }

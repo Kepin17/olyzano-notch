@@ -277,5 +277,6 @@ private:
     QString m_recordingDir;
     std::unique_ptr<LiveSession> m_live;
     std::atomic_bool m_testing{false};
+    mutable std::atomic_bool m_probing{false}; // the graphics cards are being looked for
     QString m_testResult;
 };

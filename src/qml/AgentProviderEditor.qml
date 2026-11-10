@@ -278,7 +278,7 @@ Popup {
                 }
                 Item { Layout.fillWidth: true }
                 PillButton { text: "Cancel"; onClicked: providerEditor.close() }
-                PillButton { text: "Save"; checked: true; onClicked: providerEditor.saveProvider() }
+                PillButton { text: "Save"; primary: true; onClicked: providerEditor.saveProvider() }
             }
         }
 }

@@ -372,7 +372,7 @@ ColumnLayout {
                     }
                     PillButton {
                         text: "Send"
-                        checked: true
+                        primary: true
                         enabled: selectedId !== "" && cmdInput.text.trim().length > 0
                         onClicked: tab.runCmd(cmdInput.text)
                     }
@@ -548,7 +548,7 @@ ColumnLayout {
                 Item { Layout.fillWidth: true }
                 PillButton {
                     text: editing ? "Save" : "Add"
-                    checked: true
+                    primary: true
                     onClicked: tab.saveForm()
                 }
             }

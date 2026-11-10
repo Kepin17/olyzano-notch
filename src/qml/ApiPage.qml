@@ -428,7 +428,7 @@ ColumnLayout {
                         Layout.alignment: Qt.AlignHCenter
                         text: "New collection"
                         iconName: "plus"
-                        checked: true
+                        primary: true
                         onClicked: page.askName("collection", "Collection " + (apiTester.collections.length + 1))
                     }
                     PillButton {
@@ -2045,7 +2045,7 @@ ColumnLayout {
                 PillButton {
                     id: renameBtn
                     text: page.dialogPurpose === "rename" ? "Rename" : "Create"
-                    checked: true
+                    primary: true
                     enabled: renameArea.text.trim().length > 0
                     onClicked: {
                         const newName = renameArea.text.trim()
@@ -2119,7 +2119,7 @@ ColumnLayout {
                 PillButton { text: "Cancel"; onClicked: deleteDialog.close() }
                 PillButton {
                     text: "Delete"
-                    checked: true
+                    primary: true
                     onClicked: {
                         page.deleteMenuTarget()
                         deleteDialog.close()
@@ -2205,7 +2205,7 @@ ColumnLayout {
                 PillButton { text: "Cancel"; onClicked: pickDialog.close() }
                 PillButton {
                     text: pickDialog.mode === "move" ? "Move" : "Save"
-                    checked: true
+                    primary: true
                     enabled: pickDialog.chosen !== ""
                     onClicked: {
                         if (pickDialog.mode === "move") {
@@ -2286,7 +2286,7 @@ ColumnLayout {
                 PillButton { text: "Cancel"; onClicked: importDialog.close() }
                 PillButton {
                     text: "Import"
-                    checked: true
+                    primary: true
                     enabled: importArea.text.trim().length > 0
                     onClicked: {
                         let err = ""

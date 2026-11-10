@@ -480,6 +480,7 @@ Window {
     // How many open deadlines feed the capsule ticker (0 = no task slate).
     readonly property int taskRadarCount: tasks.list.filter(t => t.hasDue && !t.done).length
     readonly property bool prayerShown: prayer.enabled && prayer.ready && prayer.inCapsule && prayer.hasNext
+    property real idleNeed: 0 // the width the idle row asks for (see idleRow)
     readonly property bool infoShown: taskShown || prayerShown
     // With a task and a prayer both to show, the capsule says one, then the other, every 8 seconds.
     property int infoTurn: 0
@@ -635,6 +636,12 @@ Window {
                      title: assistant.state === "listening" ? "Say: “" + assistant.hint + "”" : assistant.state === "thinking" ? (assistant.heard !== "" ? assistant.heard : "Thinking…") : assistant.result }
         if (call)
             return { kind: "call", title: call.who, detail: "Calling", progress: -1, color: theme.success }
+        if (recorder.picking) // the system's window asks what to record: the notch is out of its way
+            return { kind: "record", title: "Choose what to share…", detail: "", progress: -1, color: theme.accent }
+        if (recorder.phase === "countdown")
+            return { kind: "record", title: "Recording starts", detail: String(recorder.countdown), progress: -1, color: theme.danger }
+        if (recorder.phase === "finishing" || recorder.phase === "mixing")
+            return { kind: "record", title: "Saving the recording…", detail: "", progress: -1, color: theme.accent }
         if (recorder.recording) // the screen recorder runs: the way back to it, also with the panel closed
             return { kind: "record", title: recorder.target !== "" ? "Recording " + recorder.target : "Recording screen", detail: clock(recorder.elapsed * 1000), progress: -1, color: theme.danger }
         if (wellbeing.state === "break") {
@@ -768,6 +775,18 @@ Window {
         })
     }
     function debugShare() { sharePopup().openFor([]) } // `notch --shot-page file.png share`: the share window, for a picture
+    // `notch --shot-page x.png camera-record-test`: a camera-only recording of a few seconds, made and put together for real (main.cpp waits for it)
+    function debugRecord(seconds, what) {
+        const page = cameraPageLoader.item
+        const view = page ? page.recordView() : null
+        if (view) view.debugRun(seconds, what)
+        return !!view
+    }
+    function stepAside() { // close to the capsule, whatever kept the panel open (the recorder calls it while the system asks what to share)
+        pinned = false
+        dwelled = false
+        open = false
+    }
     function showRecorder() { // Camera -> Record screen, with the recording on it
         cameraSection = "record"
         pinned = true
@@ -1375,7 +1394,7 @@ Window {
              : root.mode === "peek" ? (root.live && root.live.kind === "share" ? 400 : root.live && root.live.kind !== "copy" ? 320 : root.live && root.live.cancellable ? 380 : 230)
              : root.mode === "idle" ? (root.musicShown ? root.capWidth
                                        : root.infoShown ? (root.taskRadarCount > 1 ? 460 : 390) // room for the 3-deadline ticker
-                                       : Math.max(systemEvents.batteryLevel >= 0 ? 230 : 180, idleRow.implicitWidth + 2 * (shoulder + 14) + 8)) : 150 // the cat, "⚡", the microphone and the camera need their room: it was cut off while charging
+                                       : Math.max(systemEvents.batteryLevel >= 0 ? 230 : 180, root.idleNeed + 2 * (shoulder + 14) + 8)) : 150 // the cat, "⚡", the microphone and the camera need their room: it was cut off while charging
         readonly property real targetHeight: root.mode === "open" ? Math.max(panel.implicitHeight + (root.dragOver ? 8 : 0), root.shareNeed)
               : root.mode === "search" ? (searchPanelLoader.item ? searchPanelLoader.item.wantedHeight : 0) : root.mode === "prompt" ? 92 : root.mode === "toast" ? 56 : root.mode === "peek" ? 36 : root.mode === "idle" ? 48 : 0
         width: targetWidth
@@ -1851,7 +1870,7 @@ Window {
                 color: clockLike || liveRow.l.kind === "call" ? liveRow.l.color : root.textSecondary
                 font.pixelSize: 12
                 font.weight: clockLike ? Font.DemiBold : Font.Normal
-                font.family: clockLike ? "monospace" : Qt.application.font.family
+                font.features: { "tnum": 1 } // digits of one width in the text font: the time does not jump, and is not typewriter type
             }
             Rectangle { // stop the copy or the zip
                 id: cancelCopyButton
@@ -1904,6 +1923,12 @@ Window {
             anchors.rightMargin: island.shoulder + 14
             spacing: 8
             id: idleRow
+            // what the row needs, remembered while it is shown: hidden, a layout needs nothing, and the island's width (which decides whether it
+            // is shown) asking it again was a binding loop
+            // (set a moment later, not inside the change itself: the island's width is being worked out right then)
+            function noteNeed() { if (visible && implicitWidth > 0 && Math.abs(root.idleNeed - implicitWidth) > 0.5) root.idleNeed = implicitWidth }
+            onImplicitWidthChanged: Qt.callLater(noteNeed)
+            onVisibleChanged: Qt.callLater(noteNeed)
             opacity: root.musicShown ? 0 : island.fade("idle")
             visible: opacity > 0
             Behavior on opacity { enabled: activities.animations && !island.transitioning; NumberAnimation { duration: 140 } }
@@ -1947,7 +1972,7 @@ Window {
             LineIcon {
                 visible: activities.micMuted >= 0
                 glyph: activities.micMuted === 1 ? "mic-off" : "mic"
-                sourceSize: Qt.size(13, 13)
+                sourceSize: Qt.size(14, 14)
                 color: activities.micMuted === 1 ? theme.danger : activities.micSpeaking ? theme.success : activities.micApps.length > 0 ? theme.warn : root.textSecondary
                 scale: activities.micSpeaking ? 1.25 : 1
                 Behavior on scale { enabled: activities.animations; NumberAnimation { duration: 120 } }
@@ -1955,7 +1980,7 @@ Window {
             LineIcon { // a camera is on
                 visible: activities.privacyIndicators && activities.cameraApps.length > 0
                 glyph: "camera"
-                sourceSize: Qt.size(13, 13)
+                sourceSize: Qt.size(14, 14)
                 color: theme.success
             }
             // Battery
@@ -2067,13 +2092,13 @@ Window {
             LineIcon {
                 visible: activities.privacyIndicators && activities.cameraApps.length > 0
                 glyph: "camera"
-                sourceSize: Qt.size(15, 15)
+                sourceSize: Qt.size(14, 14)
                 color: theme.success
             }
             LineIcon {
                 visible: activities.micApps.length > 0
                 glyph: "mic"
-                sourceSize: Qt.size(15, 15)
+                sourceSize: Qt.size(14, 14)
                 color: activities.micSpeaking ? theme.success : theme.warn
                 scale: activities.micSpeaking ? 1.25 : 1
                 Behavior on scale { enabled: activities.animations; NumberAnimation { duration: 120 } }
@@ -2166,7 +2191,7 @@ Window {
                 PillButton { text: doomscroll.reminding ? "Not today" : "Skip"; onClicked: doomscroll.reminding ? doomscroll.stopToday() : wellbeing.skip() }
                 PillButton {
                     text: doomscroll.reminding ? "Take a break" : "Start break"
-                    checked: true
+                    primary: true
                     onClicked: { if (doomscroll.reminding) doomscroll.dismiss(); wellbeing.startBreak() }
                 }
             }
@@ -2186,14 +2211,14 @@ Window {
                 id: panel
                 x: (parent.width - width) / 2
                 width: root.panelWidth - 20
-                spacing: 10
+                spacing: 12
 
                 RowLayout {
                     id: headerRow
                     Layout.fillWidth: true
-                    Layout.topMargin: 10
-                    Layout.leftMargin: root.page === "shelf" ? 12 : 6
-                    Layout.rightMargin: 8
+                    Layout.topMargin: 12
+                    Layout.leftMargin: root.page === "shelf" ? 14 : 8
+                    Layout.rightMargin: 12
                     spacing: 8
 
                     // Widget mode: the open panel is moved by its title bar too (the buttons keep their clicks).
@@ -2231,7 +2256,7 @@ Window {
                             : root.page === "timer" ? "Timer" : root.page === "tasks" ? "Tasks" : root.page === "music" ? "Now playing" : root.page === "color" ? "Color picker" : root.page === "clipboard" ? "Clipboard" : root.page === "audio" ? "Audio" : root.page === "docs" ? "Documents" : root.page === "camera" ? "Camera" : root.page === "dev" ? "Dev" : "Olyzano Notch"
                         color: root.textPrimary
                         font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
-                        font.pixelSize: 15
+                        font.pixelSize: 17
                         font.weight: Font.DemiBold
                         elide: Text.ElideMiddle
                     }
@@ -2321,7 +2346,7 @@ Window {
                     PillButton {
                         visible: root.page === "note"
                         text: "Save"
-                        checked: true
+                        primary: true
                         Accessible.name: "Save note"
                         onClicked: root.saveNote()
                     }
@@ -2812,7 +2837,7 @@ Window {
                         PillButton {
                             anchors.horizontalCenter: parent.horizontalCenter
                             text: "Unlock…"
-                            checked: true
+                            primary: true
                             onClicked: root.askPassword("unlock")
                         }
                     }
@@ -3556,7 +3581,7 @@ Window {
                             color: root.textPrimary
                             font.pixelSize: 12
                         }
-                        PillButton { text: "Undo"; checked: true; onClicked: notch.undoRemove() }
+                        PillButton { text: "Undo"; primary: true; onClicked: notch.undoRemove() }
                     }
                 }
 
@@ -4022,7 +4047,7 @@ Window {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
                 PillButton { text: "Cancel"; onClicked: extractPopup.close() }
-                PillButton { text: "Extract"; checked: true; onClicked: extractPopup.go() }
+                PillButton { text: "Extract"; primary: true; onClicked: extractPopup.go() }
             }
         }
     }
@@ -4129,7 +4154,7 @@ Window {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
                 PillButton { text: "Cancel"; onClicked: vaultPopup.close() }
-                PillButton { text: vaultPopup.mode === "create" ? "Lock" : "Unlock"; checked: true; onClicked: vaultPopup.go() }
+                PillButton { text: vaultPopup.mode === "create" ? "Lock" : "Unlock"; primary: true; onClicked: vaultPopup.go() }
             }
         }
     }

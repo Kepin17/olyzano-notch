@@ -140,7 +140,7 @@ Item {
                 PillButton { visible: !page.working && !!page.picked && page.picked.kind === "item" && page.mode === "notes"; text: taskSuggest.busy ? "Looking…" : "Find tasks"; iconName: "check"; enabled: !taskSuggest.busy
                     onClicked: taskSuggest.findInPdf(page.picked.id); Accessible.description: "Find deadlines and things to do in this PDF and offer them on the Tasks page" }
                 PillButton { visible: !page.working && !!page.picked; text: "Another PDF"; onClicked: page.clearPick() }
-                PillButton { visible: !page.working && !page.picked; text: "Choose a PDF…"; iconName: "upload"; checked: true; onClicked: fileDialog.open() }
+                PillButton { visible: !page.working && !page.picked; text: "Choose a PDF…"; iconName: "upload"; primary: true; onClicked: fileDialog.open() }
             }
 
             Caption { visible: page.mode === "notes" && taskSuggest.status !== ""; Layout.fillWidth: true; text: taskSuggest.status + (taskSuggest.count > 0 ? " See them on the Tasks page." : "") }
@@ -327,7 +327,7 @@ Item {
                                         Layout.fillWidth: true
                                         spacing: 8
                                         Text { Layout.fillWidth: true; text: nrow.info.title + " · " + nrow.info.sizeText; elide: Text.ElideRight; color: theme.text; font.pixelSize: 12 }
-                                        PillButton { visible: nrow.info.state !== "downloading" && nrow.info.state !== "verifying"; text: nrow.info.partial ? "Continue" : "Download"; iconName: "download"; checked: true; onClicked: audioIntel.downloadModel(nrow.modelData) }
+                                        PillButton { visible: nrow.info.state !== "downloading" && nrow.info.state !== "verifying"; text: nrow.info.partial ? "Continue" : "Download"; iconName: "download"; primary: true; onClicked: audioIntel.downloadModel(nrow.modelData) }
                                         PillButton { visible: nrow.info.state === "downloading"; text: "Cancel"; onClicked: audioIntel.cancelDownload(nrow.modelData) }
                                     }
                                     Rectangle { visible: nrow.info.state === "downloading"; Layout.fillWidth: true; Layout.preferredHeight: 3; radius: 1.5; color: theme.surface
@@ -341,7 +341,7 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             Item { Layout.fillWidth: true }
-                            PillButton { text: "Make the notes"; checked: true; enabled: page.ready; onClicked: page.begin() }
+                            PillButton { text: "Make the notes"; primary: true; enabled: page.ready; onClicked: page.begin() }
                         }
                     }
                 }

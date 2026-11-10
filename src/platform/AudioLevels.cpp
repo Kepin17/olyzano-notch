@@ -15,7 +15,7 @@ AudioLevels::AudioLevels(QObject *parent)
     , m_levels(BandCount, 0.0)
     , m_target(BandCount, 0.0)
 {
-    m_tick.setInterval(33); // bars move on a steady ~30 Hz beat, however unevenly the audio arrives
+    m_tick.setInterval(50); // bars move on a steady 20 Hz beat, however unevenly the audio arrives (the bars glide between two beats)
     connect(&m_tick, &QTimer::timeout, this, [this] {
         const double dt = m_clock.restart();
         bool moved = false;

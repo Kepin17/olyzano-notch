@@ -8,12 +8,20 @@ import QtQuick.Layouts
 // The screen recorder: the screen (or one window, or only the camera), the camera laid over it where you choose, the microphone and the sound of
 // the computer. The screen and the camera are recorded as two files and put together when you stop (RecordController, ffmpeg); the sound of the
 // computer is a third. Nothing is captured until you press Preview or Record; on Wayland the system asks which screen or window to share.
-ScrollView {
-    id: scroll
+ColumnLayout {
+    id: frame
     property alias shell: root.shell
     readonly property bool modalOpen: root.modalOpen
+    spacing: 10
+    // for the self-test (`--shot-page x.png camera-record-test`): the camera alone, recorded for `seconds` and put together
+    function debugRun(seconds, what) { root.source = what || "camera"; debugStop.interval = (seconds + 3) * 1000; debugStop.restart(); root.startRecording() }
+    Timer { id: debugStop; onTriggered: root.stopAll(false) }
+ScrollView {
+    id: scroll
+    Layout.fillWidth: true
+    Layout.fillHeight: true
     contentWidth: availableWidth
-    bottomPadding: 18
+    bottomPadding: 6
     clip: true
     ColumnLayout {
     id: root
@@ -69,7 +77,7 @@ ScrollView {
     readonly property bool busy: phase !== "idle"
     readonly property bool modalOpen: false
     readonly property var screenList: Qt.application.screens
-    spacing: 8
+    spacing: 12
 
     MediaDevices { id: devices }
     CameraPermission { id: permission }
@@ -87,14 +95,17 @@ ScrollView {
         recorder.stopSystemSound()
         if (winCap && winCap.active) winCap.active = false
         endPick()
-        recorder.publishState("idle", 0, false, "", false)
+        recorder.publishState("idle", 0, false, "", false, false, 0)
     }
     // what the notch shows when it is closed (Main.qml) and what keeps this page alive when it is
-    onPhaseChanged: publish()
+    onPhaseChanged: { recorder.note("phase " + phase); publish() }
     onElapsedChanged: publish()
     onPreviewingChanged: publish()
     onTargetNameChanged: publish()
-    function publish() { recorder.publishState(phase, elapsed, previewing, targetName, captureHeld) }
+    function publish() { recorder.publishState(phase, elapsed, previewing, targetName, captureHeld, picking, count) }
+    onPickingChanged: publish()
+    onCountChanged: publish()
+
 
     // ---- what is captured ----
     AudioInput { id: micA; device: micChoice.currentIndex >= 0 && micChoice.currentIndex < devices.audioInputs.length ? devices.audioInputs[micChoice.currentIndex] : devices.defaultAudioInput }
@@ -116,18 +127,16 @@ ScrollView {
         target: root.screenCap
         ignoreUnknownSignals: true
         function onErrorOccurred(error, message) { root.captureFailed(message) }
-        // The system's window is answered (or closed): the notch must come back up from under the windows at once, not at the first picture,
-        // which a still screen may be slow to send. (Stopping is still only done after a picture: capLive.)
+        // (`active` turns true as soon as the system is asked, long before it is answered: it says nothing about a picture. It turning false
+        // by itself means the system's window was closed without a choice.)
         function onActiveChanged() {
-            if (root.screenCap.active) {
-                root.endPick()
-                if (root.phase === "picking") root.startCountdown()
-            } else if (root.capRequested && !root.capLive) { // closed without an answer
-                root.endPick()
+            recorder.note("screen capture active=" + root.screenCap.active + " requested=" + root.capRequested + " live=" + root.capLive)
+            if (!root.screenCap.active && root.capRequested && !root.capLive) {
                 root.previewing = false
                 if (root.phase === "picking") root.stopAll(false)
                 root.capRequested = false
                 root.screenCap = null
+                root.endPick(true)
             }
         }
     }
@@ -156,10 +165,11 @@ ScrollView {
         quality: MediaRecorder.NormalQuality
         videoFrameRate: 30
         onRecorderStateChanged: {
+            recorder.note("screen recorder state " + recorderState)
             if (recorderState === MediaRecorder.RecordingState && root.screenStarted === 0) root.screenRecording()
             else if (recorderState === MediaRecorder.StoppedState && root.phase === "finishing") { root.screenDone = true; root.maybeMix() }
         }
-        onErrorOccurred: (error, message) => root.fail(message)
+        onErrorOccurred: (error, message) => { recorder.note("screen recorder error: " + message); root.fail(message) }
     }
     MediaRecorder {
         id: camRec
@@ -266,186 +276,174 @@ ScrollView {
     }
 
     // ---- 1. what to record ----
-    Segmented {
-        Layout.fillWidth: true
-        enabled: !root.busy
-        model: [["screen", "Screen"], ["window", "Window"], ["camera", "Camera only"]]
-        value: root.source
-        onPicked: (v) => { root.releaseCapture(); root.source = v; root.previewing = false }
-    }
-    RowLayout {
-        visible: root.source === "screen" && root.screenList.length > 1
-        Layout.fillWidth: true
-        spacing: 8
-        Caption { text: "Screen" }
-        AgentChoice {
+    Card {
+        title: "Source"
+        Segmented {
             Layout.fillWidth: true
             enabled: !root.busy
-            model: root.screenList.map((s, i) => ({ label: (s.name || ("Screen " + (i + 1))) + "  ·  " + s.width + "×" + s.height }))
-            textRole: "label"
-            currentIndex: root.screenIndex
-            onActivated: (i) => { root.releaseCapture(); root.screenIndex = i; root.previewing = false }
+            model: [["screen", "Screen"], ["window", "Window"], ["camera", "Camera only"]]
+            value: root.source
+            onPicked: (v) => { root.releaseCapture(); root.source = v; root.previewing = false }
         }
-    }
-    RowLayout {
-        visible: root.source === "window" && !root.wayland
-        Layout.fillWidth: true
-        spacing: 8
-        Caption { text: "Window" }
-        AgentChoice {
-            id: winChoice
+        RowLayout {
+            visible: root.source === "screen" && root.screenList.length > 1
             Layout.fillWidth: true
-            enabled: !root.busy
-            property var wins: []
-            model: wins
-            textRole: "label"
-            onActivated: (i) => { if (root.winCap) root.winCap.capturableWindow = winChoice.wins[i].window; root.previewing = false }
-            function refresh() { if (!root.winCap) return; wins = root.winCap.capturableWindows().map(w => ({ label: w.description, window: w })); if (wins.length > 0) { const t = root.targetTitle.toLowerCase(), a = root.targetApp.toLowerCase(); let k = t !== "" ? wins.findIndex(w => w.label.toLowerCase().indexOf(t) >= 0) : -1; if (k < 0 && a !== "") k = wins.findIndex(w => w.label.toLowerCase().indexOf(a) >= 0); currentIndex = Math.max(0, k); root.winCap.capturableWindow = wins[currentIndex].window } }
-            Component.onCompleted: refresh()
-            Connections { target: root; function onSourceChanged() { if (root.source === "window") Qt.callLater(winChoice.refresh) } }
+            spacing: 8
+            Caption { text: "Screen" }
+            AgentChoice {
+                Layout.fillWidth: true
+                enabled: !root.busy
+                model: root.screenList.map((s, i) => ({ label: (s.name || ("Screen " + (i + 1))) + "  ·  " + s.width + "×" + s.height }))
+                textRole: "label"
+                currentIndex: root.screenIndex
+                onActivated: (i) => { root.releaseCapture(); root.screenIndex = i; root.previewing = false }
+            }
         }
-        PillButton { text: "Refresh"; iconName: "undo"; enabled: !root.busy; onClicked: winChoice.refresh() }
-    }
-    Caption { visible: root.source === "window" && !root.wayland && winChoice.wins.length === 0; Layout.fillWidth: true; text: "No windows to list right now. Open the window you want, then press Refresh." }
-    RowLayout {
-        visible: root.source === "window" && root.wayland
-        Layout.fillWidth: true
-        spacing: 8
-        Caption { text: "Application" }
-        AgentChoice {
+        RowLayout {
+            visible: root.source === "window" && !root.wayland
             Layout.fillWidth: true
-            enabled: !root.busy
-            model: [{ label: "Any window (choose in the system's window)" }].concat(root.windowChoices)
-            textRole: "label"
-            currentIndex: Math.max(0, root.windowChoices.findIndex(w => w.id === root.targetWindowId) + 1)
-            onActivated: (i) => i === 0 ? root.chooseWindow("", "", "") : root.chooseWindow(root.windowChoices[i - 1].app, root.windowChoices[i - 1].title, root.windowChoices[i - 1].id)
+            spacing: 8
+            Caption { text: "Window" }
+            AgentChoice {
+                id: winChoice
+                Layout.fillWidth: true
+                enabled: !root.busy
+                property var wins: []
+                model: wins
+                textRole: "label"
+                onActivated: (i) => { if (root.winCap) root.winCap.capturableWindow = winChoice.wins[i].window; root.previewing = false }
+                function refresh() { if (!root.winCap) return; wins = root.winCap.capturableWindows().map(w => ({ label: w.description, window: w })); if (wins.length > 0) { const t = root.targetTitle.toLowerCase(), a = root.targetApp.toLowerCase(); let k = t !== "" ? wins.findIndex(w => w.label.toLowerCase().indexOf(t) >= 0) : -1; if (k < 0 && a !== "") k = wins.findIndex(w => w.label.toLowerCase().indexOf(a) >= 0); currentIndex = Math.max(0, k); root.winCap.capturableWindow = wins[currentIndex].window } }
+                Component.onCompleted: refresh()
+                Connections { target: root; function onSourceChanged() { if (root.source === "window") Qt.callLater(winChoice.refresh) } }
+            }
+            PillButton { text: "Refresh"; iconName: "undo"; enabled: !root.busy; onClicked: winChoice.refresh() }
         }
-        PillButton { text: "Refresh"; iconName: "undo"; enabled: !root.busy; onClicked: root.refreshWindows() }
-    }
-    Caption {
-        visible: root.source === "window" && root.wayland
-        Layout.fillWidth: true
-        textFormat: Text.PlainText
-        text: root.targetApp !== "" ? "«" + root.targetApp + "» is brought to the front, then the system asks which window to share: choose that one. The recording is named after it."
-                                     : root.windowChoices.length > 0 ? "Choose an application, or press Preview or Record and choose the window in the system's own window."
-                                                                    : "Press Preview or Record and choose the window in the system's own window. (The list of open applications comes from KDE Plasma.)"
-    }
-    RowLayout {
-        Layout.fillWidth: true
-        PillButton { visible: root.source !== "camera"; text: root.previewing ? "Stop preview" : "Preview"; iconName: "eye"; enabled: !root.busy
-            onClicked: { root.previewing = !root.previewing; if (root.previewing && !root.capLive) root.raiseTarget(); root.setCapture(root.previewing) } }
-        PillButton { visible: root.screenMode && root.capLive && !root.previewing && root.phase === "idle"; text: "Release source"; iconName: "close"
-            ToolTip.visible: hovered; ToolTip.text: "What you chose to share is kept for a few minutes so Record does not ask again. Release it to choose another."
-            onClicked: root.releaseCapture() }
-        PillButton { visible: root.lastAppName !== "" && root.phase === "idle"; text: "Record " + root.lastAppName; iconName: "eye"; enabled: !root.busy
-            ToolTip.visible: hovered; ToolTip.text: "The application that was in front: " + String(root.lastAppTitle).replace(/&/g, "&amp;").replace(/</g, "&lt;")
-            onClicked: root.chooseActive() }
-        Item { Layout.fillWidth: true }
+        Caption { visible: root.source === "window" && !root.wayland && winChoice.wins.length === 0; Layout.fillWidth: true; text: "No windows to list right now. Open the window you want, then press Refresh." }
+        RowLayout {
+            visible: root.source === "window" && root.wayland
+            Layout.fillWidth: true
+            spacing: 8
+            Caption { text: "Application" }
+            AgentChoice {
+                Layout.fillWidth: true
+                enabled: !root.busy
+                model: [{ label: "Any window (choose in the system's window)" }].concat(root.windowChoices)
+                textRole: "label"
+                currentIndex: Math.max(0, root.windowChoices.findIndex(w => w.id === root.targetWindowId) + 1)
+                onActivated: (i) => i === 0 ? root.chooseWindow("", "", "") : root.chooseWindow(root.windowChoices[i - 1].app, root.windowChoices[i - 1].title, root.windowChoices[i - 1].id)
+            }
+            PillButton { text: "Refresh"; iconName: "undo"; enabled: !root.busy; onClicked: root.refreshWindows() }
+        }
+        Caption {
+            visible: root.source === "window" && root.wayland
+            Layout.fillWidth: true
+            textFormat: Text.PlainText
+            text: root.targetApp !== "" ? "«" + root.targetApp + "» is brought to the front, then the system asks which window to share: choose that one. The recording is named after it."
+                                         : root.windowChoices.length > 0 ? "Choose an application, or press Preview or Record and choose the window in the system's own window."
+                                                                        : "Press Preview or Record and choose the window in the system's own window. (The list of open applications comes from KDE Plasma.)"
+        }
+        RowLayout {
+            Layout.fillWidth: true
+            PillButton { visible: root.source !== "camera"; text: root.previewing ? "Stop preview" : "Preview"; iconName: "eye"; enabled: !root.busy
+                onClicked: { root.previewing = !root.previewing; if (root.previewing && !root.capLive) root.raiseTarget(); root.setCapture(root.previewing) } }
+            PillButton { visible: root.screenMode && root.capLive && !root.previewing && root.phase === "idle"; text: "Release source"; iconName: "close"
+                ToolTip.visible: hovered; ToolTip.text: "What you chose to share is kept for a few minutes so Record does not ask again. Release it to choose another."
+                onClicked: root.releaseCapture() }
+            PillButton { visible: root.lastAppName !== "" && root.phase === "idle"; text: "Record " + root.lastAppName; iconName: "eye"; enabled: !root.busy
+                ToolTip.visible: hovered; ToolTip.text: "The application that was in front: " + String(root.lastAppTitle).replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                onClicked: root.chooseActive() }
+            Item { Layout.fillWidth: true }
+        }
     }
 
     // ---- 2. the camera ----
-    SettingToggle {
-        visible: root.source !== "camera"
-        title: "Show the camera"
-        caption: "Laid over the recording where you put it. Drag it in the picture, or use the places below."
-        checked: root.showCamera
-        enabled: !root.busy && root.hasCamera
-        onToggled: root.showCamera = !root.showCamera
-    }
-    ColumnLayout {
-        visible: root.camWanted && root.hasCamera
-        Layout.fillWidth: true
-        spacing: 8
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-            Caption { text: "Camera" }
-            AgentChoice {
-                id: camChoice
-                Layout.fillWidth: true
-                enabled: !root.busy
-                model: devices.videoInputs.map(d => d.description)
-            }
-            PillButton { text: "Flip"; iconName: "undo"; checked: root.mirror; enabled: !root.busy; onClicked: root.mirror = !root.mirror; ToolTip.visible: hovered; ToolTip.text: "Mirror the camera left to right" }
-        }
-        CameraTuning { id: tuning; camera: camera }
-        ColumnLayout {
+    Card {
+        title: "Camera"
+        visible: root.hasCamera || root.camWanted
+        SettingToggle {
             visible: root.source !== "camera"
+            title: "Show the camera"
+            caption: "Laid over the recording where you put it. Drag it in the picture, or use the places below."
+            checked: root.showCamera
+            enabled: !root.busy && root.hasCamera
+            onToggled: root.showCamera = !root.showCamera
+        }
+        ColumnLayout {
+            visible: root.camWanted && root.hasCamera
             Layout.fillWidth: true
             spacing: 8
-            Segmented { Layout.fillWidth: true; enabled: !root.busy; model: [["rounded", "Rounded"], ["square", "Square"], ["circle", "Circle"]]; value: root.shape; onPicked: (v) => root.shape = v }
-            ValueSlider { title: "Size"; valueText: Math.round(root.camSize * 100) + " % of the width"; from: 0.1; to: 0.4; stepSize: 0.01; value: root.camSize; enabled: !root.busy; onMoved: (v) => root.camSize = v }
             RowLayout {
                 Layout.fillWidth: true
-                spacing: 6
-                Caption { text: "Place" }
-                Repeater {
-                    model: [["Top left", 0, 0], ["Top right", 1, 0], ["Bottom left", 0, 1], ["Bottom middle", 0.5, 1], ["Bottom right", 1, 1]]
-                    PillButton { required property var modelData; text: modelData[0]; enabled: !root.busy; checked: Math.abs(root.camX - modelData[1]) < 0.02 && Math.abs(root.camY - modelData[2]) < 0.02
-                        onClicked: { root.camX = modelData[1]; root.camY = modelData[2] } }
+                spacing: 8
+                Caption { text: "Camera" }
+                AgentChoice {
+                    id: camChoice
+                    Layout.fillWidth: true
+                    enabled: !root.busy
+                    model: devices.videoInputs.map(d => d.description)
                 }
-                Item { Layout.fillWidth: true }
+                PillButton { text: "Flip"; iconName: "undo"; checked: root.mirror; enabled: !root.busy; onClicked: root.mirror = !root.mirror; ToolTip.visible: hovered; ToolTip.text: "Mirror the camera left to right" }
+            }
+            CameraTuning { id: tuning; camera: camera }
+            ColumnLayout {
+                visible: root.source !== "camera"
+                Layout.fillWidth: true
+                spacing: 8
+                Segmented { Layout.fillWidth: true; enabled: !root.busy; model: [["rounded", "Rounded"], ["square", "Square"], ["circle", "Circle"]]; value: root.shape; onPicked: (v) => root.shape = v }
+                ValueSlider { title: "Size"; valueText: Math.round(root.camSize * 100) + " % of the width"; from: 0.1; to: 0.4; stepSize: 0.01; value: root.camSize; enabled: !root.busy; onMoved: (v) => root.camSize = v }
+                Caption { text: "Place" }
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Repeater {
+                        model: [["Top left", 0, 0], ["Top right", 1, 0], ["Bottom left", 0, 1], ["Bottom middle", 0.5, 1], ["Bottom right", 1, 1]]
+                        PillButton { required property var modelData; text: modelData[0]; enabled: !root.busy; checked: Math.abs(root.camX - modelData[1]) < 0.02 && Math.abs(root.camY - modelData[2]) < 0.02
+                            onClicked: { root.camX = modelData[1]; root.camY = modelData[2] } }
+                    }
+                }
             }
         }
+        Caption { visible: root.camWanted && !root.hasCamera; Layout.fillWidth: true; text: "No camera found." }
     }
-    Caption { visible: root.camWanted && !root.hasCamera; Layout.fillWidth: true; text: "No camera found." }
 
     // ---- 3. the sound ----
-    SettingToggle { title: "Microphone"; caption: "Your voice."; checked: root.micOn; enabled: !root.busy; onToggled: root.micOn = !root.micOn }
-    RowLayout {
-        visible: root.micOn
-        Layout.fillWidth: true
-        spacing: 8
-        Caption { text: "Input" }
-        AgentChoice { id: micChoice; Layout.fillWidth: true; enabled: !root.busy; model: devices.audioInputs.map(d => d.description)
-            currentIndex: { for (let i = 0; i < devices.audioInputs.length; ++i) if (devices.audioInputs[i].id === devices.defaultAudioInput.id) return i; return 0 } }
-    }
-    ValueSlider { visible: root.micOn; title: "Microphone volume"; valueText: Math.round(root.micVolume * 100) + " %"; from: 0; to: 2; stepSize: 0.05; value: root.micVolume; enabled: !root.busy; onMoved: (v) => root.micVolume = v }
-    SettingToggle {
-        visible: recorder.canRecordSystem
-        title: "Sound of the computer"
-        caption: "What the speakers play: a video, a call, music."
-        checked: root.systemOn
-        enabled: !root.busy
-        onToggled: root.systemOn = !root.systemOn
-    }
-    Caption { visible: !recorder.canRecordSystem; Layout.fillWidth: true; text: "The sound of the computer needs parec (package pulseaudio-utils)." }
-    RowLayout {
-        visible: root.systemOn && recorder.canRecordSystem
-        Layout.fillWidth: true
-        spacing: 8
-        Caption { text: "Output" }
-        AgentChoice {
-            id: systemChoices
+    Card {
+        title: "Sound"
+        SettingToggle { title: "Microphone"; caption: "Your voice."; checked: root.micOn; enabled: !root.busy; onToggled: root.micOn = !root.micOn }
+        RowLayout {
+            visible: root.micOn
             Layout.fillWidth: true
+            spacing: 8
+            Caption { text: "Input" }
+            AgentChoice { id: micChoice; Layout.fillWidth: true; enabled: !root.busy; model: devices.audioInputs.map(d => d.description)
+                currentIndex: { for (let i = 0; i < devices.audioInputs.length; ++i) if (devices.audioInputs[i].id === devices.defaultAudioInput.id) return i; return 0 } }
+        }
+        ValueSlider { visible: root.micOn; title: "Microphone volume"; valueText: Math.round(root.micVolume * 100) + " %"; from: 0; to: 2; stepSize: 0.05; value: root.micVolume; enabled: !root.busy; onMoved: (v) => root.micVolume = v }
+        SettingToggle {
+            visible: recorder.canRecordSystem
+            title: "Sound of the computer"
+            caption: "What the speakers play: a video, a call, music."
+            checked: root.systemOn
             enabled: !root.busy
-            textRole: "name"
-            model: root.sourceList
-            onActivated: (i) => root.systemSourceId = root.sourceList[i].id
+            onToggled: root.systemOn = !root.systemOn
         }
-    }
-    ValueSlider { visible: root.systemOn && recorder.canRecordSystem; title: "Computer sound volume"; valueText: Math.round(root.systemVolume * 100) + " %"; from: 0; to: 2; stepSize: 0.05; value: root.systemVolume; enabled: !root.busy; onMoved: (v) => root.systemVolume = v }
-
-    // ---- record ----
-    RowLayout {
-        Layout.fillWidth: true
-        spacing: 8
-        Text { Layout.fillWidth: true; elide: Text.ElideRight; color: root.phase === "recording" ? theme.danger : theme.textDim; font.pixelSize: 12
-            text: root.phase === "recording" ? "Recording  " + root.clock(root.elapsed) : root.phase === "mixing" ? "Putting it together…" : root.phase === "finishing" ? "Stopping…" : root.phase === "picking" ? "Choose what to share in the window of the system…" : root.phase === "countdown" ? "Starting…" : "" }
-        PillButton { visible: root.phase === "mixing"; text: "Stop"; onClicked: recorder.cancel() }
-        PillButton {
-            visible: root.phase === "idle"
-            text: "Record"
-            iconName: "play"
-            checked: true
-            enabled: recorder.canMix && (root.source !== "camera" || (root.hasCamera && permission.status === Qt.Granted))
-            onClicked: root.startRecording()
+        Caption { visible: !recorder.canRecordSystem; Layout.fillWidth: true; text: "The sound of the computer needs parec (package pulseaudio-utils)." }
+        RowLayout {
+            visible: root.systemOn && recorder.canRecordSystem
+            Layout.fillWidth: true
+            spacing: 8
+            Caption { text: "Output" }
+            AgentChoice {
+                id: systemChoices
+                Layout.fillWidth: true
+                enabled: !root.busy
+                textRole: "name"
+                model: root.sourceList
+                onActivated: (i) => root.systemSourceId = root.sourceList[i].id
+            }
         }
-        PillButton { visible: root.phase === "picking" || root.phase === "countdown" || root.phase === "recording"; text: "Stop"; iconName: "stop"; checked: true; onClicked: root.stopAll(false) }
+        ValueSlider { visible: root.systemOn && recorder.canRecordSystem; title: "Computer sound volume"; valueText: Math.round(root.systemVolume * 100) + " %"; from: 0; to: 2; stepSize: 0.05; value: root.systemVolume; enabled: !root.busy; onMoved: (v) => root.systemVolume = v }
     }
-    Caption { visible: !recorder.canMix; Layout.fillWidth: true; text: "Recording needs ffmpeg (package ffmpeg)." }
-    Text { visible: root.problem !== ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.danger; font.pixelSize: 12; text: root.problem; textFormat: Text.PlainText }
-    Text { visible: root.savedNote !== ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.success; font.pixelSize: 12; text: root.savedNote }
 
     Timer { id: tick; interval: 1000; repeat: true; onTriggered: {
         if (root.phase === "countdown") {
@@ -456,7 +454,7 @@ ScrollView {
             if (root.elapsed >= 4 * 3600) root.stopAll(false)
         }
     } }
-    Timer { id: pickTimer; interval: 120000; onTriggered: { root.endPick(); if (root.phase === "picking") root.stopAll(false) } }
+    Timer { id: pickTimer; interval: 120000; onTriggered: { recorder.note("no answer from the system in two minutes"); root.previewing = false; root.endPick(true); if (root.phase === "picking") root.stopAll(false) } }
     Timer { id: settle; interval: 700; onTriggered: root.doMix() } // the recorders have closed their files
     Timer { id: guard; interval: 8000; onTriggered: if (root.phase === "finishing") root.doMix() }
     Connections {
@@ -469,18 +467,20 @@ ScrollView {
     }
 
     function clock(s) { const m = Math.floor(s / 60), h = Math.floor(m / 60); const two = n => (n < 10 ? "0" : "") + n; return (h > 0 ? h + ":" + two(m % 60) : m) + ":" + two(s % 60) }
-    // The system asks what to share in a window of its own: the notch steps under the windows and stays open until it is answered.
+    // The system asks what to share in a window of its own. The notch closes to its capsule meanwhile (it says "Choose what to share…"), so
+    // that window is never under it; the recorder stays loaded. When a preview was asked for, the panel comes back with the first picture.
     function beginPick() {
         if (picking || !shell) return
         picking = true
-        shell.dialogs += 1
+        recorder.note("asking the system what to share")
+        shell.stepAside()
         pickTimer.restart()
     }
-    function endPick() {
+    function endPick(reopen) {
         if (!picking) return
         picking = false
         pickTimer.stop()
-        if (shell) shell.dialogs -= 1
+        if (reopen && shell) shell.showRecorder()
     }
     readonly property bool screenMode: source === "screen" || (source === "window" && wayland)
     function currentCapture() { return screenMode ? screenCap : source === "window" ? winCap : null }
@@ -501,7 +501,9 @@ ScrollView {
     }
     function capFrame() {
         capLive = true
-        if (capStopWanted) { Qt.callLater(stopScreenCap); return }
+        recorder.note("first picture from the screen capture (phase " + phase + ", preview " + previewing + ")")
+        if (capStopWanted) { endPick(false); Qt.callLater(stopScreenCap); return }
+        endPick(previewing) // a preview: the panel comes back to show it; a recording: the capsule shows the countdown and the time
         captureChanged(true)
         if (!previewing && phase === "idle") holdTimer.restart()
     }
@@ -544,14 +546,15 @@ ScrollView {
             holdCapture()
         }
     }
-    function captureChanged(active) { // the capture started (the choice was made) or ended
+    function captureChanged(active) { // a picture is coming (the choice was made)
         if (active) {
-            endPick()
+            endPick(false)
             if (phase === "picking") startCountdown()
         }
     }
     function captureFailed(why) {
-        endPick()
+        recorder.note("screen capture failed: " + why)
+        endPick(true)
         if (screenMode) { capRequested = false; capLive = false; capStopWanted = false; screenCap = null } // that capture is left alone, never stopped or deleted
         previewing = false
         fail(why)
@@ -637,4 +640,25 @@ ScrollView {
         })
     }
 }
+}
+    // ---- record: always in sight, below what scrolls ----
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: 8
+        Text { Layout.fillWidth: true; elide: Text.ElideRight; color: root.phase === "recording" ? theme.danger : theme.textDim; font.pixelSize: 13
+            text: root.phase === "recording" ? "Recording  " + root.clock(root.elapsed) : root.phase === "mixing" ? "Putting it together…" : root.phase === "finishing" ? "Stopping…" : root.phase === "picking" ? "Choose what to share in the window of the system…" : root.phase === "countdown" ? "Starting…" : "" }
+        PillButton { visible: root.phase === "mixing"; text: "Stop"; onClicked: recorder.cancel() }
+        PillButton {
+            visible: root.phase === "idle"
+            text: "Record"
+            iconName: "play"
+            primary: true
+            enabled: recorder.canMix && (root.source !== "camera" || (root.hasCamera && permission.status === Qt.Granted))
+            onClicked: root.startRecording()
+        }
+        PillButton { visible: root.phase === "picking" || root.phase === "countdown" || root.phase === "recording"; text: "Stop"; iconName: "stop"; primary: true; onClicked: root.stopAll(false) }
+    }
+    Caption { visible: !recorder.canMix; Layout.fillWidth: true; text: "Recording needs ffmpeg (package ffmpeg)." }
+    Text { visible: root.problem !== ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.danger; font.pixelSize: 12; text: root.problem; textFormat: Text.PlainText }
+    Text { visible: root.savedNote !== ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.success; font.pixelSize: 12; text: root.savedNote }
 }

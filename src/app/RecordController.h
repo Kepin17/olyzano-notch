@@ -26,6 +26,8 @@ class RecordController : public QObject
     Q_PROPERTY(QString phase READ phase NOTIFY stateChanged)   // idle | picking | countdown | recording | finishing | mixing
     Q_PROPERTY(int elapsed READ elapsed NOTIFY stateChanged)   // seconds of the recording
     Q_PROPERTY(QString target READ target NOTIFY stateChanged)  // the application being recorded ("" = the screen)
+    Q_PROPERTY(bool picking READ picking NOTIFY stateChanged)   // the system is asking what to share
+    Q_PROPERTY(int countdown READ countdown NOTIFY stateChanged) // seconds until the recording starts, while phase is "countdown"
     Q_PROPERTY(bool recording READ recording NOTIFY stateChanged) // a recording is running (the red mark in the notch)
     Q_PROPERTY(bool engaged READ engaged NOTIFY stateChanged)  // something is running or being finished: the page must not be let go of
 
@@ -41,11 +43,15 @@ public:
     QString phase() const { return m_phase; }
     int elapsed() const { return m_elapsed; }
     QString target() const { return m_target; }
+    bool picking() const { return m_picking; }
+    int countdown() const { return m_countdown; }
     bool recording() const { return m_phase == QLatin1String("recording"); }
     bool engaged() const { return m_phase != QLatin1String("idle") || m_previewing || m_held; }
     void setEngine(QQmlEngine *engine) { m_engine = engine; }
 
-    Q_INVOKABLE void publishState(const QString &phase, int elapsed, bool previewing, const QString &target = QString(), bool held = false);
+    Q_INVOKABLE void publishState(const QString &phase, int elapsed, bool previewing, const QString &target = QString(), bool held = false, bool picking = false,
+                                  int countdown = 0);
+    Q_INVOKABLE void note(const QString &what) const; // a line in the log (the journal), to follow a recording that went wrong
     // A screen capture (Qt Multimedia's ScreenCapture) that belongs to no page and is never deleted: Qt's PipeWire capture crashes when it
     // is stopped or deleted before the system has answered. null when Qt Multimedia for QML is not there.
     Q_INVOKABLE QObject *newScreenCapture();
@@ -77,7 +83,8 @@ private:
     QString m_phase = QStringLiteral("idle");
     int m_elapsed = 0;
     QString m_target;
-    bool m_previewing = false, m_held = false;
+    bool m_previewing = false, m_held = false, m_picking = false;
+    int m_countdown = 0;
     QProcess m_parec;
     QThreadPool m_pool;
     std::atomic_bool m_cancel{false};

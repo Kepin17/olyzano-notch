@@ -163,7 +163,7 @@ Popup {
             }
             PillButton { visible: apiTester.running; text: "Stop"; iconName: "stop"; onClicked: apiTester.cancelRun() }
             PillButton { visible: !apiTester.running; text: "Run again"; iconName: "play"; onClicked: run.start() }
-            PillButton { text: "Close"; checked: true; onClicked: run.close() }
+            PillButton { text: "Close"; primary: true; onClicked: run.close() }
         }
     }
 }

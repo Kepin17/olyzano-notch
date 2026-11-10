@@ -125,7 +125,7 @@ Popup {
             PillButton {
                 id: create
                 text: "Create"
-                checked: true
+                primary: true
                 implicitHeight: 30
                 onClicked: {
                     const made = codingAgent.makeFolder(picker.current, newName.text)
@@ -146,7 +146,7 @@ Popup {
                 horizontalAlignment: Text.AlignRight
             }
             PillButton { text: "Cancel"; implicitHeight: 30; onClicked: picker.close() }
-            PillButton { text: picker.confirmText; checked: true; implicitHeight: 30; onClicked: { picker.picked = true; picker.chosen(picker.current); picker.close() } }
+            PillButton { text: picker.confirmText; primary: true; implicitHeight: 30; onClicked: { picker.picked = true; picker.chosen(picker.current); picker.close() } }
         }
     }
 }

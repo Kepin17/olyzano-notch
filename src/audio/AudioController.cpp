@@ -89,10 +89,8 @@ AudioController::AudioController(QObject *parent)
     connect(&m_recorder, &MeetingRecorder::levelChanged, this, &AudioController::recordingChanged);
     connect(&m_recorder, &MeetingRecorder::failed, this, [this](const QString &why) { setError(why); });
     connect(&m_recorder, &MeetingRecorder::limitReached, this, [this] { stopRecording(false); });
-    (void)QtConcurrent::run([this] { // what graphics cards there are, found without making the window wait
-        Audio::Hardware::instance().info();
-        QMetaObject::invokeMethod(this, &AudioController::hardwareChanged, Qt::QueuedConnection);
-    });
+    // (The graphics cards are looked for when something first asks: Settings -> AI, or a job. Doing it at start loaded the Vulkan driver
+    // into every run of Notch, most of which never use it.)
     m_tick.setInterval(500);
     connect(&m_tick, &QTimer::timeout, this, &AudioController::recordingChanged);
 }
@@ -269,6 +267,13 @@ QList<Audio::ActionItem> AudioController::actionItemsOf(qlonglong id) const
 QVariantMap AudioController::hardware() const
 {
     Audio::Hardware &hw = Audio::Hardware::instance();
+    if (!hw.detected() && !m_probing.exchange(true)) { // the first one to ask starts the search, off the window's thread
+        auto *self = const_cast<AudioController *>(this);
+        (void)QtConcurrent::run([self] {
+            Audio::Hardware::instance().info();
+            QMetaObject::invokeMethod(self, &AudioController::hardwareChanged, Qt::QueuedConnection);
+        });
+    }
     QVariantList devices;
     const Gpu::Info info = hw.known();
     for (const Gpu::Device &d : info.devices)
@@ -277,7 +282,7 @@ QVariantMap AudioController::hardware() const
     const Audio::HwPlan plan = hw.detected() ? hw.plan(!m_models.path(Audio::LlamaSession::gpuHelperId()).isEmpty()) : Audio::HwPlan{};
     const Audio::HwBench bench = hw.detected() ? hw.bench() : Audio::HwBench{};
     return {{QStringLiteral("detected"), hw.detected()}, {QStringLiteral("setting"), hw.setting()}, {QStringLiteral("devices"), devices}, {QStringLiteral("vulkan"), info.vulkan},
-            {QStringLiteral("built"), !Whisper::gpus().isEmpty() || Whisper::gpusBuilt()}, {QStringLiteral("reason"), plan.reason}, {QStringLiteral("speech"), hw.reported(QStringLiteral("speech"))},
+            {QStringLiteral("built"), Whisper::gpusBuilt() || (hw.detected() && !Whisper::gpus().isEmpty())}, {QStringLiteral("reason"), plan.reason}, {QStringLiteral("speech"), hw.reported(QStringLiteral("speech"))},
             {QStringLiteral("notes"), hw.reported(QStringLiteral("notes"))}, {QStringLiteral("failure"), hw.lastFailure()}, {QStringLiteral("benchKnown"), bench.known},
             {QStringLiteral("speedup"), bench.speedup}, {QStringLiteral("testing"), m_testing.load()}, {QStringLiteral("testResult"), m_testResult},
             {QStringLiteral("helperId"), Audio::LlamaSession::gpuHelperId()}, {QStringLiteral("helperReady"), !m_models.path(Audio::LlamaSession::gpuHelperId()).isEmpty()}};

@@ -78,7 +78,7 @@ ScrollView {
                             Layout.fillWidth: true
                             spacing: 8
                             Text { Layout.fillWidth: true; text: nrow.info.title + " · " + nrow.info.sizeText; elide: Text.ElideRight; color: theme.text; font.pixelSize: 12 }
-                            PillButton { visible: nrow.info.state !== "downloading" && nrow.info.state !== "verifying"; text: nrow.info.partial ? "Continue" : "Download"; iconName: "download"; checked: true; onClicked: audioIntel.downloadModel(nrow.modelData) }
+                            PillButton { visible: nrow.info.state !== "downloading" && nrow.info.state !== "verifying"; text: nrow.info.partial ? "Continue" : "Download"; iconName: "download"; primary: true; onClicked: audioIntel.downloadModel(nrow.modelData) }
                             PillButton { visible: nrow.info.state === "downloading"; text: "Cancel"; onClicked: audioIntel.cancelDownload(nrow.modelData) }
                         }
                         Rectangle { visible: nrow.info.state === "downloading"; Layout.fillWidth: true; Layout.preferredHeight: 3; radius: 1.5; color: theme.surface

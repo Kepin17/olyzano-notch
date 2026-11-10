@@ -748,6 +748,21 @@ int main(int argc, char *argv[])
                 w->setProperty("page", QStringLiteral("docs"));
                 return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 2200, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
             }
+            if (page == QLatin1String("camera-record-test")) { // records the camera alone for a few seconds, for real, and says how it went
+                w->setProperty("cameraSection", QStringLiteral("record"));
+                w->setProperty("page", QStringLiteral("camera"));
+                QObject::connect(&recorder, &RecordController::stateChanged, &app, [&recorder] { fprintf(stderr, "record-test phase=%s elapsed=%d\n", qPrintable(recorder.phase()), recorder.elapsed()); });
+                QObject::connect(&recorder, &RecordController::finished, &app, [w, &app, path](const QString &error) {
+                    fprintf(stderr, "record-test finished: %s\n", error.isEmpty() ? "ok" : qPrintable(error));
+                    QTimer::singleShot(800, &app, [w, &app, path, error] { w->grabWindow().save(path); app.exit(error.isEmpty() ? 0 : 1); });
+                });
+                QTimer::singleShot(4000, &app, [w] {
+                    QVariant ok;
+                    QMetaObject::invokeMethod(w, "debugRecord", Q_RETURN_ARG(QVariant, ok), Q_ARG(QVariant, 4), Q_ARG(QVariant, qEnvironmentVariable("NOTCH_RECORD_SOURCE", QStringLiteral("camera")))); // camera | screen
+                    fprintf(stderr, "record-test started: %d\n", ok.toBool());
+                });
+                return QTimer::singleShot(60000, &app, [w, &app, path] { fputs("record-test: timed out\n", stderr); w->grabWindow().save(path); app.exit(2); });
+            }
             if (page == QLatin1String("camera-record")) { // the Camera page on its screen recorder
                 w->setProperty("cameraSection", QStringLiteral("record"));
                 w->setProperty("page", QStringLiteral("camera"));

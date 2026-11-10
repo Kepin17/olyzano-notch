@@ -909,7 +909,7 @@ Window {
                 PillButton { text: "Cancel"; onClicked: emptyConfirm.close() }
                 PillButton {
                     text: "Empty Trash"
-                    checked: true
+                    primary: true
                     onClicked: {
                         dock.emptyTrash()
                         emptyConfirm.close()

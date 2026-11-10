@@ -417,7 +417,7 @@ ColumnLayout {
             Layout.fillWidth: true
             spacing: 12
             Caption { Layout.fillWidth: true; text: tools.isPdf ? "The watermark cannot be taken off the new file. Forms and links inside the PDF may not stay interactive." : "The document is made a PDF first, then marked." }
-            PillButton { text: tools.busy ? "Working…" : "Add watermark"; iconName: "doc"; checked: true; enabled: !tools.busy && tools.textProblem === ""; onClicked: tools.watermark() }
+            PillButton { text: tools.busy ? "Working…" : "Add watermark"; iconName: "doc"; primary: true; enabled: !tools.busy && tools.textProblem === ""; onClicked: tools.watermark() }
         }
     }
 
@@ -478,9 +478,9 @@ ColumnLayout {
                 spacing: 10
                 Caption { Layout.fillWidth: true; text: matting.busy ? matting.status : matting.lastError !== "" ? matting.lastError : tools.bgResult !== "" ? "Done. Add it to your shelf as a PNG with a transparent background." : "The model finds the main subject and makes the rest transparent. The picture is not changed." }
                 PillButton { visible: matting.busy; text: "Stop"; onClicked: matting.cancel() }
-                PillButton { visible: !matting.busy && tools.bgResult === ""; text: "Remove background"; iconName: "doc"; checked: true; onClicked: tools.runBg() }
+                PillButton { visible: !matting.busy && tools.bgResult === ""; text: "Remove background"; iconName: "doc"; primary: true; onClicked: tools.runBg() }
                 PillButton { visible: !matting.busy && tools.bgResult !== ""; text: "Try again"; onClicked: tools.runBg() }
-                PillButton { visible: !matting.busy && tools.bgResult !== ""; text: "Add to shelf"; iconName: "download"; checked: true; onClicked: { if (matting.addToShelf(tools.bgResult, tools.picked ? tools.picked.name.replace(/\.[^.]*$/, "") : "")) tools.bgResult = "" } }
+                PillButton { visible: !matting.busy && tools.bgResult !== ""; text: "Add to shelf"; iconName: "download"; primary: true; onClicked: { if (matting.addToShelf(tools.bgResult, tools.picked ? tools.picked.name.replace(/\.[^.]*$/, "") : "")) tools.bgResult = "" } }
             }
         }
     }
@@ -620,7 +620,7 @@ ColumnLayout {
             Layout.fillWidth: true
             spacing: 12
             Caption { Layout.fillWidth: true; text: "A picture on the page, not a digital signature that can be verified. The original file stays as it is." }
-            PillButton { text: tools.busy ? "Working…" : tools.stampKind === "picture" ? "Add signature" : "Add stamp"; iconName: "doc"; checked: true; enabled: !tools.busy && tools.stampProblem === "" && !(tools.stampPages === "range" && tools.stampRange.trim() === ""); onClicked: tools.stampNow() }
+            PillButton { text: tools.busy ? "Working…" : tools.stampKind === "picture" ? "Add signature" : "Add stamp"; iconName: "doc"; primary: true; enabled: !tools.busy && tools.stampProblem === "" && !(tools.stampPages === "range" && tools.stampRange.trim() === ""); onClicked: tools.stampNow() }
         }
     }
 
@@ -690,7 +690,7 @@ ColumnLayout {
             RowLayout {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
-                PillButton { text: tools.busy ? "Working…" : "Lock PDF"; iconName: "lock"; checked: true; enabled: !tools.busy && tools.lockProblem === "" && tools.pdfState === "ok"; onClicked: tools.lockNow() }
+                PillButton { text: tools.busy ? "Working…" : "Lock PDF"; iconName: "lock"; primary: true; enabled: !tools.busy && tools.lockProblem === "" && tools.pdfState === "ok"; onClicked: tools.lockNow() }
             }
         }
 
@@ -720,7 +720,7 @@ ColumnLayout {
             RowLayout {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
-                PillButton { text: tools.busy ? "Working…" : "Unlock PDF"; iconName: "lock"; checked: true; enabled: !tools.busy && tools.unlockPw !== "" && tools.pdfState === "protected"; onClicked: tools.unlockNow() }
+                PillButton { text: tools.busy ? "Working…" : "Unlock PDF"; iconName: "lock"; primary: true; enabled: !tools.busy && tools.unlockPw !== "" && tools.pdfState === "protected"; onClicked: tools.unlockNow() }
             }
         }
     }

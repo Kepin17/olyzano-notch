@@ -79,7 +79,7 @@ Popup {
             Layout.fillWidth: true
             Item { Layout.fillWidth: true }
             PillButton { text: "Decline"; onClicked: { nearby.decline(pop.transferId); pop.close() } }
-            PillButton { text: "Accept"; checked: true; onClicked: { nearby.accept(pop.transferId); pop.close() } }
+            PillButton { text: "Accept"; primary: true; onClicked: { nearby.accept(pop.transferId); pop.close() } }
         }
     }
 }

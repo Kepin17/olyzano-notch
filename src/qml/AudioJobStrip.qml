@@ -43,8 +43,8 @@ ColumnLayout {
             }
             PillButton { visible: strip.working; text: strip.open ? "Hide" : "Steps"; onClicked: strip.open = !strip.open }
             PillButton { visible: strip.working; text: "Stop"; onClicked: audioIntel.cancel() }
-            PillButton { visible: strip.failed; text: "Continue"; checked: true; onClicked: audioIntel.process(audioIntel.current) }
-            PillButton { visible: strip.idle; text: "Process"; checked: true; onClicked: audioIntel.process(audioIntel.current) }
+            PillButton { visible: strip.failed; text: "Continue"; primary: true; onClicked: audioIntel.process(audioIntel.current) }
+            PillButton { visible: strip.idle; text: "Process"; primary: true; onClicked: audioIntel.process(audioIntel.current) }
         }
         Rectangle { // the progress, along the bottom edge
             visible: strip.working

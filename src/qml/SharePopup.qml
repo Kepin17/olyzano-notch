@@ -413,7 +413,7 @@ Popup {
                 PillButton { text: "Cancel"; onClicked: pop.close() }
                 PillButton {
                     text: pop.mode === "nearby" ? "Send" : pop.hasVault && pop.mode === "local" ? "Share anyway" : "Share"
-                    checked: true
+                    primary: true
                     enabled: pop.mode === "nearby" ? pop.nearbyId !== ""
                            : pop.mode === "local" ? pop.addresses.length > 0 : (share.relayConfigured && pop.limitError === "")
                     onClicked: pop.begin()
@@ -568,7 +568,7 @@ Popup {
                             PillButton { visible: rd.active; text: "Stop sharing"; onClicked: share.stop(rd.sessionId) }
                             PillButton { visible: !rd.active; text: "Back to the list"; onClicked: pop.view = "sessions" }
                             Item { Layout.fillWidth: true }
-                            PillButton { text: "Done"; checked: true; onClicked: pop.close() }
+                            PillButton { text: "Done"; primary: true; onClicked: pop.close() }
                         }
                     }
                 }
@@ -752,7 +752,7 @@ Popup {
                                               : nb.state === "done" ? "✓ " + nb.message : nb.message
                                     }
                                 }
-                                PillButton { visible: nb.state === "asking"; text: "Accept"; checked: true; onClicked: nearby.accept(nb.transferId) }
+                                PillButton { visible: nb.state === "asking"; text: "Accept"; primary: true; onClicked: nearby.accept(nb.transferId) }
                                 PillButton { visible: nb.state === "asking"; text: "Decline"; onClicked: nearby.decline(nb.transferId) }
                                 PillButton { visible: nb.active && nb.state !== "asking"; text: "Stop"; onClicked: nearby.cancel(nb.transferId) }
                                 IconButton { visible: !nb.active; iconName: "close"; Accessible.name: "Remove from the list"; onClicked: nearby.dismiss(nb.transferId) }
@@ -793,7 +793,7 @@ Popup {
                     onClicked: { share.clearFinished(); nearby.clearFinished() }
                 }
                 Item { Layout.fillWidth: true }
-                PillButton { text: "Close"; checked: true; onClicked: pop.close() }
+                PillButton { text: "Close"; primary: true; onClicked: pop.close() }
             }
         }
         }
