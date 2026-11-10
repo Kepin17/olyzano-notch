@@ -5,6 +5,8 @@
 #include "AudioModels.h"
 #include "AudioPipeline.h"
 #include "AudioStore.h"
+#include "InstallQueue.h"
+#include "ModelBundles.h"
 #include "LiveSession.h"
 #include "services/Chunker.h"
 #include "MeetingRecorder.h"
@@ -45,6 +47,9 @@ class AudioController : public QObject
     Q_PROPERTY(QString lastError READ lastError NOTIFY errorChanged)
     Q_PROPERTY(QStringList warnings READ warnings NOTIFY jobChanged)
     Q_PROPERTY(QVariantList models READ models NOTIFY modelsChanged)
+    Q_PROPERTY(QVariantList aiCategories READ aiCategories CONSTANT)    // the categories of the AI models page, each with its features
+    Q_PROPERTY(QVariantList aiFeatures READ aiFeatures NOTIFY modelsChanged)
+    Q_PROPERTY(QVariantMap aiSummary READ aiSummary NOTIFY modelsChanged) // installed, on disk, what is left, and the install that is running
     Q_PROPERTY(QObject *playback READ playback CONSTANT)              // plays a recording on the default sound output (Linux); null elsewhere
     Q_PROPERTY(QString firstTab READ firstTab CONSTANT) // the tab a recording opens on (NOTCH_SHOT_TAB, for screenshots; else Summary)
     Q_PROPERTY(QStringList modelIds READ modelIds CONSTANT)           // the catalog's ids: a list that does not change while models download
@@ -54,6 +59,13 @@ class AudioController : public QObject
     Q_PROPERTY(QString quality READ quality WRITE setQuality NOTIFY settingsChanged)
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY settingsChanged)
     Q_PROPERTY(QString tmpl READ tmpl WRITE setTmpl NOTIFY settingsChanged)
+    Q_PROPERTY(bool detectSound READ detectSound WRITE setDetectSound NOTIFY settingsChanged) // tell music and other sounds from speech (when the sound model is installed)
+    Q_PROPERTY(bool soundReady READ soundReady NOTIFY modelsChanged)
+    Q_PROPERTY(QString cleanMode READ cleanMode WRITE setCleanMode NOTIFY settingsChanged) // off | denoise | vocals: done before the recognizer (when its model is installed)
+    Q_PROPERTY(bool denoiseReady READ denoiseReady NOTIFY modelsChanged)
+    Q_PROPERTY(bool vocalsReady READ vocalsReady NOTIFY modelsChanged)
+    Q_PROPERTY(bool punctuate READ punctuate WRITE setPunctuate NOTIFY settingsChanged) // marks and capitals for English text that has none
+    Q_PROPERTY(bool punctReady READ punctReady NOTIFY modelsChanged)
     Q_PROPERTY(QString speakerSplit READ speakerSplit WRITE setSpeakerSplit NOTIFY settingsChanged) // fewer | balanced | more
     Q_PROPERTY(int ramLimitMb READ ramLimitMb WRITE setRamLimitMb NOTIFY settingsChanged) // 0 = no limit
     Q_PROPERTY(bool recording READ recording NOTIFY recordingChanged)
@@ -85,6 +97,19 @@ public:
     QString lastError() const { return m_error; }
     QStringList warnings() const { return m_warnings; }
     QVariantList models() const;
+    QVariantList aiCategories() const;
+    QVariantList aiFeatures() const;
+    QVariantMap aiSummary() const;
+    // One place for every model, by feature and category: install some at once (the programs they share are downloaded once), stop, remove.
+    Q_INVOKABLE QStringList aiFeatureIds(const QString &category) const { return Audio::Bundles::featureIds(category, true); } // fixed: a list that does not change keeps the rows of a page from being rebuilt
+    Q_INVOKABLE QString dataSize(qlonglong bytes) const { return QLocale().formattedDataSize(bytes); }
+    Q_INVOKABLE void installFeatures(const QStringList &featureIds);
+    Q_INVOKABLE void installCategory(const QString &category, bool withExtras = false);
+    Q_INVOKABLE void installRecommended() { installFeatures(Audio::Bundles::recommended()); }
+    Q_INVOKABLE void installEverything() { installFeatures(Audio::Bundles::everything()); }
+    Q_INVOKABLE void cancelInstall() { m_install.cancel(); }
+    Q_INVOKABLE void removeFeature(const QString &featureId);
+    Q_INVOKABLE void clearInstallMessage() { m_installMessage.clear(); emit modelsChanged(); }
     ModelStore *modelStore() { return &m_models; } // the downloaded models and helpers, shared with what reads documents
     QObject *playback() {
 #ifdef Q_OS_LINUX
@@ -94,7 +119,7 @@ public:
 #endif
     }
     QString firstTab() const { return qEnvironmentVariable("NOTCH_SHOT_TAB", QStringLiteral("summary")); }
-    QStringList modelIds() const { QStringList ids; for (const auto &i : m_models.items()) if (i.kind != Audio::Kind::Ocr && i.kind != Audio::Kind::Vision && i.kind != Audio::Kind::Embedder && !i.id.startsWith(QLatin1String("gpu-"))) ids << i.id; return ids; } // the graphics card program has its own place (Hardware)
+    QStringList modelIds() const { QStringList ids; for (const auto &i : m_models.items()) if (i.kind != Audio::Kind::Ocr && i.kind != Audio::Kind::Vision && i.kind != Audio::Kind::Embedder && i.kind != Audio::Kind::Matting && !i.id.startsWith(QLatin1String("sound-")) && !i.id.startsWith(QLatin1String("clean-")) && !i.id.startsWith(QLatin1String("punct-")) && !i.id.startsWith(QLatin1String("gpu-")) && !i.id.startsWith(QLatin1String("onnxruntime-"))) ids << i.id; return ids; } // the graphics card program has its own place (Hardware); the picture models have theirs
     Q_INVOKABLE QVariantMap modelInfo(const QString &id) const { for (const QVariant &v : models()) if (v.toMap().value(QStringLiteral("id")).toString() == id) return v.toMap(); return {}; }
     QVariantMap readiness() const;
     QVariantMap hardware() const;
@@ -111,6 +136,16 @@ public:
     QString language() const { return m_settings.value(QStringLiteral("language"), QStringLiteral("auto")).toString(); }
     void setLanguage(const QString &l);
     QString speakerSplit() const { const QString v = m_settings.value(QStringLiteral("speakerSplit"), QStringLiteral("balanced")).toString(); return v == QLatin1String("fewer") || v == QLatin1String("more") ? v : QStringLiteral("balanced"); }
+    bool detectSound() const { return m_settings.value(QStringLiteral("detectSound"), true).toBool(); }
+    void setDetectSound(bool on) { m_settings.setValue(QStringLiteral("detectSound"), on); emit settingsChanged(); }
+    bool soundReady() const { return m_tagger.available(); }
+    QString cleanMode() const { const QString m = m_settings.value(QStringLiteral("cleanMode"), QStringLiteral("off")).toString(); return Audio::Clean::valid(m) ? m : Audio::Clean::Off; }
+    void setCleanMode(const QString &m) { m_settings.setValue(QStringLiteral("cleanMode"), Audio::Clean::valid(m) ? m : Audio::Clean::Off); emit settingsChanged(); }
+    bool denoiseReady() const { return m_cleaner.available(Audio::Clean::Denoise); }
+    bool vocalsReady() const { return m_cleaner.available(Audio::Clean::Vocals); }
+    bool punctuate() const { return m_settings.value(QStringLiteral("punctuate"), false).toBool(); }
+    void setPunctuate(bool on) { m_settings.setValue(QStringLiteral("punctuate"), on); emit settingsChanged(); }
+    bool punctReady() const { return m_punct.available(); }
     void setSpeakerSplit(const QString &v) { m_settings.setValue(QStringLiteral("speakerSplit"), v); emit settingsChanged(); }
     QString tmpl() const { return m_settings.value(QStringLiteral("template"), QStringLiteral("meeting")).toString(); }
     void setTmpl(const QString &t);
@@ -139,6 +174,14 @@ public:
     Q_INVOKABLE void copyText(const QString &text); // to the clipboard
     Q_INVOKABLE void copyNotes(); // the notes of the open recording, as Markdown, to the clipboard
     Q_INVOKABLE QString notesMarkdown() const;
+    // The open recording's transcript as a file: format "srt" | "vtt" | "txt", `sounds` keeps the lines for music and other sounds as [markers].
+    // `target` is a path or a file:// address. "" on success, else why not.
+    Q_INVOKABLE QString exportTranscript(const QString &format, bool sounds, const QString &target) const;
+    Q_INVOKABLE QString suggestedFileName(const QString &format) const; // title + extension, for the save dialog
+    // The chapters (the notes' topics that say when they begin): "youtube" | "list". "" when the notes give fewer than three.
+    Q_INVOKABLE QString chaptersText(const QString &style) const;
+    Q_INVOKABLE void copyChapters(const QString &style);
+    Q_INVOKABLE QString saveChapters(const QString &style, const QString &target) const; // "" on success
     Q_INVOKABLE void clearHistory();
     Q_INVOKABLE void remove(qlonglong id, bool deleteFiles);
     Q_INVOKABLE void rename(qlonglong id, const QString &title);
@@ -208,7 +251,14 @@ private:
     Audio::FfmpegPreprocessor m_pre;
     Audio::WhisperAsr m_asr;
     Audio::SherpaDiarizer m_diar;
+    Audio::SherpaTagger m_tagger;
+    Audio::SherpaCleaner m_cleaner;
+    Audio::SherpaPunctuator m_punct;
     Audio::LlamaSummarizer m_sum;
+    InstallQueue m_install;
+    QStringList m_installIds; // everything the running install was asked for (for its progress)
+    QString m_installMessage;
+    QStringList installedFeatures() const;
     std::atomic_bool m_cancel{false};
     int m_batchTotal = 0, m_batchDone = 0;
     QTimer m_tick;

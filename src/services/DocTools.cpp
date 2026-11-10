@@ -6,8 +6,11 @@
 #include "services/FileService.h"
 
 #include <QDir>
+#include <QScopeGuard>
 #include <QFileInfo>
 #include <QImageReader>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QLocale>
 #include <QMimeDatabase>
 #include <QTextDocument>
@@ -117,6 +120,186 @@ QString compressPdf(const QString &pdf, const QString &out, const QString &level
         return QStringLiteral("already as small as it gets");
     }
     return {};
+}
+
+QString watermarkPdf(const QString &pdf, const QString &out, const Watermark::Options &options)
+{
+    if (const QString bad = Watermark::validate(options.text); !bad.isEmpty())
+        return bad;
+    QFile head(pdf);
+    if (!head.open(QIODevice::ReadOnly) || !head.read(1024).contains("%PDF-"))
+        return QStringLiteral("this is not a PDF");
+    head.close();
+    const int pages = pdfPageCount(pdf);
+    if (pages < 1)
+        return pdfStatus(pdf) == QLatin1String("protected") ? QStringLiteral("this PDF is protected with a password: unlock it first (Convert → Protect)") : QStringLiteral("cannot read the PDF (it is damaged)");
+    QList<int> chosen; // empty: every page
+    if (!options.pages.isEmpty()) {
+        QString err;
+        chosen = parsePageRanges(options.pages, pages, &err);
+        if (chosen.isEmpty())
+            return err;
+        if (chosen.size() == pages)
+            chosen.clear();
+    }
+    QTemporaryDir tmp;
+    if (!tmp.isValid())
+        return QStringLiteral("cannot make a work folder");
+    const QString ps = tmp.filePath(QStringLiteral("watermark.ps"));
+    QFile f(ps);
+    if (!f.open(QIODevice::WriteOnly) || f.write(Watermark::postscript(options, chosen).toLatin1()) < 0)
+        return QStringLiteral("cannot write the work file");
+    f.close();
+    const QString tmpOut = tmp.filePath(QStringLiteral("out.pdf"));
+    if (const QString err = run(QStringLiteral("gs"), Watermark::gsArgs(ps, pdf, tmpOut), nullptr, 600000); !err.isEmpty())
+        return err;
+    if (QFileInfo(tmpOut).size() == 0 || pdfPageCount(tmpOut) != pages)
+        return QStringLiteral("the watermark could not be added to this PDF");
+    QFile::remove(out);
+    return QFile::copy(tmpOut, out) ? QString() : QStringLiteral("cannot write %1").arg(QFileInfo(out).fileName());
+}
+
+QString stampPdf(const QString &pdf, const QString &out, const Stamp::Options &options)
+{
+    Stamp::Picture picture;
+    if (options.picture) {
+        QImageReader reader(options.image);
+        reader.setAutoTransform(true);
+        if (reader.size().isValid() && qint64(reader.size().width()) * reader.size().height() > 40000000)
+            return QStringLiteral("the picture is too large");
+        picture = Stamp::preparePicture(reader.read());
+        if (picture.isEmpty())
+            return QStringLiteral("cannot read the picture of the signature");
+    } else if (const QString bad = Stamp::validate(options.text); !bad.isEmpty()) {
+        return bad;
+    }
+    QFile head(pdf);
+    if (!head.open(QIODevice::ReadOnly) || !head.read(1024).contains("%PDF-"))
+        return QStringLiteral("this is not a PDF");
+    head.close();
+    const int pages = pdfPageCount(pdf);
+    if (pages < 1)
+        return pdfStatus(pdf) == QLatin1String("protected") ? QStringLiteral("this PDF is protected with a password: unlock it first (Convert → Protect)") : QStringLiteral("cannot read the PDF (it is damaged)");
+    QList<int> chosen; // empty: every page
+    if (options.pages == QLatin1String("last")) {
+        chosen = {pages};
+    } else if (options.pages == QLatin1String("first")) {
+        chosen = {1};
+    } else if (options.pages != QLatin1String("all")) {
+        QString err;
+        chosen = parsePageRanges(options.pages, pages, &err);
+        if (chosen.isEmpty())
+            return err;
+    }
+    if (chosen.size() == pages)
+        chosen.clear();
+    QTemporaryDir tmp;
+    if (!tmp.isValid())
+        return QStringLiteral("cannot make a work folder");
+    const QString ps = tmp.filePath(QStringLiteral("stamp.ps"));
+    QFile f(ps);
+    if (!f.open(QIODevice::WriteOnly) || f.write(Stamp::postscript(options, chosen, picture).toLatin1()) < 0)
+        return QStringLiteral("cannot write the work file");
+    f.close();
+    const QString tmpOut = tmp.filePath(QStringLiteral("out.pdf"));
+    if (const QString err = run(QStringLiteral("gs"), Stamp::gsArgs(ps, pdf, tmpOut), nullptr, 600000); !err.isEmpty())
+        return err;
+    if (QFileInfo(tmpOut).size() == 0 || pdfPageCount(tmpOut) != pages)
+        return QStringLiteral("the stamp could not be added to this PDF");
+    QFile::remove(out);
+    return QFile::copy(tmpOut, out) ? QString() : QStringLiteral("cannot write %1").arg(QFileInfo(out).fileName());
+}
+
+QString pdfStatus(const QString &pdf)
+{
+    const auto r = ProcessRunner::run(QStringLiteral("pdfinfo"), {pdf}, 20000);
+    if (r.ok)
+        return QStringLiteral("ok");
+    return PdfSecurity::isPasswordProblem(QString::fromLocal8Bit(r.err)) ? QStringLiteral("protected") : QStringLiteral("damaged");
+}
+
+namespace {
+bool hasPdfHeader(const QString &pdf)
+{
+    QFile head(pdf);
+    return head.open(QIODevice::ReadOnly) && head.read(1024).contains("%PDF-");
+}
+
+// Runs ghostscript with the passwords in an argument file of its own (mode 0600, in a folder only this account can enter); the result stays in `tmp`.
+ProcessRunner::Result runWithArgFile(QTemporaryDir &tmp, const QString &argText, const QString &in, const QString &tmpOut)
+{
+    const QString argFile = tmp.filePath(QStringLiteral("args.txt"));
+    QFile f(argFile);
+    if (!f.open(QIODevice::WriteOnly) || !f.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner) || f.write(argText.toUtf8()) < 0) {
+        ProcessRunner::Result r;
+        r.error = QStringLiteral("cannot write the work file");
+        return r;
+    }
+    f.close();
+#ifdef Q_OS_WIN
+    const QString gs = QStringLiteral("gswin64c");
+#else
+    const QString gs = QStringLiteral("gs");
+#endif
+    ProcessRunner::Result r = ProcessRunner::run(gs, PdfSecurity::gsArgs(argFile, in, tmpOut), 600000);
+    QFile::remove(argFile);
+    if (r.failedToStart)
+        r.error = QStringLiteral("gs is not installed (see the README)");
+    return r;
+}
+}
+
+QString protectPdf(const QString &pdf, const QString &out, const PdfSecurity::LockOptions &options)
+{
+    if (const QString bad = PdfSecurity::validatePassword(options.userPassword); !bad.isEmpty())
+        return bad;
+    if (!hasPdfHeader(pdf))
+        return QStringLiteral("this is not a PDF");
+    const QString status = pdfStatus(pdf);
+    if (status == QLatin1String("protected"))
+        return QStringLiteral("this PDF already has a password: unlock it first");
+    if (status != QLatin1String("ok"))
+        return QStringLiteral("cannot read the PDF (it is damaged)");
+    PdfSecurity::LockOptions o = options;
+    if (o.ownerPassword.isEmpty()) // nobody knows it: the permissions below are then not open to change by whoever opens the file
+        o.ownerPassword = QUuid::createUuid().toString(QUuid::WithoutBraces).remove(u'-').left(24);
+    QTemporaryDir tmp;
+    if (!tmp.isValid())
+        return QStringLiteral("cannot make a work folder");
+    const QString tmpOut = tmp.filePath(QStringLiteral("out.pdf"));
+    const auto r = runWithArgFile(tmp, PdfSecurity::lockArgs(o), pdf, tmpOut);
+    if (!r.ok || QFileInfo(tmpOut).size() == 0)
+        return r.error.isEmpty() ? QStringLiteral("the PDF could not be locked") : QStringLiteral("the PDF could not be locked (%1)").arg(r.error);
+    if (pdfStatus(tmpOut) != QLatin1String("protected")) // what was written must ask for the password
+        return QStringLiteral("the PDF could not be locked");
+    QFile::remove(out);
+    return QFile::copy(tmpOut, out) ? QString() : QStringLiteral("cannot write %1").arg(QFileInfo(out).fileName());
+}
+
+QString unlockPdf(const QString &pdf, const QString &out, const QString &password)
+{
+    if (password.isEmpty())
+        return QStringLiteral("Type the password of the PDF.");
+    if (!hasPdfHeader(pdf))
+        return QStringLiteral("this is not a PDF");
+    const QString status = pdfStatus(pdf);
+    if (status == QLatin1String("ok"))
+        return QStringLiteral("this PDF has no password");
+    if (status != QLatin1String("protected"))
+        return QStringLiteral("cannot read the PDF (it is damaged)");
+    QTemporaryDir tmp;
+    if (!tmp.isValid())
+        return QStringLiteral("cannot make a work folder");
+    const QString tmpOut = tmp.filePath(QStringLiteral("out.pdf"));
+    const auto r = runWithArgFile(tmp, PdfSecurity::unlockArgs(password), pdf, tmpOut);
+    if (r.failedToStart)
+        return r.error;
+    if (!r.ok || PdfSecurity::isPasswordProblem(QString::fromLocal8Bit(r.err)) || pdfPageCount(tmpOut) < 1) { // a wrong password still gives exit 0 and an empty page
+        QFile::remove(tmpOut);
+        return QStringLiteral("the password did not work");
+    }
+    QFile::remove(out);
+    return QFile::copy(tmpOut, out) ? QString() : QStringLiteral("cannot write %1").arg(QFileInfo(out).fileName());
 }
 
 QString extractArchive(const QString &file, const QString &outDir)
@@ -350,6 +533,50 @@ QString convertFile(const QString &in, const QString &name, const QString &base,
         if (err.isEmpty()) done(out);
         return err;
     }
+    if (kind == Kind::Pdf && (ext == QLatin1String("docx") || ext == QLatin1String("odt"))) {
+        constexpr int MaxPages = 200;
+        const int pages = pdfPageCount(in);
+        if (pages < 1)
+            return QStringLiteral("cannot read the PDF (damaged or protected with a password)");
+        if (pages > MaxPages)
+            return QStringLiteral("the PDF has %1 pages; up to %2 are converted at once (extract the pages you need first)").arg(pages).arg(MaxPages);
+        const QString dir = workDir + QStringLiteral("/office-") + QUuid::createUuid().toString(QUuid::WithoutBraces);
+        QDir().mkpath(dir);
+        const auto cleanup = qScopeGuard([&] { QDir(dir).removeRecursively(); });
+        // a page with no text is a picture: the words are read with OCR and only they come over (no layout)
+        QByteArray words;
+        run(QStringLiteral("pdftotext"), {in, QStringLiteral("-")}, &words, 120000);
+        QString source = in, filter = QStringLiteral("writer_pdf_import");
+        if (QString::fromUtf8(words).simplified().size() < 20) {
+            QString text;
+            if (const QString err = recognizeText(in, true, &text); !err.isEmpty())
+                return QStringLiteral("this PDF is a scan and reading it failed: %1").arg(err);
+            if (text.simplified().isEmpty())
+                return QStringLiteral("no text was found in this PDF");
+            source = dir + QStringLiteral("/scan.txt");
+            QFile f(source);
+            if (!f.open(QIODevice::WriteOnly) || f.write(text.toUtf8()) < 0)
+                return QStringLiteral("cannot write the work file");
+            f.close();
+            filter.clear();
+        }
+        QStringList args{QStringLiteral("--headless"), QStringLiteral("--norestore"), QStringLiteral("--nologo"),
+                         QStringLiteral("-env:UserInstallation=") + QUrl::fromLocalFile(dir + QStringLiteral("/profile")).toString()};
+        if (!filter.isEmpty())
+            args << QStringLiteral("--infilter=") + filter;
+        args << QStringLiteral("--convert-to") << (ext == QLatin1String("docx") ? QStringLiteral("docx:MS Word 2007 XML") : QStringLiteral("odt:writer8"))
+             << QStringLiteral("--outdir") << dir + QStringLiteral("/out") << source;
+        if (const QString err = runEngine(Engine::Office, args, 300000); !err.isEmpty())
+            return err;
+        const QStringList made = QDir(dir + QStringLiteral("/out")).entryList({QStringLiteral("*.") + ext}, QDir::Files);
+        if (made.isEmpty())
+            return QStringLiteral("LibreOffice could not convert this file");
+        const QString out = reserve(stem + u'.' + ext);
+        if (!QFile::rename(dir + QStringLiteral("/out/") + made.first(), out))
+            return QStringLiteral("cannot write %1").arg(QFileInfo(out).fileName());
+        done(out);
+        return {};
+    }
     if (kind == Kind::Pdf) { // one picture per page
         constexpr int MaxPages = 200;
         const int pages = pdfPageCount(in);
@@ -550,6 +777,65 @@ ToolResult runTool(const QString &kind, const QList<ToolInput> &inputs, const QS
         }
         r.summary = QStringLiteral("Converted %1 file%2 → %3 file%4").arg(files).arg(files == 1 ? QString() : QStringLiteral("s"))
                         .arg(r.outputs.size()).arg(r.outputs.size() == 1 ? QString() : QStringLiteral("s"));
+    } else if (kind == QLatin1String("watermark")) {
+        const Watermark::Options options = Watermark::fromJson(option);
+        QTemporaryDir tmp; // Word and the like become a PDF here first
+        for (const ToolInput &in : inputs) {
+            QString source = in.path;
+            if (!in.name.endsWith(QLatin1String(".pdf"), Qt::CaseInsensitive)) {
+                QList<QPair<QString, QString>> made;
+                const auto reserve = [&](const QString &name) { return tmp.filePath(FileService::uniqueName(tmp.path(), FileService::safeFileName(name))); };
+                if (const QString err = convertFile(in.path, in.name, in.base, QStringLiteral("pdf"), tmp.path(), reserve, &made); !err.isEmpty() || made.isEmpty()) {
+                    r.error = in.name + QStringLiteral(": ") + (err.isEmpty() ? QStringLiteral("cannot make a PDF") : err);
+                    continue;
+                }
+                source = made.first().first;
+            }
+            const QString target = out(in.base + QStringLiteral(" (%1).pdf").arg(Watermark::label(options.text)));
+            if (const QString err = watermarkPdf(source, target, options); !err.isEmpty()) {
+                r.outputs.removeLast();
+                r.error = in.name + QStringLiteral(": ") + err;
+            }
+        }
+        r.summary = QStringLiteral("Added “%1” to %2 PDF%3").arg(options.text.simplified()).arg(r.outputs.size()).arg(r.outputs.size() == 1 ? QString() : QStringLiteral("s"));
+    } else if (kind == QLatin1String("stamp")) {
+        const Stamp::Options stamp = Stamp::fromJson(option);
+        for (const ToolInput &in : inputs) {
+            const QString source = in.path;
+            if (!in.name.endsWith(QLatin1String(".pdf"), Qt::CaseInsensitive)) {
+                r.error = in.name + QStringLiteral(": only a PDF can be stamped (convert it to PDF first)");
+                continue;
+            }
+            const QString target = out(in.base + QStringLiteral(" (%1).pdf").arg(Stamp::label(stamp)));
+            if (const QString err = stampPdf(source, target, stamp); !err.isEmpty()) {
+                r.outputs.removeLast();
+                r.error = in.name + QStringLiteral(": ") + err;
+            }
+        }
+        r.summary = stamp.picture ? QStringLiteral("Signature added") : QStringLiteral("Stamp “%1” added").arg(stamp.text.simplified());
+    } else if (kind == QLatin1String("lock") || kind == QLatin1String("unlock")) {
+        for (const ToolInput &in : inputs) {
+            QString err;
+            QString target;
+            if (kind == QLatin1String("lock")) {
+                const QJsonObject j = QJsonDocument::fromJson(option.toUtf8()).object();
+                PdfSecurity::LockOptions lock;
+                lock.userPassword = j.value(QStringLiteral("user")).toString();
+                lock.allowPrint = j.value(QStringLiteral("print")).toBool(true);
+                lock.allowCopy = j.value(QStringLiteral("copy")).toBool(true);
+                lock.allowChange = j.value(QStringLiteral("change")).toBool(true);
+                target = out(in.base + QStringLiteral(" (locked).pdf"));
+                err = protectPdf(in.path, target, lock);
+            } else {
+                target = out(in.base + QStringLiteral(" (unlocked).pdf"));
+                err = unlockPdf(in.path, target, option);
+            }
+            if (!err.isEmpty()) {
+                r.outputs.removeLast();
+                r.error = in.name + QStringLiteral(": ") + err;
+            }
+        }
+        r.summary = kind == QLatin1String("lock") ? QStringLiteral("PDF locked with a password") : QStringLiteral("PDF opened without a password");
     } else if (kind == QLatin1String("resize")) {
         for (const ToolInput &in : inputs) {
             const int width = option.toInt();

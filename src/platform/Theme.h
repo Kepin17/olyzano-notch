@@ -25,6 +25,10 @@ class Theme : public QObject
     Q_PROPERTY(QColor info READ info NOTIFY paletteChanged)
     Q_PROPERTY(QColor media READ media NOTIFY paletteChanged)
     Q_PROPERTY(int chipRadius READ chipRadius NOTIFY metricsChanged)
+    // The measures every page shares: the height of a button or a field, the room between groups, the room at the sides of a page.
+    Q_PROPERTY(int controlHeight READ controlHeight CONSTANT)
+    Q_PROPERTY(int gap READ gap CONSTANT)
+    Q_PROPERTY(int pagePadding READ pagePadding CONSTANT)
     // One shape language: corner radii and gaps come from these (Washi is the sharper one).
     Q_PROPERTY(int radiusSm READ radiusSm NOTIFY metricsChanged) // small controls, thumbnails
     Q_PROPERTY(int radiusMd READ radiusMd NOTIFY metricsChanged) // cards, tiles, menus
@@ -75,7 +79,10 @@ public:
     QColor warn() const { return role(&Palette::warn); }
     QColor info() const { return role(&Palette::info); }
     QColor media() const { return role(&Palette::media); }
-    int chipRadius() const { return corner(washi() ? 6 : 13); }
+    int chipRadius() const { return corner(washi() ? 6 : 16); }
+    int controlHeight() const { return 32; }
+    int gap() const { return 12; }
+    int pagePadding() const { return 16; }
     // Corner style (Settings -> Appearance): every radius below is multiplied by this (0.4 sharp, 1, 1.6 round).
     void setCorners(double scale)
     {
@@ -96,9 +103,9 @@ public:
         const double black = (l + 0.05) / (0.006 + 0.05); // #111113
         return white >= black ? QColor(QStringLiteral("#ffffff")) : QColor(QStringLiteral("#111113"));
     }
-    int radiusSm() const { return corner(washi() ? 4 : 8); }
-    int radiusMd() const { return corner(washi() ? 6 : 12); }
-    int radiusLg() const { return corner(washi() ? 8 : 18); }
+    int radiusSm() const { return corner(washi() ? 4 : 10); }
+    int radiusMd() const { return corner(washi() ? 6 : 14); }
+    int radiusLg() const { return corner(washi() ? 8 : 22); }
     QString displayFont() const { return washi() ? QStringLiteral("Noto Serif CJK JP") : QString(); }
     QColor accentSoft() const { return withAlpha(accent(), dark() ? 0.30 : 0.18); }
     QColor accentFaint() const { return withAlpha(accent(), 0.10); }
@@ -110,7 +117,7 @@ public:
     QColor accentText() const { return dark() ? accent() : accent().darker(165); }
     QColor hoverFill() const { return withAlpha(dark() ? QColor(255, 255, 255) : QColor(0, 0, 0), dark() ? 0.07 : 0.06); }
     QColor pressFill() const { return withAlpha(dark() ? QColor(255, 255, 255) : QColor(0, 0, 0), dark() ? 0.12 : 0.10); }
-    QColor hairline() const { return withAlpha(dark() ? QColor(255, 255, 255) : QColor(0, 0, 0), 0.08); }
+    QColor hairline() const { return withAlpha(dark() ? QColor(255, 255, 255) : QColor(0, 0, 0), 0.05); } // quiet: surfaces are told apart by their fill, the line is only a hint
     QColor island() const { return m_glass ? withAlpha(lifted(role(&Palette::island)), GlassModel::islandAlpha(m_glassStrength, m_blur)) : role(&Palette::island); }
     QColor text() const { return role(&Palette::text); }
     QColor textSoft() const { return role(&Palette::textSoft); }

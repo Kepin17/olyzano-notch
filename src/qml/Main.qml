@@ -264,6 +264,9 @@ Window {
     property int dialogs: 0                                                  // file dialogs open now: the notch steps under the windows so they are not hidden by it
     onDialogsChanged: desktop.setBelowWindows(root, dialogs > 0)
     property var audioOpen: null                                              // {id, sec}: a recording to open, at that second (from an answer): the Audio page takes it
+    property string docsAction: ""                                          // with docsTab "tools": the action to open ("mark", "stamp", "protect"…)
+    property string cameraSection: "camera"                                // the Camera page: camera | record
+    property string docsTab: ""                                             // with docsPick: the tab of the Documents page that takes the file ("" = study notes, "tools" = PDF tools)
     property string docsPick: ""                                            // a file of the shelf to summarize: the Documents page takes it when it opens
     property string cloudNote: ""                                           // the last thing that went wrong there, in the host's or the server's words
     // Dropdowns (AgentChoice) report here while their list is open: it hangs below the island, so without it the panel closes
@@ -299,7 +302,7 @@ Window {
     readonly property bool engaged: !gaming.active && (pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt" && mode !== "search" && !floating)
                                     || dragOver || anyMenu || (dragging && mode === "open")
                                     // (the Dev hub closes like every page when the pointer leaves; a dialog or menu in it, or Pin, keeps it open)
-                                    || saveDialog.visible || addDialog.visible)
+                                    || dialogs > 0) // any file dialog, the ones of the pages too
     // hidden: only the top-edge strip is live. peek: copy in progress. open: full panel.
     // toast: a short system alert (charger, Bluetooth). Shown even while hidden, like Dynamic Island.
     property var toast: null // {kind, title, detail, icon, art, level, ms}
@@ -632,6 +635,8 @@ Window {
                      title: assistant.state === "listening" ? "Say: “" + assistant.hint + "”" : assistant.state === "thinking" ? (assistant.heard !== "" ? assistant.heard : "Thinking…") : assistant.result }
         if (call)
             return { kind: "call", title: call.who, detail: "Calling", progress: -1, color: theme.success }
+        if (recorder.recording) // the screen recorder runs: the way back to it, also with the panel closed
+            return { kind: "record", title: recorder.target !== "" ? "Recording " + recorder.target : "Recording screen", detail: clock(recorder.elapsed * 1000), progress: -1, color: theme.danger }
         if (wellbeing.state === "break") {
             const tips = wellbeing.tips
             const total = wellbeing.breakMinutes * 60000
@@ -763,6 +768,11 @@ Window {
         })
     }
     function debugShare() { sharePopup().openFor([]) } // `notch --shot-page file.png share`: the share window, for a picture
+    function showRecorder() { // Camera -> Record screen, with the recording on it
+        cameraSection = "record"
+        pinned = true
+        page = "camera"
+    }
     function showShares() {
         pinned = true // opens the panel and keeps it while the shares are looked at
         page = "shelf"
@@ -900,6 +910,10 @@ Window {
                 page = "tasks" // pointing at a task reminder opens the list
             else if (mode === "peek" && live && live.kind === "timer")
                 page = "timer" // and the running timer's pill opens the timer
+            else if (mode === "peek" && live && live.kind === "record") {
+                cameraSection = "record" // and the recording's pill opens the recorder
+                page = "camera"
+            }
             open = true
         } else {
             closeTimer.restart()
@@ -1788,7 +1802,7 @@ Window {
                 lively: activities.animations && liveRow.visible && !memtune.running
             }
             PulseDot {
-                visible: liveRow.l.kind === "copy" || liveRow.l.kind === "call"
+                visible: liveRow.l.kind === "copy" || liveRow.l.kind === "call" || liveRow.l.kind === "record"
                 color: liveRow.l.color
             }
             LineIcon {
@@ -1798,7 +1812,7 @@ Window {
                 color: liveRow.l.color
             }
             LineIcon {
-                visible: !(liveRow.l.kind === "copy" || liveRow.l.kind === "call" || liveRow.l.kind === "share")
+                visible: !(liveRow.l.kind === "copy" || liveRow.l.kind === "call" || liveRow.l.kind === "share" || liveRow.l.kind === "record")
                 glyph: liveRow.l.kind === "assistant" ? (assistant.state === "error" ? "mic-off" : "mic") : liveRow.l.kind === "timer" ? "timer" : liveRow.l.kind === "doomscroll" ? "phone" : liveRow.l.kind === "break" ? "heart" : liveRow.l.kind === "download" ? "download" : "share"
                 sourceSize: Qt.size(14, 14)
                 color: liveRow.l.color
@@ -1833,7 +1847,7 @@ Window {
                 text: liveRow.l.detail
                 elide: Text.ElideRight
                 Layout.maximumWidth: 190
-                readonly property bool clockLike: liveRow.l.kind === "timer" || liveRow.l.kind === "break"
+                readonly property bool clockLike: liveRow.l.kind === "timer" || liveRow.l.kind === "break" || liveRow.l.kind === "record"
                 color: clockLike || liveRow.l.kind === "call" ? liveRow.l.color : root.textSecondary
                 font.pixelSize: 12
                 font.weight: clockLike ? Font.DemiBold : Font.Normal
@@ -2748,8 +2762,8 @@ Window {
                 // ---- Camera: a mirror, and a photo booth ----
                 Loader {
                     id: cameraPageLoader
-                    active: root.page === "camera"
-                    visible: active // an idle Loader is still a layout item: its spacing left a gap above the page
+                    active: root.page === "camera" || recorder.engaged // while a recording or a preview runs the page stays, out of sight, also when the notch is closed
+                    visible: root.page === "camera" // an idle Loader is still a layout item: its spacing left a gap above the page
                     Layout.fillWidth: true
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
@@ -3573,6 +3587,12 @@ Window {
             onTapped: root.showShares()
         }
 
+        // A click on the "Recording" pill opens the recorder, however long ago the panel was closed.
+        TapHandler {
+            enabled: root.mode === "peek" && root.live && root.live.kind === "record"
+            onTapped: root.showRecorder()
+        }
+
         // A click on the capsule while music plays goes straight to the player (without waiting for the dwell).
         TapHandler {
             enabled: root.mode === "idle" && root.musicShown
@@ -3588,6 +3608,7 @@ Window {
             onTapped: {
                 if (root.musicShown) root.page = "music"
                 else if (root.live && root.live.kind === "timer") root.page = "timer"
+                else if (root.live && root.live.kind === "record") { root.cameraSection = "record"; root.page = "camera" }
                 else if (root.taskShown && !root.showPrayer) root.page = "tasks"
                 root.dwelled = true
             }
@@ -3866,6 +3887,7 @@ Window {
         readonly property int n: mimes.length
         readonly property bool allPdf: n > 0 && mimes.every(m => m === "application/pdf")
         readonly property bool allImages: n > 0 && mimes.every(m => m.startsWith("image/"))
+        readonly property bool oneWord: n === 1 && /wordprocessingml|opendocument\.text|msword|rtf/.test(mimes[0])
 
         DarkMenu {
             id: convertMenu
@@ -3886,6 +3908,7 @@ Window {
                 onObjectRemoved: (index, object) => convertMenu.removeItem(object)
             }
         }
+        Action { text: "PDF with watermark…"; enabled: toolsMenu.oneWord; onTriggered: { root.docsAction = "mark"; root.docsTab = "tools"; root.docsPick = toolsMenu.targets[0]; root.page = "docs" } }
         DarkMenu {
             title: "PDF tools"
             enabled: toolsMenu.allPdf
@@ -3897,7 +3920,10 @@ Window {
                 Action { text: "Max (smallest file)"; onTriggered: root.runTool("compress", "max") }
             }
             Action { text: "Split into pages"; enabled: toolsMenu.n === 1; onTriggered: root.runTool("split") }
-            Action { text: "Summarize as study notes…"; enabled: toolsMenu.n === 1; onTriggered: { root.docsPick = toolsMenu.targets[0]; root.page = "docs" } }
+            Action { text: "Summarize as study notes…"; enabled: toolsMenu.n === 1; onTriggered: { root.docsTab = ""; root.docsPick = toolsMenu.targets[0]; root.page = "docs" } }
+            Action { text: "Add watermark…"; enabled: toolsMenu.n === 1; onTriggered: { root.docsAction = "mark"; root.docsTab = "tools"; root.docsPick = toolsMenu.targets[0]; root.page = "docs" } }
+            Action { text: "Add stamp or signature…"; enabled: toolsMenu.n === 1; onTriggered: { root.docsAction = "stamp"; root.docsTab = "tools"; root.docsPick = toolsMenu.targets[0]; root.page = "docs" } }
+            Action { text: "Lock or unlock with a password…"; enabled: toolsMenu.n === 1; onTriggered: { root.docsAction = "protect"; root.docsTab = "tools"; root.docsPick = toolsMenu.targets[0]; root.page = "docs" } }
             Action {
                 text: "Extract pages…"
                 enabled: toolsMenu.n === 1
@@ -3921,6 +3947,7 @@ Window {
             Action { text: "Resize to 1920 px wide"; onTriggered: root.runTool("resize", "1920") }
             Action { text: "Resize to 1280 px wide"; onTriggered: root.runTool("resize", "1280") }
             Action { text: "Resize to 800 px wide"; onTriggered: root.runTool("resize", "800") }
+            Action { text: "Remove background…"; enabled: toolsMenu.n === 1; onTriggered: { root.docsAction = "bg"; root.docsTab = "tools"; root.docsPick = toolsMenu.targets[0]; root.page = "docs" } }
         }
         DarkMenu {
             title: "Archives"

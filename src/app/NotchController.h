@@ -1,5 +1,7 @@
 #pragma once
 
+#include "services/ConvertModel.h"
+#include "services/DocTools.h"
 #include "app/FileFilter.h"
 #include "models/FileItemModel.h"
 #include "repositories/FileRepository.h"
@@ -202,13 +204,19 @@ public:
     Q_INVOKABLE QString typeGroup(const QString &mimeType) const;
     // What the selected files can be converted to: [{id, label, group, available, hint}], empty for a mixed selection.
     Q_INVOKABLE QVariantList convertTargets(const QStringList &ids) const;
+    Q_INVOKABLE QVariantList convertTargetsForFile(const QString &fileUrl) const; // for a file that is not on the shelf (a path or file:// URL)
+    Q_INVOKABLE QString pdfState(const QString &idOrFileUrl) const;                // "ok" | "protected" | "damaged" (a shelf file or a file anywhere)
+    Q_INVOKABLE QVariantMap previewPage(const QString &idOrFileUrl, int page);     // page 0 = the last one; {ok, url, pages, page, aspect}: a small picture of the page
+    Q_INVOKABLE QString signaturePreview(const QString &imageFileUrl);             // the signature picture with its white left out, as a file URL ("" if unreadable)
+    Q_INVOKABLE QVariantList convertibleItems() const;                            // shelf files that can be converted to something: {id, name, sizeText, addedText, kind}
+    Q_INVOKABLE void runToolOnFiles(const QString &kind, const QStringList &fileUrls, const QString &option = {}); // like runTool, for files anywhere; the result goes on the shelf
     Q_INVOKABLE int pageCount(const QString &id) const;
     // A shelf file made ready for a long job that reads it: {ok, path, name, base, vault}; ok is false when it is not there (or locked away).
     Q_INVOKABLE QVariantMap documentInfo(const QString &id) const;
     // Puts a document that was made on the shelf (in the open category). Whether it was added; *idOut is its id.
     bool addDocument(const QString &name, const QString &mimeType, const QByteArray &bytes, const QString &note, QString *idOut = nullptr);
     // The PDFs that are ready on the shelf, newest first (at most 40): [{id, name, sizeText, addedText}]
-    Q_INVOKABLE QVariantList pdfItems() const;
+    Q_INVOKABLE QVariantList pdfItems(bool withWord = false) const; // withWord: Word / OpenDocument text files too, each with kind "pdf" | "word"
     // A toast: "Summary ready".
     Q_INVOKABLE void debugLog(const QString &what); // a line in height.log (data folder), for a layout that goes wrong only in real use
     Q_INVOKABLE void announce(const QString &title, const QString &detail, const QString &icon = {}) { emit notice(title, detail, icon, QString()); }
@@ -283,6 +291,10 @@ signals:
     void sound(const QString &name); // "drop" (dropped or pasted onto the shelf), "receive" (a phone or computer sent files)
 
 private:
+    QString pathFor(const QString &idOrFileUrl) const;
+    int m_previewSerial = 0;
+    QVariantList targetRows(const QList<ConvertModel::Pick> &picks) const;
+    void startTool(const QString &kind, const QList<DocTools::ToolInput> &inputs, const QString &option, bool fromVault);
     void addLocalFile(const QString &path, const QString &categoryId, QStringList &errors);
     void startCopy(const FileItem &item);
     void startDownload(const QUrl &url, const QString &categoryId);

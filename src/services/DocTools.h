@@ -1,5 +1,9 @@
 #pragma once
 
+#include "services/PdfSecurity.h"
+#include "services/Stamp.h"
+#include "services/Watermark.h"
+
 #include <QList>
 #include <functional>
 #include <QPair>
@@ -22,6 +26,16 @@ QString extractArchive(const QString &file, const QString &outDir);
 int pdfPageCount(const QString &pdf);                                 // -1 if unreadable
 QString splitPdf(const QString &pdf, const QString &outDir, const QString &baseName, QStringList *written);
 QString extractPages(const QString &pdf, const QList<int> &pages, const QString &out);
+// Writes `out` as `pdf` with the watermark on the chosen pages (ghostscript; the original is not touched, interactive forms and links may not survive).
+QString watermarkPdf(const QString &pdf, const QString &out, const Watermark::Options &options);
+// Writes `out` as `pdf` with a stamp or a picture of a signature at a place of the page (ghostscript; not a cryptographic signature).
+QString stampPdf(const QString &pdf, const QString &out, const Stamp::Options &options);
+// A PDF written again with a password to open it (128-bit RC4: keeps it from casual readers, not from a determined attacker), and the PDF opened again
+// without one. Passwords go to ghostscript in a private argument file, never on a command line. `out` is not left behind when it fails.
+QString protectPdf(const QString &pdf, const QString &out, const PdfSecurity::LockOptions &options);
+QString unlockPdf(const QString &pdf, const QString &out, const QString &password);
+// "ok" | "protected" (needs a password) | "damaged"
+QString pdfStatus(const QString &pdf);
 // OCR of an image, or of a PDF's pages (rendered at 300 dpi). Text in *text.
 QString recognizeText(const QString &file, bool isPdf, QString *text);
 // format: "png" | "jpg" | "webp"; maxWidth 0 keeps the size (never upscales).
@@ -47,7 +61,8 @@ struct ToolResult {
 // Runs one tool on inputs, writing results into workDir. kind: merge | images-pdf | compress (option:
 // low | medium | max, empty = medium) | split | extract (option: page ranges) | unzip |
 // ocr-copy | ocr-note | convert (option: target id from ConvertModel) | resize (option: max width) |
-// compress-image (option: low | medium | max).
+// compress-image (option: low | medium | max) | watermark (option: Watermark::toJson; Office documents are made PDF first) |
+// stamp (option: Stamp::toJson) | lock (option: JSON {user, print, copy, change}) | unlock (option: the password).
 ToolResult runTool(const QString &kind, const QList<ToolInput> &inputs, const QString &option, const QString &workDir);
 
 // "2-5, 8, 10-" → 1-based page numbers within 1..pageCount, in order, no duplicates.

@@ -10,23 +10,23 @@ Rectangle {
     property bool glass: false
     default property alias content: body.data
     Layout.fillWidth: true
-    implicitHeight: body.implicitHeight + 24
+    implicitHeight: body.implicitHeight + 32
     radius: theme.radiusMd
     color: theme.card
-    border.width: 1
+    border.width: theme.washi ? 1 : 0
     border.color: theme.outline
     GlassLayer { anchors.fill: parent; radius: theme.radiusMd; visible: card.glass }
     ColumnLayout {
         id: body
-        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 12 }
-        spacing: 10
+        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 16 }
+        spacing: 12
         Text {
             visible: card.title !== ""
-            text: card.title.toUpperCase()
-            color: theme.textDim
-            font.pixelSize: 10
+            text: card.title
+            color: theme.text
+            font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
+            font.pixelSize: 15
             font.weight: Font.DemiBold
-            font.letterSpacing: 1
         }
     }
 }

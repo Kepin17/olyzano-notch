@@ -242,7 +242,7 @@ QList<AudioStore::Meeting> AudioStore::meetings(const QString &search) const
     QList<Meeting> out;
     QSqlQuery q(QSqlDatabase::database(m_conn));
     QString sql = QStringLiteral("SELECT %1, (SELECT substr(executive_summary,1,200) FROM summaries s WHERE s.meeting_id=meetings.id), "
-                                 "(SELECT COUNT(*) FROM speakers p WHERE p.meeting_id=meetings.id), "
+                                 "(SELECT COUNT(*) FROM speakers p WHERE p.meeting_id=meetings.id AND p.speaker_label<>'SOUND'), "
                                  "(SELECT COUNT(*) FROM transcript_segments t WHERE t.meeting_id=meetings.id) FROM meetings").arg(QLatin1String(MeetingColumns));
     const QString like = QLatin1Char('%') + QString(search).replace(u'\\', QStringLiteral("\\\\")).replace(u'%', QStringLiteral("\\%")).replace(u'_', QStringLiteral("\\_")) + QLatin1Char('%');
     if (!search.trimmed().isEmpty())
@@ -362,7 +362,7 @@ QStringList AudioStore::speakerLabels(qint64 meetingId) const
 {
     QStringList out;
     QSqlQuery q(QSqlDatabase::database(m_conn));
-    q.prepare(QStringLiteral("SELECT speaker_label FROM speakers WHERE meeting_id=? ORDER BY speaker_label"));
+    q.prepare(QStringLiteral("SELECT speaker_label FROM speakers WHERE meeting_id=? AND speaker_label<>'SOUND' ORDER BY speaker_label"));
     q.addBindValue(meetingId);
     if (q.exec())
         while (q.next())

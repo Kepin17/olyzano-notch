@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Aligner.h"
+#include "Punct.h"
+#include "SoundEvents.h"
 #include "SummaryModel.h"
 
 #include <QList>
@@ -11,7 +13,7 @@
 #include <atomic>
 #include <functional>
 
-// Audio in, notes out, one stage at a time (so only one model is in memory): preprocess -> vad -> asr -> diarize -> align -> summarize.
+// Audio in, notes out, one stage at a time (so only one model is in memory): preprocess -> clean -> vad -> asr -> diarize -> align -> summarize.
 // Each stage leaves a file in the meeting's folder, so a job that failed or was stopped goes on from the last stage that finished, and a
 // stage's failure never deletes what the stages before it made. The models themselves are behind the interfaces below: the real ones are
 // ffmpeg, whisper.cpp, sherpa-onnx and llama.cpp; the tests use fakes. Blocking; run it on a worker thread, and never touch the database
@@ -44,6 +46,38 @@ public:
     virtual QString diarize(const QString &wavPath, const std::atomic_bool *cancel, QList<Turn> *turns, int speakers = 0) = 0;
 };
 
+class ISoundTagger {
+public:
+    virtual ~ISoundTagger() = default;
+    virtual bool available() const = 0;
+    // A 16 kHz mono WAV -> what each stretch of it is (clips of Sound::ClipSeconds, in time order). "" or why not.
+    virtual QString tag(const QString &wavPath, const std::atomic_bool *cancel, const std::function<void(double)> &progress, QList<Sound::Clip> *clips) = 0;
+};
+
+// Takes the noise out of a recording, or only the voice out of music, before it is recognized. `mode`: Clean::Denoise | Clean::Vocals.
+class ICleaner {
+public:
+    virtual ~ICleaner() = default;
+    virtual bool available(const QString &mode) const = 0;
+    // A 16 kHz mono WAV -> a 16 kHz mono WAV at `wavOut` as long as the first (the pipeline pads or cuts it if not). "" or why not.
+    virtual QString clean(const QString &wavIn, const QString &wavOut, const QString &mode, const std::atomic_bool *cancel, const std::function<void(double)> &progress) = 0;
+};
+
+namespace Clean {
+inline const QString Off = QStringLiteral("off");
+inline const QString Denoise = QStringLiteral("denoise");
+inline const QString Vocals = QStringLiteral("vocals");
+inline bool valid(const QString &mode) { return mode == Denoise || mode == Vocals; }
+}
+
+class IPunctuator {
+public:
+    virtual ~IPunctuator() = default;
+    virtual bool available() const = 0;
+    // Texts in -> the same texts with marks and capitals (same length list). "" or why not.
+    virtual QString punctuate(const QStringList &texts, const std::atomic_bool *cancel, QStringList *out) = 0;
+};
+
 class ISummarizer {
 public:
     virtual ~ISummarizer() = default;
@@ -58,6 +92,9 @@ struct PipelineOptions {
     Template tmpl = Template::Meeting;
     bool diarize = true;
     bool summarize = true;
+    QString cleanMode = QStringLiteral("off"); // off | denoise | vocals (Clean::): done before the recognizer, when the model is installed
+    bool punctuate = false;  // marks and capitals for English text that has none (when the model is installed)
+    bool detectSound = true; // tell music and other sounds from speech (when the sound model is installed)
     bool stereo = false;   // a recording from Notch: microphone left, the computer's sound right
     QString youLabel = QStringLiteral("Anda");
     QString remoteLabel = QStringLiteral("Lawan bicara");
@@ -87,8 +124,9 @@ struct PipelineResult {
 
 class AudioPipeline {
 public:
-    AudioPipeline(IPreprocessor *pre, IAsr *asr, IDiarizer *diarizer, ISummarizer *summarizer)
-        : m_pre(pre), m_asr(asr), m_diarizer(diarizer), m_summarizer(summarizer) {}
+    AudioPipeline(IPreprocessor *pre, IAsr *asr, IDiarizer *diarizer, ISummarizer *summarizer, ISoundTagger *tagger = nullptr, ICleaner *cleaner = nullptr,
+                  IPunctuator *punctuator = nullptr)
+        : m_pre(pre), m_asr(asr), m_diarizer(diarizer), m_summarizer(summarizer), m_tagger(tagger), m_cleaner(cleaner), m_punct(punctuator) {}
 
     static QStringList stageIds();
     static QString stageLabel(const QString &id);
@@ -103,8 +141,8 @@ public:
     PipelineResult run(const QString &source, const QString &workDir, const PipelineOptions &options, const std::atomic_bool &cancel, const PipelineHooks &hooks);
 
     // Text the recognizer makes out of silence and noise is removed: empty lines, [BLANK_AUDIO] and (music) marks, and a phrase repeated
-    // three or more times in a row (kept once).
-    static QList<Segment> clean(const QList<Segment> &segments);
+    // three or more times in a row (kept once). The marks that name music or another sound are handed to `marks` (when given).
+    static QList<Segment> clean(const QList<Segment> &segments, QList<Sound::Event> *marks = nullptr);
 
 private:
     bool summarizeStage(PipelineResult &r, const QString &workDir, const PipelineOptions &options, const std::atomic_bool &cancel, const PipelineHooks &hooks);
@@ -112,6 +150,9 @@ private:
     IAsr *m_asr;
     IDiarizer *m_diarizer;
     ISummarizer *m_summarizer;
+    ISoundTagger *m_tagger;
+    ICleaner *m_cleaner;
+    IPunctuator *m_punct;
 };
 
 } // namespace Audio

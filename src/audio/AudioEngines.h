@@ -54,6 +54,49 @@ private:
     std::function<double()> m_threshold;
 };
 
+// Music and other sounds, with the sound-tagging model (CED, a download) run by the audio-tagging program that comes with the sherpa-onnx
+// helper: the recording is cut into clips of ten seconds, each is tagged by a program of its own, a few at a time.
+class SherpaTagger : public ISoundTagger {
+public:
+    SherpaTagger(ModelStore *store, std::function<int()> threads) : m_store(store), m_threads(std::move(threads)) {}
+    bool available() const override;
+    QString tag(const QString &wavPath, const std::atomic_bool *cancel, const std::function<void(double)> &progress, QList<Sound::Clip> *clips) override;
+    static QString modelId() { return QStringLiteral("sound-ced-tiny"); }
+
+private:
+    ModelStore *m_store;
+    std::function<int()> m_threads;
+};
+
+// Noise out of a recording (a small speech-enhancement model, GTCRN) or the voice out of the music (Spleeter), with the programs that come with
+// the sherpa-onnx helper. What comes out is 16 kHz mono again, as long as what went in.
+class SherpaCleaner : public ICleaner {
+public:
+    SherpaCleaner(ModelStore *store, std::function<int()> threads) : m_store(store), m_threads(std::move(threads)) {}
+    bool available(const QString &mode) const override;
+    QString clean(const QString &wavIn, const QString &wavOut, const QString &mode, const std::atomic_bool *cancel, const std::function<void(double)> &progress) override;
+    static QString denoiseId() { return QStringLiteral("clean-gtcrn"); }
+    static QString vocalsId() { return QStringLiteral("clean-spleeter"); }
+
+private:
+    bool helperReady() const;
+    ModelStore *m_store;
+    std::function<int()> m_threads;
+};
+
+// Marks and capitals for English text (the CNN-BiLSTM model of sherpa-onnx's online-punctuation program).
+class SherpaPunctuator : public IPunctuator {
+public:
+    SherpaPunctuator(ModelStore *store, std::function<int()> threads) : m_store(store), m_threads(std::move(threads)) {}
+    bool available() const override;
+    QString punctuate(const QStringList &texts, const std::atomic_bool *cancel, QStringList *out) override;
+    static QString modelId() { return QStringLiteral("punct-en"); }
+
+private:
+    ModelStore *m_store;
+    std::function<int()> m_threads;
+};
+
 // llama.cpp's server as a program of our own on this computer only: started on a free port with a token that only it and we know, waited for until
 // it says it is ready, asked through `chat`, and ended when this goes away. Made and used on one worker thread. Shared by what writes notes
 // from a recording and what writes notes from a document.

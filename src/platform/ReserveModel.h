@@ -10,6 +10,7 @@
 namespace ReserveModel {
 
 constexpr int BaseHeight = 48;
+constexpr int Gap = 10; // air between the capsule and the windows kept clear of it: they were flush against its lower edge
 
 inline int heightFor(double scale) { return qRound(BaseHeight * qBound(0.8, scale, 1.3)); }
 
@@ -22,7 +23,7 @@ struct Plan {
 inline Plan plan(const QString &capsuleMode, bool enabled, double scale, int barPx, bool wayland)
 {
     // Only the capsule keeps a strip: a hidden notch is a line, a widget floats, and an always-open panel overlays on purpose.
-    const int island = enabled && capsuleMode == QLatin1String("capsule") ? heightFor(scale) : 0;
+    const int island = enabled && capsuleMode == QLatin1String("capsule") ? heightFor(scale) + Gap : 0;
     Plan p;
     if (wayland)
         p.notchZone = std::max(0, island - barPx);

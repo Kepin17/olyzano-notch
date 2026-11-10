@@ -28,23 +28,5 @@ Card {
         PillButton { text: "Clear"; iconName: "trash"; onClicked: knowledge.clearIndex() }
         Item { Layout.fillWidth: true }
     }
-    ColumnLayout {
-        Layout.fillWidth: true
-        spacing: 6
-        readonly property var emb: { audioIntel.models; return audioIntel.modelInfo("embed-qwen3") }
-        SectionLabel { text: "Find by meaning (optional)" }
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: 8
-            Text { Layout.fillWidth: true; text: parent.parent.emb.title + "  ·  " + parent.parent.emb.sizeText; color: theme.text; font.pixelSize: 12; elide: Text.ElideRight }
-            PillButton { visible: !parent.parent.emb.ready && parent.parent.emb.state !== "downloading"; text: parent.parent.emb.partial ? "Resume" : "Download"; iconName: "download"; onClicked: audioIntel.downloadModel("embed-qwen3") }
-            PillButton { visible: parent.parent.emb.state === "downloading"; text: "Cancel"; onClicked: audioIntel.cancelDownload("embed-qwen3") }
-            PillButton { visible: parent.parent.emb.ready; text: "Remove"; iconName: "trash"; onClicked: audioIntel.removeModel("embed-qwen3") }
-        }
-        Rectangle { visible: parent.emb.state === "downloading"; Layout.fillWidth: true; Layout.preferredHeight: 4; radius: 2; color: theme.surface
-            Rectangle { width: parent.width * parent.parent.emb.progress; height: parent.height; radius: 2; color: theme.accent } }
-        Caption { Layout.fillWidth: true; text: "With it the search follows what a sentence means, not only its words, and finds a file written in another language. Downloaded only when you press Download; the passages are then indexed again with it." }
-        Text { visible: parent.emb.error !== ""; Layout.fillWidth: true; text: parent.emb.error; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: theme.danger; font.pixelSize: 11 }
-    }
-    Caption { Layout.fillWidth: true; visible: !knowledge.modelReady; text: "Asking questions needs the language model (see Models and helpers below). Finding files works without it." }
+    Caption { Layout.fillWidth: true; visible: !knowledge.modelReady; text: "Asking questions needs the language model (see AI models above). Finding files works without it." }
 }

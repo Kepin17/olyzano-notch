@@ -35,7 +35,7 @@ qt_add_library(notch_core STATIC
     src/services/CleanupService.h src/services/CleanupService.cpp
     src/services/FolderWatcher.h src/services/FolderWatcher.cpp
     src/services/TextTools.h
-    src/services/GpuInfo.h src/services/GpuInfo.cpp src/services/Chunker.h src/services/TaskSuggest.h src/services/Retrieval.h src/services/KnowledgeStore.h src/services/KnowledgeStore.cpp src/audio/HardwarePlan.h src/services/DocTools.h src/services/DocTools.cpp src/services/ConvertModel.h src/services/Languages.h src/services/OcrPacks.h src/services/OcrPacks.cpp src/services/PdfText.h src/services/DocSummaryModel.h src/services/DocSummarize.h src/services/DocSummarize.cpp
+    src/services/GpuInfo.h src/services/GpuInfo.cpp src/services/Chunker.h src/services/TaskSuggest.h src/services/Retrieval.h src/services/KnowledgeStore.h src/services/KnowledgeStore.cpp src/audio/HardwarePlan.h src/services/Watermark.h src/services/PdfSecurity.h src/services/Stamp.h src/services/Matting.h src/services/DocTools.h src/services/DocTools.cpp src/services/ConvertModel.h src/services/Languages.h src/services/OcrPacks.h src/services/OcrPacks.cpp src/services/PdfText.h src/services/DocSummaryModel.h src/services/DocSummarize.h src/services/DocSummarize.cpp
     src/services/Vault.h src/services/Vault.cpp
     src/services/ShareCrypto.h src/services/ShareCrypto.cpp
     src/services/Signature.h src/services/Signature.cpp
@@ -46,7 +46,7 @@ qt_add_library(notch_core STATIC
     src/services/NearbyCrypto.h src/services/NearbyCrypto.cpp
     src/services/NearbyService.h src/services/NearbyService.cpp
     src/platform/Lyrics.h src/platform/Lyrics.cpp src/platform/LrcParser.h
-    src/audio/AudioStore.h src/audio/AudioStore.cpp src/audio/AudioPipeline.h src/audio/AudioPipeline.cpp src/audio/ModelCatalog.h src/audio/ModelStore.h src/audio/ModelStore.cpp src/audio/AudioJson.h src/audio/Summarize.h src/audio/Aligner.h src/audio/SummaryModel.h src/audio/Vad.h src/audio/WavFile.h src/audio/LiveSegmenter.h src/audio/LivePrompt.h
+    src/audio/AudioStore.h src/audio/AudioStore.cpp src/audio/AudioPipeline.h src/audio/AudioPipeline.cpp src/audio/ModelCatalog.h src/audio/ModelStore.h src/audio/InstallQueue.h src/audio/InstallQueue.cpp src/audio/ModelBundles.h src/audio/ModelStore.cpp src/audio/AudioJson.h src/audio/Summarize.h src/audio/Punct.h src/audio/SherpaRun.h src/audio/TranscriptExport.h src/audio/Aligner.h src/audio/SummaryModel.h src/audio/Vad.h src/audio/WavFile.h src/audio/LiveSegmenter.h src/audio/LivePrompt.h
     third_party/qrcodegen.cpp
 )
 set_source_files_properties(third_party/qrcodegen.cpp PROPERTIES COMPILE_OPTIONS "-w") # vendored (MIT)
@@ -90,7 +90,7 @@ qt_add_executable(notch
     src/platform/ColorPicker.h
     src/platform/AppDock.h src/platform/AppDock.cpp src/platform/DockModel.h
     src/platform/Activities.h src/platform/Activities.cpp
-    src/app/DocSummaryController.h src/app/DocSummaryController.cpp src/app/VisionController.h src/app/VisionController.cpp src/app/KnowledgeController.h src/app/KnowledgeController.cpp src/app/TaskSuggestController.h src/app/TaskSuggestController.cpp src/app/LanguageController.h src/app/LanguageController.cpp src/audio/LiveSession.h src/audio/LiveSession.cpp src/audio/Hardware.h src/audio/Hardware.cpp src/audio/AudioController.h src/audio/AudioController.cpp src/audio/AudioModels.h src/audio/MeetingRecorder.h src/audio/MeetingRecorder.cpp src/audio/AudioPlayback.cpp src/audio/RecorderMath.h
+    src/app/DocSummaryController.h src/app/DocSummaryController.cpp src/app/VisionController.h src/app/VisionController.cpp src/app/MattingController.h src/app/MattingController.cpp src/app/RecordController.h src/app/RecordController.cpp src/services/OnnxRuntime.h src/services/OnnxRuntime.cpp src/app/KnowledgeController.h src/app/KnowledgeController.cpp src/app/TaskSuggestController.h src/app/TaskSuggestController.cpp src/app/LanguageController.h src/app/LanguageController.cpp src/audio/LiveSession.h src/audio/LiveSession.cpp src/audio/Hardware.h src/audio/Hardware.cpp src/audio/AudioController.h src/audio/AudioController.cpp src/audio/SherpaTagger.cpp src/audio/SherpaCleaner.cpp src/audio/AudioModels.h src/audio/MeetingRecorder.h src/audio/MeetingRecorder.cpp src/audio/AudioPlayback.cpp src/audio/RecorderMath.h
     src/audio/AudioEngines.h src/audio/AudioEngines.cpp src/audio/EngineParse.h src/audio/SystemMemory.h
     src/platform/Assistant.h src/platform/Assistant.cpp src/platform/MicCapture.h src/platform/MicCapture.cpp
     src/platform/AssistantModel.h src/platform/AssistantCorpus.h src/platform/UtteranceModel.h src/platform/WhisperEngine.h src/platform/WhisperEngine.cpp
@@ -195,7 +195,7 @@ qt_add_qml_module(notch
         src/qml/PillButton.qml src/qml/IconButton.qml src/qml/Toggle.qml src/qml/PulseDot.qml
         src/qml/SectionLabel.qml src/qml/Caption.qml src/qml/DarkMenu.qml src/qml/DarkMenuItem.qml src/qml/Mascot.qml src/qml/DarkSeparator.qml
         src/qml/SettingToggle.qml src/qml/Chip.qml src/qml/WheelScroller.qml
-        src/qml/NotePage.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml src/qml/ActionBar.qml src/qml/Bar.qml src/qml/Segmented.qml src/qml/GlassLayer.qml src/qml/Launcher.qml src/qml/SignalIcon.qml src/qml/CircleAction.qml src/qml/ColorPage.qml src/qml/AppMenuPopup.qml src/qml/CalendarCard.qml src/qml/QuickSettings.qml src/qml/ClipboardPage.qml src/qml/DocsPage.qml src/qml/LanguagePicker.qml src/qml/HardwareCard.qml src/qml/VisionCard.qml src/qml/KnowledgeCard.qml src/qml/AskPanel.qml src/qml/SmartChips.qml src/qml/AudioPage.qml src/qml/AudioPlayer.qml src/qml/AudioPlayerLinux.qml src/qml/AudioList.qml src/qml/AudioLive.qml src/qml/AudioDetail.qml src/qml/AudioTranscript.qml src/qml/AudioNotes.qml src/qml/AudioActions.qml src/qml/AudioPlayerBar.qml src/qml/AudioJobStrip.qml src/qml/AudioSection.qml src/qml/AudioTimeLink.qml src/qml/AudioBullets.qml src/qml/AudioTopic.qml src/qml/AudioTabs.qml src/qml/AudioAvatar.qml src/qml/SearchPanel.qml src/qml/CameraPage.qml src/qml/CameraView.qml src/qml/LyricsPanel.qml
+        src/qml/NotePage.qml src/qml/CameraTuning.qml src/qml/SettingsPage.qml src/qml/LineIcon.qml src/qml/SharePopup.qml src/qml/IncomingPopup.qml src/qml/ActionBar.qml src/qml/Bar.qml src/qml/Segmented.qml src/qml/GlassLayer.qml src/qml/Launcher.qml src/qml/SignalIcon.qml src/qml/CircleAction.qml src/qml/ColorPage.qml src/qml/AppMenuPopup.qml src/qml/CalendarCard.qml src/qml/QuickSettings.qml src/qml/ClipboardPage.qml src/qml/DocsPage.qml src/qml/LanguagePicker.qml src/qml/HardwareCard.qml src/qml/KnowledgeCard.qml src/qml/AiModelsCard.qml src/qml/AskPanel.qml src/qml/PdfTools.qml src/qml/ValueSlider.qml src/qml/SmartChips.qml src/qml/AudioPage.qml src/qml/AudioPlayer.qml src/qml/AudioPlayerLinux.qml src/qml/AudioList.qml src/qml/AudioLive.qml src/qml/AudioDetail.qml src/qml/AudioTranscript.qml src/qml/AudioNotes.qml src/qml/AudioActions.qml src/qml/AudioPlayerBar.qml src/qml/AudioJobStrip.qml src/qml/AudioSection.qml src/qml/AudioTimeLink.qml src/qml/AudioBullets.qml src/qml/AudioTopic.qml src/qml/AudioTabs.qml src/qml/AudioAvatar.qml src/qml/SearchPanel.qml src/qml/CameraPage.qml src/qml/CameraView.qml src/qml/RecordView.qml src/qml/LyricsPanel.qml
         src/qml/Dock.qml src/qml/TimerPage.qml src/qml/TasksPage.qml src/qml/ArtColor.qml src/qml/MarqueeText.qml src/qml/CoverArt.qml src/qml/DiscordBadge.qml src/qml/DevPage.qml src/qml/ApiPage.qml src/qml/ApiEnvEditor.qml src/qml/ApiRunPanel.qml src/qml/SshTab.qml src/qml/DbTab.qml src/qml/Field.qml src/qml/ConfirmDialog.qml src/qml/EmptyState.qml src/qml/Card.qml src/qml/SelectableRow.qml
     RESOURCES
         src/qml/icons/back.svg src/qml/icons/close.svg src/qml/icons/plus.svg src/qml/icons/lock.svg
@@ -345,6 +345,7 @@ enable_testing()
 qt_add_executable(tst_core tests/tst_core.cpp)
 target_compile_definitions(tst_core PRIVATE NOTCH_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_link_libraries(tst_core PRIVATE notch_core Qt6::Test)
+target_sources(tst_core PRIVATE src/services/OnnxRuntime.cpp src/audio/SherpaTagger.cpp)
 add_test(NAME tst_core COMMAND tst_core)
 
 # The shelf controller with many files: needs the controller itself, not just the core library. Not on Windows: the controller

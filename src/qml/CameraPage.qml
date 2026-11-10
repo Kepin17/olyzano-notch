@@ -8,18 +8,27 @@ ColumnLayout {
     id: page
     required property var shell
     visible: shell.page === "camera"
+    property string section: shell.cameraSection   // camera | record
+    readonly property string shown: recorder.engaged ? "record" : section // a recording or a preview in progress keeps its page
     readonly property bool modalOpen: !!view.item && view.item.modalOpen
     Layout.fillWidth: true
     Layout.leftMargin: 12
     Layout.rightMargin: 12
     spacing: 8
 
+    Segmented {
+        Layout.fillWidth: true
+        model: [["camera", "Camera"], ["record", "Record screen"]]
+        value: page.shown
+        enabled: !recorder.engaged
+        onPicked: (v) => page.section = v
+    }
     Loader {
         id: view
         Layout.fillWidth: true
-        Layout.preferredHeight: item ? item.implicitHeight : 80
-        active: page.visible
-        source: "CameraView.qml"
+        Layout.preferredHeight: page.shown === "record" ? 430 : item ? item.implicitHeight : 80
+        active: page.visible || recorder.engaged // (Main.qml keeps this page loaded, out of sight, while the recorder is busy)
+        source: page.shown === "record" ? "RecordView.qml" : "CameraView.qml"
         onLoaded: item.shell = page.shell
     }
     Text {
@@ -28,6 +37,6 @@ ColumnLayout {
         wrapMode: Text.Wrap
         color: theme.textDim
         font.pixelSize: 12
-        text: "The camera needs Qt's multimedia module for QML (Debian and Ubuntu: qml6-module-qtmultimedia). Install it and open this page again."
+        text: "The camera and the recorder need Qt's multimedia module for QML (Debian and Ubuntu: qml6-module-qtmultimedia). Install it and open this page again."
     }
 }

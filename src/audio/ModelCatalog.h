@@ -11,7 +11,7 @@
 // Nothing here is downloaded without the person clicking Download.
 namespace Audio {
 
-enum class Kind { Whisper, Llm, Segmentation, Embedding, Helper, Ocr, Vision, Embedder };
+enum class Kind { Whisper, Llm, Segmentation, Embedding, Helper, Ocr, Vision, Embedder, Matting, Sound };
 
 struct CatalogItem {
     QString id;
@@ -55,6 +55,22 @@ inline QList<CatalogItem> fullCatalog()
          QStringLiteral("The part of Qwen3-VL that turns a picture into something the model can read. Needed with it."),
          QStringLiteral("mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf"), hf + QStringLiteral("Qwen/Qwen3-VL-4B-Instruct-GGUF/resolve/main/mmproj-Qwen3VL-4B-Instruct-Q8_0.gguf"), 453974304,
          QStringLiteral("30ba2c7dd3127a4561b6cba9d13d0f711c91bdb38742e2f56d73c8cb596bd06d"), {}, {}, 0},
+        {QStringLiteral("matting-u2netp"), Kind::Matting, QStringLiteral("U2-Netp (fast, takes the background off)"),
+         QStringLiteral("A small model that cuts the main subject out of a picture in a second or two. Good for signatures, logos and simple pictures. Optional. About 0.5 GB of memory while it runs; Apache-2.0 licence."),
+         QStringLiteral("u2netp.onnx"), gh + QStringLiteral("danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx"), 4574861,
+         QStringLiteral("309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8"), {}, {}, Q_INT64_C(1) << 29},
+        {QStringLiteral("matting-isnet"), Kind::Matting, QStringLiteral("IS-Net general use (takes the background off)"),
+         QStringLiteral("Cuts the main subject out of a picture: a signature, a logo, a product, a person. Optional. About 3 GB of memory while it runs; MIT licence (IS-Net: Apache-2.0)."),
+         QStringLiteral("isnet-general-use.onnx"), hf + QStringLiteral("imgly/isnet-general-onnx/resolve/main/onnx/model.onnx"), 176149806,
+         QStringLiteral("cc2c9f5c1751b9737cb81e708ff0c5e9542c2205daed22418a4fd2ab5d4c481a"), {}, {}, Q_INT64_C(3) << 30},
+        {QStringLiteral("onnxruntime-linux"), Kind::Helper, QStringLiteral("ONNX Runtime (1.31.1)"),
+         QStringLiteral("Runs the background-removal model on this computer only. MIT licence."), QStringLiteral("onnxruntime-linux-x64-1.31.1.tgz"),
+         gh + QStringLiteral("microsoft/onnxruntime/releases/download/v1.31.1/onnxruntime-linux-x64-1.31.1.tgz"), 11413655,
+         QStringLiteral("c849e36a1ef3e22d4ff217b9d1ce4a3cf5b9467b975610913ae959ad5b16bdc9"), QStringLiteral("linux"), QStringLiteral("libonnxruntime.so"), 0},
+        {QStringLiteral("onnxruntime-windows"), Kind::Helper, QStringLiteral("ONNX Runtime (1.31.1)"),
+         QStringLiteral("Runs the background-removal model on this computer only. MIT licence."), QStringLiteral("onnxruntime-win-x64-1.31.1.zip"),
+         gh + QStringLiteral("microsoft/onnxruntime/releases/download/v1.31.1/onnxruntime-win-x64-1.31.1.zip"), 82929944,
+         QStringLiteral("5869e26bb25314375f2d5ef1877e3ea06b1543d6c710e6e4a1ec2f7177ab4b2c"), QStringLiteral("windows"), QStringLiteral("onnxruntime.dll"), 0},
         {QStringLiteral("llama-server-linux"), Kind::Helper, QStringLiteral("llama.cpp server (b12202)"),
          QStringLiteral("Runs the language model on this computer only (127.0.0.1). MIT licence."), QStringLiteral("llama-b12202-bin-ubuntu-x64.tar.gz"),
          gh + QStringLiteral("ggml-org/llama.cpp/releases/download/b12202/llama-b12202-bin-ubuntu-x64.tar.gz"), 23066943,
@@ -83,6 +99,25 @@ inline QList<CatalogItem> fullCatalog()
          gh + QStringLiteral("k2-fsa/sherpa-onnx/releases/download/v2.0.1/sherpa-onnx-v2.0.1-win-x64-shared-MD-Release-no-tts.tar.bz2"), 20962760,
          QStringLiteral("11fd6a50b97eed38b54fb16d8219f49b16aa7f6a8e43a042316469ef47652e82"), QStringLiteral("windows"),
          QStringLiteral("sherpa-onnx-offline-speaker-diarization.exe"), 0},
+        {QStringLiteral("sound-ced-tiny"), Kind::Helper, QStringLiteral("Sound detection (CED tiny)"),
+         QStringLiteral("Tells music, singing, applause, crowds and other sounds from speech, so the transcript says where they are instead of making words up. Runs on this computer only. Apache-2.0 licence."),
+         QStringLiteral("sherpa-onnx-ced-tiny-audio-tagging-2024-04-19.tar.bz2"),
+         gh + QStringLiteral("k2-fsa/sherpa-onnx/releases/download/audio-tagging-models/sherpa-onnx-ced-tiny-audio-tagging-2024-04-19.tar.bz2"), 28531989,
+         QStringLiteral("84baf315b57d61aa69480c4fee878dab54cbc7be3e877db334e65d8b087e23c3"), {}, QStringLiteral("model.int8.onnx"), 0},
+        {QStringLiteral("clean-gtcrn"), Kind::Sound, QStringLiteral("Noise reduction (GTCRN)"),
+         QStringLiteral("A very small model that lowers hum, fans and background noise before a recording is turned into text. Runs on this computer only. MIT licence."),
+         QStringLiteral("gtcrn_simple.onnx"), gh + QStringLiteral("k2-fsa/sherpa-onnx/releases/download/speech-enhancement-models/gtcrn_simple.onnx"), 535638,
+         QStringLiteral("e77603ac0c23dac3227dd2d7135b3a585cbee2679048aecfa886657d3ae1b534"), {}, {}, Q_INT64_C(1) << 28},
+        {QStringLiteral("clean-spleeter"), Kind::Helper, QStringLiteral("Voice and music separation (Spleeter)"),
+         QStringLiteral("Splits the voice from the music, so a song with a singer is written without words made up for the band. Slower than the rest; runs on this computer only. MIT licence."),
+         QStringLiteral("sherpa-onnx-spleeter-2stems-fp16.tar.bz2"),
+         gh + QStringLiteral("k2-fsa/sherpa-onnx/releases/download/source-separation-models/sherpa-onnx-spleeter-2stems-fp16.tar.bz2"), 35271738,
+         QStringLiteral("c6c5c4307673bc6813ddf58d4efdff57c26d2dfc3f25b05c7a32db453d70aca6"), {}, QStringLiteral("vocals.fp16.onnx"), Q_INT64_C(1) << 30},
+        {QStringLiteral("punct-en"), Kind::Helper, QStringLiteral("Punctuation, English (CNN-BiLSTM)"),
+         QStringLiteral("Adds full stops, commas and capital letters to English text that has none. English only. Apache-2.0 licence."),
+         QStringLiteral("sherpa-onnx-online-punct-en-2024-08-06.tar.bz2"),
+         gh + QStringLiteral("k2-fsa/sherpa-onnx/releases/download/punctuation-models/sherpa-onnx-online-punct-en-2024-08-06.tar.bz2"), 30667839,
+         QStringLiteral("9f5e5a72c7d2829635bd074fce92b6bbd5b78da8a52e7ad8ed1be933f366b99d"), {}, QStringLiteral("model.onnx"), Q_INT64_C(1) << 27},
         {QStringLiteral("diar-segmentation"), Kind::Segmentation, QStringLiteral("Speaker segmentation (pyannote 3.0)"),
          QStringLiteral("Finds where someone speaks. MIT licence."), QStringLiteral("pyannote-segmentation-3-0.onnx"),
          hf + QStringLiteral("csukuangfj/sherpa-onnx-pyannote-segmentation-3-0/resolve/main/model.onnx"), 5992913,

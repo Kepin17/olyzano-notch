@@ -3,6 +3,7 @@
 #include "EngineParse.h"
 #include "Hardware.h"
 #include "NameHints.h"
+#include "TranscriptExport.h"
 #include "services/LanguageSettings.h"
 #include "WavFile.h"
 #include "platform/NotchPaths.h"
@@ -15,6 +16,10 @@
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QProcess>
+#include <QRegularExpression>
+#include <QSaveFile>
+#include <QUrl>
+#include <QStorageInfo>
 #include <QStandardPaths>
 #include <QThread>
 #include <QtConcurrent>
@@ -35,6 +40,8 @@ QString kindName(Audio::Kind k)
     case Audio::Kind::Ocr: return QStringLiteral("ocr");
     case Audio::Kind::Vision: return QStringLiteral("vision");
     case Audio::Kind::Embedder: return QStringLiteral("embedder");
+    case Audio::Kind::Matting: return QStringLiteral("matting");
+    case Audio::Kind::Sound: return QStringLiteral("sound");
     }
     return {};
 }
@@ -53,7 +60,11 @@ AudioController::AudioController(QObject *parent)
     , m_recorder(this)
     , m_asr(&m_models, [this] { return threads(); }, [] { return LanguageSettings::whisperCodes(LanguageSettings::enabled()); })
     , m_diar(&m_models, [this] { return threads(); }, [this] { const QString v = speakerSplit(); return v == QLatin1String("fewer") ? 0.75 : v == QLatin1String("more") ? 0.4 : 0.55; })
+    , m_tagger(&m_models, [this] { return threads(); })
+    , m_cleaner(&m_models, [this] { return threads(); })
+    , m_punct(&m_models, [this] { return threads(); })
     , m_sum(&m_models, [this] { return threads(); })
+    , m_install(&m_models)
 {
     m_pool.setMaxThreadCount(1);
     QDir().mkpath(NotchPaths::dataDir(QStringLiteral("audio/meetings")));
@@ -64,6 +75,17 @@ AudioController::AudioController(QObject *parent)
         m_store.markInterrupted();
     reload();
     connect(&m_models, &ModelStore::changed, this, [this](const QString &) { emit modelsChanged(); });
+    connect(&m_install, &InstallQueue::changed, this, [this] { emit modelsChanged(); });
+    connect(&m_install, &InstallQueue::finished, this, [this] {
+        if (!m_install.failed().isEmpty()) {
+            QStringList names;
+            for (const QString &id : m_install.failed())
+                names << m_models.item(id).title;
+            m_installMessage = tr("%1 could not be downloaded: %2. Press the button again to retry; what was downloaded is kept.").arg(names.join(QStringLiteral(", ")), m_models.error(m_install.failed().first()));
+        }
+        m_installIds.clear();
+        emit modelsChanged();
+    });
     connect(&m_recorder, &MeetingRecorder::levelChanged, this, &AudioController::recordingChanged);
     connect(&m_recorder, &MeetingRecorder::failed, this, [this](const QString &why) { setError(why); });
     connect(&m_recorder, &MeetingRecorder::limitReached, this, [this] { stopRecording(false); });
@@ -231,7 +253,8 @@ QList<Knowledge::Utterance> AudioController::transcriptLines(qlonglong id) const
 {
     QList<Knowledge::Utterance> out;
     for (const AudioStore::SegmentRow &s : m_store.segments(id))
-        out.append({s.start, s.who(), s.text()});
+        if (s.speakerLabel != Audio::Sound::Speaker) // music and noise are not what was said (Ask, search)
+            out.append({s.start, s.who(), s.text()});
     return out;
 }
 
@@ -565,6 +588,59 @@ QString AudioController::notesMarkdown() const
     return Audio::toMarkdown(m_store.summary(m_current), m.title, parts.join(QStringLiteral(" · ")));
 }
 
+static QString writeTextFile(const QString &text, const QString &target)
+{
+    const QString path = target.startsWith(QLatin1String("file:")) ? QUrl(target).toLocalFile() : target;
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly))
+        return QObject::tr("The file could not be written: %1").arg(file.errorString());
+    file.write(text.toUtf8());
+    return file.commit() ? QString() : QObject::tr("The file could not be written: %1").arg(file.errorString());
+}
+
+QString AudioController::suggestedFileName(const QString &format) const
+{
+    QString title = m_current ? m_store.meeting(m_current).title : QString();
+    title.replace(QRegularExpression(QStringLiteral("[\\\\/:*?\"<>|]")), QStringLiteral("_"));
+    return (title.simplified().isEmpty() ? QStringLiteral("transcript") : title.simplified()) + u'.' + Audio::Export::extension(Audio::Export::formatOf(format));
+}
+
+QString AudioController::exportTranscript(const QString &format, bool sounds, const QString &target) const
+{
+    if (!m_current)
+        return tr("No recording is open");
+    QList<Audio::Segment> segments;
+    for (const AudioStore::SegmentRow &r : m_store.segments(m_current))
+        segments.append({r.start, r.end, r.text(), r.speakerLabel == Audio::Sound::Speaker ? r.speakerLabel : r.who(), r.approx});
+    Audio::Export::Options o;
+    o.sounds = sounds ? Audio::Export::Sounds::Marker : Audio::Export::Sounds::Skip;
+    const Audio::Export::Format f = Audio::Export::formatOf(format);
+    const QString text = Audio::Export::render(segments, f, o);
+    if (text.trimmed().isEmpty())
+        return tr("The transcript is empty");
+    return writeTextFile(text, target);
+}
+
+QString AudioController::saveChapters(const QString &style, const QString &target) const
+{
+    const QString text = chaptersText(style);
+    return text.isEmpty() ? tr("The notes do not give enough chapters") : writeTextFile(text, target);
+}
+
+QString AudioController::chaptersText(const QString &style) const
+{
+    if (!m_current || !m_store.hasSummary(m_current))
+        return {};
+    const QList<Audio::Export::Chapter> list = Audio::Export::chapters(m_store.summary(m_current).topics, m_store.meeting(m_current).duration);
+    return style == QLatin1String("youtube") ? Audio::Export::youtube(list) : Audio::Export::chapterText(list);
+}
+
+void AudioController::copyChapters(const QString &style)
+{
+    if (const QString t = chaptersText(style); !t.isEmpty())
+        QGuiApplication::clipboard()->setText(t);
+}
+
 void AudioController::copyText(const QString &text)
 {
     QGuiApplication::clipboard()->setText(text);
@@ -644,6 +720,153 @@ void AudioController::remove(qlonglong id, bool deleteFiles)
         close();
     reload();
     emit historyChanged();
+}
+
+// ---- the AI models page: features by category, installed together ---------------------------------------------
+
+QVariantList AudioController::aiCategories() const
+{
+    QVariantList out;
+    for (const Audio::Bundles::Category &c : Audio::Bundles::categories())
+        out.append(QVariantMap{{QStringLiteral("id"), c.id}, {QStringLiteral("title"), c.title}, {QStringLiteral("note"), c.note}});
+    return out;
+}
+
+QVariantList AudioController::aiFeatures() const
+{
+    QVariantList out;
+    const QStringList waiting = m_install.pending(); // a copy kept here: two calls would give two lists, and begin() of one with end() of the other crashes
+    const QSet<QString> queued(waiting.begin(), waiting.end());
+    for (const Audio::Bundles::Feature &f : Audio::Bundles::features()) {
+        qint64 total = 0, have = 0, left = 0;
+        double done = 0;
+        int ready = 0;
+        bool anyDownloading = false, anyBytes = false, anyQueued = false;
+        QString error;
+        for (const QString &id : f.ids) {
+            const Audio::CatalogItem i = m_models.item(id);
+            const QString st = m_models.state(id);
+            total += i.size;
+            if (st == QLatin1String("ready")) {
+                ++ready;
+                done += double(i.size);
+                anyBytes = true;
+            } else {
+                left += i.size - std::min(m_models.partialBytes(id), i.size);
+                if (st == QLatin1String("downloading") || st == QLatin1String("verifying")) {
+                    anyDownloading = true;
+                    done += m_models.progress(id) * double(i.size);
+                } else if (m_models.partialBytes(id) > 0) {
+                    anyBytes = true;
+                    done += double(m_models.partialBytes(id));
+                }
+            }
+            anyQueued = anyQueued || queued.contains(id);
+            if (error.isEmpty())
+                error = m_models.error(id);
+            have += m_models.diskBytes(id);
+        }
+        const QString state = ready == f.ids.size() ? QStringLiteral("ready") : anyDownloading ? QStringLiteral("downloading") : anyQueued ? QStringLiteral("queued")
+                              : anyBytes ? QStringLiteral("partial") : QStringLiteral("missing");
+        out.append(QVariantMap{{QStringLiteral("id"), f.id}, {QStringLiteral("category"), f.category}, {QStringLiteral("title"), f.title}, {QStringLiteral("note"), f.note},
+                               {QStringLiteral("extra"), f.extra}, {QStringLiteral("state"), state}, {QStringLiteral("ready"), state == QLatin1String("ready")},
+                               {QStringLiteral("progress"), total > 0 ? done / double(total) : 0.0}, {QStringLiteral("sizeText"), QLocale().formattedDataSize(total)},
+                               {QStringLiteral("leftText"), QLocale().formattedDataSize(left)}, {QStringLiteral("left"), left}, {QStringLiteral("diskText"), QLocale().formattedDataSize(have)},
+                               {QStringLiteral("error"), error}, {QStringLiteral("count"), int(f.ids.size())}});
+    }
+    return out;
+}
+
+QStringList AudioController::installedFeatures() const
+{
+    QStringList out;
+    for (const Audio::Bundles::Feature &f : Audio::Bundles::features())
+        if (Audio::Bundles::missing(f.ids, [this](const QString &id) { return m_models.state(id) == QLatin1String("ready"); }).isEmpty())
+            out << f.id;
+    return out;
+}
+
+QVariantMap AudioController::aiSummary() const
+{
+    const auto isReady = [this](const QString &id) { return m_models.state(id) == QLatin1String("ready"); };
+    const auto leftOf = [this](const QStringList &ids) {
+        qint64 sum = 0;
+        for (const QString &id : ids)
+            if (m_models.state(id) != QLatin1String("ready"))
+                sum += m_models.item(id).size - std::min(m_models.partialBytes(id), m_models.item(id).size);
+        return sum;
+    };
+    qint64 disk = 0;
+    for (const QString &id : Audio::Bundles::idsOf(Audio::Bundles::everything()))
+        disk += m_models.diskBytes(id);
+    const QStringList rec = Audio::Bundles::idsOf(Audio::Bundles::recommended()), all = Audio::Bundles::idsOf(Audio::Bundles::everything());
+    int installed = 0, totalFeatures = 0;
+    const QStringList have = installedFeatures();
+    for (const Audio::Bundles::Feature &f : Audio::Bundles::features())
+        if (!f.extra) {
+            ++totalFeatures;
+            installed += have.contains(f.id) ? 1 : 0;
+        }
+    // the install that is running
+    qint64 queueTotal = 0;
+    double queueDone = 0, speed = 0;
+    QStringList running;
+    for (const QString &id : m_installIds) {
+        const qint64 size = m_models.item(id).size;
+        queueTotal += size;
+        queueDone += isReady(id) ? double(size) : m_models.state(id) == QLatin1String("downloading") ? m_models.progress(id) * double(size) : double(std::min(m_models.partialBytes(id), size));
+    }
+    for (const QString &id : m_install.running()) {
+        running << m_models.item(id).title;
+        speed += m_models.speed(id);
+    }
+    const QStorageInfo disks(m_models.root());
+    const qint64 remaining = queueTotal > 0 ? qint64(double(queueTotal) - queueDone) : 0;
+    return {{QStringLiteral("installed"), installed}, {QStringLiteral("total"), totalFeatures}, {QStringLiteral("diskText"), QLocale().formattedDataSize(disk)},
+            {QStringLiteral("recommendedLeft"), leftOf(rec)}, {QStringLiteral("recommendedText"), QLocale().formattedDataSize(leftOf(rec))},
+            {QStringLiteral("everythingLeft"), leftOf(all)}, {QStringLiteral("everythingText"), QLocale().formattedDataSize(leftOf(all))},
+            {QStringLiteral("freeText"), disks.isValid() ? QLocale().formattedDataSize(disks.bytesAvailable()) : QString()},
+            {QStringLiteral("active"), m_install.active()}, {QStringLiteral("queueTotal"), m_install.total()}, {QStringLiteral("queueDone"), m_install.done()},
+            {QStringLiteral("queueProgress"), queueTotal > 0 ? queueDone / double(queueTotal) : 0.0}, {QStringLiteral("running"), running.join(QStringLiteral(", "))},
+            {QStringLiteral("speedText"), speed > 0 ? QLocale().formattedDataSize(qint64(speed)) + QStringLiteral("/s") : QString()},
+            {QStringLiteral("etaText"), speed > 1 && remaining > 0 ? etaText(qint64(double(remaining) / speed)) : QString()}, {QStringLiteral("message"), m_installMessage}};
+}
+
+void AudioController::installFeatures(const QStringList &featureIds)
+{
+    m_installMessage.clear();
+    const QStringList ids = Audio::Bundles::missing(Audio::Bundles::idsOf(featureIds), [this](const QString &id) { return m_models.state(id) == QLatin1String("ready"); });
+    if (ids.isEmpty()) {
+        emit modelsChanged();
+        return;
+    }
+    qint64 need = 0;
+    for (const QString &id : ids) {
+        const Audio::CatalogItem i = m_models.item(id);
+        need += (i.size - std::min(m_models.partialBytes(id), i.size)) + (i.kind == Audio::Kind::Helper ? i.size * 4 : i.size / 20);
+    }
+    need += Q_INT64_C(200) << 20;
+    const QStorageInfo disk(m_models.root());
+    if (disk.isValid() && disk.bytesAvailable() >= 0 && disk.bytesAvailable() < need) {
+        m_installMessage = tr("Not enough disk space: about %1 are needed and %2 are free.").arg(QLocale().formattedDataSize(need), QLocale().formattedDataSize(disk.bytesAvailable()));
+        emit modelsChanged();
+        return;
+    }
+    const auto sizeOf = [this](const QString &id) { return m_models.item(id).size; };
+    for (const QString &id : ids)
+        if (!m_installIds.contains(id))
+            m_installIds << id;
+    m_install.start(Audio::Bundles::plan(ids, sizeOf));
+}
+
+void AudioController::installCategory(const QString &category, bool withExtras) { installFeatures(Audio::Bundles::featureIds(category, withExtras)); }
+
+void AudioController::removeFeature(const QString &featureId)
+{
+    for (const QString &id : Audio::Bundles::removable(featureId, installedFeatures()))
+        if (!m_models.path(id).isEmpty() || m_models.partialBytes(id) > 0 || m_models.state(id) == QLatin1String("downloading"))
+            if (!m_models.remove(id))
+                setError(tr("This could not be deleted right now."));
 }
 
 void AudioController::removeModel(const QString &id)
@@ -775,6 +998,9 @@ void AudioController::start(qlonglong id, bool notesOnly, bool summarize)
     opt.localLabel = tr("Room");
     opt.speakers = m.speakersHint;
     opt.summarize = summarize;
+    opt.detectSound = detectSound();
+    opt.cleanMode = cleanMode();
+    opt.punctuate = punctuate();
     QList<Audio::Segment> existing;
     if (notesOnly)
         for (const AudioStore::SegmentRow &r : m_store.segments(id))
@@ -802,7 +1028,7 @@ void AudioController::start(qlonglong id, bool notesOnly, bool summarize)
         QMetaObject::invokeMethod(this, [this, id, s, tmpl] { applyNotes(id, s, tmpl); }, Qt::QueuedConnection);
     };
     m_pool.start([this, id, jobId, opt, existing, notesOnly, dir, audioPath, hooks] {
-        Audio::AudioPipeline pipe(&m_pre, &m_asr, &m_diar, &m_sum);
+        Audio::AudioPipeline pipe(&m_pre, &m_asr, &m_diar, &m_sum, &m_tagger, &m_cleaner, &m_punct);
         Audio::PipelineResult r;
         if (notesOnly) {
             r = pipe.notes(existing, dir, opt, m_cancel, hooks);

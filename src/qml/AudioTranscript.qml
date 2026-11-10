@@ -152,6 +152,7 @@ ColumnLayout {
                 required property real start
                 required property string startText
                 required property string who
+                required property string speakerLabel
                 required property string text
                 required property bool edited
                 required property bool approx
@@ -162,14 +163,32 @@ ColumnLayout {
                 readonly property bool playingNow: list.playingRow === index
                 readonly property color tint: page.palette[Math.max(0, speakerIndex) % page.palette.length]
                 readonly property string person: page.friendly(who)
+                readonly property bool isSound: speakerLabel === "SOUND" // music or another sound, not a voice
                 visible: shown
                 width: ListView.view.width - 10
-                height: shown ? body.implicitHeight + (sameAsPrev ? 4 : 14) : 0
+                height: !shown ? 0 : isSound ? 34 : body.implicitHeight + (sameAsPrev ? 4 : 14)
                 Rectangle { anchors { fill: parent; topMargin: line.sameAsPrev ? 0 : 4 } radius: theme.radiusSm; color: line.playingNow ? Qt.alpha(theme.accent, 0.12) : rowHover.hovered ? theme.hoverFill : "transparent" }
                 Rectangle { visible: line.playingNow; anchors { left: parent.left; top: parent.top; bottom: parent.bottom; topMargin: line.sameAsPrev ? 0 : 4 } width: 3; radius: 1.5; color: theme.accent }
                 HoverHandler { id: rowHover }
+                RowLayout { // a sound: one quiet line with the time, no speaker
+                    visible: line.isSound
+                    anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; leftMargin: 10; rightMargin: 6 }
+                    spacing: 10
+                    LineIcon { Layout.preferredWidth: 26; glyph: line.text.indexOf("♪") === 0 ? "music" : "volume"; sourceSize: Qt.size(14, 14); color: theme.textFaint }
+                    Text { Layout.fillWidth: true; text: line.text; textFormat: Text.PlainText; elide: Text.ElideRight; color: theme.textDim; font.pixelSize: 12; font.italic: true }
+                    Text { text: line.startText; color: theme.textFaint; font.pixelSize: 10; font.family: "monospace"
+                        HoverHandler { cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: page.playAt(line.start) } }
+                    Row {
+                        visible: rowHover.hovered
+                        spacing: 2
+                        IconButton { iconName: "play"; implicitWidth: 24; implicitHeight: 24; Accessible.name: "Play from here"; onClicked: page.playAt(line.start) }
+                        IconButton { iconName: "trash"; implicitWidth: 24; implicitHeight: 24; Accessible.name: "Delete this line"; onClicked: audioIntel.deleteSegment(line.segmentId) }
+                    }
+                }
                 RowLayout {
                     id: body
+                    visible: !line.isSound
                     anchors { left: parent.left; right: parent.right; top: parent.top; leftMargin: 10; rightMargin: 6; topMargin: line.sameAsPrev ? 2 : 8 }
                     spacing: 10
                     Item { // the speaker's badge; for a line that goes on, only its time

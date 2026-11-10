@@ -29,12 +29,15 @@ ColumnLayout {
     // The camera list is a popup that reaches out of the panel: the notch must keep its whole window clickable while it is open.
     readonly property bool modalOpen: camMenu.visible
     CameraPermission { id: permission }
-    Component.onCompleted: if (permission.status === Qt.Undetermined) permission.request()
+    Component.onCompleted: {
+        if (permission.status === Qt.Undetermined) permission.request()
+        tuning.prepare() // the size of the picture is set before the camera starts
+    }
 
     CaptureSession {
         camera: Camera {
             id: camera
-            active: permission.status === Qt.Granted && root.hasCamera // never switched off while this is shown: stopping a running V4L2 camera can crash Qt's ffmpeg backend; it ends when the page is closed
+            active: tuning.ready && permission.status === Qt.Granted && root.hasCamera // never switched off while this is shown: stopping a running V4L2 camera can crash Qt's ffmpeg backend; it ends when the page is closed
             cameraDevice: devices.defaultVideoInput
         }
         imageCapture: ImageCapture {
@@ -58,12 +61,12 @@ ColumnLayout {
             visible: root.resultPath === "" && root.hasCamera
             fillMode: VideoOutput.PreserveAspectCrop
             transform: Scale { origin.x: video.width / 2; xScale: root.mirror ? -1 : 1 }
-            layer.enabled: !root.software && root.mode === "booth" && root.filter !== "normal"
+            layer.enabled: !root.software && ((root.mode === "booth" && root.filter !== "normal") || tuning.tuned)
             layer.effect: MultiEffect {
-                saturation: root.filter === "mono" ? -1 : root.filter === "vivid" ? 0.5 : 0
-                contrast: root.filter === "vivid" ? 0.12 : 0
-                brightness: root.filter === "warm" ? 0.03 : 0
-                colorization: root.filter === "warm" ? 0.16 : 0
+                saturation: root.mode !== "booth" ? 0 : root.filter === "mono" ? -1 : root.filter === "vivid" ? 0.5 : 0
+                contrast: (root.mode === "booth" && root.filter === "vivid" ? 0.12 : 0) + tuning.effectContrast
+                brightness: (root.mode === "booth" && root.filter === "warm" ? 0.03 : 0) + tuning.effectBrightness
+                colorization: root.mode === "booth" && root.filter === "warm" ? 0.16 : 0
                 colorizationColor: "#ff9d3a"
             }
         }
@@ -128,6 +131,7 @@ ColumnLayout {
         }
     }
 
+    CameraTuning { id: tuning; camera: camera }
     // ---- controls ----
     RowLayout {
         Layout.fillWidth: true

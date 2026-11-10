@@ -8,6 +8,7 @@
 #include "services/FileService.h"
 #include "services/ZipWriter.h"
 #include "services/TextTools.h"
+#include "platform/ProcessRunner.h"
 #include "services/ConvertModel.h"
 #include "services/DocTools.h"
 
@@ -25,6 +26,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QFutureWatcher>
+#include <QImageReader>
 #include <QMimeDatabase>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -1850,12 +1852,113 @@ QString NotchController::typeGroup(const QString &mimeType) const
     return FileService::typeGroup(mimeType);
 }
 
+static QString localPath(const QString &fileUrl)
+{
+    const QUrl u(fileUrl);
+    return u.isLocalFile() ? u.toLocalFile() : fileUrl;
+}
+
+QString NotchController::pathFor(const QString &idOrFileUrl) const
+{
+    if (const FileItem *item = available(idOrFileUrl))
+        return pathOf(*item);
+    const QString path = localPath(idOrFileUrl);
+    return QFileInfo(path).isFile() ? path : QString();
+}
+
+QString NotchController::pdfState(const QString &idOrFileUrl) const
+{
+    const QString path = pathFor(idOrFileUrl);
+    return path.isEmpty() ? QStringLiteral("damaged") : DocTools::pdfStatus(path);
+}
+
+QVariantMap NotchController::previewPage(const QString &idOrFileUrl, int page)
+{
+    const QString path = pathFor(idOrFileUrl);
+    const int pages = path.isEmpty() ? -1 : DocTools::pdfPageCount(path);
+    if (pages < 1)
+        return {{QStringLiteral("ok"), false}};
+    const int n = page < 1 || page > pages ? pages : page;
+    const QString dir = scratchDir(false) + QStringLiteral("/preview");
+    QDir(dir).removeRecursively(); // the one before is not needed any more
+    QDir().mkpath(dir);
+    const QString base = dir + QStringLiteral("/page-") + QString::number(++m_previewSerial);
+    const auto r = ProcessRunner::run(QStringLiteral("pdftoppm"), {QStringLiteral("-r"), QStringLiteral("70"), QStringLiteral("-png"), QStringLiteral("-f"), QString::number(n), QStringLiteral("-l"), QString::number(n),
+                                                                 QStringLiteral("-singlefile"), path, base}, 30000);
+    const QImage img(base + QStringLiteral(".png"));
+    if (!r.ok || img.isNull())
+        return {{QStringLiteral("ok"), false}};
+    return {{QStringLiteral("ok"), true}, {QStringLiteral("url"), QUrl::fromLocalFile(base + QStringLiteral(".png")).toString()}, {QStringLiteral("pages"), pages}, {QStringLiteral("page"), n},
+            {QStringLiteral("aspect"), double(img.height()) / img.width()}};
+}
+
+QString NotchController::signaturePreview(const QString &imageFileUrl)
+{
+    QImageReader reader(localPath(imageFileUrl));
+    reader.setAutoTransform(true);
+    const QImage img = Stamp::previewImage(reader.read());
+    if (img.isNull())
+        return {};
+    const QString dir = scratchDir(false) + QStringLiteral("/preview");
+    QDir().mkpath(dir);
+    const QString file = dir + QStringLiteral("/signature-") + QString::number(++m_previewSerial) + QStringLiteral(".png");
+    return img.save(file) ? QUrl::fromLocalFile(file).toString() : QString();
+}
+
+QVariantList NotchController::convertibleItems() const
+{
+    QList<const FileItem *> found;
+    for (const FileItem &item : m_model.items())
+        if (!item.removedAt.isValid() && available(item.id)
+            && !ConvertModel::targetsFor(ConvertModel::kindOf(item.mimeType, item.originalName), ConvertModel::suffixOf(item.originalName)).isEmpty())
+            found << &item;
+    std::sort(found.begin(), found.end(), [](const FileItem *a, const FileItem *b) { return a->addedAt > b->addedAt; });
+    QVariantList out;
+    for (const FileItem *item : std::as_const(found)) {
+        if (out.size() >= 60)
+            break;
+        const QString suffix = QFileInfo(item->originalName).suffix().toLower();
+        const bool pdf = item->mimeType == QLatin1String("application/pdf") || suffix == QLatin1String("pdf");
+        const bool word = suffix == QLatin1String("doc") || suffix == QLatin1String("docx") || suffix == QLatin1String("odt") || suffix == QLatin1String("rtf");
+        out.append(QVariantMap{{QStringLiteral("id"), item->id}, {QStringLiteral("name"), item->originalName}, {QStringLiteral("sizeText"), QLocale().formattedDataSize(item->sizeBytes)},
+                               {QStringLiteral("addedText"), QLocale().toString(item->addedAt.toLocalTime(), QLocale::ShortFormat)},
+                               {QStringLiteral("kind"), pdf ? QStringLiteral("pdf") : word ? QStringLiteral("word")
+                                                    : ConvertModel::kindOf(item->mimeType, item->originalName) == ConvertModel::Kind::Image ? QStringLiteral("image") : QStringLiteral("other")}});
+    }
+    return out;
+}
+
+QVariantList NotchController::convertTargetsForFile(const QString &fileUrl) const
+{
+    const QString path = localPath(fileUrl);
+    const QFileInfo info(path);
+    if (!info.isFile())
+        return {};
+    return targetRows({{ConvertModel::kindOf(QMimeDatabase().mimeTypeForFile(path).name(), info.fileName()), ConvertModel::suffixOf(info.fileName())}});
+}
+
+void NotchController::runToolOnFiles(const QString &kind, const QStringList &fileUrls, const QString &option)
+{
+    QList<DocTools::ToolInput> inputs;
+    for (const QString &url : fileUrls) {
+        const QFileInfo info(localPath(url));
+        if (info.isFile())
+            inputs << DocTools::ToolInput{info.absoluteFilePath(), info.completeBaseName(), info.fileName()};
+    }
+    startTool(kind, inputs, option, false);
+}
+
 QVariantList NotchController::convertTargets(const QStringList &ids) const
 {
     QList<ConvertModel::Pick> picks;
     for (const QString &id : ids)
         if (const FileItem *item = m_model.find(id))
             picks.append({ConvertModel::kindOf(item->mimeType, item->originalName), ConvertModel::suffixOf(item->originalName)});
+    return targetRows(picks);
+}
+
+QVariantList NotchController::targetRows(const QList<ConvertModel::Pick> &picks) const
+{
     QVariantList out;
     for (const ConvertModel::Target &t : ConvertModel::targetsForSelection(picks)) {
         const bool have = ConvertModel::have(t.engine);
@@ -1886,12 +1989,16 @@ bool NotchController::addDocument(const QString &name, const QString &mimeType, 
     return addBytes(name, mimeType, bytes, note, category, idOut);
 }
 
-QVariantList NotchController::pdfItems() const
+QVariantList NotchController::pdfItems(bool withWord) const
 {
+    const auto isPdf = [](const FileItem &item) { return item.mimeType == QLatin1String("application/pdf") || item.originalName.endsWith(QLatin1String(".pdf"), Qt::CaseInsensitive); };
+    const auto isWord = [](const FileItem &item) {
+        const QString suffix = QFileInfo(item.originalName).suffix().toLower();
+        return suffix == QLatin1String("doc") || suffix == QLatin1String("docx") || suffix == QLatin1String("odt") || suffix == QLatin1String("rtf");
+    };
     QList<const FileItem *> found;
     for (const FileItem &item : m_model.items())
-        if (!item.removedAt.isValid() && available(item.id)
-            && (item.mimeType == QLatin1String("application/pdf") || item.originalName.endsWith(QLatin1String(".pdf"), Qt::CaseInsensitive)))
+        if (!item.removedAt.isValid() && available(item.id) && (isPdf(item) || (withWord && isWord(item))))
             found << &item;
     std::sort(found.begin(), found.end(), [](const FileItem *a, const FileItem *b) { return a->addedAt > b->addedAt; });
     QVariantList out;
@@ -1899,7 +2006,8 @@ QVariantList NotchController::pdfItems() const
         if (out.size() >= 40)
             break;
         out.append(QVariantMap{{QStringLiteral("id"), item->id}, {QStringLiteral("name"), item->originalName}, {QStringLiteral("sizeText"), QLocale().formattedDataSize(item->sizeBytes)},
-                               {QStringLiteral("addedText"), QLocale().toString(item->addedAt.toLocalTime(), QLocale::ShortFormat)}});
+                               {QStringLiteral("addedText"), QLocale().toString(item->addedAt.toLocalTime(), QLocale::ShortFormat)},
+                               {QStringLiteral("kind"), isPdf(*item) ? QStringLiteral("pdf") : QStringLiteral("word")}});
     }
     return out;
 }
@@ -1914,6 +2022,11 @@ void NotchController::runTool(const QString &kind, const QStringList &ids, const
                                           item->originalName};
             fromVault = fromVault || item->vault;
         }
+    startTool(kind, inputs, option, fromVault);
+}
+
+void NotchController::startTool(const QString &kind, const QList<DocTools::ToolInput> &inputs, const QString &option, bool fromVault)
+{
     if (inputs.isEmpty())
         return;
     const QString category = m_categoryFilter == QLatin1String(RemovedView) ? QString() : m_categoryFilter;

@@ -1753,62 +1753,22 @@ RowLayout {
                     SectionLabel { text: "Telling speakers apart" }
                     Segmented { Layout.fillWidth: true; model: [["fewer", "Fewer speakers"], ["balanced", "Balanced"], ["more", "More speakers"]]; value: audioIntel.speakerSplit; onPicked: (v) => audioIntel.speakerSplit = v }
                     Caption { Layout.fillWidth: true; text: "If two people are taken for one, choose More; if one person is split into two, choose Fewer. It applies to the next recording you process." }
+                    SettingToggle { visible: audioIntel.soundReady; title: "Tell music and sounds apart"; caption: "Music, applause and crowds become lines of their own in a transcript instead of made-up words. Applies to the next recording."; checked: audioIntel.detectSound; onToggled: audioIntel.detectSound = !audioIntel.detectSound }
+                    SectionLabel { text: "Clean up sound before writing" }
+                    Segmented { Layout.fillWidth: true; model: [["off", "Off"], ["denoise", "Reduce noise"], ["vocals", "Voice from music"]]; value: audioIntel.cleanMode; onPicked: (v) => audioIntel.cleanMode = v }
+                    Caption { Layout.fillWidth: true; text: audioIntel.cleanMode === "denoise" ? (audioIntel.denoiseReady ? "Hum and background noise are lowered before the recognizer hears the recording. Applies to the next recording." : "Download Reduce noise under AI models to use this. Without it the recording is used as it is.")
+                                                          : audioIntel.cleanMode === "vocals" ? (audioIntel.vocalsReady ? "Only the voice goes to the recognizer, so a song with a singer is written without words made up for the music. Slow: it can take as long as the recording. Applies to the next recording." : "Download Voice from music under AI models to use this. Without it the recording is used as it is.")
+                                                          : "Off: the recording goes to the recognizer as it is." }
+                    SettingToggle { title: "Punctuation for English"; caption: audioIntel.punctReady ? "Adds full stops, commas and capitals to English text that has none. English only: other languages, Indonesian included, are left as Whisper wrote them. Applies to the next recording." : "English only. Download Punctuation under AI models to use it; Whisper already punctuates Indonesian and English."; checked: audioIntel.punctuate; onToggled: audioIntel.punctuate = !audioIntel.punctuate }
                     SectionLabel { text: "CPU threads" }
                     Segmented { Layout.fillWidth: true; model: [[2, "2"], [4, "4"], [6, "6"], [8, "8"], [12, "12"]]; value: audioIntel.threads; onPicked: (v) => audioIntel.threads = v }
                     SectionLabel { text: "Memory limit" }
                     Segmented { Layout.fillWidth: true; model: [[0, "None"], [4096, "4 GB"], [8192, "8 GB"], [12288, "12 GB"]]; value: audioIntel.ramLimitMb; onPicked: (v) => audioIntel.ramLimitMb = v }
                 }
 
+                AiModelsCard { Layout.fillWidth: true }
                 HardwareCard { Layout.fillWidth: true }
-                VisionCard { Layout.fillWidth: true }
                 KnowledgeCard { Layout.fillWidth: true }
-
-                SettingCard {
-                    title: "Models and helpers"
-                    ColumnLayout {
-                      Layout.fillWidth: true
-                      spacing: 10
-                      Repeater {
-                        model: audioIntel.modelIds // the rows stay while a download updates them (a changing list rebuilt them, and the card was cut off)
-                        delegate: ColumnLayout {
-                            id: mrow
-                            required property string modelData
-                            readonly property var info: { audioIntel.models; return audioIntel.modelInfo(modelData) }
-                            Layout.fillWidth: true
-                            spacing: 4
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: 8
-                                ColumnLayout {
-                                    Layout.fillWidth: true
-                                    spacing: 0
-                                    Text { Layout.fillWidth: true; text: mrow.info.title + " · " + mrow.info.sizeText; color: theme.text; font.pixelSize: 13; elide: Text.ElideRight }
-                                    Caption { Layout.fillWidth: true; text: mrow.info.ready ? "Installed" + (mrow.info.diskText !== "" ? " · " + mrow.info.diskText + " on disk" : "") : mrow.info.note }
-                                }
-                                PillButton {
-                                    visible: !mrow.info.ready && mrow.info.state !== "downloading" && mrow.info.state !== "verifying"
-                                    text: mrow.info.partial ? "Continue" : "Download"
-                                    iconName: "download"
-                                    onClicked: audioIntel.downloadModel(mrow.info.id)
-                                }
-                                PillButton { visible: mrow.info.state === "downloading"; text: "Cancel"; onClicked: audioIntel.cancelDownload(mrow.info.id) }
-                                Text { visible: mrow.info.state === "verifying"; text: "Checking…"; color: theme.textDim; font.pixelSize: 12 }
-                                PillButton { visible: mrow.info.ready; text: "Remove"; iconName: "trash"; onClicked: audioIntel.removeModel(mrow.info.id) }
-                            }
-                            Rectangle {
-                                visible: mrow.info.state === "downloading"
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 4
-                                radius: 2
-                                color: theme.surface
-                                Rectangle { width: parent.width * mrow.info.progress; height: parent.height; radius: 2; color: theme.accent }
-                            }
-                            Caption { visible: mrow.info.state === "downloading"; Layout.fillWidth: true; text: mrow.info.receivedText + (mrow.info.speedText !== "" ? " · " + mrow.info.speedText : " · starting…") + (mrow.info.etaText !== "" ? " · " + mrow.info.etaText : "") }
-                            Text { visible: mrow.info.error !== ""; Layout.fillWidth: true; text: mrow.info.error; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: theme.danger; font.pixelSize: 11 }
-                        }
-                      }
-                    }
-                }
             }
         }
 

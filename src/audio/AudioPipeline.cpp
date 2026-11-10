@@ -19,7 +19,7 @@ struct Stage {
     const char *id, *label;
     double weight;
 };
-const Stage Stages[] = {{"preprocess", "Preparing the audio", 0.05}, {"vad", "Finding the speech", 0.03}, {"asr", "Writing the transcript", 0.62},
+const Stage Stages[] = {{"preprocess", "Preparing the audio", 0.05}, {"clean", "Cleaning up the sound", 0.04}, {"vad", "Finding the speech", 0.03}, {"asr", "Writing the transcript", 0.58},
                         {"diarize", "Telling the speakers apart", 0.15}, {"align", "Putting it together", 0.01}, {"summarize", "Writing the notes", 0.14}};
 
 QString fingerprint(const QList<Segment> &segments)
@@ -41,6 +41,14 @@ QString monoMix(const QString &stereoPath, const QString &out)
     for (qsizetype i = 0; i < mix.size(); ++i)
         pcm[i] = qint16(std::clamp(mix[i], -1.0f, 1.0f) * 32767.0f);
     return Wav::writePcm16(out, pcm, 1, Rate);
+}
+
+QJsonArray marksJson(const QList<Sound::Event> &marks)
+{
+    QJsonArray a;
+    for (const Sound::Event &e : marks)
+        a.append(QJsonArray{e.start, e.end, int(e.kind), e.label});
+    return a;
 }
 
 QString channelFile(const QString &stereoPath, int channel, const QString &out)
@@ -82,19 +90,22 @@ double AudioPipeline::overall(const QString &stage, double fraction)
     return 0;
 }
 
-QList<Segment> AudioPipeline::clean(const QList<Segment> &in)
+QList<Segment> AudioPipeline::clean(const QList<Segment> &in, QList<Sound::Event> *marks)
 {
     static const QRegularExpression mark(QStringLiteral("^\\s*[\\[(][^\\])]{0,40}[\\])]\\s*$"));
     QList<Segment> kept;
     for (Segment s : in) {
         s.text = s.text.simplified();
-        if (s.text.isEmpty() || mark.match(s.text).hasMatch())
-            continue;
         bool word = false;
         for (const QChar c : s.text)
             word = word || c.isLetterOrNumber();
-        if (word)
-            kept.append(s);
+        if (s.text.isEmpty() || mark.match(s.text).hasMatch() || !word) {
+            if (marks && !s.text.isEmpty())
+                if (const Sound::Event e = Sound::fromMark(s.text, s.start, s.end); e.kind != Sound::Kind::Plain)
+                    marks->append(e);
+            continue;
+        }
+        kept.append(s);
     }
     QList<Segment> out;
     for (int i = 0; i < kept.size();) {
@@ -130,10 +141,11 @@ bool AudioPipeline::summarizeStage(PipelineResult &r, const QString &workDir, co
     if (!options.summarize)
         return true;
     const QString file = workDir + QStringLiteral("/summary.json");
-    const QString hash = QStringLiteral("v2|") + fingerprint(r.segments) + u'|' + templateId(options.tmpl) + u'|' + options.language; // v2: the richer notes
+    const QList<Segment> spoken = Sound::withoutSounds(r.segments); // the lines that are music or noise are not what was said
+    const QString hash = QStringLiteral("v2|") + fingerprint(spoken) + u'|' + templateId(options.tmpl) + u'|' + options.language; // v2: the richer notes
     const QJsonObject saved = Json::load(file);
     QStringList names;
-    for (const Segment &s : std::as_const(r.segments))
+    for (const Segment &s : std::as_const(spoken))
         if (!names.contains(s.speaker))
             names << s.speaker;
     if (saved.value(QStringLiteral("hash")).toString() == hash && saved.contains(QStringLiteral("summary"))) {
@@ -144,7 +156,7 @@ bool AudioPipeline::summarizeStage(PipelineResult &r, const QString &workDir, co
     } else {
         report("summarize", 0);
         Summary s;
-        const QString err = m_summarizer->summarize(r.segments, names, options.tmpl, options.language, [&](double f) { report("summarize", f); }, &cancel, &s);
+        const QString err = m_summarizer->summarize(spoken, names, options.tmpl, options.language, [&](double f) { report("summarize", f); }, &cancel, &s);
         if (cancel.load() || err == QLatin1String("cancelled")) {
             r.cancelled = true;
             r.error = QStringLiteral("cancelled");
@@ -249,34 +261,109 @@ PipelineResult AudioPipeline::run(const QString &source, const QString &workDir,
     if (cancel.load())
         return stopped();
 
+    // ---- clean: the noise (or the music) out, for the recognizer only; the sound model and the speaker model read the audio as it was ----
+    QString heard = work;      // the file the recognizer is given
+    QString cleanUsed;         // what was done ("" = nothing): part of what a saved vad/asr result depends on
+    {
+        const QString mode = options.cleanMode;
+        if (Clean::valid(mode) && m_cleaner && m_cleaner->available(mode)) {
+            const QString out = workDir + QStringLiteral("/clean.wav"), meta = workDir + QStringLiteral("/clean.json");
+            const Wav::Info have = Wav::readInfo(out);
+            const QJsonObject saved = Json::load(meta);
+            if (saved.value(QStringLiteral("mode")).toString() == mode && qAbs(saved.value(QStringLiteral("duration")).toDouble() - r.duration) < 0.01 && have.valid()
+                && have.rate == Rate && have.channels == 1 && qAbs(have.seconds() - r.duration) < 0.05) {
+                cleanUsed = mode;
+            } else {
+                report("clean", 0);
+                QFile::remove(out);
+                QFile::remove(meta);
+                const QString err = m_cleaner->clean(work, out, mode, &cancel, [&](double f) { report("clean", f); });
+                if (cancel.load())
+                    return stopped();
+                QString why = err;
+                if (why.isEmpty()) { // as long as the original, or the times of the transcript would drift
+                    QVector<float> x = Wav::readFrames(out, 0);
+                    const qsizetype want = qsizetype(std::llround(r.duration * Rate));
+                    if (x.isEmpty() || Wav::readInfo(out).rate != Rate) {
+                        why = QStringLiteral("the cleaned audio could not be read");
+                    } else if (x.size() != want) {
+                        x.resize(want); // (cut, or filled with silence)
+                        QVector<qint16> pcm(x.size());
+                        for (qsizetype i = 0; i < x.size(); ++i)
+                            pcm[i] = qint16(std::clamp(x[i], -1.0f, 1.0f) * 32767.0f);
+                        why = Wav::writePcm16(out, pcm, 1, Rate);
+                    }
+                }
+                if (why.isEmpty() && Json::save(meta, {{QStringLiteral("mode"), mode}, {QStringLiteral("duration"), r.duration}}).isEmpty())
+                    cleanUsed = mode;
+                else
+                    r.warnings << QStringLiteral("The sound was not cleaned up: %1").arg(why.isEmpty() ? QStringLiteral("it could not be saved") : why);
+            }
+            if (!cleanUsed.isEmpty())
+                heard = out;
+        } else if (Clean::valid(mode)) {
+            r.warnings << QStringLiteral("The sound was not cleaned up: the model for it is not installed.");
+        }
+        r.doneStages << QStringLiteral("clean");
+        report("clean", 1);
+    }
+    if (cancel.load())
+        return stopped();
+
     // ---- vad: where the speech is, cut into windows the recognizer takes ----
     QVector<float> samples; // loaded when a stage needs them, kept for the next
     const auto load = [&] {
         if (samples.isEmpty())
-            samples = Wav::readFrames(work, 0);
+            samples = Wav::readFrames(heard, 0);
         return !samples.isEmpty();
     };
     QList<Vad::Region> windows;
+    QList<Sound::Event> events; // music and other sounds the sound model found
     {
+        const bool tagging = options.detectSound && m_tagger && m_tagger->available();
         const QJsonObject saved = Json::load(workDir + QStringLiteral("/vad.json"));
         if (saved.value(QStringLiteral("window")).toInt() == options.windowSeconds && saved.contains(QStringLiteral("windows"))
-            && qAbs(saved.value(QStringLiteral("duration")).toDouble() - r.duration) < 0.01) {
+            && qAbs(saved.value(QStringLiteral("duration")).toDouble() - r.duration) < 0.01 && saved.value(QStringLiteral("sound")).toBool() == tagging && saved.value(QStringLiteral("clean")).toString() == cleanUsed) {
             for (const QJsonValue &v : saved.value(QStringLiteral("windows")).toArray())
                 windows.append({qint64(v.toArray().at(0).toDouble()), qint64(v.toArray().at(1).toDouble())});
+            for (const QJsonValue &v : saved.value(QStringLiteral("events")).toArray()) {
+                const QJsonArray e = v.toArray();
+                events.append({e.at(0).toDouble(), e.at(1).toDouble(), Sound::Kind(e.at(2).toInt()), e.at(3).toString()});
+            }
         } else {
             report("vad", 0);
             if (!load())
                 return fail("vad", QStringLiteral("the audio could not be read"));
             windows = Vad::windows(samples, Rate, options.windowSeconds);
-            QJsonArray a;
+            bool tagged = false;
+            if (tagging) { // what is music and what is noise: the recognizer is not given those stretches
+                QList<Sound::Clip> clips;
+                const QString err = m_tagger->tag(work, &cancel, [&](double f) { report("vad", 0.05 + 0.95 * f); }, &clips);
+                if (cancel.load())
+                    return stopped();
+                if (err.isEmpty()) {
+                    tagged = true;
+                    events = Sound::merge(clips);
+                    QList<Sound::Event> remove = events;
+                    if (cleanUsed == Clean::Vocals) // the singing was kept on purpose: only what is not music is taken out
+                        remove.erase(std::remove_if(remove.begin(), remove.end(), [](const Sound::Event &e) { return e.kind == Sound::Kind::Music; }), remove.end());
+                    windows = Sound::subtract(windows, remove, Rate);
+                } else {
+                    r.warnings << QStringLiteral("Music and other sounds were not told apart: %1").arg(err);
+                }
+            }
+            QJsonArray a, ev;
             for (const Vad::Region &w : windows)
                 a.append(QJsonArray{double(w.start), double(w.end)});
+            for (const Sound::Event &e : std::as_const(events))
+                ev.append(QJsonArray{e.start, e.end, int(e.kind), e.label});
             if (const QString e = Json::save(workDir + QStringLiteral("/vad.json"),
-                                             {{QStringLiteral("window"), options.windowSeconds}, {QStringLiteral("duration"), r.duration}, {QStringLiteral("windows"), a}});
+                                             {{QStringLiteral("window"), options.windowSeconds}, {QStringLiteral("duration"), r.duration}, {QStringLiteral("windows"), a},
+                                              {QStringLiteral("sound"), tagged}, {QStringLiteral("clean"), cleanUsed}, {QStringLiteral("events"), ev}});
                 !e.isEmpty())
                 return fail("vad", e);
         }
-        if (windows.isEmpty())
+        if (windows.isEmpty() && events.isEmpty())
             return fail("vad", QStringLiteral("no speech was found in this recording"));
         r.doneStages << QStringLiteral("vad");
         report("vad", 1);
@@ -286,16 +373,21 @@ PipelineResult AudioPipeline::run(const QString &source, const QString &workDir,
 
     // ---- asr ----
     QList<Segment> asr;
-    {
+    QList<Sound::Event> marks; // what the recognizer wrote for music and noise: "[Music]", "(applause)"
+    if (!windows.isEmpty()) { // (a recording that is only music has nothing to recognize)
         const QString doneFile = workDir + QStringLiteral("/asr.json"), partialFile = workDir + QStringLiteral("/asr.partial.json");
         const QJsonObject done = Json::load(doneFile);
         const auto sameSettings = [&](const QJsonObject &o) {
             return o.value(QStringLiteral("quality")).toString() == options.quality && o.value(QStringLiteral("language")).toString() == options.language
-                   && o.value(QStringLiteral("windows")).toInt() == windows.size();
+                   && o.value(QStringLiteral("windows")).toInt() == windows.size() && o.value(QStringLiteral("clean")).toString() == cleanUsed;
         };
         if (done.value(QStringLiteral("complete")).toBool() && sameSettings(done)) {
             asr = Json::segments(done.value(QStringLiteral("segments")).toArray());
             r.language = done.value(QStringLiteral("detected")).toString();
+            for (const QJsonValue &v : done.value(QStringLiteral("marks")).toArray()) {
+                const QJsonArray e = v.toArray();
+                marks.append({e.at(0).toDouble(), e.at(1).toDouble(), Sound::Kind(e.at(2).toInt()), e.at(3).toString()});
+            }
         } else {
             if (!m_asr)
                 return fail("asr", QStringLiteral("no speech recognizer"));
@@ -320,7 +412,7 @@ PipelineResult AudioPipeline::run(const QString &source, const QString &workDir,
                 for (auto it = votes.cbegin(); it != votes.cend(); ++it)
                     votesJson.insert(it.key(), it.value());
                 Json::save(partialFile, {{QStringLiteral("quality"), options.quality}, {QStringLiteral("language"), options.language},
-                                         {QStringLiteral("windows"), int(windows.size())}, {QStringLiteral("done"), doneWindows},
+                                         {QStringLiteral("windows"), int(windows.size())}, {QStringLiteral("clean"), cleanUsed}, {QStringLiteral("done"), doneWindows},
                                          {QStringLiteral("segments"), Json::segments(asr)}, {QStringLiteral("votes"), votesJson}});
             };
             report("asr", double(from) / windows.size());
@@ -357,7 +449,7 @@ PipelineResult AudioPipeline::run(const QString &source, const QString &workDir,
                 report("asr", double(i + 1) / windows.size());
             }
             m_asr->release();
-            asr = clean(asr);
+            asr = clean(asr, &marks);
             QString detected = options.language != QLatin1String("auto") ? options.language : QString();
             if (detected.isEmpty()) {
                 int best = 0;
@@ -369,15 +461,15 @@ PipelineResult AudioPipeline::run(const QString &source, const QString &workDir,
             }
             r.language = detected;
             if (const QString e = Json::save(doneFile, {{QStringLiteral("complete"), true}, {QStringLiteral("quality"), options.quality}, {QStringLiteral("language"), options.language},
-                                                         {QStringLiteral("windows"), int(windows.size())}, {QStringLiteral("detected"), detected},
-                                                         {QStringLiteral("segments"), Json::segments(asr)}});
+                                                         {QStringLiteral("windows"), int(windows.size())}, {QStringLiteral("clean"), cleanUsed}, {QStringLiteral("detected"), detected},
+                                                         {QStringLiteral("segments"), Json::segments(asr)}, {QStringLiteral("marks"), marksJson(marks)}});
                 !e.isEmpty())
                 return fail("asr", e);
             QFile::remove(partialFile);
         }
         samples.clear(); // the next stages do not need them
         samples.squeeze();
-        if (asr.isEmpty())
+        if (asr.isEmpty() && events.isEmpty() && marks.isEmpty())
             return fail("asr", QStringLiteral("no words were recognized in this recording"));
         r.doneStages << QStringLiteral("asr");
         report("asr", 1);
@@ -385,9 +477,28 @@ PipelineResult AudioPipeline::run(const QString &source, const QString &workDir,
     if (cancel.load())
         return stopped();
 
+    // ---- marks and capitals for English text that has none (the text only; times and speakers stay) ----
+    if (options.punctuate && m_punct && !asr.isEmpty()) {
+        const QString lang = options.language != QLatin1String("auto") ? options.language : r.language;
+        if (!m_punct->available()) {
+            r.warnings << QStringLiteral("Punctuation was not added: the model for it is not installed.");
+        } else if (Punct::supported(lang)) {
+            const QString err = Punct::apply(&asr, lang, [&](const QStringList &in, QStringList *out) { return m_punct->punctuate(in, &cancel, out); });
+            if (cancel.load())
+                return stopped();
+            if (!err.isEmpty())
+                r.warnings << QStringLiteral("Punctuation was not added: %1").arg(err);
+        } else if (!lang.isEmpty()) {
+            r.warnings << QStringLiteral("Punctuation was not added: the model knows English only.");
+        }
+    }
+    if (cancel.load())
+        return stopped();
+
     // ---- diarize ----
     QList<Turn> remoteTurns, localTurns; // localTurns: the microphone's channel of a recording from Notch (several people can sit at one microphone)
-    if (options.diarize) {
+    samples.clear();
+    if (options.diarize && !asr.isEmpty()) { // (music alone has no voices)
         const QString file = workDir + QStringLiteral("/diarization.json");
         const QJsonObject saved = Json::load(file);
         const int wanted = options.stereo ? 0 : options.speakers; // a stereo recording is split by channel: the number is not asked of it
@@ -494,6 +605,18 @@ PipelineResult AudioPipeline::run(const QString &source, const QString &workDir,
             turns = remoteTurns;
         }
         r.segments = align(asr, turns);
+        // music and other sounds: the sound model's events, and the recognizer's own marks where the model found nothing
+        QList<Sound::Event> sounds = events;
+        for (const Sound::Event &m : std::as_const(marks)) {
+            bool covered = false;
+            for (const Sound::Event &e : std::as_const(events))
+                covered = covered || detail::overlap(m.start, m.end, e.start, e.end) > 0;
+            if (!covered)
+                sounds.append(m);
+        }
+        for (const Sound::Event &e : std::as_const(sounds))
+            r.segments.append(Sound::segment(e, r.language.isEmpty() ? options.language : r.language));
+        std::stable_sort(r.segments.begin(), r.segments.end(), [](const Segment &a, const Segment &b) { return a.start < b.start; });
         r.doneStages << QStringLiteral("align");
         if (hooks.transcript)
             hooks.transcript(r.segments, r.language, r.duration);

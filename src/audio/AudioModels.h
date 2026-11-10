@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AudioStore.h"
+#include "SoundEvents.h"
 
 #include <QAbstractListModel>
 #include <QLocale>
@@ -111,7 +112,7 @@ public:
         m_rows = rows;
         m_labels.clear();
         for (const AudioStore::SegmentRow &r : m_rows)
-            if (!m_labels.contains(r.speakerLabel))
+            if (r.speakerLabel != Audio::Sound::Speaker && !m_labels.contains(r.speakerLabel)) // a line that is music or noise is no speaker
                 m_labels << r.speakerLabel;
         m_labels.sort();
         endResetModel();

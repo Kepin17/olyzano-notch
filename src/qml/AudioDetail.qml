@@ -1,5 +1,7 @@
 import QtQuick
 import QtQuick.Controls.Basic
+import QtCore
+import QtQuick.Dialogs
 import QtQuick.Layouts
 
 // One recording: a short header (title, player), what is going on with it, and under tabs the notes, the transcript and the tasks. What is under
@@ -8,6 +10,9 @@ Item {
     id: detail
     required property var page
     readonly property var info: page.info
+    readonly property string chapters: info.hasNotes ? audioIntel.chaptersText("youtube") : "" // "" when the notes give fewer than three
+    property string pending: ""          // what the save dialog is for: srt | vtt | txt | chapters-youtube | chapters-list
+    property bool withSounds: true       // music and other sounds as [markers] in the exported transcript
 
     ColumnLayout {
         anchors.fill: parent
@@ -86,6 +91,8 @@ Item {
             value: page.tab
             onPicked: (v) => page.tab = v
             IconButton { visible: page.tab === "transcript"; iconName: "search"; Accessible.name: "Find in the transcript"; implicitWidth: 26; implicitHeight: 26; onClicked: page.findOpen = !page.findOpen }
+            IconButton { visible: page.tab === "transcript"; iconName: "download"; Accessible.name: "Export the transcript (SRT, VTT, text)"; implicitWidth: 26; implicitHeight: 26; onClicked: exportMenu.popup() }
+            IconButton { visible: page.tab === "summary" && !!detail.info.hasNotes && detail.chapters !== ""; iconName: "doc"; Accessible.name: "Chapters for a video description"; implicitWidth: 26; implicitHeight: 26; onClicked: chapterMenu.popup() }
             IconButton { visible: page.tab === "summary" && !!detail.info.hasNotes; iconName: "copy"; Accessible.name: "Copy the notes as Markdown"; implicitWidth: 26; implicitHeight: 26; onClicked: { audioIntel.copyNotes(); page.shell.say("Notes copied as Markdown", 1400) } }
         }
 
@@ -119,5 +126,37 @@ Item {
             }
         }
         Item { visible: !detail.info.hasTranscript; Layout.fillWidth: true; Layout.fillHeight: true }
+    }
+
+    DarkMenu {
+        id: exportMenu
+        MenuItem { text: "Save as SRT (subtitles)"; onTriggered: detail.save("srt") }
+        MenuItem { text: "Save as WebVTT"; onTriggered: detail.save("vtt") }
+        MenuItem { text: "Save as plain text"; onTriggered: detail.save("txt") }
+        MenuItem { text: "Include music and sounds"; checkable: true; checked: detail.withSounds; onTriggered: detail.withSounds = checked }
+    }
+    DarkMenu {
+        id: chapterMenu
+        MenuItem { text: "Copy chapters (YouTube)"; onTriggered: { audioIntel.copyChapters("youtube"); detail.page.shell.say("Chapters copied", 1400) } }
+        MenuItem { text: "Copy chapters (list)"; onTriggered: { audioIntel.copyChapters("list"); detail.page.shell.say("Chapters copied", 1400) } }
+        MenuItem { text: "Save chapters as text"; onTriggered: detail.save("chapters-youtube") }
+    }
+    function save(kind) {
+        pending = kind
+        saveDialog.currentFile = StandardPaths.writableLocation(StandardPaths.DocumentsLocation) + "/"
+                                 + (kind.indexOf("chapters") === 0 ? "chapters.txt" : audioIntel.suggestedFileName(kind))
+        saveDialog.open()
+    }
+    FileDialog {
+        id: saveDialog
+        fileMode: FileDialog.SaveFile
+        title: "Save"
+        onVisibleChanged: detail.page.shell.dialogs += visible ? 1 : -1
+        Component.onDestruction: if (visible) detail.page.shell.dialogs -= 1 // a page closed under an open dialog must not leave the notch below the windows
+        onAccepted: {
+            const why = detail.pending.indexOf("chapters") === 0 ? audioIntel.saveChapters("youtube", selectedFile.toString())
+                                                                 : audioIntel.exportTranscript(detail.pending, detail.withSounds, selectedFile.toString())
+            detail.page.shell.say(why === "" ? "Saved" : why, why === "" ? 1400 : 3500)
+        }
     }
 }

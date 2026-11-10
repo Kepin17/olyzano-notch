@@ -6,6 +6,8 @@
 #include "app/DocSummaryController.h"
 #include "app/KnowledgeController.h"
 #include "app/TaskSuggestController.h"
+#include "app/MattingController.h"
+#include "app/RecordController.h"
 #include "app/VisionController.h"
 #include "app/LanguageController.h"
 #include "app/ShareController.h"
@@ -248,6 +250,8 @@ int main(int argc, char *argv[])
     LanguageController languages(&audioIntel);
     DocSummaryController docSummary(&controller, &audioIntel);
     VisionController vision(&controller, &audioIntel);
+    MattingController matting(&controller, &audioIntel);
+    RecordController recorder(&controller);
     KnowledgeController knowledge(&controller, &audioIntel);
     NearbyController nearby(&controller);
 
@@ -436,6 +440,9 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("audioIntel"), &audioIntel);
     engine.rootContext()->setContextProperty(QStringLiteral("docSummary"), &docSummary);
     engine.rootContext()->setContextProperty(QStringLiteral("vision"), &vision);
+    engine.rootContext()->setContextProperty(QStringLiteral("matting"), &matting);
+    recorder.setEngine(&engine);
+    engine.rootContext()->setContextProperty(QStringLiteral("recorder"), &recorder);
     engine.rootContext()->setContextProperty(QStringLiteral("knowledge"), &knowledge);
     engine.rootContext()->setContextProperty(QStringLiteral("languages"), &languages);
     engine.rootContext()->setContextProperty(QStringLiteral("kdeconnect"), &kdeconnect);
@@ -688,7 +695,7 @@ int main(int argc, char *argv[])
     // `notch --shot-page file.png <timer|color|shelf|tasks|capsule>`: the open panel on that page, the same way.
     if (const int i = app.arguments().indexOf(QStringLiteral("--shot-page")); i >= 0 && i + 2 < app.arguments().size()) {
         const QString path = app.arguments().at(i + 1), page = app.arguments().at(i + 2);
-        QTimer::singleShot(1200, &app, [&windows, &app, &activities, &doomscroll, &assistant, &audioIntel, path, page] {
+        QTimer::singleShot(1200, &app, [&windows, &app, &activities, &doomscroll, &assistant, &audioIntel, &recorder, path, page] {
             QQuickWindow *w = windows.isEmpty() ? nullptr : windows.constBegin().value();
             if (!w)
                 return app.quit();
@@ -706,6 +713,10 @@ int main(int argc, char *argv[])
             }
             if (page.startsWith(QLatin1String("toast-"))) { // one notification, for a picture
                 QMetaObject::invokeMethod(w, "debugToast", Q_ARG(QVariant, page.mid(6)), Q_ARG(QVariant, qEnvironmentVariable("NOTCH_DEBUG_ART")));
+                return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 1800, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+            }
+            if (page == QLatin1String("record-live")) { // the closed notch while the screen recorder runs (the state is made up: nothing is captured)
+                recorder.publishState(QStringLiteral("recording"), 161, false);
                 return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 1800, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
             }
             if (page == QLatin1String("capsule")) // the closed notch as it rests (set capsuleMode=capsule in activities.conf)
@@ -730,9 +741,17 @@ int main(int argc, char *argv[])
                 return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 1800, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
             }
             if (page.startsWith(QLatin1String("docs-"))) { // the Documents page with a PDF of the shelf chosen: docs-<item id>
-                w->setProperty("docsPick", page.mid(5));
+                const bool tools = page.mid(5).startsWith(QLatin1String("tools-")); // docs-tools-<id>: the PDF tools tab
+                w->setProperty("docsTab", tools ? QStringLiteral("tools") : QString());
+                w->setProperty("docsAction", qEnvironmentVariable("NOTCH_SHOT_ACTION")); // for a picture of one action: mark | stamp | protect
+                w->setProperty("docsPick", page.mid(tools ? 11 : 5));
                 w->setProperty("page", QStringLiteral("docs"));
                 return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 2200, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+            }
+            if (page == QLatin1String("camera-record")) { // the Camera page on its screen recorder
+                w->setProperty("cameraSection", QStringLiteral("record"));
+                w->setProperty("page", QStringLiteral("camera"));
+                return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 2500, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
             }
             if (page.startsWith(QLatin1String("settings-"))) { // a Settings section: settings-ai | settings-files ...
                 w->setProperty("settingsCategory", page.mid(9));
@@ -743,7 +762,13 @@ int main(int argc, char *argv[])
                             QWheelEvent ev(QPointF(520, 300), w->mapToGlobal(QPointF(520, 300)), {}, QPoint(0, -120), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
                             QCoreApplication::sendEvent(w, &ev);
                         }
-                    QTimer::singleShot(qEnvironmentVariableIsSet("NOTCH_SHOT_BOTTOM") ? 1500 : 300, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+                    if (qEnvironmentVariableIsSet("NOTCH_SHOT_SCROLL")) { // NOTCH_SHOT_SCROLL=<pixels>: the section scrolled down that far
+                        QVariant settings;
+                        QMetaObject::invokeMethod(w, "settingsPage", Q_RETURN_ARG(QVariant, settings));
+                        if (auto *page = settings.value<QObject *>())
+                            QMetaObject::invokeMethod(page, "scrollTo", Q_ARG(QVariant, qEnvironmentVariableIntValue("NOTCH_SHOT_SCROLL")));
+                    }
+                    QTimer::singleShot(qEnvironmentVariableIsSet("NOTCH_SHOT_BOTTOM") ? 1500 : qEnvironmentVariableIsSet("NOTCH_SHOT_SCROLL") ? 1000 : 300, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
                 });
             }
             w->setProperty("page", page.startsWith(QLatin1String("timer")) ? QStringLiteral("timer") : page);

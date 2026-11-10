@@ -112,6 +112,8 @@ inline QList<Target> targetsFor(Kind kind, const QString &suffix)
         add(QStringLiteral("png"), QStringLiteral("PNG, one per page"), QStringLiteral("Pages"), Engine::Poppler);
         add(QStringLiteral("jpg"), QStringLiteral("JPG, one per page"), QStringLiteral("Pages"), Engine::Poppler);
         add(QStringLiteral("txt"), QStringLiteral("Text (.txt)"), QStringLiteral("Document"), Engine::Poppler);
+        add(QStringLiteral("docx"), QStringLiteral("Word (.docx)"), QStringLiteral("Document"), Engine::Office);
+        add(QStringLiteral("odt"), QStringLiteral("OpenDocument (.odt)"), QStringLiteral("Document"), Engine::Office);
         break;
     case Kind::Document: {
         static const QStringList sheets{"xls", "xlsx", "ods"}, slides{"ppt", "pptx", "odp"};

@@ -28,6 +28,9 @@
 #include "audio/NameHints.h"
 #include "audio/EngineParse.h"
 #include "audio/ModelCatalog.h"
+#include "audio/AudioEngines.h"
+#include "audio/InstallQueue.h"
+#include "audio/ModelBundles.h"
 #include "audio/ModelStore.h"
 #include "audio/Summarize.h"
 #include "audio/SummaryModel.h"
@@ -35,6 +38,16 @@
 #include "audio/WavFile.h"
 #include "services/ConvertModel.h"
 #include "services/DocTools.h"
+#include "services/Watermark.h"
+#include "services/PdfSecurity.h"
+#include "services/Stamp.h"
+#include "audio/SoundEvents.h"
+#include "audio/SherpaRun.h"
+#include "audio/TranscriptExport.h"
+#include "services/Matting.h"
+#include "services/RecordMix.h"
+#include "platform/ProcessRunner.h"
+#include "services/OnnxRuntime.h"
 #include "services/Invite.h"
 #include "services/NearbyCrypto.h"
 #include "services/NearbyService.h"
@@ -301,6 +314,62 @@ struct Diarizer : Audio::IDiarizer {
         if (fail)
             return QStringLiteral("the helper crashed");
         *out = perCall.isEmpty() ? turns : perCall.value(calls - 1);
+        return {};
+    }
+};
+struct Tagger : Audio::ISoundTagger {
+    bool ok = true;
+    int calls = 0;
+    QList<Audio::Sound::Clip> clips;
+    bool available() const override { return ok; }
+    QString tag(const QString &, const std::atomic_bool *, const std::function<void(double)> &progress, QList<Audio::Sound::Clip> *out) override
+    {
+        ++calls;
+        if (progress)
+            progress(1.0);
+        *out = clips;
+        return {};
+    }
+};
+struct Cleaner : Audio::ICleaner {
+    bool ok = true, fail = false, shortOutput = false;
+    int calls = 0;
+    QString lastMode;
+    double gain = 0.5;
+    bool available(const QString &) const override { return ok; }
+    QString clean(const QString &in, const QString &out, const QString &mode, const std::atomic_bool *, const std::function<void(double)> &progress) override
+    {
+        ++calls;
+        lastMode = mode;
+        if (progress)
+            progress(1.0);
+        if (fail)
+            return QStringLiteral("the noise program failed");
+        QVector<float> x = Wav::readFrames(in, 0);
+        for (float &v : x)
+            v *= float(gain);
+        if (shortOutput)
+            x.resize(x.size() - 4000); // a quarter of a second short: the pipeline makes it as long as the original
+        return Wav::writePcm16(out, pcm(x), 1, 16000);
+    }
+};
+struct Punctuator : Audio::IPunctuator {
+    bool ok = true, fail = false;
+    int calls = 0;
+    QStringList seen;
+    bool available() const override { return ok; }
+    QString punctuate(const QStringList &texts, const std::atomic_bool *, QStringList *out) override
+    {
+        ++calls;
+        seen = texts;
+        if (fail)
+            return QStringLiteral("no answer");
+        for (const QString &t : texts) {
+            QString u = t;
+            if (!u.isEmpty())
+                u[0] = u[0].toUpper();
+            out->append(u.isEmpty() ? u : u + u'.');
+        }
         return {};
     }
 };
@@ -1321,7 +1390,7 @@ private slots:
         const Audio::PipelineResult r = pipe.run(source, dir, opt, cancel, hooks);
         QVERIFY2(r.ok, qPrintable(r.error));
         QVERIFY(sawTranscript);
-        QCOMPARE(stages, (QStringList{"preprocess", "vad", "asr", "diarize", "summarize"}));
+        QCOMPARE(stages, (QStringList{"preprocess", "clean", "vad", "asr", "diarize", "summarize"}));
         QCOMPARE(pre.calls, 1);
         QCOMPARE(asr.calls, 4);
         QCOMPARE(asr.released, 1); // the model is let go when the stage is done
@@ -1333,7 +1402,7 @@ private slots:
         QVERIFY(r.segments[1].start > 12 && r.segments[1].start < 14); // times are of the whole recording, not of the window
         QCOMPARE(r.summary.executive, QStringLiteral("4 segments"));
         QVERIFY(r.hasSummary);
-        QCOMPARE(r.doneStages, (QStringList{"preprocess", "vad", "asr", "diarize", "align", "summarize"}));
+        QCOMPARE(r.doneStages, (QStringList{"preprocess", "clean", "vad", "asr", "diarize", "align", "summarize"}));
         QVERIFY(QFileInfo::exists(dir + QStringLiteral("/asr.json")));
         QVERIFY(!QFileInfo::exists(dir + QStringLiteral("/asr.partial.json")));
 
@@ -1350,6 +1419,374 @@ private slots:
         QCOMPARE(asr.calls, 8);
         QCOMPARE(pre.calls, 1);
         QCOMPARE(diar.calls, 1);
+    }
+
+    void transcriptExportFormats()
+    {
+        using namespace Audio;
+        using namespace Audio::Export;
+        const QList<Segment> segs = {{0.0, 2.5, QStringLiteral("Halo semuanya."), QStringLiteral("SPEAKER_00"), false},
+                                     {3.0, 3725.5, QStringLiteral("Music & <more>"), Sound::Speaker, false},
+                                     {4.0, 4.0, QStringLiteral("Tanpa akhir"), QStringLiteral("Budi"), false},
+                                     {5.0, 6.0, QStringLiteral("   "), QStringLiteral("Budi"), false}};
+        QCOMPARE(stamp(3725.5, u','), QStringLiteral("01:02:05,500"));
+        QCOMPARE(stamp(-1, u'.'), QStringLiteral("00:00:00.000"));
+        Options o;
+        QCOMPARE(render(segs, Format::Srt, o),
+                 QStringLiteral("1\n00:00:00,000 --> 00:00:02,500\nSpeaker 1: Halo semuanya.\n\n"
+                                "2\n00:00:03,000 --> 01:02:05,500\n[Music & <more>]\n\n"
+                                "3\n00:00:04,000 --> 00:00:05,000\nBudi: Tanpa akhir\n\n")); // a cue always lasts; empty text is dropped
+        o.sounds = Sounds::Skip;
+        o.speakers = false;
+        const QString vtt = render(segs, Format::Vtt, o);
+        QVERIFY(vtt.startsWith(QStringLiteral("WEBVTT\n\n00:00:00.000 --> 00:00:02.500\nHalo semuanya.\n\n")));
+        QVERIFY(!vtt.contains(QStringLiteral("Music")));
+        QVERIFY(vtt.contains(QStringLiteral("00:00:04.000 --> 00:00:05.000")));
+        o.sounds = Sounds::Marker;
+        QVERIFY(render(segs, Format::Vtt, o).contains(QStringLiteral("[Music &amp; &lt;more&gt;]")));
+        QCOMPARE(render(segs, Format::Text, o), QStringLiteral("[00:00] Halo semuanya.\n[00:03] [Music & <more>]\n[00:04] Tanpa akhir\n"));
+        o.timestamps = false;
+        QCOMPARE(render(segs, Format::Text, o).section(u'\n', 0, 0), QStringLiteral("Halo semuanya."));
+        QCOMPARE(wrap(QStringLiteral("satu dua tiga empat lima"), 10), QStringLiteral("satu dua\ntiga empat\nlima"));
+        QCOMPARE(formatOf(QStringLiteral("SRT")), Format::Srt);
+        QCOMPARE(extension(formatOf(QStringLiteral("whatever"))), QStringLiteral("txt"));
+    }
+
+    void chapterList()
+    {
+        using namespace Audio;
+        using namespace Audio::Export;
+        const auto topic = [](const char *t, double at) { Topic x; x.title = QString::fromLatin1(t); x.timestamp = at; return x; };
+        // out of order, one without a time, one too close to the one before: the first is moved to 0:00
+        const QList<Chapter> list = chapters({topic("Penutup", 600), topic("Intro", 7), topic("Tanpa waktu", -1), topic("Isi", 120), topic("Isi lagi", 125)}, 700);
+        QCOMPARE(list.size(), 3);
+        QCOMPARE(list[0].start, 0.0);
+        QCOMPARE(list[0].title, QStringLiteral("Intro"));
+        QCOMPARE(youtube(list), QStringLiteral("00:00 Intro\n02:00 Isi\n10:00 Penutup\n"));
+        QCOMPARE(chapterText(list), QStringLiteral("- 00:00  Intro\n- 02:00  Isi\n- 10:00  Penutup\n"));
+        QVERIFY(chapters({topic("A", 0), topic("B", 100)}, 200).isEmpty()); // fewer than three: YouTube would not show them
+        QVERIFY(chapters({topic("A", 0), topic("B", 100), topic("C", 195)}, 200).isEmpty()); // the last starts too near the end
+        const QList<Chapter> hour = {{0, QStringLiteral("a")}, {100, QStringLiteral("b")}, {3725, QStringLiteral("c")}};
+        QCOMPARE(youtube(hour), QStringLiteral("0:00:00 a\n0:01:40 b\n1:02:05 c\n")); // from an hour on, every line has hours
+    }
+
+    void cleanStageChain()
+    {
+        const QString source = writeSample(QStringLiteral("noisy.mp3"), QByteArray("pretend this is an mp3"));
+        FakeAudio::Pre pre;
+        pre.signal = FakeAudio::burstSignal(45, {{1, 9}, {12, 20}, {23, 31}, {34, 42}});
+        FakeAudio::Asr asr;
+        FakeAudio::Diarizer diar;
+        diar.turns = {{0, 45, "SPEAKER_00"}};
+        FakeAudio::Summarizer sum;
+        FakeAudio::Cleaner cleaner;
+        FakeAudio::Tagger tag;
+        tag.clips = {{0, 10, Audio::Sound::Kind::Plain, {}}, {10, 20, Audio::Sound::Kind::Music, {}}, {20, 30, Audio::Sound::Kind::Music, {}}, {30, 45, Audio::Sound::Kind::Plain, {}}};
+        Audio::AudioPipeline pipe(&pre, &asr, &diar, &sum, &tag, &cleaner);
+        Audio::PipelineOptions opt;
+        opt.windowSeconds = 10;
+        opt.language = "id";
+        std::atomic_bool cancel{false};
+        const QString dir = m_tmp.filePath(QStringLiteral("job-clean"));
+        // off: the cleaner is not asked
+        QVERIFY(pipe.run(source, m_tmp.filePath(QStringLiteral("job-clean-off")), opt, cancel, {}).ok);
+        QCOMPARE(cleaner.calls, 0);
+        // denoise: done once, the saved file is used the second time, the stages are told in order
+        opt.cleanMode = Audio::Clean::Denoise;
+        QStringList stages;
+        Audio::PipelineHooks hooks;
+        hooks.report = [&](const QString &stage, double) { if (stages.isEmpty() || stages.last() != stage) stages << stage; };
+        const Audio::PipelineResult r = pipe.run(source, dir, opt, cancel, hooks);
+        QVERIFY2(r.ok, qPrintable(r.error));
+        QCOMPARE(cleaner.calls, 1);
+        QCOMPARE(cleaner.lastMode, Audio::Clean::Denoise);
+        QVERIFY(r.doneStages.indexOf(QStringLiteral("clean")) > r.doneStages.indexOf(QStringLiteral("preprocess")));
+        QVERIFY(r.doneStages.indexOf(QStringLiteral("clean")) < r.doneStages.indexOf(QStringLiteral("asr")));
+        QVERIFY(stages.indexOf(QStringLiteral("clean")) > stages.indexOf(QStringLiteral("preprocess")) && stages.indexOf(QStringLiteral("clean")) < stages.indexOf(QStringLiteral("vad")));
+        QCOMPARE(Wav::readInfo(dir + "/clean.wav").frames(), Wav::readInfo(dir + "/work.wav").frames()); // the times of the transcript do not move
+        QVERIFY(pipe.run(source, dir, opt, cancel, {}).ok);
+        QCOMPARE(cleaner.calls, 1);
+        // another mode is another result
+        opt.cleanMode = Audio::Clean::Vocals;
+        const int before = asr.calls;
+        const Audio::PipelineResult v = pipe.run(source, dir, opt, cancel, {});
+        QVERIFY(v.ok);
+        QCOMPARE(cleaner.calls, 2);
+        QCOMPARE(cleaner.lastMode, Audio::Clean::Vocals);
+        QVERIFY(asr.calls > before);                                                // recognized again, from the new audio
+        QCOMPARE(v.segments.size(), 5); // all four stretches are recognized (the singing is kept in this mode) and the music is marked besides
+        // a cleaner that answers short: the file is made as long as the original
+        FakeAudio::Cleaner shortC;
+        shortC.shortOutput = true;
+        Audio::AudioPipeline pipe2(&pre, &asr, &diar, &sum, nullptr, &shortC);
+        opt.cleanMode = Audio::Clean::Denoise;
+        const QString d2 = m_tmp.filePath(QStringLiteral("job-clean-short"));
+        QVERIFY(pipe2.run(source, d2, opt, cancel, {}).ok);
+        QCOMPARE(Wav::readInfo(d2 + "/clean.wav").frames(), Wav::readInfo(d2 + "/work.wav").frames());
+        // a cleaner that fails, or is not installed: a warning, and the recording goes on as it was
+        FakeAudio::Cleaner bad;
+        bad.fail = true;
+        Audio::AudioPipeline pipe3(&pre, &asr, &diar, &sum, nullptr, &bad);
+        const Audio::PipelineResult f = pipe3.run(source, m_tmp.filePath(QStringLiteral("job-clean-fail")), opt, cancel, {});
+        QVERIFY(f.ok);
+        QVERIFY(f.warnings.join(' ').contains(QStringLiteral("not cleaned up")));
+        bad.fail = false;
+        bad.ok = false;
+        const Audio::PipelineResult n = pipe3.run(source, m_tmp.filePath(QStringLiteral("job-clean-missing")), opt, cancel, {});
+        QVERIFY(n.ok);
+        QVERIFY(n.warnings.join(' ').contains(QStringLiteral("not installed")));
+        QCOMPARE(bad.calls, 1);
+        QVERIFY(Audio::Clean::valid(QStringLiteral("vocals")) && !Audio::Clean::valid(QStringLiteral("off")) && !Audio::Clean::valid(QStringLiteral("x")));
+    }
+
+    void punctuationStep()
+    {
+        using namespace Audio;
+        QVERIFY(Punct::supported(QStringLiteral("en")) && !Punct::supported(QStringLiteral("id")) && !Punct::supported(QString()));
+        QVERIFY(Punct::needs(QStringLiteral("how are you today")));
+        QVERIFY(!Punct::needs(QStringLiteral("How are you today?")) && !Punct::needs(QStringLiteral("hello")) && !Punct::needs(QStringLiteral("halo, apa kabar")));
+        FakeAudio::Punctuator fake;
+        QList<Segment> segs = {{1.0, 2.0, QStringLiteral("how are you"), QStringLiteral("SPEAKER_00"), false}, {2.0, 3.0, QStringLiteral("Already fine."), QStringLiteral("SPEAKER_01"), false}};
+        QString err = Punct::apply(&segs, QStringLiteral("id"), [&](const QStringList &i, QStringList *o) { return fake.punctuate(i, nullptr, o); });
+        QVERIFY(err.isEmpty());
+        QCOMPARE(fake.calls, 0);                                     // Indonesian: not even asked
+        QCOMPARE(segs[0].text, QStringLiteral("how are you"));
+        int changed = 0;
+        err = Punct::apply(&segs, QStringLiteral("en"), [&](const QStringList &i, QStringList *o) { return fake.punctuate(i, nullptr, o); }, &changed);
+        QVERIFY(err.isEmpty());
+        QCOMPARE(changed, 1);
+        QCOMPARE(fake.seen, QStringList{QStringLiteral("how are you")}); // only the text that needs it
+        QCOMPARE(segs[0].text, QStringLiteral("How are you."));
+        QCOMPARE(segs[0].start, 1.0);
+        QCOMPARE(segs[0].speaker, QStringLiteral("SPEAKER_00"));
+        QCOMPARE(segs[1].text, QStringLiteral("Already fine."));
+        // an answer with other words is refused; a wrong count is an error
+        QList<Segment> one = {{0, 1, QStringLiteral("good morning all"), {}, false}};
+        QVERIFY(Punct::apply(&one, QStringLiteral("en"), [](const QStringList &, QStringList *o) { *o = {QStringLiteral("Something else entirely.")}; return QString(); }).isEmpty());
+        QCOMPARE(one[0].text, QStringLiteral("good morning all"));
+        QVERIFY(!Punct::apply(&one, QStringLiteral("en"), [](const QStringList &, QStringList *o) { o->clear(); return QString(); }).isEmpty());
+        // in the pipeline: English is changed, Indonesian is not, a missing model is a warning
+        const QString source = writeSample(QStringLiteral("talk.mp3"), QByteArray("pretend this is an mp3"));
+        FakeAudio::Pre pre;
+        pre.signal = FakeAudio::burstSignal(12, {{1, 9}});
+        FakeAudio::Diarizer diar;
+        diar.turns = {{0, 12, "SPEAKER_00"}};
+        FakeAudio::Summarizer sum;
+        struct EnAsr : FakeAudio::Asr {
+            QString transcribe(const QVector<float> &s, const QString &l, const std::atomic_bool *c, QList<Audio::Segment> *o, QString *lang) override
+            {
+                const QString e = FakeAudio::Asr::transcribe(s, l, c, o, lang);
+                o->last().text = QStringLiteral("this is a test");
+                *lang = QStringLiteral("en");
+                return e;
+            }
+        } asr;
+        Audio::AudioPipeline pipe(&pre, &asr, &diar, &sum, nullptr, nullptr, &fake);
+        Audio::PipelineOptions opt;
+        opt.windowSeconds = 10;
+        opt.language = "en";
+        opt.punctuate = true;
+        std::atomic_bool cancel{false};
+        const Audio::PipelineResult r = pipe.run(source, m_tmp.filePath(QStringLiteral("job-punct-en")), opt, cancel, {});
+        QVERIFY2(r.ok, qPrintable(r.error));
+        QCOMPARE(r.segments.value(0).text, QStringLiteral("This is a test."));
+        opt.punctuate = false;
+        QCOMPARE(pipe.run(source, m_tmp.filePath(QStringLiteral("job-punct-off")), opt, cancel, {}).segments.value(0).text, QStringLiteral("this is a test"));
+        fake.ok = false;
+        opt.punctuate = true;
+        const Audio::PipelineResult miss = pipe.run(source, m_tmp.filePath(QStringLiteral("job-punct-missing")), opt, cancel, {});
+        QVERIFY(miss.ok && miss.warnings.join(' ').contains(QStringLiteral("not installed")));
+        // the parser of what the program prints
+        QCOMPARE(Audio::SherpaRun::parsePunctuated(QStringLiteral("a.cc:Run:10 loading\nInput text: how are you\nOutput text: How are you?\n")), QStringLiteral("How are you?"));
+        QCOMPARE(Audio::SherpaRun::parsePunctuated(QStringLiteral("/x/online-punctuation.cc:main:30 args\nHow are you?\n")), QStringLiteral("How are you?"));
+    }
+
+    void cleanBundles()
+    {
+        using namespace Audio::Bundles;
+        QVERIFY(everything().contains(QStringLiteral("clean")) && everything().contains(QStringLiteral("clean-vocals")) && everything().contains(QStringLiteral("punct")));
+        QVERIFY(recommended().contains(QStringLiteral("clean")));
+        QVERIFY(!recommended().contains(QStringLiteral("clean-vocals")) && !recommended().contains(QStringLiteral("punct"))); // the slow and the narrow are asked for
+        const QStringList ids = idsOf({QStringLiteral("clean"), QStringLiteral("sounds")});
+        QCOMPARE(ids.count(platformId(QStringLiteral("sherpa"))), 1); // the program once
+        QVERIFY(ids.contains(QStringLiteral("clean-gtcrn")));
+        const QList<Audio::CatalogItem> items = Audio::fullCatalog();
+        for (const QString &id : {QStringLiteral("clean-gtcrn"), QStringLiteral("clean-spleeter"), QStringLiteral("punct-en")}) {
+            bool found = false;
+            for (const Audio::CatalogItem &i : items)
+                if (i.id == id) {
+                    found = true;
+                    QVERIFY(i.size > 0 && i.sha256.size() == 64 && i.url.startsWith(QStringLiteral("https://github.com/k2-fsa/sherpa-onnx/releases/download/")));
+                }
+            QVERIFY2(found, qPrintable(id));
+        }
+        double last = -1;
+        for (const QString &id : Audio::AudioPipeline::stageIds()) {
+            const double o = Audio::AudioPipeline::overall(id, 1.0);
+            QVERIFY(o > last);
+            last = o;
+        }
+        QCOMPARE(last, 1.0);
+        QVERIFY(Audio::AudioPipeline::stageIds().indexOf(QStringLiteral("clean")) == 1);
+    }
+
+    void soundEventsLogic()
+    {
+        using namespace Audio::Sound;
+        const auto tags = [](std::initializer_list<std::pair<const char *, double>> l) { QList<Tag> t; for (const auto &p : l) t.append({QString::fromLatin1(p.first), p.second}); return t; };
+        QCOMPARE(classify(tags({{"Speech", 0.8}, {"Music", 0.1}}), 0, 10).kind, Kind::Plain);
+        QCOMPARE(classify(tags({{"Music", 0.9}, {"Musical instrument", 0.5}, {"Speech", 0.05}}), 0, 10).kind, Kind::Music);
+        QCOMPARE(classify(tags({{"Singing", 0.7}}), 0, 10).kind, Kind::Music);
+        QCOMPARE(classify(tags({{"Male speech, man speaking", 0.6}, {"Music", 0.5}}), 0, 10).kind, Kind::SpeechOverMusic);
+        const Clip crowd = classify(tags({{"Inside, small room", 0.9}, {"Crowd", 0.6}}), 0, 10); // the room alone is not a sound
+        QCOMPARE(crowd.kind, Kind::Ambient);
+        QCOMPARE(crowd.label, QStringLiteral("Crowd"));
+        QCOMPARE(classify(tags({{"Silence", 0.9}, {"Inside, small room", 0.5}}), 0, 10).kind, Kind::Plain);
+        QCOMPARE(classify(tags({{"Traffic noise, roadway noise", 0.7}}), 0, 10).kind, Kind::Ambient); // "noise" inside a name is a sound
+        QCOMPARE(classify(tags({{"Speech synthesizer", 0.9}, {"Music", 0.1}}), 0, 10).kind, Kind::Plain);
+        // clips -> events: a lone odd clip between two equal ones is smoothed, runs join, short ones go
+        const auto clip = [](double a, double b, Kind k, const char *l = "") { return Clip{a, b, k, QString::fromLatin1(l)}; };
+        QList<Event> ev = merge({clip(0, 10, Kind::Plain), clip(10, 20, Kind::Music), clip(20, 30, Kind::Plain), clip(30, 40, Kind::Music), clip(40, 50, Kind::Music), clip(50, 60, Kind::Plain)});
+        QCOMPARE(ev.size(), 1);
+        QCOMPARE(ev[0].start, 10.0);
+        QCOMPARE(ev[0].end, 50.0);
+        QCOMPARE(merge({clip(0, 10, Kind::Plain), clip(10, 13, Kind::Music), clip(13, 23, Kind::Plain)}).size(), 0); // 3 seconds of music is not told
+        ev = merge({clip(0, 10, Kind::Ambient, "Crowd"), clip(10, 20, Kind::Ambient, "Applause"), clip(20, 30, Kind::Ambient, "Applause")});
+        QCOMPARE(ev.size(), 2); // different sounds stay apart
+        // what the recognizer is given
+        const QList<Vad::Region> windows{{0, 16000 * 10}, {16000 * 12, 16000 * 30}, {16000 * 33, 16000 * 40}};
+        const QList<Vad::Region> left = subtract(windows, {Event{8, 35, Kind::Music, {}}}, 16000);
+        QCOMPARE(left.size(), 2);
+        QCOMPARE(left[0].end, qint64(16000 * 8));
+        QCOMPARE(left[1].start, qint64(16000 * 35));
+        QCOMPARE(subtract(windows, {Event{8, 35, Kind::SpeechOverMusic, {}}}, 16000).size(), 3); // spoken: left alone
+        // lines of the transcript
+        QCOMPARE(label(Event{0, 9, Kind::Music, {}}, "id"), QStringLiteral("♪ Musik"));
+        QCOMPARE(label(Event{0, 9, Kind::Music, {}}, "en"), QStringLiteral("♪ Music"));
+        QCOMPARE(label(Event{0, 9, Kind::Ambient, "Applause"}, "id"), QStringLiteral("Suara sekitar: tepuk tangan"));
+        QCOMPARE(label(Event{0, 9, Kind::Ambient, "Applause"}, "en"), QStringLiteral("Ambient sound: applause"));
+        QVERIFY(isSound(segment(Event{1, 9, Kind::Music, {}}, "en")));
+        // the recognizer's own marks
+        QCOMPARE(fromMark("[Music]", 1, 5).kind, Kind::Music);
+        QCOMPARE(fromMark("(musik)", 1, 5).kind, Kind::Music);
+        QCOMPARE(fromMark("♪♪", 1, 5).kind, Kind::Music);
+        QCOMPARE(fromMark("[Applause]", 1, 5).kind, Kind::Ambient);
+        QCOMPARE(fromMark("[BLANK_AUDIO]", 1, 5).kind, Kind::Plain);
+        QCOMPARE(fromMark("halo semua", 1, 5).kind, Kind::Plain);
+        QList<Event> marks;
+        const QList<Audio::Segment> cleaned = Audio::AudioPipeline::clean({{0, 4, "[Music]", {}, false}, {4, 8, "halo", {}, false}, {8, 9, "[BLANK_AUDIO]", {}, false}}, &marks);
+        QCOMPARE(cleaned.size(), 1);
+        QCOMPARE(marks.size(), 1);
+        QCOMPARE(Audio::AudioPipeline::clean({{0, 4, "[Music]", {}, false}}).size(), 0);
+        // the tagging program's answer
+        const QList<Tag> parsed = parseTags("Input file: a.wav\n0: AudioEvent(name=\"Music\", index=137, prob=0.8123)\n1: AudioEvent(name=\"Speech, x\", index=0, prob=0.0412)\n");
+        QCOMPARE(parsed.size(), 2);
+        QCOMPARE(parsed[0].label, QStringLiteral("Music"));
+        QVERIFY(qAbs(parsed[0].prob - 0.8123) < 1e-6);
+        QCOMPARE(parseTags("Probability\t Name\n0.81230\t Music\n0.04\t Speech\n").size(), 2);
+    }
+
+    void audioPipelineSkipsMusicAndTellsWhereItWas()
+    {
+        using Audio::Sound::Kind;
+        const QString dir = m_tmp.filePath(QStringLiteral("job-music"));
+        const QString source = writeSample(QStringLiteral("music.mp3"), QByteArray("pretend this is an mp3"));
+        FakeAudio::Pre pre;
+        pre.signal = FakeAudio::burstSignal(45, {{1, 9}, {12, 20}, {23, 31}, {34, 42}});
+        FakeAudio::Asr asr;
+        FakeAudio::Diarizer diar;
+        diar.turns = {{0, 45, "SPEAKER_00"}};
+        FakeAudio::Summarizer sum;
+        FakeAudio::Tagger tag;
+        tag.clips = {{0, 10, Kind::Plain, {}}, {10, 20, Kind::Music, {}}, {20, 32, Kind::Music, {}}, {32, 45, Kind::Plain, {}}};
+        Audio::AudioPipeline pipe(&pre, &asr, &diar, &sum, &tag);
+        Audio::PipelineOptions opt;
+        opt.windowSeconds = 10;
+        opt.language = "id";
+        std::atomic_bool cancel{false};
+        const Audio::PipelineResult r = pipe.run(source, dir, opt, cancel, {});
+        QVERIFY2(r.ok, qPrintable(r.error));
+        QCOMPARE(tag.calls, 1);
+        QCOMPARE(asr.calls, 2); // the two stretches that are music were not given to the recognizer
+        QCOMPARE(r.segments.size(), 3);
+        QCOMPARE(r.segments[1].speaker, Audio::Sound::Speaker); // in time order, between the two spoken parts
+        QCOMPARE(r.segments[1].text, QStringLiteral("♪ Musik"));
+        QCOMPARE(r.segments[1].start, 10.0);
+        QCOMPARE(r.summary.executive, QStringLiteral("2 segments")); // the music is not "what was said"
+        QVERIFY(r.segments[0].speaker != Audio::Sound::Speaker && r.segments[2].speaker != Audio::Sound::Speaker);
+        // again: from the saved files, no new work
+        QVERIFY(pipe.run(source, dir, opt, cancel, {}).ok);
+        QCOMPARE(tag.calls, 1);
+        QCOMPARE(asr.calls, 2);
+        // switched off: every burst is recognized, nothing is marked
+        opt.detectSound = false;
+        const Audio::PipelineResult off = pipe.run(source, m_tmp.filePath(QStringLiteral("job-music-off")), opt, cancel, {});
+        QVERIFY(off.ok);
+        QCOMPARE(asr.calls, 6);
+        QCOMPARE(off.segments.size(), 4);
+        // only music: a transcript of one line, not a failure
+        FakeAudio::Pre only;
+        only.signal = FakeAudio::burstSignal(12, {{1, 11}});
+        FakeAudio::Tagger all;
+        all.clips = {{0, 10, Kind::Music, {}}, {10, 12, Kind::Music, {}}};
+        FakeAudio::Asr none;
+        Audio::AudioPipeline musicOnly(&only, &none, &diar, &sum, &all);
+        Audio::PipelineOptions o2;
+        const Audio::PipelineResult m = musicOnly.run(source, m_tmp.filePath(QStringLiteral("job-only-music")), o2, cancel, {});
+        QVERIFY2(m.ok, qPrintable(m.error));
+        QCOMPARE(none.calls, 0);
+        QCOMPARE(m.segments.size(), 1);
+        QCOMPARE(m.segments[0].text, QStringLiteral("♪ Musik"));
+        // a tagger that is not installed leaves the old way
+        FakeAudio::Tagger missing;
+        missing.ok = false;
+        Audio::AudioPipeline plain(&pre, &asr, &diar, &sum, &missing);
+        QVERIFY(plain.run(source, m_tmp.filePath(QStringLiteral("job-no-tagger")), opt, cancel, {}).ok);
+        QCOMPARE(missing.calls, 0);
+    }
+
+    // The real sound model: NOTCH_TEST_SHERPA (the installed sherpa-linux helper folder, with its .ready) and NOTCH_TEST_CED (the unpacked
+    // sherpa-onnx-ced-tiny-audio-tagging folder, with test_wavs) to run it.
+    void soundTaggerRealModel()
+    {
+        const QString sherpa = qEnvironmentVariable("NOTCH_TEST_SHERPA"), ced = qEnvironmentVariable("NOTCH_TEST_CED");
+        if (sherpa.isEmpty() || ced.isEmpty() || QStandardPaths::findExecutable("ffmpeg").isEmpty())
+            QSKIP("needs NOTCH_TEST_SHERPA, NOTCH_TEST_CED and ffmpeg");
+        QTemporaryDir root;
+        QVERIFY(root.isValid());
+        QVERIFY(QDir().mkpath(root.path() + "/helpers/sound-ced-tiny"));
+        QVERIFY(QFile::link(sherpa, root.path() + "/helpers/sherpa-linux"));
+        for (const QString &f : {"model.int8.onnx", "class_labels_indices.csv"})
+            QVERIFY(QFile::link(ced + "/" + f, root.path() + "/helpers/sound-ced-tiny/" + f));
+        QFile ready(root.path() + "/helpers/sound-ced-tiny/.ready");
+        QVERIFY(ready.open(QIODevice::WriteOnly));
+        ready.close();
+        ModelStore store(root.path());
+        Audio::SherpaTagger tagger(&store, [] { return 2; });
+        QVERIFY(tagger.available());
+        // three ten-second pieces: speech with laughter, singing, running water
+        QTemporaryDir work;
+        const QString out = work.path() + "/mix.wav";
+        const auto r = ProcessRunner::run("ffmpeg", {"-y", "-hide_banner", "-loglevel", "error", "-i", ced + "/test_wavs/4.wav", "-i", ced + "/test_wavs/3.wav", "-i", ced + "/test_wavs/10.wav",
+                                                      "-filter_complex", "[0:a]aresample=16000,aformat=channel_layouts=mono,apad=whole_dur=10,atrim=0:10[a];[1:a]aresample=16000,aformat=channel_layouts=mono,apad=whole_dur=10,atrim=0:10[b];[2:a]aresample=16000,aformat=channel_layouts=mono,apad=whole_dur=10,atrim=0:10[c];[a][b][c]concat=n=3:v=0:a=1",
+                                                      "-ac", "1", "-ar", "16000", "-sample_fmt", "s16", out}, 60000);
+        QVERIFY2(r.ok, r.err.constData());
+        std::atomic_bool cancel{false};
+        QList<Audio::Sound::Clip> clips;
+        double lastProgress = -1;
+        const QString err = tagger.tag(out, &cancel, [&](double f) { lastProgress = f; }, &clips);
+        QVERIFY2(err.isEmpty(), qPrintable(err));
+        QCOMPARE(clips.size(), 3);
+        QCOMPARE(clips[0].kind, Audio::Sound::Kind::Plain);   // speech
+        QCOMPARE(clips[1].kind, Audio::Sound::Kind::Music);   // singing
+        QCOMPARE(clips[2].kind, Audio::Sound::Kind::Ambient); // water
+        QVERIFY(clips[1].start >= 9.9 && clips[2].start >= 19.9);
+        const QList<Audio::Sound::Event> events = Audio::Sound::merge(clips);
+        QCOMPARE(events.size(), 2);
+        // a program that is not there gives a message, not a crash
+        Audio::SherpaTagger missing(&store, [] { return 1; });
+        std::atomic_bool stop{true};
+        QCOMPARE(missing.tag(out, &stop, {}, &clips), QStringLiteral("cancelled"));
     }
 
     void audioPipelineKeepsWhatIsDoneWhenAStageFailsOrIsStopped()
@@ -2604,6 +3041,94 @@ private slots:
         QVERIFY(out.isEmpty());
     }
 
+    void aiFeaturesCoverTheCatalogAndShareTheirPrograms()
+    {
+        using namespace Audio::Bundles;
+        const QStringList all = idsOf(everything());
+        QCOMPARE(all.size(), QSet<QString>(all.begin(), all.end()).size()); // each once
+        QSet<QString> inCatalog;
+        for (const Audio::CatalogItem &i : Audio::catalog())
+            inCatalog.insert(i.id);
+        for (const QString &id : all)
+            QVERIFY2(inCatalog.contains(id), qPrintable(id)); // every id exists on this system
+        for (const QString &id : std::as_const(inCatalog)) // and nothing that is a model is left out (the graphics card program and the OCR packs have their own places)
+            QVERIFY2(all.contains(id) || id.startsWith(QLatin1String("gpu-")) || id.startsWith(QLatin1String("ocr")) || id.startsWith(QLatin1String("tessdata")), qPrintable(id));
+        for (const Feature &f : features()) {
+            QVERIFY(!f.ids.isEmpty() && !f.title.isEmpty());
+            bool known = false;
+            for (const Audio::Bundles::Category &c : categories())
+                known = known || c.id == f.category;
+            QVERIFY2(known, qPrintable(f.id));
+        }
+        // recommended leaves the extras out; everything has them
+        QVERIFY(!recommended().contains(QStringLiteral("speech-hq")) && everything().contains(QStringLiteral("speech-hq")));
+        QVERIFY(!idsOf(recommended()).contains(QStringLiteral("whisper-turbo")) && !idsOf(recommended()).contains(QStringLiteral("matting-isnet")));
+        QCOMPARE(featureIds(QStringLiteral("pictures"), false), (QStringList{"vision", "cutout"}));
+        // the programs two features need are one download
+        const QStringList both = idsOf({QStringLiteral("notes"), QStringLiteral("vision")});
+        QCOMPARE(both.count(platformId("llama-server")), 1);
+        QCOMPARE(idsOf({QStringLiteral("speakers"), QStringLiteral("sounds")}).count(platformId("sherpa")), 1);
+        // sizes, and the small ones first
+        const auto sizeOf = [](const QString &id) { for (const Audio::CatalogItem &i : Audio::fullCatalog()) if (i.id == id) return i.size; return qint64(0); };
+        QVERIFY(totalSize(idsOf(recommended()), sizeOf) > Q_INT64_C(5) << 30 && totalSize(idsOf(recommended()), sizeOf) < Q_INT64_C(8) << 30);
+        QVERIFY(totalSize(idsOf(everything()), sizeOf) > totalSize(idsOf(recommended()), sizeOf));
+        const QStringList order = plan(idsOf(everything()), sizeOf);
+        for (int i = 1; i < order.size(); ++i)
+            QVERIFY(sizeOf(order[i - 1]) <= sizeOf(order[i]));
+        QCOMPARE(missing({"a", "b", "c"}, [](const QString &id) { return id == "b"; }), (QStringList{"a", "c"}));
+        // removing one feature keeps the program another installed one still needs
+        const QStringList gone = removable(QStringLiteral("sounds"), {QStringLiteral("sounds"), QStringLiteral("speakers")});
+        QCOMPARE(gone, (QStringList{"sound-ced-tiny"}));
+        QVERIFY(removable(QStringLiteral("sounds"), {QStringLiteral("sounds")}).contains(platformId("sherpa")));
+    }
+
+    void theInstallQueueRunsTwoAtATimeSkipsWhatFailsAndCanBeStopped()
+    {
+        RangeServer web;
+        QVERIFY(web.isListening());
+        QByteArray blob(512 * 1024, 'q');
+        for (int i = 0; i < blob.size(); i += 5)
+            blob[i] = char(i * 13);
+        web.files.insert(QStringLiteral("/m.bin"), blob);
+        const QString sum = QString::fromLatin1(QCryptographicHash::hash(blob, QCryptographicHash::Sha256).toHex());
+        const auto item = [&](const QString &id, const QString &sha) {
+            Audio::CatalogItem c;
+            c.id = id; c.kind = Audio::Kind::Whisper; c.title = id; c.file = id + QStringLiteral(".bin"); c.url = web.url(QStringLiteral("/m.bin")); c.size = blob.size(); c.sha256 = sha;
+            return c;
+        };
+        ModelStore store(m_tmp.filePath(QStringLiteral("queue-root")), nullptr, {item("a", sum), item("b", sum), item("bad", QString(64, '0')), item("c", sum), item("d", sum)});
+        InstallQueue queue(&store);
+        int most = 0;
+        QObject::connect(&queue, &InstallQueue::changed, [&] { most = std::max(most, int(queue.running().size())); });
+        QSignalSpy finished(&queue, &InstallQueue::finished);
+        queue.start({"a", "b", "bad", "c", "unknown-id"}); // an id that is not in the catalog is ignored
+        QCOMPARE(queue.total(), 4);
+        QVERIFY(queue.active());
+        QTRY_VERIFY_WITH_TIMEOUT(finished.count() == 1, 30000);
+        QVERIFY2(most >= 1 && most <= InstallQueue::Parallel, qPrintable(QString::number(most)));
+        QCOMPARE(queue.done(), 3);
+        QCOMPARE(queue.failed(), QStringList{"bad"}); // the one with the wrong checksum is skipped, with its reason in the store
+        QVERIFY(!store.error("bad").isEmpty());
+        for (const QString &id : {"a", "b", "c"})
+            QCOMPARE(store.state(id), QStringLiteral("ready"));
+        QVERIFY(!queue.active());
+        // what is there is not downloaded again; a new round counts from zero
+        queue.start({"a", "d"});
+        QCOMPARE(queue.total(), 1);
+        QTRY_VERIFY_WITH_TIMEOUT(finished.count() == 2, 30000);
+        QCOMPARE(queue.done(), 1);
+        QVERIFY(queue.failed().isEmpty());
+        // stopping: nothing is left going, and a stop is not a failure
+        QVERIFY(store.remove("a") && store.remove("b") && store.remove("c") && store.remove("d"));
+        queue.start({"a", "b", "c", "d"});
+        queue.cancel();
+        QTRY_VERIFY_WITH_TIMEOUT(!queue.active(), 30000);
+        QVERIFY(queue.failed().isEmpty());
+        QVERIFY(queue.running().isEmpty() && queue.pending().isEmpty());
+        for (const QString &id : {"a", "b", "c", "d"})
+            QVERIFY2(store.state(id) != QLatin1String("downloading"), qPrintable(id));
+    }
+
     void downloadsAreCheckedResumedAndCanBeCancelled()
     {
         RangeServer web;
@@ -2736,10 +3261,10 @@ private slots:
             ids.insert(i.id);
             QVERIFY2(i.url.startsWith(QLatin1String("https://")), qPrintable(i.id));
             QVERIFY2(QRegularExpression(QStringLiteral("^[0-9a-f]{64}$")).match(i.sha256).hasMatch(), qPrintable(i.id)); // nothing without a checksum
-            QVERIFY2(i.size > 1000000, qPrintable(i.id));
+            QVERIFY2(i.size > 300000, qPrintable(i.id));
             QVERIFY(!i.file.isEmpty() && !i.file.contains(u'/'));
             if (i.kind == Audio::Kind::Helper)
-                QVERIFY(!i.exe.isEmpty() && !i.platform.isEmpty());
+                QVERIFY(!i.exe.isEmpty() && (!i.platform.isEmpty() || i.id.startsWith(QLatin1String("sound-")) || i.id.startsWith(QLatin1String("clean-")) || i.id.startsWith(QLatin1String("punct-")))); // the sound model is not made for one system
         }
         for (const QString &platform : {QStringLiteral("linux"), QStringLiteral("windows")}) {
             int llama = 0, sherpa = 0;
@@ -2754,6 +3279,18 @@ private slots:
         }
         QVERIFY(ids.contains(QStringLiteral("whisper-small")) && ids.contains(QStringLiteral("qwen3-4b")) && ids.contains(QStringLiteral("diar-embedding")));
         QVERIFY(!Audio::catalog().isEmpty());
+        // the background-removal model and its runtime: pinned (size and SHA-256), one runtime per platform, kept out of the Audio lists
+        const auto matting = [&](const QString &id) { for (const Audio::CatalogItem &i : Audio::fullCatalog()) if (i.id == id) return i; return Audio::CatalogItem{}; };
+        const Audio::CatalogItem isnet = matting("matting-isnet");
+        QVERIFY(isnet.kind == Audio::Kind::Matting && isnet.size > 100000000 && isnet.sha256.size() == 64 && isnet.url.startsWith("https://") && isnet.memory >= (Q_INT64_C(2) << 30));
+        const Audio::CatalogItem ced = matting("sound-ced-tiny"); // the sound model: pinned, an archive with the model and its labels, kept out of the speech-model lists
+        QVERIFY(ced.kind == Audio::Kind::Helper && ced.size == 28531989 && ced.sha256.size() == 64 && ced.exe == "model.int8.onnx" && ced.url.contains("k2-fsa/sherpa-onnx"));
+        QVERIFY(ced.sha256.indexOf(QRegularExpression("^[0-9a-f]{64}$")) == 0);
+        for (const QString &id : {QStringLiteral("onnxruntime-linux"), QStringLiteral("onnxruntime-windows")}) {
+            const Audio::CatalogItem rt = matting(id);
+            QVERIFY(rt.kind == Audio::Kind::Helper && rt.size > 1000000 && rt.sha256.size() == 64 && !rt.exe.isEmpty() && (rt.platform == "linux" || rt.platform == "windows"));
+            QVERIFY(rt.url.contains("microsoft/onnxruntime"));
+        }
     }
 
     void helperProgramOutputIsRead()
@@ -3593,12 +4130,13 @@ private slots:
             QCOMPARE(plan(mode, true, 1, 0, false).appBar, 0);
         }
         // Wayland: the island adds only what the status bar does not already keep
-        QCOMPARE(plan("capsule", true, 1, 0, true).notchZone, 48);
-        QCOMPARE(plan("capsule", true, 1, 30, true).notchZone, 18);
+        // (the island and the air under it: Gap, so that windows are not flush against its lower edge)
+        QCOMPARE(plan("capsule", true, 1, 0, true).notchZone, 48 + Gap);
+        QCOMPARE(plan("capsule", true, 1, 30, true).notchZone, 18 + Gap);
         QCOMPARE(plan("capsule", true, 1, 60, true).notchZone, 0);
         // Windows: one strip, the taller of the two
-        QCOMPARE(plan("capsule", true, 1, 0, false).appBar, 48);
-        QCOMPARE(plan("capsule", true, 1, 30, false).appBar, 48);
+        QCOMPARE(plan("capsule", true, 1, 0, false).appBar, 48 + Gap);
+        QCOMPARE(plan("capsule", true, 1, 30, false).appBar, 48 + Gap);
         QCOMPARE(plan("capsule", true, 1, 60, false).appBar, 60);
         QCOMPARE(plan("capsule", false, 1, 30, false).appBar, 30); // the bar alone still keeps its own room
         QCOMPARE(plan("hidden", false, 1, 30, true).notchZone, 0);
@@ -4424,6 +4962,512 @@ private slots:
             QCOMPARE(DocTools::pdfPageCount(page), 1);
     }
 
+    void watermarkText()
+    {
+        using namespace Watermark;
+        QVERIFY(validate("CONFIDENTIAL DOCUMENT").isEmpty());
+        QVERIFY(validate(QString::fromUtf8("Rahasia é")).isEmpty());       // Latin-1 letters pass
+        QVERIFY(!validate(QString::fromUtf8("Rahasia – é")).isEmpty());    // an en dash is outside Latin-1
+        QVERIFY(!validate("   ").isEmpty());
+        QVERIFY(!validate(QString(41, 'A')).isEmpty());
+        QVERIFY(!validate(QString::fromUtf8("機密")).isEmpty());
+        QCOMPARE(escapePs("A (b) \\c"), QString("A \\(b\\) \\\\c"));
+        QCOMPARE(escapePs(QString::fromUtf8("é")), QString("\\351"));
+        QCOMPARE(clampedOpacity(5), 10);
+        QCOMPARE(clampedOpacity(99), 60);
+        QVERIFY(presets().first() == "CONFIDENTIAL DOCUMENT");
+        // the program: every page when no selection, only the named ones otherwise; the text cannot break out of its string
+        Options o;
+        QVERIFY(postscript(o, {}).contains("/useSel false def"));
+        const QString some = postscript(o, {2, 5});
+        QVERIFY(some.contains("/sel [2 5] def /useSel true def"));
+        o.text = "x) pop (y";
+        QVERIFY(postscript(o, {}).contains("(x\\) pop \\(y)"));
+        // options survive the trip through JSON, and bad values fall back
+        Options p;
+        p.text = "DRAFT"; p.layout = Layout::Tiled; p.color = "red"; p.opacity = 40; p.size = "large"; p.pages = "1-2";
+        const Options q = fromJson(toJson(p));
+        QCOMPARE(q.text, p.text);
+        QVERIFY(q.layout == Layout::Tiled);
+        QCOMPARE(q.color, p.color);
+        QCOMPARE(q.opacity, 40);
+        QCOMPARE(q.size, p.size);
+        QCOMPARE(q.pages, p.pages);
+        const Options d = fromJson("{\"layout\":\"x\",\"color\":\"pink\",\"opacity\":900,\"size\":\"huge\"}");
+        QVERIFY(d.layout == Layout::Diagonal);
+        QCOMPARE(d.color, QString("gray"));
+        QCOMPARE(d.opacity, 60);
+        QCOMPARE(d.size, QString("auto"));
+        QCOMPARE(label("CONFIDENTIAL DOCUMENT"), QString("confidential document"));
+    }
+
+    void watermarkRun()
+    {
+        if (QStandardPaths::findExecutable(QStringLiteral("gs")).isEmpty() || QStandardPaths::findExecutable(QStringLiteral("pdftoppm")).isEmpty())
+            QSKIP("ghostscript or poppler-utils not installed");
+        QImage red(600, 900, QImage::Format_RGB32);
+        red.fill(QColor(255, 0, 0));
+        const QString img = m_tmp.filePath(QStringLiteral("wm.png"));
+        QVERIFY(red.save(img));
+        const QString src = m_tmp.filePath(QStringLiteral("wm-src.pdf"));
+        QCOMPARE(DocTools::imagesToPdf({img, img}, src), QString());
+        // pixels that are no longer pure red on a page of the result
+        const auto changed = [&](const QString &pdf, int page) {
+            const QString base = m_tmp.filePath(QStringLiteral("wm-page-%1").arg(page));
+            if (QProcess::execute(QStringLiteral("pdftoppm"), {QStringLiteral("-r"), QStringLiteral("40"), QStringLiteral("-png"), QStringLiteral("-f"), QString::number(page), QStringLiteral("-l"), QString::number(page), QStringLiteral("-singlefile"), pdf, base}) != 0)
+                return -1;
+            const QImage got(base + QStringLiteral(".png"));
+            int n = 0;
+            for (int y = 0; y < got.height(); ++y)
+                for (int x = 0; x < got.width(); ++x) {
+                    const QColor c = got.pixelColor(x, y);
+                    if (c.green() > 25 && c.green() < 200 && c.blue() > 25) // the grey paint over red lifts green and blue; the page edges (white) do not count
+                        ++n;
+                }
+            return n;
+        };
+        Watermark::Options o;
+        const QString all = m_tmp.filePath(QStringLiteral("wm-all.pdf"));
+        QCOMPARE(DocTools::watermarkPdf(src, all, o), QString());
+        QCOMPARE(DocTools::pdfPageCount(all), 2);
+        QVERIFY(changed(all, 1) > 20 && changed(all, 2) > 20);
+        o.pages = "2";
+        const QString second = m_tmp.filePath(QStringLiteral("wm-second.pdf"));
+        QCOMPARE(DocTools::watermarkPdf(src, second, o), QString());
+        QCOMPARE(DocTools::pdfPageCount(second), 2);
+        QCOMPARE(changed(second, 1), 0);
+        QVERIFY(changed(second, 2) > 20);
+        // refusals say why
+        o.pages = "9";
+        QVERIFY(!DocTools::watermarkPdf(src, all, o).isEmpty());
+        o.pages.clear(); o.text = "";
+        QVERIFY(!DocTools::watermarkPdf(src, all, o).isEmpty());
+        o.text = "DRAFT";
+        QVERIFY(!DocTools::watermarkPdf(img, all, o).isEmpty()); // a picture is not a PDF
+        // through the tool: named after the text, the original untouched
+        const auto res = DocTools::runTool(QStringLiteral("watermark"), {{src, QStringLiteral("wm-src"), QStringLiteral("wm-src.pdf")}}, Watermark::toJson(Watermark::Options{}), m_tmp.path());
+        QCOMPARE(res.error, QString());
+        QCOMPARE(res.outputs.size(), 1);
+        QVERIFY(res.outputs.first().second.contains("confidential document"));
+    }
+
+    void pdfToWord()
+    {
+        using namespace ConvertModel;
+        if (!have(Engine::Office) || QStandardPaths::findExecutable(QStringLiteral("pdftotext")).isEmpty())
+            QSKIP("LibreOffice or poppler-utils not installed");
+        QTemporaryDir work;
+        const auto reserve = [&](const QString &name) { return work.path() + u'/' + FileService::uniqueName(work.path(), FileService::safeFileName(name)); };
+        const QString txt = m_tmp.filePath(QStringLiteral("laporan.txt"));
+        QFile f(txt);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("Laporan keuangan kuartal tiga\n\nPendapatan naik menjadi 120 juta rupiah dan biaya turun.\n");
+        f.close();
+        QList<QPair<QString, QString>> made;
+        QCOMPARE(DocTools::convertFile(txt, "laporan.txt", "laporan", "pdf", work.path(), reserve, &made), QString());
+        const QString pdf = made.first().first;
+        for (const QString &target : {QStringLiteral("docx"), QStringLiteral("odt")}) {
+            made.clear();
+            QCOMPARE(DocTools::convertFile(pdf, "laporan.pdf", "laporan", target, work.path(), reserve, &made), QString());
+            QCOMPARE(made.size(), 1);
+            QVERIFY(made.first().second.endsWith("." + target));
+            // the file is a zip whose body holds the words of the PDF
+            QProcess unzip;
+            unzip.start(QStringLiteral("unzip"), {QStringLiteral("-p"), made.first().first, target == "docx" ? QStringLiteral("word/document.xml") : QStringLiteral("content.xml")});
+            if (!unzip.waitForFinished(20000) || unzip.exitCode() != 0)
+                QSKIP("unzip not available");
+            const QString body = QString::fromUtf8(unzip.readAllStandardOutput()).remove(QRegularExpression("<[^>]*>|\\s")); // runs are split by font changes: compare the words
+            QVERIFY2(body.contains("Pendapatan") && body.contains("120jutarupiah"), qPrintable(target + body.left(300)));
+        }
+        QVERIFY(!DocTools::convertFile(pdf, "laporan.pdf", "laporan", "xlsx", work.path(), reserve, &made).isEmpty()); // not offered for a PDF
+    }
+
+    void pdfPasswordText()
+    {
+        using namespace PdfSecurity;
+        QVERIFY(validatePassword("abcd").isEmpty());
+        QVERIFY(validatePassword("p@ss!W0rd#%&*").isEmpty());
+        QVERIFY(!validatePassword("abc").isEmpty());
+        QVERIFY(!validatePassword(QString(33, 'a')).isEmpty());
+        QVERIFY(!validatePassword("with space").isEmpty());
+        QVERIFY(!validatePassword(QString::fromUtf8("kata\u00e9sandi")).isEmpty());
+        QVERIFY(!validatePassword("tab\tchar").isEmpty());
+        // permissions: all allowed sets every bit, none leaves the fixed ones (7, 8 and 13-32)
+        LockOptions o;
+        QCOMPARE(quint32(permissions(o)) & 0xFFFFF0C0u, 0xFFFFF0C0u);
+        o.allowPrint = o.allowCopy = o.allowChange = false;
+        QCOMPARE(permissions(o), -3904);
+        o.allowPrint = true;
+        QVERIFY((quint32(permissions(o)) & 4u) && !(quint32(permissions(o)) & 16u) && !(quint32(permissions(o)) & 8u));
+        // the passwords are in the argument file, not among the arguments
+        o.userPassword = "open1234"; o.ownerPassword = "own5678";
+        const QString file = lockArgs(o);
+        QVERIFY(file.contains("-sUserPassword=open1234\n") && file.contains("-sOwnerPassword=own5678\n") && file.contains("-dEncryptionR=3"));
+        const QStringList args = gsArgs("/tmp/a.txt", "in.pdf", "out.pdf");
+        QCOMPARE(args.first(), QString("@/tmp/a.txt"));
+        QVERIFY(!args.join(' ').contains("open1234"));
+        QCOMPARE(unlockArgs("pw99"), QString("-sPDFPassword=pw99\n"));
+        QVERIFY(isPasswordProblem("Command Line Error: Incorrect password"));
+        QVERIFY(isPasswordProblem("**** Error: Password did not work."));
+        QVERIFY(!isPasswordProblem("Syntax Error: Couldn't read xref table"));
+    }
+
+    void pdfPasswordRun()
+    {
+        if (QStandardPaths::findExecutable(QStringLiteral("gs")).isEmpty() || QStandardPaths::findExecutable(QStringLiteral("pdfinfo")).isEmpty() || QStandardPaths::findExecutable(QStringLiteral("pdftotext")).isEmpty())
+            QSKIP("ghostscript or poppler-utils not installed");
+        QTemporaryDir work;
+        const QString txt = work.filePath(QStringLiteral("secret.txt"));
+        QFile f(txt);
+        QVERIFY(f.open(QIODevice::WriteOnly));
+        f.write("Rahasia perusahaan nomor 4711\n");
+        f.close();
+        QImage img(200, 100, QImage::Format_RGB32);
+        img.fill(Qt::white);
+        const QString png = work.filePath(QStringLiteral("p.png"));
+        QVERIFY(img.save(png));
+        const QString src = work.filePath(QStringLiteral("src.pdf"));
+        const auto reserve = [&](const QString &name) { return work.filePath(name); };
+        QList<QPair<QString, QString>> made;
+        QCOMPARE(DocTools::convertFile(txt, "secret.txt", "secret", "pdf", work.path(), reserve, &made), QString());
+        QFile::copy(made.first().first, src);
+        QCOMPARE(DocTools::pdfStatus(src), QString("ok"));
+
+        PdfSecurity::LockOptions o;
+        o.userPassword = "s3cr3t!x";
+        o.allowCopy = false;
+        const QString locked = work.filePath(QStringLiteral("locked.pdf"));
+        QCOMPARE(DocTools::protectPdf(src, locked, o), QString());
+        QCOMPARE(DocTools::pdfStatus(locked), QString("protected"));
+        // without the password nothing can be read; with it the text is there
+        QProcess p;
+        p.start(QStringLiteral("pdftotext"), {locked, QStringLiteral("-")});
+        QVERIFY(p.waitForFinished(20000));
+        QVERIFY(p.exitCode() != 0 || !QString::fromUtf8(p.readAllStandardOutput()).contains("4711"));
+        p.start(QStringLiteral("pdfinfo"), {QStringLiteral("-upw"), QStringLiteral("s3cr3t!x"), locked});
+        QVERIFY(p.waitForFinished(20000));
+        const QString info = QString::fromUtf8(p.readAllStandardOutput());
+        QVERIFY2(info.contains("copy:no") && info.contains("print:yes"), qPrintable(info));
+        // refusals
+        QVERIFY(!DocTools::protectPdf(src, locked, PdfSecurity::LockOptions{}).isEmpty());     // no password
+        QVERIFY(!DocTools::protectPdf(locked, work.filePath("again.pdf"), o).isEmpty());        // already locked
+        QVERIFY(!DocTools::protectPdf(png, work.filePath("n.pdf"), o).isEmpty());               // not a PDF
+        QVERIFY(DocTools::watermarkPdf(locked, work.filePath("w.pdf"), Watermark::Options{}).contains("unlock"));
+        // opening: a wrong password leaves nothing, the right one gives the same text and no password
+        const QString opened = work.filePath(QStringLiteral("opened.pdf"));
+        QVERIFY(DocTools::unlockPdf(locked, opened, "wrongpass").contains("password"));
+        QVERIFY(!QFileInfo::exists(opened));
+        QCOMPARE(DocTools::unlockPdf(locked, opened, "s3cr3t!x"), QString());
+        QCOMPARE(DocTools::pdfStatus(opened), QString("ok"));
+        p.start(QStringLiteral("pdftotext"), {opened, QStringLiteral("-")});
+        QVERIFY(p.waitForFinished(20000));
+        QVERIFY(QString::fromUtf8(p.readAllStandardOutput()).contains("4711"));
+        QVERIFY(!DocTools::unlockPdf(src, work.filePath("x.pdf"), "anything").isEmpty()); // had no password
+        // through the tools, and the password is not in the messages
+        const auto res = DocTools::runTool("lock", {{src, "src", "src.pdf"}}, R"({"user":"hunter22x"})", work.path());
+        QCOMPARE(res.error, QString());
+        QVERIFY(!res.summary.contains("hunter22x") && !res.outputs.first().second.contains("hunter22x"));
+        const auto bad = DocTools::runTool("unlock", {{res.outputs.first().first, "l", "l.pdf"}}, "nope-nope", work.path());
+        QVERIFY(!bad.error.isEmpty() && !bad.error.contains("nope-nope"));
+    }
+
+    void stampText()
+    {
+        using namespace Stamp;
+        QVERIFY(validate("APPROVED").isEmpty());
+        QVERIFY(!validate(QString(25, 'A')).isEmpty());
+        QVERIFY(!validate("").isEmpty());
+        QCOMPARE(clampedWidth(0.0), 0.05);
+        QCOMPARE(clampedWidth(3.0), 0.60);
+        Options o;
+        QVERIFY(postscript(o, {}).contains("/useSel false def") && postscript(o, {3}).contains("/sel [3] def /useSel true def"));
+        o.text = "x) pop (y";
+        QVERIFY(postscript(o, {}).contains("(x\\) pop \\(y)"));
+        // a picture: white and transparent become white, the ink stays; rows are strings of hexadecimal
+        QImage img(40, 20, QImage::Format_ARGB32);
+        img.fill(Qt::transparent);
+        for (int x = 5; x < 30; ++x) img.setPixelColor(x, 10, QColor(10, 20, 120));
+        const Picture pic = preparePicture(img);
+        QCOMPARE(pic.width, 40);
+        QCOMPARE(pic.rows.size(), 20);
+        QCOMPARE(pic.rows.at(0), QString("ff00ff").repeated(40));    // transparent: the key colour
+        QVERIFY(pic.rows.at(10).contains("0a1478") && pic.rows.at(10).startsWith("ff00ff"));
+        Options p; p.picture = true;
+        const QString ps = postscript(p, {}, pic);
+        QVERIFY(ps.contains("/ImageType 4") && ps.contains("/MaskColor [255 255 0 0 255 255]") && ps.contains("<" + pic.rows.at(10) + ">"));
+        QCOMPARE(preparePicture(QImage(1000, 400, QImage::Format_RGB32)).width, 500);
+        QVERIFY(pic.keyed && pic.maskColor().startsWith("255 255"));
+        QImage opaque(10, 10, QImage::Format_RGB32); opaque.fill(Qt::white);
+        QVERIFY(!preparePicture(opaque).keyed && preparePicture(opaque).maskColor() == "250 255 250 255 250 255");
+        // white inside a transparent logo stays; the key is a colour that the picture itself does not have
+        QImage logo(20, 20, QImage::Format_ARGB32); logo.fill(Qt::transparent);
+        for (int y = 5; y < 15; ++y) for (int x = 5; x < 15; ++x) logo.setPixelColor(x, y, (x > 8 && x < 12 && y > 8 && y < 12) ? QColor(255, 255, 255) : QColor(255, 0, 255));
+        const Picture lp = preparePicture(logo);
+        QVERIFY(lp.keyed && !(lp.keyR == 255 && lp.keyG == 0 && lp.keyB == 255));
+        const QImage lv = previewImage(logo);
+        QCOMPARE(lv.pixelColor(10, 10).alpha(), 255);   // the white in the middle is kept
+        QCOMPARE(lv.pixelColor(1, 1).alpha(), 0);       // outside: transparent
+        Options rot; rot.rotation = 99; rot.opacity = 0.5;
+        QVERIFY(postscript(rot, {}).contains("45.0000 rotate") && postscript(rot, {}).contains("0.5000 .setfillconstantalpha"));
+        QVERIFY(!postscript(Options{}, {}).contains("setfillconstantalpha"));
+        QCOMPARE(fromJson("{\"picture\":true}").rotation, 0.0);
+        QCOMPARE(fromJson("{}").rotation, 8.0);
+        QCOMPARE(fromJson("{\"opacity\":0}").opacity, 0.2);
+        QVERIFY(preparePicture(QImage()).isEmpty());
+        // JSON: bolak-balik and the fallbacks
+        Options q; q.text = "PAID"; q.color = "red"; q.x = 0.2; q.y = 0.3; q.width = 0.4; q.pages = "1-2"; q.picture = true; q.image = "/tmp/s.png";
+        const Options r = fromJson(toJson(q));
+        QCOMPARE(r.text, q.text); QCOMPARE(r.color, q.color); QCOMPARE(r.x, 0.2); QCOMPARE(r.y, 0.3); QCOMPARE(r.width, 0.4); QCOMPARE(r.pages, q.pages); QVERIFY(r.picture); QCOMPARE(r.image, q.image);
+        const Options d = fromJson("{\"color\":\"pink\",\"x\":9,\"width\":0}");
+        QCOMPARE(d.color, QString("green")); QCOMPARE(d.x, 1.0); QCOMPARE(d.width, 0.05); QCOMPARE(d.pages, QString("last"));
+        QCOMPARE(label(q), QString("signed"));
+        QCOMPARE(label(Options{}), QString("approved"));
+    }
+
+    void stampRun()
+    {
+        if (QStandardPaths::findExecutable(QStringLiteral("gs")).isEmpty() || QStandardPaths::findExecutable(QStringLiteral("pdftoppm")).isEmpty())
+            QSKIP("ghostscript or poppler-utils not installed");
+        QImage page(600, 900, QImage::Format_RGB32);
+        page.fill(Qt::white);
+        const QString img = m_tmp.filePath(QStringLiteral("st.png"));
+        QVERIFY(page.save(img));
+        const QString src = m_tmp.filePath(QStringLiteral("st-src.pdf"));
+        QCOMPARE(DocTools::imagesToPdf({img, img, img}, src), QString());
+        // the pixels of a page that are not white, and where their middle is (x, y as parts of the page)
+        struct Ink { int n = 0; double cx = 0, cy = 0; };
+        const auto ink = [&](const QString &pdf, int pageNo) {
+            Ink r;
+            const QString base = m_tmp.filePath(QStringLiteral("st-page-%1").arg(pageNo));
+            if (QProcess::execute(QStringLiteral("pdftoppm"), {QStringLiteral("-r"), QStringLiteral("40"), QStringLiteral("-png"), QStringLiteral("-f"), QString::number(pageNo), QStringLiteral("-l"), QString::number(pageNo), QStringLiteral("-singlefile"), pdf, base}) != 0)
+                return r;
+            const QImage got(base + QStringLiteral(".png"));
+            double sx = 0, sy = 0;
+            for (int y = 0; y < got.height(); ++y)
+                for (int x = 0; x < got.width(); ++x)
+                    if (got.pixelColor(x, y).lightness() < 200) { ++r.n; sx += x; sy += y; }
+            if (r.n) { r.cx = sx / r.n / got.width(); r.cy = sy / r.n / got.height(); }
+            return r;
+        };
+        Stamp::Options o;
+        o.x = 0.3; o.y = 0.2; o.width = 0.4; o.color = "red";
+        const QString last = m_tmp.filePath(QStringLiteral("st-last.pdf"));
+        QCOMPARE(DocTools::stampPdf(src, last, o), QString());
+        QCOMPARE(DocTools::pdfPageCount(last), 3);
+        QCOMPARE(ink(last, 1).n, 0);                      // only the last page
+        QCOMPARE(ink(last, 2).n, 0);
+        const Ink a = ink(last, 3);
+        QVERIFY(a.n > 30);
+        QVERIFY(qAbs(a.cx - 0.3) < 0.06 && qAbs(a.cy - 0.2) < 0.06); // where it was asked to be
+        // a signature picture: a stroke on a transparent ground, on the first page, over a page that already has writing
+        QImage sig(200, 80, QImage::Format_ARGB32);
+        sig.fill(Qt::transparent);
+        for (int x = 10; x < 190; ++x) for (int y = 38; y < 43; ++y) sig.setPixelColor(x, y, QColor(20, 20, 120));
+        const QString sigFile = m_tmp.filePath(QStringLiteral("sig.png"));
+        QVERIFY(sig.save(sigFile));
+        Stamp::Options s; s.picture = true; s.image = sigFile; s.pages = "first"; s.x = 0.5; s.y = 0.5; s.width = 0.5;
+        const QString signed1 = m_tmp.filePath(QStringLiteral("st-sig.pdf"));
+        QCOMPARE(DocTools::stampPdf(src, signed1, s), QString());
+        const Ink b = ink(signed1, 1);
+        QVERIFY2(b.n > 20 && b.n < 900, qPrintable(QString::number(b.n))); // the stroke only, not a white or black box around it
+        QVERIFY(qAbs(b.cx - 0.5) < 0.06 && qAbs(b.cy - 0.5) < 0.06);
+        QCOMPARE(ink(signed1, 2).n, 0);
+        // opacity: the same stamp is paler; rotation: a long bar spreads over more rows
+        Stamp::Options solid; solid.picture = true; solid.image = sigFile; solid.pages = "first"; solid.x = 0.5; solid.y = 0.5; solid.width = 0.5;
+        Stamp::Options pale = solid; pale.opacity = 0.3;
+        Stamp::Options tilted = solid; tilted.rotation = 30;
+        const QString solidPdf = m_tmp.filePath(QStringLiteral("st-solid.pdf")), palePdf = m_tmp.filePath(QStringLiteral("st-pale.pdf")), tiltPdf = m_tmp.filePath(QStringLiteral("st-tilt.pdf"));
+        QCOMPARE(DocTools::stampPdf(src, solidPdf, solid), QString());
+        QCOMPARE(DocTools::stampPdf(src, palePdf, pale), QString());
+        QCOMPARE(DocTools::stampPdf(src, tiltPdf, tilted), QString());
+        const auto darkest = [&](const QString &pdf) {
+            const QString base = m_tmp.filePath(QStringLiteral("st-dark"));
+            QProcess::execute(QStringLiteral("pdftoppm"), {QStringLiteral("-r"), QStringLiteral("40"), QStringLiteral("-png"), QStringLiteral("-f"), QStringLiteral("1"), QStringLiteral("-l"), QStringLiteral("1"), QStringLiteral("-singlefile"), pdf, base});
+            const QImage g(base + QStringLiteral(".png"));
+            int m = 255;
+            for (int y = 0; y < g.height(); ++y) for (int x = 0; x < g.width(); ++x) m = qMin(m, g.pixelColor(x, y).lightness());
+            return m;
+        };
+        QVERIFY(darkest(palePdf) > darkest(solidPdf) + 40);
+        const auto spreadY = [&](const QString &pdf) {
+            const QString base = m_tmp.filePath(QStringLiteral("st-spread"));
+            QProcess::execute(QStringLiteral("pdftoppm"), {QStringLiteral("-r"), QStringLiteral("40"), QStringLiteral("-png"), QStringLiteral("-f"), QStringLiteral("1"), QStringLiteral("-l"), QStringLiteral("1"), QStringLiteral("-singlefile"), pdf, base});
+            const QImage g(base + QStringLiteral(".png"));
+            int lo = g.height(), hi = 0;
+            for (int y = 0; y < g.height(); ++y) for (int x = 0; x < g.width(); ++x) if (g.pixelColor(x, y).lightness() < 200) { lo = qMin(lo, y); hi = qMax(hi, y); }
+            return hi - lo;
+        };
+        QVERIFY(spreadY(tiltPdf) > spreadY(solidPdf) + 20);
+        // refusals
+        o.pages = "9"; QVERIFY(!DocTools::stampPdf(src, last, o).isEmpty());
+        o.pages = "all"; o.text = ""; QVERIFY(!DocTools::stampPdf(src, last, o).isEmpty());
+        s.image = "/nonexistent.png"; QVERIFY(!DocTools::stampPdf(src, last, s).isEmpty());
+        const auto res = DocTools::runTool(QStringLiteral("stamp"), {{src, QStringLiteral("st-src"), QStringLiteral("st-src.pdf")}}, Stamp::toJson(Stamp::Options{}), m_tmp.path());
+        QCOMPARE(res.error, QString());
+        QVERIFY(res.outputs.first().second.contains("approved"));
+    }
+
+    void mattingLogic()
+    {
+        using namespace Matting;
+        QCOMPARE(profileFor("matting-u2netp").size, 320);
+        QCOMPARE(profileFor("matting-isnet").size, 1024);
+        QVERIFY(profileFor("matting-isnet").memory > profileFor("matting-u2netp").memory);
+        // numbers for the model: channels first, divided by the largest value, then (x - mean) / std
+        QImage white(40, 30, QImage::Format_RGB32);
+        white.fill(Qt::white);
+        const Profile p = profileFor("matting-u2netp");
+        const QVector<float> in = preprocess(white, p);
+        QCOMPARE(in.size(), 3 * 320 * 320);
+        QVERIFY(qAbs(in[0] - (1.0f - 0.485f) / 0.229f) < 1e-3f);
+        QVERIFY(qAbs(in[320 * 320] - (1.0f - 0.456f) / 0.224f) < 1e-3f);
+        QVERIFY(qAbs(in[2 * 320 * 320 + 5] - (1.0f - 0.406f) / 0.225f) < 1e-3f);
+        QImage dark(10, 10, QImage::Format_RGB32);
+        dark.fill(QColor(40, 40, 40));
+        QVERIFY(qAbs(preprocess(dark, p)[0] - (1.0f - 0.485f) / 0.229f) < 1e-3f); // the largest value is 1 whatever it was
+        // IS-Net: plain (x - 128) / 256, even for a dark picture
+        QVERIFY(qAbs(preprocess(dark, profileFor("matting-isnet"))[0] - (40.0f - 128.0f) / 256.0f) < 1e-3f);
+        // a made-up model that says "the subject is the disc in the middle" (in its own range, not 0..1)
+        const Runner disc = [](const QVector<float> &chw, int h, int w, QVector<float> *out, int *oh, int *ow, QString *) {
+            Q_UNUSED(chw);
+            out->resize(h * w);
+            for (int y = 0; y < h; ++y) for (int x = 0; x < w; ++x) { const float dx = x - w / 2.0f, dy = y - h / 2.0f; (*out)[y * w + x] = (dx * dx + dy * dy < (h / 4.0f) * (h / 4.0f)) ? 7.0f : -3.0f; }
+            *oh = h; *ow = w;
+            return true;
+        };
+        QImage img(120, 80, QImage::Format_RGB32);
+        img.fill(QColor(200, 30, 30));
+        QImage cut;
+        Options o; o.featherPx = 0;
+        QCOMPARE(Matting::cutout(img, p, disc, o, &cut), QString());
+        QCOMPARE(cut.size(), img.size());
+        QCOMPARE(qAlpha(cut.pixel(60, 40)), 255);              // the middle is kept
+        QCOMPARE(qAlpha(cut.pixel(2, 2)), 0);                  // the corner goes
+        QCOMPARE(qRed(cut.pixel(60, 40)), 200);                // the colours are the picture's own
+        // a soft edge: some points between, and the same picture without it has none
+        auto between = [](const QImage &i) { int n = 0; for (int y = 0; y < i.height(); ++y) for (int x = 0; x < i.width(); ++x) { const int a = qAlpha(i.pixel(x, y)); if (a > 20 && a < 235) ++n; } return n; };
+        Options soft; soft.featherPx = 3;
+        QImage cutSoft;
+        QCOMPARE(Matting::cutout(img, p, disc, soft, &cutSoft), QString());
+        QVERIFY(between(cutSoft) > between(cut) + 10);
+        // a large picture is made smaller first; a small or empty one is refused; the model's own failure is the message
+        Options small; small.maxSide = 60;
+        QImage big;
+        QCOMPARE(Matting::cutout(img, p, disc, small, &big), QString());
+        QCOMPARE(big.width(), 60);
+        QVERIFY(!Matting::cutout(QImage(), p, disc, o, &cut).isEmpty());
+        QVERIFY(!Matting::cutout(QImage(4, 4, QImage::Format_RGB32), p, disc, o, &cut).isEmpty());
+        const Runner failing = [](const QVector<float> &, int, int, QVector<float> *, int *, int *, QString *e) { *e = QStringLiteral("out of memory"); return false; };
+        QCOMPARE(Matting::cutout(img, p, failing, o, &cut), QString("out of memory"));
+        const Runner flat = [](const QVector<float> &, int h, int w, QVector<float> *out, int *oh, int *ow, QString *) { out->fill(0.5f, h * w); *oh = h; *ow = w; return true; };
+        QCOMPARE(Matting::cutout(img, p, flat, o, &cut), QString());   // a map without contrast is all transparent, not a crash
+        QCOMPARE(qAlpha(cut.pixel(60, 40)), 0);
+    }
+
+    void recordMixArguments()
+    {
+        RecordMix::Options o;
+        QVERIFY(!RecordMix::validate(o).isEmpty()); // nothing to put together
+        o.screen = "s.mkv"; o.output = "o.mp4";
+        QVERIFY(RecordMix::validate(o).isEmpty());
+        o.camera = "c.mkv";
+        QVERIFY(!RecordMix::validate(o).isEmpty()); // the size of the picture is needed
+        o.screenWidth = 1920; o.screenHeight = 1080;
+        QVERIFY(RecordMix::validate(o).isEmpty());
+        o.size = 0.9; QVERIFY(!RecordMix::validate(o).isEmpty()); o.size = 0.25;
+        o.x = 1.5; QVERIFY(!RecordMix::validate(o).isEmpty()); o.x = 1;
+        QCOMPARE(RecordMix::cameraWidth(o), 480);
+        // no camera, no sound: one picture, no audio
+        RecordMix::Options bare; bare.screen = "s.mkv"; bare.output = "o.mp4";
+        QStringList a = RecordMix::args(bare);
+        QVERIFY(a.contains("-an") && !a.join(' ').contains("overlay") && a.last() == "o.mp4");
+        // camera at the top left, circle, mirrored; microphone and system sound mixed
+        o.x = 0; o.y = 0; o.shape = RecordMix::Shape::Circle; o.screenHasSound = true; o.system = "sys.wav"; o.cameraOffset = 0.25; o.seconds = 12;
+        a = RecordMix::args(o);
+        const QString all = a.join(' ');
+        QVERIFY(all.contains("hflip") && all.contains("hypot") && all.contains("amix=inputs=2") && all.contains("overlay=x='24+(main_w-overlay_w-48)*0.000'"));
+        QVERIFY(all.contains("-itsoffset 0.250 -i c.mkv") && all.contains("-itsoffset 0.000 -i sys.wav") && all.contains("-t 12.000"));
+        QVERIFY(all.contains("[2:a]volume=1.000[s]")); // the system sound is the third input
+        QVERIFY(!all.contains("eq=brightness")); // the camera as it is: no filter
+        o.brightness = 0.1; o.contrast = 1.2;
+        QVERIFY(RecordMix::args(o).join(' ').contains("hflip,eq=brightness=0.100:contrast=1.200,crop="));
+        o.brightness = 0.9;
+        QVERIFY(!RecordMix::validate(o).isEmpty());
+        o.brightness = 0; o.contrast = 1;
+    }
+
+    // ffmpeg for real, on made-up clips: the camera lands where it was asked, in the shape asked, and the sound is mixed
+    void recordMixRun()
+    {
+        if (QStandardPaths::findExecutable("ffmpeg").isEmpty() || QStandardPaths::findExecutable("ffprobe").isEmpty())
+            QSKIP("needs ffmpeg and ffprobe");
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString d = dir.path();
+        const auto ff = [&](const QStringList &args) { return ProcessRunner::run("ffmpeg", QStringList{"-y", "-hide_banner", "-loglevel", "error"} + args, 60000); };
+        QVERIFY(ff({"-f", "lavfi", "-i", "color=c=blue:s=640x360:r=15:d=2", "-f", "lavfi", "-i", "sine=f=440:d=2", "-c:v", "libx264", "-c:a", "aac", "-shortest", d + "/screen.mkv"}).ok);
+        QVERIFY(ff({"-f", "lavfi", "-i", "color=c=red:s=320x240:r=15:d=2", "-c:v", "libx264", d + "/cam.mkv"}).ok);
+        QVERIFY(ff({"-f", "lavfi", "-i", "sine=f=880:d=2", d + "/sys.wav"}).ok);
+        RecordMix::Options o;
+        o.screen = d + "/screen.mkv"; o.camera = d + "/cam.mkv"; o.system = d + "/sys.wav"; o.output = d + "/out.mp4";
+        o.screenWidth = 640; o.screenHeight = 360; o.screenHasSound = true; o.x = 1; o.y = 1; o.size = 0.25; o.shape = RecordMix::Shape::Circle; o.mirror = false; o.seconds = 2;
+        QVERIFY(RecordMix::validate(o).isEmpty());
+        const auto r = ProcessRunner::run("ffmpeg", RecordMix::args(o), 120000);
+        QVERIFY2(r.ok, r.err.constData());
+        const auto probe = ProcessRunner::run("ffprobe", {"-v", "error", "-show_entries", "stream=codec_type,width,height", "-of", "csv=p=0", d + "/out.mp4"}, 20000);
+        const QString info = QString::fromUtf8(probe.out);
+        QVERIFY2(info.contains("640,360") && info.contains("audio"), qPrintable(info));
+        QVERIFY(ff({"-ss", "1", "-i", d + "/out.mp4", "-frames:v", "1", d + "/frame.png"}).ok);
+        const QImage f(d + "/frame.png");
+        QCOMPARE(f.size(), QSize(640, 360));
+        // camera: 160 px wide circle (160x160) with 24 px margin at the bottom right => centre near (640-24-80, 360-24-80)
+        const QColor centre = f.pixelColor(536, 256), corner = f.pixelColor(640 - 24 - 3, 360 - 24 - 3), far = f.pixelColor(40, 40);
+        QVERIFY2(centre.red() > 180 && centre.blue() < 90, qPrintable(centre.name()));  // red camera
+        QVERIFY2(corner.blue() > 150 && corner.red() < 90, qPrintable(corner.name()));  // the circle leaves the corner to the screen
+        QVERIFY2(far.blue() > 150 && far.red() < 90, qPrintable(far.name()));           // elsewhere it is the screen
+        // the other shapes run too; a square keeps its corner, a rounded one gives it back to the screen
+        o.shape = RecordMix::Shape::Square; o.output = d + "/sq.mp4";
+        QVERIFY2(ProcessRunner::run("ffmpeg", RecordMix::args(o), 120000).ok, "square");
+        o.shape = RecordMix::Shape::Rounded; o.output = d + "/rd.mp4";
+        QVERIFY2(ProcessRunner::run("ffmpeg", RecordMix::args(o), 120000).ok, "rounded");
+        QVERIFY(ff({"-ss", "1", "-i", d + "/sq.mp4", "-frames:v", "1", d + "/sq.png"}).ok);
+        QVERIFY(ff({"-ss", "1", "-i", d + "/rd.mp4", "-frames:v", "1", d + "/rd.png"}).ok);
+        const QColor sqCorner = QImage(d + "/sq.png").pixelColor(640 - 24 - 3, 360 - 24 - 3), rdCorner = QImage(d + "/rd.png").pixelColor(640 - 24 - 1, 360 - 24 - 1);
+        QVERIFY2(sqCorner.red() > 180, qPrintable(sqCorner.name()));
+        QVERIFY2(rdCorner.blue() > 150 && rdCorner.red() < 90, qPrintable(rdCorner.name()));
+    }
+
+    // The real model: set NOTCH_TEST_ORT (libonnxruntime.so) and NOTCH_TEST_U2NETP (u2netp.onnx) to run it.
+    void mattingRealModel()
+    {
+        const QString lib = qEnvironmentVariable("NOTCH_TEST_ORT"), model = qEnvironmentVariable("NOTCH_TEST_U2NETP");
+        if (lib.isEmpty() || model.isEmpty() || !OnnxRuntime::supported())
+            QSKIP("needs NOTCH_TEST_ORT and NOTCH_TEST_U2NETP");
+        QString error;
+        const Matting::Runner run = OnnxRuntime::makeRunner(lib, model, &error);
+        QVERIFY2(run, qPrintable(error));
+        // a bright red disc with a thick dark ring on a plain light-grey wall: the subject is the middle, the corners are wall
+        QImage img(480, 360, QImage::Format_RGB32);
+        img.fill(QColor(200, 200, 205));
+        QPainter p(&img);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setBrush(QColor(210, 20, 30));
+        p.setPen(QPen(QColor(20, 20, 20), 14));
+        p.drawEllipse(QPoint(240, 180), 110, 110);
+        p.end();
+        QImage out;
+        error = Matting::cutout(img, Matting::profileFor("matting-u2netp"), run, {}, &out);
+        QVERIFY2(error.isEmpty(), qPrintable(error));
+        QCOMPARE(out.size(), img.size());
+        QVERIFY2(qAlpha(out.pixel(240, 180)) > 200, qPrintable(QString::number(qAlpha(out.pixel(240, 180)))));
+        QVERIFY2(qAlpha(out.pixel(8, 8)) < 60, qPrintable(QString::number(qAlpha(out.pixel(8, 8)))));
+        QVERIFY2(qAlpha(out.pixel(470, 350)) < 60, qPrintable(QString::number(qAlpha(out.pixel(470, 350)))));
+        // a wrong file gives a message, not a crash
+        QVERIFY(!OnnxRuntime::makeRunner(lib, QStringLiteral("/nonexistent.onnx"), &error));
+        QVERIFY(!error.isEmpty());
+        QVERIFY(!OnnxRuntime::makeRunner(QStringLiteral("/nonexistent.so"), model, &error));
+    }
+
     void conversionTargets()
     {
         using namespace ConvertModel;
@@ -4439,7 +5483,7 @@ private slots:
         QVERIFY(!ids(targetsFor(Kind::Image, "png")).contains("png")); // never its own format
         QVERIFY(ids(targetsFor(Kind::Image, "png")).contains("pdf"));
         QVERIFY(!ids(targetsFor(Kind::Image, "jpeg")).contains("jpg"));
-        QCOMPARE(ids(targetsFor(Kind::Pdf, "pdf")), (QStringList{"png", "jpg", "txt"}));
+        QCOMPARE(ids(targetsFor(Kind::Pdf, "pdf")), (QStringList{"png", "jpg", "txt", "docx", "odt"}));
         QVERIFY(ids(targetsFor(Kind::Document, "xlsx")).contains("csv") && !ids(targetsFor(Kind::Document, "xlsx")).contains("docx"));
         QVERIFY(ids(targetsFor(Kind::Document, "pptx")).contains("odp"));
         QVERIFY(ids(targetsFor(Kind::Video, "mp4")).contains("mp4-small") && ids(targetsFor(Kind::Video, "mp4")).contains("gif"));

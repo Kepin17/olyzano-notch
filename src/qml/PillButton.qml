@@ -7,44 +7,46 @@ AbstractButton {
     HoverHandler { cursorShape: Qt.PointingHandCursor }
     id: pb
     property string iconName
+    property bool primary: false  // the one thing to do on this page: the solid accent
     property bool iconOnly: false // just the icon (tooltip and screen readers keep the text), when there is no room for words
-    implicitWidth: iconOnly ? 34 : pbRow.implicitWidth + 22
-    implicitHeight: 28
+    implicitWidth: iconOnly ? 36 : pbRow.implicitWidth + 28
+    implicitHeight: theme.controlHeight
     opacity: enabled ? 1 : 0.4
     Accessible.name: text
     ToolTip.visible: iconOnly && hovered
     ToolTip.delay: 400
     ToolTip.text: text
-    // Hairline outline; hover/press are solid greys (a white alpha wash read as a white block on dark).
+    // Filled, no outline (washi keeps its ink line): quiet grey for most, a tint of the accent when chosen, the accent itself for the main action.
     background: Rectangle {
         radius: theme.washi ? theme.chipRadius : theme.radiusSm
-        color: pb.checked ? Qt.alpha(theme.accent, 0.18)
-             : pb.down ? (theme.dark ? "#3a3a3c" : "#d8d8de")
-             : pb.hovered ? (theme.dark ? "#2f2f32" : "#e8e8ed")
-             : "transparent"
-        border.width: 1
-        border.color: pb.checked ? Qt.alpha(theme.accent, 0.45) : theme.washi ? theme.outline : theme.hairline
+        color: pb.primary ? (pb.down ? Qt.darker(theme.accent, 1.18) : pb.hovered ? Qt.lighter(theme.accent, 1.08) : theme.accent)
+             : pb.checked ? (pb.hovered ? Qt.alpha(theme.accent, 0.26) : Qt.alpha(theme.accent, 0.18))
+             : pb.down ? theme.surfacePressed
+             : pb.hovered ? theme.surfaceHover
+             : theme.surface
+        border.width: theme.washi || pb.visualFocus ? 1 : 0
+        border.color: pb.visualFocus ? theme.accent : pb.checked ? Qt.alpha(theme.accent, 0.45) : theme.outline
         Behavior on color { enabled: activities.animations; ColorAnimation { duration: 120 } }
     }
     contentItem: Item {
         Row {
             id: pbRow
             anchors.centerIn: parent
-            spacing: 4
+            spacing: 6
             LineIcon {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: pb.iconName !== ""
                 glyph: pb.iconName
-                sourceSize: Qt.size(13, 13)
+                sourceSize: Qt.size(14, 14)
                 color: pbLabel.color
             }
             Text {
                 id: pbLabel
                 visible: !pb.iconOnly
                 text: pb.text
-                color: pb.checked ? theme.accentText : theme.text
-                font.pixelSize: 12
-                font.weight: pb.checked ? Font.DemiBold : Font.Medium
+                color: pb.primary ? theme.onColor(theme.accent) : pb.checked ? theme.accentText : theme.text
+                font.pixelSize: 13
+                font.weight: pb.checked || pb.primary ? Font.DemiBold : Font.Medium
             }
         }
     }
