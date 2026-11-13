@@ -3224,6 +3224,7 @@ private slots:
         QFile got(store.path(QStringLiteral("ok")));
         QVERIFY(got.open(QIODevice::ReadOnly));
         QCOMPARE(got.readAll(), blob);
+        got.close(); // Windows cannot delete a file that is still open
         QVERIFY(!QFileInfo::exists(store.root() + QStringLiteral("/downloads/ok.bin.part")));
         QVERIFY(store.diskBytes(QStringLiteral("ok")) >= blob.size());
         store.download(QStringLiteral("ok")); // already there: nothing happens
