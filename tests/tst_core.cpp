@@ -3257,6 +3257,7 @@ private slots:
         QFile resumed(store.path(QStringLiteral("resume")));
         QVERIFY(resumed.open(QIODevice::ReadOnly));
         QCOMPARE(resumed.readAll(), blob); // joined without a gap or a repeat
+        resumed.close(); // Windows cannot delete a file that is still open
 
         // not enough room: said before anything is downloaded
         store.download(QStringLiteral("huge"));
@@ -6661,6 +6662,14 @@ private slots:
 
     // any request from a chosen local address (127.0.0.N): returns the status, fills `body` with the answer; `cut` sends only that many bytes
     // of the body and hangs up (a visitor who gives up halfway)
+    // the server answers 413 and hangs up while the sender is still writing: Windows then resets the connection and the answer is lost (status 0)
+    static bool tooBig(int status)
+    {
+#ifdef Q_OS_WIN
+        if (status == 0) return true;
+#endif
+        return status == 413;
+    }
     int rawRequest(const QUrl &base, const char *from, const QByteArray &method, const QString &rest, const QByteArray &payload = {}, QByteArray *body = nullptr,
                    const QByteArray &headers = {}, int cut = -1)
     {
@@ -6716,7 +6725,7 @@ private slots:
         const QString uploadId = QJsonDocument::fromJson(out).object().value("id").toString();
         QVERIFY(!uploadId.isEmpty());
         QCOMPARE(rawRequest(base, "127.0.0.2", "PUT", "up?field=" + nameId + "&name=a.txt", data, &out), 400); // not a file question
-        QCOMPARE(rawRequest(base, "127.0.0.2", "PUT", "up?field=" + filesId + "&name=big.bin", QByteArray(1048576 + 1, 'x'), &out), 413); // over 1 MB
+        QVERIFY(tooBig(rawRequest(base, "127.0.0.2", "PUT", "up?field=" + filesId + "&name=big.bin", QByteArray(1048576 + 1, 'x'), &out))); // over 1 MB
         // an answer that is not right says why; the right one is kept
         const auto submit = [&](const char *from, const QJsonObject &answers, const QStringList &uploads, QByteArray *reply = nullptr) {
             QJsonObject o{{"answers", answers}, {"uploads", QJsonArray::fromStringList(uploads)}};
@@ -6977,7 +6986,7 @@ private slots:
         QCOMPARE(rawRequest(base, "127.0.0.3", "GET", "def", {}, &out, "X-Pin: 4821\r\n"), 429); // locked out, even for the right one
         // bad requests
         QCOMPARE(rawRequest(base, "127.0.0.2", "POST", "submit", "{not json", &out, "X-Pin: 4821\r\n"), 400);
-        QCOMPARE(rawRequest(base, "127.0.0.2", "POST", "submit", QByteArray(300 * 1024, '{'), &out, "X-Pin: 4821\r\n"), 413);
+        QVERIFY(tooBig(rawRequest(base, "127.0.0.2", "POST", "submit", QByteArray(300 * 1024, '{'), &out, "X-Pin: 4821\r\n")));
         QCOMPARE(rawRequest(base, "127.0.0.2", "DELETE", "submit", {}, &out, "X-Pin: 4821\r\n"), 404);
         // 30 answers per device in ten minutes
         const QString nameId = f.fields[0].id, mailId = f.fields[1].id, msgId = f.fields[2].id;

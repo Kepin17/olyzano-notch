@@ -51,6 +51,10 @@ class RelayForms:
 
     def delete(self, fid):
         if self.id_re.match(fid):
+            try:
+                os.remove(self.path(fid, "meta.json"))  # first: the form is gone even if Windows keeps a file busy
+            except OSError:
+                pass
             shutil.rmtree(self.path(fid), ignore_errors=True)
 
     def ids(self):
