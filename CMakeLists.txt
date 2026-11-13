@@ -346,6 +346,9 @@ qt_add_executable(tst_core tests/tst_core.cpp)
 target_compile_definitions(tst_core PRIVATE NOTCH_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_link_libraries(tst_core PRIVATE notch_core Qt6::Test)
 target_sources(tst_core PRIVATE src/services/OnnxRuntime.cpp src/audio/SherpaTagger.cpp src/app/FormRelay.cpp)
+if(MSVC) # tst_core.cpp holds every pure test and has grown past the 65 535 sections MSVC allows in one object file
+    target_compile_options(tst_core PRIVATE /bigobj)
+endif()
 add_test(NAME tst_core COMMAND tst_core)
 
 # The shelf controller with many files: needs the controller itself, not just the core library. Not on Windows: the controller
