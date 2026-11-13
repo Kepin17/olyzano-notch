@@ -33,6 +33,8 @@
 #include "audio/ModelBundles.h"
 #include "audio/FollowUp.h"
 #include "audio/ChatTools.h"
+#include "audio/HttpStream.h"
+#include "audio/EngineParse.h"
 #include "audio/Translate.h"
 #include "services/GlobalSearch.h"
 #include "audio/ModelStore.h"
@@ -5501,10 +5503,10 @@ private slots:
         const QImage f(d + "/frame.png");
         QCOMPARE(f.size(), QSize(640, 360));
         // camera: 160 px wide circle (160x160) with 24 px margin at the bottom right => centre near (640-24-80, 360-24-80)
-        const QColor centre = f.pixelColor(536, 256), corner = f.pixelColor(640 - 24 - 3, 360 - 24 - 3), far = f.pixelColor(40, 40);
+        const QColor centre = f.pixelColor(536, 256), corner = f.pixelColor(640 - 24 - 3, 360 - 24 - 3), away = f.pixelColor(40, 40);
         QVERIFY2(centre.red() > 180 && centre.blue() < 90, qPrintable(centre.name()));  // red camera
         QVERIFY2(corner.blue() > 150 && corner.red() < 90, qPrintable(corner.name()));  // the circle leaves the corner to the screen
-        QVERIFY2(far.blue() > 150 && far.red() < 90, qPrintable(far.name()));           // elsewhere it is the screen
+        QVERIFY2(away.blue() > 150 && away.red() < 90, qPrintable(away.name()));           // elsewhere it is the screen
         // the other shapes run too; a square keeps its corner, a rounded one gives it back to the screen
         o.shape = RecordMix::Shape::Square; o.output = d + "/sq.mp4";
         QVERIFY2(ProcessRunner::run("ffmpeg", RecordMix::args(o), 120000).ok, "square");
@@ -7332,6 +7334,80 @@ private slots:
         QVERIFY(only.contains("Hello everyone") && !only.contains("Halo semua") && only.contains("Thank you"));
         // a translation equal to the original is not shown twice
         QVERIFY(!Export::bilingualSubtitles({{1, 2, "OK", "", false}}, {"OK"}, false, o).contains("OK\nOK"));
+    }
+
+    void aStreamedAnswerIsHandedOverPieceByPiece()
+    {
+        QTcpServer server;
+        QVERIFY(server.listen(QHostAddress::LocalHost, 0));
+        QList<QTcpSocket *> clients;
+        QObject::connect(&server, &QTcpServer::newConnection, &server, [&] {
+            QTcpSocket *s = server.nextPendingConnection();
+            clients << s;
+            QObject::connect(s, &QTcpSocket::readyRead, s, [s] {
+                if (!s->property("sent").toBool() && s->bytesAvailable() > 0) {
+                    s->setProperty("sent", true);
+                    s->readAll();
+                    s->write("HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nConnection: close\r\n\r\n");
+                    const QStringList words = {"Hel", "lo ", "wor", "ld"};
+                    for (int i = 0; i < words.size(); ++i)
+                        QTimer::singleShot(80 * (i + 1), s, [s, w = words[i]] { s->write("data: {\"choices\":[{\"delta\":{\"content\":\"" + w.toUtf8() + "\"}}]}\n\n"); s->flush(); });
+                    QTimer::singleShot(400, s, [s] { s->write("data: [DONE]\n\n"); s->disconnectFromHost(); });
+                }
+            });
+        });
+        const QUrl url(QStringLiteral("http://127.0.0.1:%1/v1/chat/completions").arg(server.serverPort()));
+        Audio::SseParser sse;
+        QStringList seen; // what had been written at each piece
+        QString written;
+        int status = 0;
+        const QString err = Audio::postJsonStreaming(url, {}, "{}", 10000, nullptr, [&](const QByteArray &b) { for (const QString &d : sse.feed(b)) { written += d; seen << written; } }, &status);
+        QCOMPARE(err, QString());
+        QCOMPARE(status, 200);
+        QCOMPARE(written, QStringLiteral("Hello world"));
+        QVERIFY(seen.size() >= 3 && seen.first().size() < written.size()); // it came in pieces, not at the end
+        QVERIFY(sse.done());
+        // stopped half way: it ends at once, with what had come
+        written.clear();
+        Audio::SseParser again;
+        std::atomic_bool stop{false};
+        int status2 = 0;
+        const QString err2 = Audio::postJsonStreaming(url, {}, "{}", 10000, &stop, [&](const QByteArray &b) { for (const QString &d : again.feed(b)) { written += d; if (written.size() >= 3) stop = true; } }, &status2);
+        QCOMPARE(err2, QStringLiteral("cancelled"));
+        QVERIFY(!written.isEmpty() && written.size() < QStringLiteral("Hello world").size());
+    }
+
+    void anAnswerThatStreamsCanBeReadWhileItIsStillBeingWritten()
+    {
+        using namespace Audio;
+        // the stream arrives in any pieces: a line cut anywhere waits for the rest
+        SseParser sse;
+        const QByteArray whole = "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\n: keep-alive\ndata: {\"choices\":[{\"delta\":{\"content\":\"lo\"}}]}\n\ndata: {\"choices\":[{\"delta\":{}}]}\n\ndata: [DONE]\n\n";
+        QStringList got;
+        for (int cut = 0; cut < whole.size(); cut += 7)
+            got += sse.feed(whole.mid(cut, 7));
+        QCOMPARE(got.join(""), QStringLiteral("Hello"));
+        QVERIFY(sse.done());
+        SseParser early;
+        QVERIFY(early.feed("data: {\"choices\":[{\"delta\":{\"content\":\"x\"").isEmpty()); // not a whole line: nothing yet
+        QVERIFY(!early.done());
+        // the answer inside JSON that is cut
+        using ChatTools::partialString;
+        using ChatTools::partialTool;
+        QVERIFY(!partialString("", "text").found && !partialString("{\"tool\":\"cha", "text").found);
+        QCOMPARE(partialTool("{\"tool\":\"cha"), QString());               // not whole yet
+        QCOMPARE(partialTool("{\"tool\":\"chat\",\"te"), QStringLiteral("chat"));
+        const auto p = partialString("{\"tool\":\"chat\",\"text\":\"Halo, ap", "text");
+        QVERIFY(p.found && !p.closed);
+        QCOMPARE(p.text, QStringLiteral("Halo, ap"));
+        QCOMPARE(partialString("{\"tool\":\"chat\",\"text\":\"Baris 1\\nBaris \\\"dua\\\" \\u00e9\"}", "text").text, QStringLiteral("Baris 1\nBaris \"dua\" \u00e9"));
+        QVERIFY(partialString("{\"tool\":\"chat\",\"text\":\"x\"}", "text").closed);
+        QCOMPARE(partialString("{\"text\":\"a\\", "text").text, QStringLiteral("a"));          // a backslash at the end waits
+        QCOMPARE(partialString("{\"text\":\"a\\u00", "text").text, QStringLiteral("a"));       // so does a half \u
+        // a key that only appears inside a value is not a key
+        QCOMPARE(partialString("{\"answer\":\"the \\\"text\\\": nope\",\"text\":\"real\"}", "text").text, QStringLiteral("real"));
+        QVERIFY(!partialString("{\"a\":{\"text\":\"inner\"}}", "text").found);        // only the top level
+        QCOMPARE(partialString("{\"n\":3,\"x\":[1,2],\"text\":\"ok", "text").text, QStringLiteral("ok"));
     }
 
     void theChatAssistantChoosesToolsAndNeverTakesOrdersFromData()

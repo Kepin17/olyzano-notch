@@ -13,6 +13,7 @@ Notch lives at the top of your screen and keeps your files, recordings, tasks an
 
 ### Talk to Notch
 - **Assistant** (action bar → *Assistant*). Ask "What is due this week?" or "Summarize my last recording", or say "Add a task: send the report tomorrow 9". Anything that changes something shows an **Add** button first, and text inside your files can never give it orders.
+- **You can see it working.** The Assistant shows the steps it is taking and writes its answer word by word, so you are never left waiting at a blank screen. **Stop** ends it at once.
 - **Voice commands.** Press the microphone and say "open Firefox" or "timer 5 minutes". Nothing is recorded or sent anywhere.
 - **Ask your files** (*Docs → Ask your files*). Ask a question about a PDF, a recording, or everything. Each answer shows where it came from, and Notch says "not found" instead of guessing.
 
@@ -24,6 +25,7 @@ Notch lives at the top of your screen and keeps your files, recordings, tasks an
 - **Follow-up in one click** (a recording → *Follow-up*). Get a ready-to-send email, an agenda for the next meeting, and your tasks added to the Tasks list.
 - **Translate** (a recording → *Transcript* → globe button). Save subtitles with two languages at once, or the translation alone.
 - **Live meetings.** Watch the transcript appear while the meeting happens, with optional translation and three suggested replies.
+- **Processing feels alive.** While a recording is being processed, the progress bar glides with a light running along it, the percent counts up smoothly, and each step fades into the next with a small pop when it is done.
 - **Cleaner sound.** Optional noise reduction, music detection (shown as "♪ Music" instead of invented words), and punctuation for English.
 - **Export.** Save a transcript as subtitles or text, and get chapters for a video description.
 - **About thirty languages** (*Settings → Languages*). Choose what is spoken in a recording and the language of your notes. Reading text in pictures needs one small pack per language, downloaded only when you ask.

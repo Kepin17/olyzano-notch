@@ -314,18 +314,31 @@ ScrollView {
                         Layout.fillWidth: true
                         spacing: 3
                         Text { Layout.fillWidth: true; text: card.title; textFormat: Text.PlainText; color: theme.text; font.pixelSize: 13; font.weight: Font.DemiBold; elide: Text.ElideRight }
+                        RowLayout { // processing: the stage fades into the next, and the percent glides
+                            visible: card.status === "processing"
+                            Layout.fillWidth: true
+                            spacing: 6
+                            StageText { Layout.fillWidth: true; text: card.stage !== "" ? card.stage : "Working"; color: theme.textDim; pixelSize: 11 }
+                            Text {
+                                property real shownPct: card.progress * 100
+                                Behavior on shownPct { enabled: activities.animations; NumberAnimation { duration: 480; easing.type: Easing.OutCubic } }
+                                text: Math.round(shownPct) + "%"
+                                color: theme.textDim
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                            }
+                        }
                         Text {
+                            visible: card.status !== "processing"
                             Layout.fillWidth: true
                             color: card.status === "failed" ? theme.danger : theme.textDim
                             font.pixelSize: 11
                             elide: Text.ElideRight
-                            text: card.status === "processing" ? (card.stage !== "" ? card.stage : "Working") + " · " + Math.round(card.progress * 100) + "%"
-                                  : card.status === "queued" ? "Waiting for its turn" : card.status === "failed" ? "Stopped · tap to continue"
+                            text: card.status === "queued" ? "Waiting for its turn" : card.status === "failed" ? "Stopped · tap to continue"
                                   : [card.dateText, card.durationText, card.language ? card.language.toUpperCase() : "", card.speakers > 0 ? card.speakers + (card.speakers === 1 ? " speaker" : " speakers") : ""].filter(x => x !== "").join(" · ")
                         }
                         Text { visible: card.snippet !== "" && card.status === "completed"; Layout.fillWidth: true; text: card.snippet; textFormat: Text.PlainText; color: theme.textSoft; font.pixelSize: 12; elide: Text.ElideRight }
-                        Rectangle { visible: card.status === "processing"; Layout.fillWidth: true; Layout.preferredHeight: 2; radius: 1; color: theme.surface
-                            Rectangle { width: parent.width * card.progress; height: parent.height; radius: 1; color: theme.accent } }
+                        LiveBar { visible: card.status === "processing"; Layout.fillWidth: true; Layout.preferredHeight: 3; value: card.progress; trackColor: theme.surface }
                     }
                     LineIcon { Layout.alignment: Qt.AlignVCenter; glyph: "chevron"; sourceSize: Qt.size(12, 12); color: theme.textFaint; opacity: hover.hovered ? 1 : 0 }
                 }

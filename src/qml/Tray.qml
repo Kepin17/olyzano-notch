@@ -4,7 +4,7 @@ import Qt.labs.platform as Labs
 // One tray icon for the whole app; actions go to the primary monitor's Notch.
 // Right-click shows this menu (Qt.labs.platform → QSystemTrayIcon on Windows).
 Labs.SystemTrayIcon {
-    visible: true
+    visible: Qt.platform.os !== "windows" // on Windows main.cpp makes the icon and its menu itself (QSystemTrayIcon + QMenu): the menu of Qt.labs.platform did not open there
     // Theme name where there is one (KDE). On Windows there is no icon theme: a bare relative path
     // often fails to resolve for the native tray, so the source is an absolute qrc URL.
     icon.name: "folder-download"

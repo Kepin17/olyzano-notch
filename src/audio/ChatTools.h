@@ -6,6 +6,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLocale>
+#include <QRegularExpression>
 #include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
@@ -165,6 +167,110 @@ inline Call parseCall(const QString &answer)
         break;
     }
     return c;
+}
+
+// ---- the answer while it is still being written ----
+
+struct Partial {
+    QString text;
+    bool closed = false; // the closing quote has come: the value is whole
+    bool found = false;  // the key has come and its value is a string
+};
+
+// The string value of a top-level key in a JSON object that is cut somewhere (the model's answer as it streams): what has been written so far, with the
+// escapes read (\n, \", \\, \/, \t, \r, \b, \f, \uXXXX; one that is cut in the middle waits). A key that only appears inside another string is not a key.
+inline Partial partialString(const QString &json, const QString &key)
+{
+    const int n = int(json.size());
+    int i = 0, depth = 0;
+    const auto readString = [&](QString *out, bool *closed) { // i is after the opening quote; moves to after the closing one (or the end)
+        out->clear();
+        *closed = false;
+        while (i < n) {
+            const QChar c = json[i];
+            if (c == QLatin1Char('"')) {
+                ++i;
+                *closed = true;
+                return;
+            }
+            if (c != QLatin1Char('\\')) {
+                out->append(c);
+                ++i;
+                continue;
+            }
+            if (i + 1 >= n)
+                return; // a backslash at the very end: the rest is not here yet
+            const QChar e = json[i + 1];
+            if (e == QLatin1Char('u')) {
+                if (i + 6 > n)
+                    return; // \u and fewer than four digits so far
+                bool ok = false;
+                const ushort code = json.mid(i + 2, 4).toUShort(&ok, 16);
+                if (ok)
+                    out->append(QChar(code));
+                i += 6;
+                continue;
+            }
+            switch (e.unicode()) {
+            case 'n': out->append(QLatin1Char('\n')); break;
+            case 't': out->append(QLatin1Char('\t')); break;
+            case 'r': out->append(QLatin1Char('\r')); break;
+            case 'b': out->append(QLatin1Char('\b')); break;
+            case 'f': out->append(QLatin1Char('\f')); break;
+            default: out->append(e); break; // \" \\ \/
+            }
+            i += 2;
+        }
+    };
+    bool expectKey = false;
+    while (i < n) {
+        const QChar c = json[i];
+        if (c == QLatin1Char('{') || c == QLatin1Char('[')) {
+            ++depth;
+            expectKey = c == QLatin1Char('{') && depth == 1;
+            ++i;
+        } else if (c == QLatin1Char('}') || c == QLatin1Char(']')) {
+            --depth;
+            ++i;
+        } else if (c == QLatin1Char(',')) {
+            expectKey = depth == 1;
+            ++i;
+        } else if (c == QLatin1Char('"')) {
+            ++i;
+            QString s;
+            bool closed = false;
+            readString(&s, &closed);
+            if (!closed)
+                return {};
+            if (depth == 1 && expectKey) {
+                expectKey = false;
+                while (i < n && json[i].isSpace())
+                    ++i;
+                if (i < n && json[i] == QLatin1Char(':')) {
+                    ++i;
+                    while (i < n && json[i].isSpace())
+                        ++i;
+                    if (s == key && i < n && json[i] == QLatin1Char('"')) {
+                        ++i;
+                        Partial p;
+                        p.found = true;
+                        readString(&p.text, &p.closed);
+                        return p;
+                    }
+                }
+            }
+        } else {
+            ++i;
+        }
+    }
+    return {};
+}
+
+// The tool the model has chosen, as soon as that part of its answer is whole ("" before)
+inline QString partialTool(const QString &json)
+{
+    const Partial p = partialString(json, QStringLiteral("tool"));
+    return p.closed ? p.text : QString();
 }
 
 // ---- what a reading tool gives the answer step ----

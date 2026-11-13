@@ -3,6 +3,10 @@
 #include "Aligner.h"
 
 #include <QRegularExpression>
+#include <QStringList>
+#include <QJsonObject>
+#include <QJsonDocument>
+#include <QJsonArray>
 #include <QString>
 
 // What the helper programs print, read by code that needs no program to be tested.
@@ -56,5 +60,37 @@ inline QString stripThinking(QString text)
         text.truncate(open);
     return text.trimmed();
 }
+
+// The answer of llama-server as it streams ("stream": true): lines "data: {json}" ending with "data: [DONE]". Bytes arrive in any pieces, so a line may be cut
+// anywhere: what is not a whole line yet waits for the next piece. `feed` gives the new words (choices[0].delta.content) of the whole lines it has.
+class SseParser
+{
+public:
+    QStringList feed(const QByteArray &bytes)
+    {
+        QStringList out;
+        m_buf += bytes;
+        for (int nl = m_buf.indexOf('\n'); nl >= 0; nl = m_buf.indexOf('\n')) {
+            const QByteArray line = m_buf.left(nl).trimmed();
+            m_buf.remove(0, nl + 1);
+            if (!line.startsWith("data:"))
+                continue; // a comment (": keep-alive") or an empty line between events
+            const QByteArray payload = line.mid(5).trimmed();
+            if (payload == "[DONE]") {
+                m_done = true;
+                continue;
+            }
+            const QString delta = QJsonDocument::fromJson(payload).object().value(QStringLiteral("choices")).toArray().at(0).toObject().value(QStringLiteral("delta")).toObject().value(QStringLiteral("content")).toString();
+            if (!delta.isEmpty())
+                out << delta;
+        }
+        return out;
+    }
+    bool done() const { return m_done; }
+
+private:
+    QByteArray m_buf;
+    bool m_done = false;
+};
 
 } // namespace Audio

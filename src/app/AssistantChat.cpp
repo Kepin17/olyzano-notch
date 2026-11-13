@@ -40,6 +40,11 @@ AssistantChat::AssistantChat(Assistant *assistant, Tasks *tasks, NotchController
         if (!m_busy)
             (void)QtConcurrent::run(&m_pool, [this] { if (m_session) { m_session->stop(); m_session.reset(); } });
     });
+    m_tick.setInterval(1000);
+    connect(&m_tick, &QTimer::timeout, this, [this] { ++m_elapsed; emit changed(); });
+    m_pulse.setSingleShot(true);
+    m_pulse.setInterval(60); // the words that stream in are shown at most this often
+    connect(&m_pulse, &QTimer::timeout, this, [this] { if (m_pendingEmit) { m_pendingEmit = false; emit changed(); m_pulse.start(); } });
     connect(audio, &AudioController::modelsChanged, this, &AssistantChat::changed);
     connect(knowledge, &KnowledgeController::changed, this, &AssistantChat::finishFiles); // Ask your files has answered
     load();
@@ -58,8 +63,11 @@ bool AssistantChat::ready() const { return Audio::LlamaSession::available(m_audi
 void AssistantChat::add(const QVariantMap &message)
 {
     m_messages.append(message);
-    while (m_messages.size() > MaxMessages)
+    while (m_messages.size() > MaxMessages) {
         m_messages.removeFirst();
+        if (m_draft >= 0)
+            --m_draft;
+    }
     ++m_serial;
     save();
     emit changed();
@@ -67,14 +75,61 @@ void AssistantChat::add(const QVariantMap &message)
 
 void AssistantChat::setStage(const QString &stage, bool busy)
 {
-    m_stage = stage;
-    m_busy = busy;
+    if (!busy) {
+        m_tick.stop();
+        m_steps.clear();
+        m_stage.clear();
+        m_elapsed = 0;
+        m_busy = false;
+    } else if (stage != m_stage) {
+        for (QVariant &v : m_steps) {
+            QVariantMap s = v.toMap();
+            s.insert(QStringLiteral("state"), QStringLiteral("done"));
+            v = s;
+        }
+        m_steps.append(QVariantMap{{QStringLiteral("text"), stage}, {QStringLiteral("state"), QStringLiteral("active")}});
+        m_stage = stage;
+        if (!m_busy) {
+            m_busy = true;
+            m_elapsed = 0;
+            m_tick.start();
+        }
+    }
     ++m_serial;
     emit changed();
 }
 
+// the answer as it is being written: one bubble, kept up to date (and shown at most every 60 ms)
+void AssistantChat::setDraft(const QString &text)
+{
+    if (m_draft < 0) {
+        m_messages.append(QVariantMap{{QStringLiteral("role"), QStringLiteral("assistant")}, {QStringLiteral("text"), text}, {QStringLiteral("draft"), true}, {QStringLiteral("sources"), QVariantList()}});
+        m_draft = int(m_messages.size()) - 1;
+    } else {
+        QVariantMap m = m_messages[m_draft].toMap();
+        m.insert(QStringLiteral("text"), text);
+        m_messages[m_draft] = m;
+    }
+    ++m_serial;
+    if (m_pulse.isActive()) {
+        m_pendingEmit = true;
+    } else {
+        emit changed();
+        m_pulse.start();
+    }
+}
+
 void AssistantChat::reply(const QString &text, const QVariantList &sources, bool error)
 {
+    if (m_draft >= 0 && m_draft < m_messages.size()) { // the bubble that was being written becomes the answer
+        m_messages[m_draft] = QVariantMap{{QStringLiteral("role"), QStringLiteral("assistant")}, {QStringLiteral("text"), text}, {QStringLiteral("error"), error}, {QStringLiteral("sources"), sources}};
+        m_draft = -1;
+        ++m_serial;
+        save();
+        emit changed();
+        return;
+    }
+    m_draft = -1;
     add(QVariantMap{{QStringLiteral("role"), QStringLiteral("assistant")}, {QStringLiteral("text"), text}, {QStringLiteral("error"), error}, {QStringLiteral("sources"), sources}});
 }
 
@@ -119,7 +174,7 @@ void AssistantChat::send(const QString &raw)
         return;
     }
     m_cancel = false;
-    setStage(tr("Thinking…"), true);
+    setStage(tr("Understanding your message"), true);
     (void)QtConcurrent::run(&m_pool, [this, text] { route(text); });
 }
 
@@ -140,15 +195,37 @@ void AssistantChat::route(const QString &text)
     QMetaObject::invokeMethod(this, [&] { talk = history(); }, Qt::BlockingQueuedConnection);
     if (!talk.isEmpty() && talk.last().role == QLatin1String("user"))
         talk.removeLast(); // the message itself comes separately
-    const QString routed = m_session->chat(ChatTools::routerSystem(QDateTime::currentDateTime()), ChatTools::routerUser(talk, text), ChatTools::routerSchema(), &m_cancel, 700);
+    QString lastTool, lastText;
+    const QString routed = m_session->chatStream(ChatTools::routerSystem(QDateTime::currentDateTime()), ChatTools::routerUser(talk, text), ChatTools::routerSchema(), &m_cancel, 700, [&](const QString &written) {
+        const QString tool = ChatTools::partialTool(written); // the choice is known as soon as that part is written: say what is being done
+        if (tool != lastTool) {
+            lastTool = tool;
+            const QString step = tool == QLatin1String("tasks") ? tr("Reading your tasks") : tool == QLatin1String("recordings") ? tr("Reading your recordings") : tool == QLatin1String("files") ? tr("Choosing where to look")
+                                 : tool == QLatin1String("chat") ? tr("Writing the answer") : tool == QLatin1String("open") ? tr("Opening it") : tool.isEmpty() ? QString() : tr("Getting it ready");
+            if (!step.isEmpty())
+                post([this, step] { setStage(step, true); });
+        }
+        if (tool == QLatin1String("chat")) { // talk: the words appear as they are written
+            const ChatTools::Partial p = ChatTools::partialString(written, QStringLiteral("text"));
+            if (p.found && p.text != lastText) {
+                lastText = p.text;
+                post([this, t = p.text] { setDraft(t); });
+            }
+        }
+    });
     if (m_cancel.load()) {
-        post([this] { setStage(QString(), false); reply(tr("Stopped.")); });
+        post([this] { setStage(QString(), false); reply(m_draft >= 0 ? m_messages[m_draft].toMap().value(QStringLiteral("text")).toString() + QStringLiteral(" …") : tr("Stopped.")); });
         return;
     }
     ChatTools::Call call = ChatTools::parseCall(routed);
     using T = ChatTools::Tool;
     const auto plain = [&](const QString &q) { // the question asked again as a plain one (the model's choice was not believable, or it asked for talk)
-        const QString out = ChatTools::parseAnswer(m_session->chat(plainSystem(), QStringLiteral("<earlier>\n%1\n</earlier>\n\n").arg([&] { QStringList l; for (const auto &t : talk) l << (t.role == QLatin1String("user") ? QStringLiteral("Person: ") : QStringLiteral("Assistant: ")) + t.text.simplified(); return l.join(QLatin1Char('\n')); }()) + q, ChatTools::answerSchema(), &m_cancel, 900));
+        QString lastPlain;
+        post([this] { setStage(tr("Writing the answer"), true); });
+        const QString out = ChatTools::parseAnswer(m_session->chatStream(plainSystem(), QStringLiteral("<earlier>\n%1\n</earlier>\n\n").arg([&] { QStringList l; for (const auto &t : talk) l << (t.role == QLatin1String("user") ? QStringLiteral("Person: ") : QStringLiteral("Assistant: ")) + t.text.simplified(); return l.join(QLatin1Char('\n')); }()) + q, ChatTools::answerSchema(), &m_cancel, 900, [&](const QString &written) {
+            const ChatTools::Partial p = ChatTools::partialString(written, QStringLiteral("answer"));
+            if (p.found && p.text != lastPlain) { lastPlain = p.text; post([this, t = p.text] { setDraft(t); }); }
+        }));
         post([this, out] { setStage(QString(), false); reply(out.isEmpty() ? tr("I could not answer that.") : out, {}, out.isEmpty()); });
     };
     if (call.invalid) {
@@ -167,7 +244,12 @@ void AssistantChat::route(const QString &text)
     case T::Tasks: {
         QString data;
         QMetaObject::invokeMethod(this, [&] { data = ChatTools::tasksData(m_tasks->list(), call.text, QDateTime::currentDateTime()); }, Qt::BlockingQueuedConnection);
-        const QString out = ChatTools::parseAnswer(m_session->chat(ChatTools::answerSystem(), ChatTools::answerUser(text, data), ChatTools::answerSchema(), &m_cancel, 900));
+        post([this] { setStage(tr("Writing the answer"), true); });
+        QString lastAnswer;
+        const QString out = ChatTools::parseAnswer(m_session->chatStream(ChatTools::answerSystem(), ChatTools::answerUser(text, data), ChatTools::answerSchema(), &m_cancel, 900, [&](const QString &written) {
+            const ChatTools::Partial p = ChatTools::partialString(written, QStringLiteral("answer"));
+            if (p.found && p.text != lastAnswer) { lastAnswer = p.text; post([this, t = p.text] { setDraft(t); }); }
+        }));
         post([this, out] { setStage(QString(), false); reply(out.isEmpty() ? tr("I could not read your tasks.") : out, {}, out.isEmpty()); });
         return;
     }
@@ -184,7 +266,12 @@ void AssistantChat::route(const QString &text)
             }
         }, Qt::BlockingQueuedConnection);
         data = ChatTools::recordingsData(all, call.text, &used);
-        const QString out = ChatTools::parseAnswer(m_session->chat(ChatTools::answerSystem(), ChatTools::answerUser(text, data), ChatTools::answerSchema(), &m_cancel, 1200));
+        post([this] { setStage(tr("Writing the answer"), true); });
+        QString lastAnswer;
+        const QString out = ChatTools::parseAnswer(m_session->chatStream(ChatTools::answerSystem(), ChatTools::answerUser(text, data), ChatTools::answerSchema(), &m_cancel, 1200, [&](const QString &written) {
+            const ChatTools::Partial p = ChatTools::partialString(written, QStringLiteral("answer"));
+            if (p.found && p.text != lastAnswer) { lastAnswer = p.text; post([this, t = p.text] { setDraft(t); }); }
+        }));
         post([this, out, used] {
             QVariantList sources; // a [n] in the answer opens that recording
             for (int i = 0; i < used.size(); ++i)
@@ -321,8 +408,18 @@ void AssistantChat::save() const
         f.commit();
 }
 
-void AssistantChat::debugFill()
+void AssistantChat::debugFill(bool working)
 {
+    if (working) {
+        m_messages.clear();
+        add(QVariantMap{{QStringLiteral("role"), QStringLiteral("user")}, {QStringLiteral("text"), QStringLiteral("What did we decide about the budget?")}});
+        setStage(QStringLiteral("Understanding your message"), true);
+        setStage(QStringLiteral("Reading your recordings"), true);
+        setStage(QStringLiteral("Writing the answer"), true);
+        m_elapsed = 7;
+        setDraft(QStringLiteral("In the last meeting you decided to cut the budget by 10% and to move the launch to December [1]. Budi will send the"));
+        return;
+    }
     m_messages.clear();
     add(QVariantMap{{QStringLiteral("role"), QStringLiteral("user")}, {QStringLiteral("text"), QStringLiteral("What is due this week?")}});
     reply(QStringLiteral("You have two open tasks: **Send report** (in 2 days) and **Buy printer paper** (no date)."));

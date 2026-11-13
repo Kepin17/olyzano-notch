@@ -68,6 +68,10 @@
 #include <functional>
 #include <memory>
 #include <QApplication>
+#ifdef Q_OS_WIN
+#include <QMenu>
+#include <QSystemTrayIcon>
+#endif
 #include <QFile>
 #include <QIcon>
 #include <QImageReader>
@@ -752,9 +756,9 @@ int main(int argc, char *argv[])
                 w->setProperty("page", QStringLiteral("audio"));
                 return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 1800, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
             }
-            if (page == QLatin1String("chat-demo") || page == QLatin1String("chat")) { // the talk page; chat-demo has a talk to look at
-                if (page == QLatin1String("chat-demo"))
-                    assistantChat.debugFill();
+            if (page == QLatin1String("chat-demo") || page == QLatin1String("chat-working") || page == QLatin1String("chat")) { // the talk page; chat-demo has a talk to look at
+                if (page == QLatin1String("chat-demo") || page == QLatin1String("chat-working"))
+                    assistantChat.debugFill(page == QLatin1String("chat-working"));
                 w->setProperty("page", QStringLiteral("assistant"));
                 return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 2200, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
             }
@@ -900,6 +904,50 @@ int main(int argc, char *argv[])
         QTimer::singleShot(2500, &app, *next);
     }
     engine.loadFromModule("Notch", "Tray");
+#ifdef Q_OS_WIN
+    // On Windows the tray icon and its right-click menu are Qt's own QSystemTrayIcon with a QMenu: the menu of Qt.labs.platform did not open there. The
+    // same entries as Tray.qml (which does not make an icon on Windows); the texts are made again each time the menu opens, so they say what is true.
+    QSystemTrayIcon winTray(QIcon(QStringLiteral(":/qt/qml/Notch/src/qml/icons/notch.png")));
+    QMenu winMenu;
+    const auto trayTip = [&] {
+        return gaming.strict() ? QStringLiteral("Olyzano Notch · gaming mode") : gaming.active() ? QStringLiteral("Olyzano Notch · hidden in full screen")
+                                                                                              : QStringLiteral("Olyzano Notch · %1 %2").arg(controller.count()).arg(controller.count() == 1 ? QStringLiteral("file") : QStringLiteral("files"));
+    };
+    const auto openNotch = [&](const QString &page) {
+        if (gaming.active())
+            gaming.reveal(true);
+        desktop.toggleFromTray(page);
+    };
+    QObject::connect(&winMenu, &QMenu::aboutToShow, &app, [&] {
+        winMenu.clear();
+        winMenu.addAction(gaming.enabled() ? QStringLiteral("Gaming mode: on (turn off)") : QStringLiteral("Gaming mode: off (turn on)"), &app, [&] { gaming.setEnabled(!gaming.enabled()); });
+        QAction *show = winMenu.addAction(gaming.active() ? QStringLiteral("Show Olyzano Notch over this app") : QStringLiteral("Show / hide Olyzano Notch"), &app, [&] { openNotch(QString()); });
+        show->setEnabled(!gaming.strict());
+        winMenu.addAction(gaming.hideInFullScreen() ? QStringLiteral("Hide in full screen: on (turn off)") : QStringLiteral("Hide in full screen: off (turn on)"), &app,
+                          [&] { gaming.setHideInFullScreen(!gaming.hideInFullScreen()); });
+        winMenu.addAction(nearby.receiving() ? QStringLiteral("Stop receiving from nearby") : QStringLiteral("Receive from nearby (10 min)"), &app,
+                          [&] { if (nearby.receiving()) nearby.stopReceiving(); else nearby.startReceiving(); });
+        winMenu.addSeparator();
+        const QList<QPair<QString, QString>> entries = {{QStringLiteral("Settings…"), QStringLiteral("settings")}, {QStringLiteral("Settings: General"), QStringLiteral("settings:general")},
+                                                        {QStringLiteral("Settings: Appearance"), QStringLiteral("settings:appearance")}, {QStringLiteral("Settings: Panel"), QStringLiteral("settings:panel")}};
+        for (const auto &entry : entries) {
+            QAction *a = winMenu.addAction(entry.first, &app, [&, page = entry.second] { openNotch(page); });
+            a->setEnabled(!gaming.strict());
+        }
+        winMenu.addSeparator();
+        winMenu.addAction(QStringLiteral("Quit Olyzano Notch"), &app, &QCoreApplication::quit);
+        winTray.setToolTip(trayTip());
+    });
+    QObject::connect(&winTray, &QSystemTrayIcon::activated, &app, [&](QSystemTrayIcon::ActivationReason reason) {
+        if (reason == QSystemTrayIcon::Context)
+            return; // the menu opens by itself
+        if ((reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) && !gaming.strict())
+            openNotch(QString());
+    });
+    winTray.setContextMenu(&winMenu);
+    winTray.setToolTip(trayTip());
+    winTray.show();
+#endif
     const int rc = app.exec();
     qDeleteAll(windows); // before the engine and controller they bind to
     qDeleteAll(docks);

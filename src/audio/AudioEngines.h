@@ -1,6 +1,7 @@
 #pragma once
 
 #include "AudioPipeline.h"
+#include "HttpStream.h"
 #include "Summarize.h"
 #include "ModelStore.h"
 #include "platform/WhisperEngine.h"
@@ -119,6 +120,9 @@ public:
     QString start(const std::atomic_bool *cancel);
     // The model's answer (JSON that fits `schema`), or "" when it did not answer.
     QString chat(const QString &system, const QString &user, const QJsonObject &schema, const std::atomic_bool *cancel, int maxTokens = 2048);
+    // The same, with the answer handed to `onText` as it is written (everything written so far, at each piece); the whole answer at the end ("" when it failed;
+    // when it is stopped, what had been written).
+    QString chatStream(const QString &system, const QString &user, const QJsonObject &schema, const std::atomic_bool *cancel, int maxTokens, const std::function<void(const QString &)> &onText);
     // Vectors for texts (normalised, 512 numbers each), in order; empty when the model did not answer. Only on a session made with Mode::Embed.
     QList<QVector<float>> embed(const QStringList &texts, const std::atomic_bool *cancel);
     // The same with one picture (PNG or JPEG bytes) in the question: only on a session made with `vision`.
@@ -130,6 +134,7 @@ private:
     QString startWith(const QString &helper, int layers, const std::atomic_bool *cancel);
     QString m_modelId; // the language model this session runs (set when it starts) // layers: how many go to the graphics card (0: none)
     QString complete(const QJsonArray &messages, const QJsonObject &schema, const std::atomic_bool *cancel, int maxTokens);
+    QString completeStream(const QJsonArray &messages, const QJsonObject &schema, const std::atomic_bool *cancel, int maxTokens, const std::function<void(const QString &)> &onText);
     ModelStore *m_store;
     std::function<int()> m_threads;
     bool m_vision = false, m_embed = false;

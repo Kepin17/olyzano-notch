@@ -64,8 +64,8 @@ Window {
     }
 
     // ---- Room at the top: other windows keep clear of the capsule (Settings → General) ----
-    readonly property int barReservePx: (screenOptions.bar === 1 || (screenOptions.bar !== 2 && topbar.enabled)) && topbar.behavior === "always" && topbar.reserve ? topbar.height : 0
-    function applyReserve() { desktop.reserve(root, capsuleMode, activities.reserveSpace, capsuleScale, barReservePx) }
+    readonly property int barReservePx: (screenOptions.bar === 1 || (screenOptions.bar !== 2 && topbar.enabled)) && topbar.behavior === "always" && topbar.reserve && !gaming.active ? topbar.height : 0 // over a full-screen app nothing is kept free: the windows go back to their own places
+    function applyReserve() { desktop.reserve(root, capsuleMode, activities.reserveSpace && !gaming.active, capsuleScale, barReservePx) }
     Connections { target: activities; function onSettingsChanged() { root.applyReserve() } }
     Connections { target: topbar; function onChanged() { root.applyReserve() } }
     onScreenOptionsChanged: applyReserve()
@@ -1168,6 +1168,7 @@ Window {
         target: gaming
         function onChanged() {
             desktop.setClickThrough(root, gaming.strict)
+            root.applyReserve() // the room kept at the top is given back while a full-screen app is in front, and kept again after
             root.updateMask()
             if (gaming.active) { // a full-screen app arrived: let go of the pointer and close
                 root.toastQueue = []

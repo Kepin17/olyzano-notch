@@ -25,6 +25,8 @@ class AssistantChat : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(QVariantList messages READ messages NOTIFY changed) // [{role, text, error, sources:[{mark, name, kind, ref, page, startSec, where}], action:{kind, text, state, result}}]
+    Q_PROPERTY(QVariantList steps READ steps NOTIFY changed)       // what is being done now: [{text, state: done | active}], newest last
+    Q_PROPERTY(int elapsed READ elapsed NOTIFY changed)            // seconds since the work began
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
     Q_PROPERTY(QString stage READ stage NOTIFY changed)            // what is happening, or ""
     Q_PROPERTY(bool ready READ ready NOTIFY changed)               // the language model is installed
@@ -36,6 +38,8 @@ public:
 
     QVariantList messages() const { return m_messages; }
     bool busy() const { return m_busy; }
+    QVariantList steps() const { return m_steps; }
+    int elapsed() const { return m_elapsed; }
     QString stage() const { return m_stage; }
     bool ready() const;
     int serial() const { return m_serial; }
@@ -46,14 +50,15 @@ public:
     Q_INVOKABLE void cancel();
     Q_INVOKABLE void clear();
     // `notch --shot-page file assistant-demo`: a talk to look at
-    void debugFill();
+    void debugFill(bool working = false); // working: a talk in the middle of an answer, with its steps
 
 signals:
     void changed();
 
 private:
     void add(const QVariantMap &message);
-    void setStage(const QString &stage, bool busy);
+    void setStage(const QString &stage, bool busy); // a step begins (the one before is done), or (busy false) the work is over
+    void setDraft(const QString &text);              // the answer so far, in the bubble that is being written
     void reply(const QString &text, const QVariantList &sources = {}, bool error = false);
     void card(const QString &kind, const QString &text, const AssistantModel::Intent &intent);
     void route(const QString &text);                 // the worker: choose a tool and carry it out
@@ -78,5 +83,9 @@ private:
     bool m_waitingFiles = false;
     int m_filesSerial = 0, m_serial = 0;
     QString m_stage;
+    QVariantList m_steps;
+    int m_elapsed = 0, m_draft = -1; // m_draft: the index of the message being written, or -1
+    QTimer m_tick, m_pulse;
+    bool m_pendingEmit = false;
     QHash<int, AssistantModel::Intent> m_actions;
 };

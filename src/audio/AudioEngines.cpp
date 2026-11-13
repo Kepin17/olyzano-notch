@@ -491,6 +491,42 @@ QString LlamaSession::complete(const QJsonArray &messages, const QJsonObject &sc
     return stripThinking(reply.value(QStringLiteral("choices")).toArray().at(0).toObject().value(QStringLiteral("message")).toObject().value(QStringLiteral("content")).toString());
 }
 
+QString LlamaSession::chatStream(const QString &system, const QString &user, const QJsonObject &schema, const std::atomic_bool *cancel, int maxTokens, const std::function<void(const QString &)> &onText)
+{
+    return completeStream(QJsonArray{QJsonObject{{QStringLiteral("role"), QStringLiteral("system")}, {QStringLiteral("content"), system}},
+                                     QJsonObject{{QStringLiteral("role"), QStringLiteral("user")}, {QStringLiteral("content"), QStringLiteral("/no_think\n") + user}}},
+                          schema, cancel, maxTokens, onText);
+}
+
+QString LlamaSession::completeStream(const QJsonArray &messages, const QJsonObject &schema, const std::atomic_bool *cancel, int maxTokens, const std::function<void(const QString &)> &onText)
+{
+    const QJsonObject body{{QStringLiteral("model"), QStringLiteral("local")},
+                           {QStringLiteral("messages"), messages},
+                           {QStringLiteral("temperature"), 0.2},
+                           {QStringLiteral("max_tokens"), maxTokens},
+                           {QStringLiteral("stream"), true},
+                           {QStringLiteral("chat_template_kwargs"), QJsonObject{{QStringLiteral("enable_thinking"), false}}},
+                           {QStringLiteral("response_format"), QJsonObject{{QStringLiteral("type"), QStringLiteral("json_schema")},
+                                                                           {QStringLiteral("json_schema"), QJsonObject{{QStringLiteral("name"), QStringLiteral("notes")},
+                                                                                                                       {QStringLiteral("schema"), schema}}}}}};
+    SseParser sse;
+    QString written;
+    int status = 0;
+    const QString err = postJsonStreaming(m_base.resolved(QUrl(QStringLiteral("/v1/chat/completions"))), m_token, QJsonDocument(body).toJson(QJsonDocument::Compact), 20 * 60 * 1000, cancel, [&](const QByteArray &bytes) {
+        const QStringList pieces = sse.feed(bytes);
+        if (pieces.isEmpty())
+            return;
+        written += pieces.join(QString());
+        if (onText)
+            onText(written);
+    }, &status);
+    if (err == QLatin1String("cancelled"))
+        return stripThinking(written);
+    if (!err.isEmpty() || status != 200)
+        return {};
+    return stripThinking(written);
+}
+
 QString LlamaSummarizer::summarize(const QList<Segment> &segments, const QStringList &speakers, Template tmpl, const QString &language,
                                    const std::function<void(double)> &progress, const std::atomic_bool *cancel, Summary *out)
 {

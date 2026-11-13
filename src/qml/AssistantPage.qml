@@ -25,6 +25,8 @@ Item {
         else notch.open(s.ref)
     }
     function send(text) { assistantChat.send(text); field.text = "" }
+    property bool blink: true // the cursor at the end of the words that are being written
+    Timer { interval: 520; running: page.visible && assistantChat.busy && activities.animations; repeat: true; onTriggered: page.blink = !page.blink }
 
     Connections { target: assistantChat; function onSerialChanged() { toEnd.restart() } }
     Timer { id: toEnd; interval: 80; onTriggered: { const f = scroll.contentItem; f.contentY = Math.max(0, f.contentHeight - f.height + 12) } }
@@ -88,7 +90,7 @@ Item {
                             id: bubble
                             anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }
                             textFormat: Text.RichText
-                            text: page.rich(msg.modelData.text, msg.modelData.sources)
+                            text: page.rich(msg.modelData.text, msg.modelData.sources) + (msg.modelData.draft ? (page.blink || !activities.animations ? " ▍" : "") : "")
                             wrapMode: Text.Wrap
                             color: msg.modelData.error ? theme.danger : theme.text
                             font.pixelSize: 13
@@ -120,7 +122,45 @@ Item {
                     }
                 }
             }
-            Text { visible: assistantChat.busy; text: assistantChat.stage; color: theme.textDim; font.pixelSize: 12 }
+            FormCard { // what is being done: the steps, the one now with dots that pulse, and how long
+                visible: assistantChat.busy
+                spacing: 6
+                Repeater {
+                    model: assistantChat.steps
+                    delegate: RowLayout {
+                        id: stepRow
+                        required property var modelData
+                        readonly property bool active: modelData.state === "active"
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text { Layout.preferredWidth: 14; horizontalAlignment: Text.AlignHCenter; text: stepRow.active ? "•" : "✓"; color: stepRow.active ? theme.accentText : theme.success; font.pixelSize: 13; font.weight: Font.DemiBold }
+                        Text { Layout.fillWidth: true; text: stepRow.modelData.text; textFormat: Text.PlainText; color: stepRow.active ? theme.text : theme.textDim; font.pixelSize: 12; elide: Text.ElideRight }
+                        Row { // three dots that pulse one after the other
+                            visible: stepRow.active
+                            spacing: 3
+                            Repeater {
+                                model: 3
+                                delegate: Rectangle {
+                                    id: dot
+                                    required property int index
+                                    width: 5; height: 5; radius: 2.5
+                                    color: theme.accent
+                                    opacity: 0.35
+                                    SequentialAnimation on opacity {
+                                        running: stepRow.active && activities.animations && page.visible
+                                        loops: Animation.Infinite
+                                        PauseAnimation { duration: dot.index * 160 }
+                                        NumberAnimation { to: 1; duration: 220 }
+                                        NumberAnimation { to: 0.35; duration: 320 }
+                                        PauseAnimation { duration: (2 - dot.index) * 160 }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                Text { text: assistantChat.elapsed + " s"; color: theme.textFaint; font.pixelSize: 11 }
+            }
             Item { Layout.preferredHeight: 4 }
         }
     }
