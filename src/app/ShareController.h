@@ -24,6 +24,8 @@ class ShareController : public QAbstractListModel
     Q_PROPERTY(QString lastServerId READ lastServerId NOTIFY serversChanged) // the one the last relay share used
     Q_PROPERTY(bool relayConfigured READ relayConfigured NOTIFY serversChanged)
     Q_PROPERTY(int defaultTtl READ defaultTtl WRITE setDefaultTtl NOTIFY settingsChanged) // seconds
+    Q_PROPERTY(bool notifyDownloads READ notifyDownloads WRITE setNotifyDownloads NOTIFY settingsChanged) // a notice when a share is downloaded
+    Q_PROPERTY(bool notifyLimits READ notifyLimits WRITE setNotifyLimits NOTIFY settingsChanged)       // … and when a limit is reached or someone is turned away
     Q_PROPERTY(QString lastMode READ lastMode WRITE setLastMode NOTIFY settingsChanged)
 
 public:
@@ -42,6 +44,9 @@ public:
         ProtectionRole,
         ActiveRole,
         SingleUseRole,
+        MaxDownloadsRole,
+        PeopleRole,
+        MaxPeopleRole,
         ServerNameRole,
     };
 
@@ -59,15 +64,19 @@ public:
     bool relayConfigured() const { return !m_servers.isEmpty(); }
     int defaultTtl() const { return m_settings.value(QStringLiteral("ttl"), 3600).toInt(); }
     void setDefaultTtl(int seconds);
+    bool notifyDownloads() const { return m_settings.value(QStringLiteral("notifyDownloads"), true).toBool(); }
+    void setNotifyDownloads(bool on) { m_settings.setValue(QStringLiteral("notifyDownloads"), on); emit settingsChanged(); }
+    bool notifyLimits() const { return m_settings.value(QStringLiteral("notifyLimits"), true).toBool(); }
+    void setNotifyLimits(bool on) { m_settings.setValue(QStringLiteral("notifyLimits"), on); emit settingsChanged(); }
     QString lastMode() const { return m_settings.value(QStringLiteral("mode"), QStringLiteral("local")).toString(); }
     void setLastMode(const QString &mode);
 
     // Starts a new session and returns its id. mode: local | relay. protection: "" | pin | password with
     // `secret` as the PIN / password (a relay PIN is checked by the server, a relay password locks the key in
-    // the link, local ones are checked by Notch). oneDownload applies to a single file only. serverId: which
+    // the link, local ones are checked by Notch). maxDownloads / maxPeople (0 = no limit): how many times the whole share may be downloaded and how many different devices may start. serverId: which
     // saved server a relay share goes to ("" = the default).
     Q_INVOKABLE QString start(const QStringList &ids, const QString &mode, int ttlSeconds, const QString &protection,
-                              const QString &secret, bool oneDownload, const QString &address, const QString &serverId = {});
+                              const QString &secret, int maxDownloads, int maxPeople, const QString &address, const QString &serverId = {});
     Q_INVOKABLE void stop(const QString &id);         // ends a running session
     Q_INVOKABLE void dismiss(const QString &id);      // removes a finished / failed one from the list
     Q_INVOKABLE void stopAll();

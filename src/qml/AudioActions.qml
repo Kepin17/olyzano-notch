@@ -20,6 +20,12 @@ ScrollView {
             font.pixelSize: 12
             text: audioIntel.info.hasNotes ? "No tasks were found in this recording." : "Tasks come with the notes: download the language model to get them."
         }
+        PillButton {
+            visible: !!audioIntel.notes.actions && audioIntel.notes.actions.length > 0
+            text: "Add all to Tasks"
+            iconName: "plus"
+            onClicked: { const r = taskSuggest.addMeeting(audioIntel.current); page.shell.say(r.added > 0 ? r.added + " added to Tasks" : "They are on the list already", 1800) }
+        }
         Repeater {
             model: audioIntel.notes.actions || []
             delegate: Rectangle {

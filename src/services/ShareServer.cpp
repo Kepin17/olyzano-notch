@@ -1,5 +1,7 @@
 #include "ShareServer.h"
 
+#include "services/DeviceLabel.h"
+
 #include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
@@ -19,6 +21,7 @@ public:
         : QObject(socket)
         , m_server(server)
         , m_socket(socket)
+        , m_peer(socket->peerAddress().toString()) // kept now: after the connection closes it is gone
     {
         m_idle.setSingleShot(true);
         m_idle.setInterval(30000);
@@ -40,7 +43,13 @@ private:
         if (end < 0 || m_responded)
             return;
         m_responded = true;
-        respond(QString::fromLatin1(m_request.left(end)).split(QStringLiteral("\r\n")));
+        const QStringList lines = QString::fromLatin1(m_request.left(end)).split(QStringLiteral("\r\n"));
+        for (const QString &line : lines)
+            if (line.startsWith(QLatin1String("User-Agent:"), Qt::CaseInsensitive))
+                m_device = DeviceLabel::from(line.mid(11).trimmed());
+        if (m_device.isEmpty())
+            m_device = DeviceLabel::from({});
+        respond(lines);
     }
 
     // The PIN / password sits in the X-Pin header (never in a URL); 200 when none is needed.
@@ -50,7 +59,7 @@ private:
         for (const QString &line : lines)
             if (line.startsWith(QLatin1String("X-Pin:"), Qt::CaseInsensitive))
                 given = line.mid(6).trimmed();
-        return m_server->check(m_socket->peerAddress().toString(), given);
+        return m_server->check(m_peer, given);
     }
 
     void respond(const QStringList &lines)
@@ -81,6 +90,8 @@ private:
             return reply(404, QStringLiteral("Not Found"), {}, head);
         if (const int status = authorize(lines); status != 200)
             return reply(status, status == 429 ? QStringLiteral("Too Many Requests") : QStringLiteral("Forbidden"), {}, head);
+        if (!inline_ && !head && !m_server->admit(m_peer, m_device)) // all the people the sender allowed have started: this is another
+            return reply(423, QStringLiteral("Locked"), "Limit reached", false, QStringLiteral("text/plain"));
         const ShareServer::Entry &entry = m_server->m_files.at(index);
         // Previews are only for images, and sandboxed, so a sender's file can never run as a page.
         if (inline_ && !entry.mimeType.startsWith(QLatin1String("image/")))
@@ -127,7 +138,7 @@ private:
             m_left = 0;
             m_socket->disconnectFromHost();
             if (!head && m_countsAsDownload) // an empty file: nothing to send, so it is complete
-                m_server->completed(m_index);
+                m_server->completed(m_index, m_peer, m_device);
             m_countsAsDownload = false;
         } else {
             pump();
@@ -177,12 +188,13 @@ private:
     {
         // Counted only when every byte of the file went out (not when the phone gave up midway).
         if (m_countsAsDownload && m_left == 0 && m_socket->bytesToWrite() == 0)
-            m_server->completed(m_index);
+            m_server->completed(m_index, m_peer, m_device);
         m_socket->deleteLater();
     }
 
     ShareServer *m_server;
     QTcpSocket *m_socket;
+    QString m_peer, m_device;
     QTimer m_idle;
     QByteArray m_request;
     QFile m_file;
@@ -201,9 +213,14 @@ ShareServer::ShareServer(QObject *parent)
 }
 
 QString ShareServer::start(const QHostAddress &address, const QList<Entry> &files, int ttlSeconds,
-                           const QString &protection, const QString &secret)
+                           const QString &protection, const QString &secret, int maxDownloads, int maxPeople)
 {
     stop();
+    m_maxDownloads = qBound(0, maxDownloads, 10000);
+    m_maxPeople = qBound(0, maxPeople, 10000);
+    m_complete = 0;
+    m_people.clear();
+    m_done.clear();
     m_protection = secret.isEmpty() ? QString() : protection;
     m_secret = secret;
     m_fails.clear();
@@ -237,7 +254,8 @@ QByteArray ShareServer::page() const
     // Protected: the page gets no file names until the PIN / password has been checked (route "list").
     QJsonObject data{{QStringLiteral("mode"), QStringLiteral("local")},
                      {QStringLiteral("expires_at"), double(m_expiresAt)},
-                     {QStringLiteral("now"), double(QDateTime::currentSecsSinceEpoch())}};
+                     {QStringLiteral("now"), double(QDateTime::currentSecsSinceEpoch())},
+                     {QStringLiteral("max_downloads"), m_maxDownloads}, {QStringLiteral("max_people"), m_maxPeople}};
     if (m_protection.isEmpty())
         data.insert(QStringLiteral("files"), QJsonDocument::fromJson(fileList()).object().value(QStringLiteral("files")));
     else {
@@ -286,10 +304,30 @@ int ShareServer::check(const QString &peer, const QString &secret)
     return 403;
 }
 
-void ShareServer::completed(int index)
+bool ShareServer::admit(const QString &peer, const QString &device)
 {
-    emit fileDownloaded(index);
-    if (m_files.size() == 1)
+    if (m_people.contains(peer))
+        return true;
+    if (m_maxPeople > 0 && m_people.size() >= m_maxPeople) {
+        emit turnedAway(device);
+        return false;
+    }
+    m_people.insert(peer);
+    emit peopleChanged(int(m_people.size()));
+    return true;
+}
+
+void ShareServer::completed(int index, const QString &peer, const QString &device)
+{
+    emit fileDownloaded(index, device);
+    QSet<int> &have = m_done[peer];
+    have.insert(index);
+    if (have.size() < m_files.size())
+        return; // this device still has files to fetch
+    have.clear();
+    ++m_complete;
+    emit downloaded(m_complete, device);
+    if (m_maxDownloads > 0 && m_complete >= m_maxDownloads)
         finish(QStringLiteral("downloaded"));
 }
 

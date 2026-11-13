@@ -22,7 +22,9 @@ public:
     QString setting() const;           // auto | cpu | gpu
     void setSetting(const QString &s);
     // `llmVulkanInstalled`: the Vulkan build of the language model program is downloaded
-    HwPlan plan(bool llmVulkanInstalled);
+    HwPlan plan(bool llmVulkanInstalled, qint64 llmNeedBytes = 0); // llmNeedBytes: a larger language model than the usual one (0: the usual)
+    QString notesModel() const;        // standard | large | xl: which language model writes notes and answers (the larger ones only when they can run on a card)
+    void setNotesModel(const QString &m);
     HwBench bench();
     void setBench(double speedup);     // the speed test's result for the best card
     void markFailed(const QString &engine, const QString &why); // engine: whisper | llm

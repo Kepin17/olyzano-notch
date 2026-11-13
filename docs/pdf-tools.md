@@ -41,3 +41,7 @@ Puts a text such as **CONFIDENTIAL DOCUMENT** on the pages of a PDF.
 - In *Stamp → Picture*, *Remove the background with AI* cuts a photo of a signature out of its paper first.
 - A picture with a transparent background (PNG) is used as it is when stamping; white inside a logo stays.
 - This version of Notch contains everything except the piece that talks to ONNX Runtime (`src/services/OnnxRuntime.cpp`), which needs the library's C header. Until that is added the card says the model cannot be run yet.
+
+## Translate
+
+*Docs → Convert* → a PDF → **Translate** translates the text of every page into another language on this computer (the notes model) and puts a new PDF and a Markdown file on the shelf, `Name (xx).pdf` and `Name (xx).md`, page by page with the page marks kept. Headings and paragraphs are kept; pictures, tables and formulas are not carried over, and a page that is a picture is skipped with a warning. Up to 150 pages. A paragraph the model cannot translate faithfully stays as it was, marked, and is counted in a warning.

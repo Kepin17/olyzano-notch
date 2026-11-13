@@ -91,6 +91,40 @@ inline QString subtitles(const QList<Segment> &segments, bool vtt, const Options
     return out;
 }
 
+// The segments with their words replaced by a translation (index for index); a sound ([Music]) keeps its own words, and a segment with no
+// translation keeps the original.
+inline QList<Segment> translated(const QList<Segment> &segments, const QStringList &translations)
+{
+    QList<Segment> out = segments;
+    for (int i = 0; i < out.size() && i < translations.size(); ++i)
+        if (!Sound::isSound(out[i]) && !translations[i].simplified().isEmpty())
+            out[i].text = translations[i];
+    return out;
+}
+
+// Subtitles with two languages in each cue: the words as said, then the translation under them (the speaker's name only on the first line).
+inline QString bilingualSubtitles(const QList<Segment> &segments, const QStringList &translations, bool vtt, const Options &o)
+{
+    QString out = vtt ? QStringLiteral("WEBVTT\n\n") : QString();
+    int n = 0;
+    for (int i = 0; i < segments.size(); ++i) {
+        const Segment &s = segments[i];
+        QString first = body(s, o);
+        if (first.isEmpty())
+            continue;
+        const QString second = Sound::isSound(s) ? QString() : translations.value(i).simplified();
+        const double end = s.end > s.start ? s.end : s.start + 1.0;
+        first = wrap(vtt ? vttEscape(first) : first, o.maxLine);
+        QString text = first;
+        if (!second.isEmpty() && second != s.text.simplified())
+            text += u'\n' + wrap(vtt ? vttEscape(second) : second, o.maxLine);
+        if (!vtt)
+            out += QString::number(++n) + u'\n';
+        out += stamp(s.start, vtt ? u'.' : u',') + QStringLiteral(" --> ") + stamp(end, vtt ? u'.' : u',') + u'\n' + text + QStringLiteral("\n\n");
+    }
+    return out;
+}
+
 inline QString plain(const QList<Segment> &segments, const Options &o)
 {
     QString out;

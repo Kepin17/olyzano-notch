@@ -63,6 +63,9 @@ while the notch is still (no extra memory: about the same as without it).
 - **Phone:** right-click a file → **Share via QR…** → pick *This WiFi* (same network, no encryption) or *My server*
   (end-to-end encrypted, needs your own relay: [server/README.md](../server/README.md)). Set an expiry, optionally a PIN or password,
   and scan the code.
+- **Limits:** under *Options* set how many times the share may be downloaded (**Downloads**) and how many people may download it (**People**): drag the slider or type any number (up to 10000); empty or 0 means no limit. A download is the whole share taken in full (with several files, a device has to take every file); when the last one is taken the link ends. A person is a device, told apart by its network address: once that many have started, others are turned away ("This link is full") and those who started can go on. Previews and downloads that break off are not counted. One file starts at 1 download, as before. Over the internet, people behind the same network (an office, a phone hotspot) count as one. The limit on people on *My server* needs the updated relay (`server/relay.py`); Notch says so if the server is older. The open share shows "downloaded 1 of 3× · 2 of 3 people".
+- **Notices:** a notice says when a phone or computer has taken your share ("iPhone · Safari took report.pdf"), when the limit is reached, and when a device is turned away (switch them off in *Settings → Sharing & Nearby → Notices*). Notch knows the device, not the person.
+- **Ask for answers and files:** see [Forms](forms.md) (*Documents → Forms*).
 - **Another computer running Olyzano Notch:** on the receiver press **Receive**; on the sender choose *Share via QR… → Nearby*,
   pick the computer, check both screens show the same 4-digit number, then **Accept**.
 

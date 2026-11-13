@@ -117,7 +117,7 @@ ScrollView {
                         LanguagePicker { value: page.pendingLanguage; onPicked: (c) => page.pendingLanguage = c; onMoreRequested: { page.shell.settingsCategory = "languages"; page.shell.page = "settings" } } }
                     ColumnLayout { Layout.fillWidth: true; spacing: 4
                         Caption { text: "Quality" }
-                        Segmented { Layout.fillWidth: true; model: [["standard", "Standard"], ["high", "High quality"]]; value: page.pendingQuality; onPicked: (v) => page.pendingQuality = v } }
+                        Segmented { Layout.fillWidth: true; model: audioIntel.largeModels.max.installed && audioIntel.largeModels.max.supported ? [["standard", "Standard"], ["high", "High quality"], ["max", "Best"]] : [["standard", "Standard"], ["high", "High quality"]]; value: page.pendingQuality; onPicked: (v) => page.pendingQuality = v } }
                     ColumnLayout { Layout.fillWidth: true; spacing: 4
                         Caption { text: "People speaking" }
                         Segmented { Layout.fillWidth: true; model: page.speakerCounts; value: page.pendingSpeakers; onPicked: (v) => page.pendingSpeakers = v } }

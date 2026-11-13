@@ -9,6 +9,7 @@ import QtQuick.Layouts
 ColumnLayout {
     id: tools
     required property var shell
+    property string translateLang: "en"
     property string pickedId: ""                 // a file of the shelf …
     property string pickedUrl: ""                // … or a file from anywhere (file:// URL)
     property string pickedName: ""
@@ -33,7 +34,7 @@ ColumnLayout {
     property bool signatureAi: false               // the stamp picture has its background taken off by the model
     property string signatureCut: ""
     property string pdfState: "ok"                 // ok | protected | damaged, of the chosen PDF
-    readonly property var actions: isImage ? [["convert", "Convert"], ["bg", "Remove background"]] : !canMark ? [["convert", "Convert"]] : isPdf ? [["convert", "Convert"], ["mark", "Watermark"], ["stamp", "Stamp"], ["protect", "Protect"]] : [["convert", "Convert"], ["mark", "Watermark"]]
+    readonly property var actions: isImage ? [["convert", "Convert"], ["bg", "Remove background"]] : !canMark ? [["convert", "Convert"]] : isPdf ? [["convert", "Convert"], ["translate", "Translate"], ["mark", "Watermark"], ["stamp", "Stamp"], ["protect", "Protect"]] : [["convert", "Convert"], ["mark", "Watermark"]]
     // stamp and signature
     property string stampKind: "text"              // text | picture
     property string stampText: "APPROVED"
@@ -625,6 +626,30 @@ ColumnLayout {
     }
 
     // ---------------- 3d. password ----------------
+    ColumnLayout { // translate the pages into another language: a new PDF and a Markdown file on the shelf
+        visible: tools.isPdf && tools.action === "translate"
+        Layout.fillWidth: true
+        spacing: 12
+        Caption { Layout.fillWidth: true; text: "The text of every page is translated on this computer. A new PDF and a Markdown file go onto the shelf, page by page (pictures, tables and formulas are not carried over)." }
+        ColumnLayout { Layout.fillWidth: true; spacing: 6
+            Caption { text: "Translate into" }
+            LanguagePicker { allowAuto: false; value: tools.translateLang; onPicked: (c) => tools.translateLang = c; onMoreRequested: { tools.shell.settingsCategory = "languages"; tools.shell.page = "settings" } }
+        }
+        Caption { Layout.fillWidth: true; text: "The standard notes model translates Indonesian and English well; for other languages choose the Larger notes model in Settings → AI." }
+        Text { visible: translator.lastError !== ""; Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.danger; font.pixelSize: 12; text: translator.lastError }
+        Text { visible: translator.status !== "" && !translator.busy; Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.success; font.pixelSize: 12; text: translator.status }
+        Repeater { model: translator.warnings; delegate: Text { required property string modelData; Layout.fillWidth: true; wrapMode: Text.Wrap; color: theme.warn; font.pixelSize: 11; text: modelData } }
+        Rectangle { visible: translator.busy; Layout.fillWidth: true; Layout.preferredHeight: 4; radius: 2; color: theme.surface
+            Rectangle { width: parent.width * translator.progress; height: parent.height; radius: 2; color: theme.accent } }
+        RowLayout {
+            Layout.fillWidth: true
+            Item { Layout.fillWidth: true }
+            PillButton { visible: translator.busy; text: "Stop"; onClicked: translator.cancel() }
+            PillButton { visible: !translator.busy; text: "Translate"; iconName: "globe"; primary: true; enabled: tools.pdfState === "ok"
+                onClicked: { translator.clearError(); if (tools.pickedUrl !== "") translator.translatePdfPath(tools.pickedUrl, tools.translateLang); else translator.translatePdf(tools.pickedId, tools.translateLang) } }
+        }
+    }
+
     ColumnLayout {
         visible: tools.isPdf && tools.action === "protect"
         Layout.fillWidth: true

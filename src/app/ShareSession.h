@@ -18,7 +18,18 @@ struct RelayAccess {
     QUrl base;         // https://share.example.com (no trailing slash)
     QByteArray apiKey;
     bool valid() const { return base.isValid() && !apiKey.isEmpty(); }
-    QNetworkRequest request(const QString &path) const;
+    QNetworkRequest request(const QString &path) const // `path` may carry a query: "/api/v1/shares/x?since=3"
+    {
+        QUrl url = base;
+        const QString full = url.path() + path;
+        url.setPath(full.section(QLatin1Char('?'), 0, 0));
+        if (full.contains(QLatin1Char('?')))
+            url.setQuery(full.section(QLatin1Char('?'), 1));
+        QNetworkRequest req(url);
+        req.setRawHeader("Authorization", "Bearer " + apiKey);
+        req.setTransferTimeout(120000);
+        return req;
+    }
 };
 
 // One thing being shared with a QR code. Several can run at once (see ShareController).
@@ -35,7 +46,9 @@ public:
         int ttl = 3600;          // seconds the link works
         QString protection;      // "" | pin | password
         QString secret;          // the PIN / password
-        bool oneDownload = true; // one file only: the link ends after its first download
+        int maxDownloads = 0;    // the whole share may be downloaded this many times, then it ends (0 = no limit)
+        int maxPeople = 0;       // this many different devices may start downloading (0 = no limit)
+        bool relayPeopleLimit = true; // the relay understands maxPeople (an older one would ignore it)
         QHostAddress address;    // local: the LAN address to listen on
         QString workRoot;        // where temporary files go (tmpfs when a locked file is shared)
     };
@@ -58,6 +71,9 @@ public:
     double progress() const { return m_progress; }
     int fileCount() const { return m_fileCount; }
     int downloads() const { return m_downloads; }
+    int maxDownloads() const { return m_maxDownloads; }
+    int people() const { return m_people; }
+    int maxPeople() const { return m_maxPeople; }
     qint64 expiresAt() const { return m_expiresAt; }
     bool singleUse() const { return m_singleUse; }
     bool active() const { return m_status == QLatin1String("preparing") || m_status == QLatin1String("uploading") || m_status == QLatin1String("ready"); }
@@ -72,6 +88,9 @@ public:
 
 signals:
     void changed();
+    // Something happened on the link: kind "download" (a device took the whole share), "turned_away" (a device came after the places were used up)
+    // or "limit" (the downloads allowed were all taken and the link ended). `device` is DeviceLabel's words; `what` the name to say.
+    void activity(const QString &kind, const QString &device, const QString &what);
 
 private:
     struct Prepared {
@@ -80,6 +99,7 @@ private:
     };
     static Prepared prepare(const QList<NotchController::ShareSource> &sources, const Options &options, const QString &workRoot);
 
+    QString takenWhat() const; // what a device took: the file, or "all 3 files"
     void setStatus(const QString &status);
     void fail(const QString &why);
     void end(const QString &reason);
@@ -100,7 +120,8 @@ private:
     QString m_protection, m_secret, m_relayId, m_workDir;
     QHostAddress m_bindAddress;
     double m_progress = -1;
-    int m_fileCount = 0, m_downloads = 0, m_ttl = 3600;
+    int m_eventSeen = -1; // relay: the last event of the server that has been told (-1: not known yet, the first answer only gives the place)
+    int m_fileCount = 0, m_downloads = 0, m_ttl = 3600, m_maxDownloads = 0, m_maxPeople = 0, m_people = 0;
     qint64 m_expiresAt = 0;
     bool m_singleUse = false;
 };

@@ -11,7 +11,9 @@ Card {
     SettingToggle { title: "Index my files and recordings"; checked: knowledge.enabled; onToggled: knowledge.enabled = !knowledge.enabled }
     SettingToggle { title: "Include PDFs"; caption: "Their text, page by page."; checked: knowledge.indexPdf; onToggled: knowledge.indexPdf = !knowledge.indexPdf }
     SettingToggle { title: "Read scanned PDFs (OCR)"; caption: "Slow: every page that is a picture is read with OCR."; checked: knowledge.indexOcr; onToggled: knowledge.indexOcr = !knowledge.indexOcr }
+    SettingToggle { title: "Include the answers of forms"; caption: "So that a search finds what people answered. It stays on this computer; turning it off takes the answers out of the index."; checked: knowledge.indexForms; onToggled: knowledge.indexForms = !knowledge.indexForms }
     SettingToggle { title: "Suggest tasks from recordings"; caption: "When a recording's notes are made, its action items are offered on the Tasks page. Nothing is added until you press Add."; checked: taskSuggest.autoMeetings; onToggled: taskSuggest.autoMeetings = !taskSuggest.autoMeetings }
+    SettingToggle { title: "Add the tasks of a recording to Tasks by themselves"; caption: "Instead of offering them, the tasks of a recording are put on your Tasks list when its notes are made (those already on it are left alone)."; checked: taskSuggest.autoAdd; onToggled: taskSuggest.autoAdd = !taskSuggest.autoAdd }
     Text {
         Layout.fillWidth: true
         text: knowledge.status + (knowledge.stats.docs !== undefined ? "  ·  " + knowledge.stats.docs + " documents, " + knowledge.stats.chunks + " passages, " + knowledge.stats.sizeText : "")

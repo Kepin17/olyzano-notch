@@ -20,14 +20,13 @@ Card {
         font.pixelSize: 12
         text: card.sum.installed + " of " + card.sum.total + " features ready  ·  " + card.sum.diskText + " on disk" + (card.sum.freeText !== "" ? "  ·  " + card.sum.freeText + " free" : "")
     }
-    RowLayout { // install it all
+    Flow { // install it all: the buttons wrap when the page is narrow (a row of them would make the whole card wider than the page)
         visible: !card.sum.active
         Layout.fillWidth: true
         spacing: 8
         PillButton { visible: card.sum.recommendedLeft > 0; text: "Install recommended  ·  " + card.sum.recommendedText; iconName: "download"; primary: true; onClicked: audioIntel.installRecommended() }
         PillButton { visible: card.sum.everythingLeft > card.sum.recommendedLeft; text: "Install everything  ·  " + card.sum.everythingText; iconName: "download"; onClicked: audioIntel.installEverything() }
         Text { visible: card.sum.everythingLeft === 0; text: "Everything is installed."; color: theme.success; font.pixelSize: 12 }
-        Item { Layout.fillWidth: true }
     }
     Caption { visible: !card.sum.active && card.sum.recommendedLeft > 0; Layout.fillWidth: true; text: "Recommended is all that every feature needs. Everything also adds the optional better-quality models." }
     ColumnLayout { // the install that is running
@@ -74,7 +73,7 @@ Card {
                     Text { text: cat.modelData.title; color: theme.text; font.pixelSize: 14; font.weight: Font.DemiBold }
                     Caption { Layout.fillWidth: true; text: cat.ready + " of " + cat.mine.length + " ready  ·  " + cat.modelData.note }
                 }
-                PillButton { visible: cat.remaining > 0 && !card.sum.active; text: "Install all  ·  " + audioIntel.dataSize(cat.remaining); iconName: "download"; onClicked: audioIntel.installCategory(cat.modelData.id, true) }
+                PillButton { visible: cat.remaining > 0 && !card.sum.active && cat.modelData.id !== "large"; text: "Install all  ·  " + audioIntel.dataSize(cat.remaining); iconName: "download"; onClicked: audioIntel.installCategory(cat.modelData.id, true) }
             }
             Repeater {
                 model: cat.ids
@@ -95,12 +94,13 @@ Card {
                                 text: row.f.title + "  ·  " + row.f.sizeText + (row.f.extra ? "  ·  optional" : "") }
                             Caption { Layout.fillWidth: true; text: row.f.ready ? "Installed  ·  " + row.f.diskText + " on disk" : row.f.state === "queued" ? "Waiting its turn…" : row.f.note }
                         }
-                        PillButton { visible: !row.f.ready && !row.busy; text: row.f.state === "partial" ? "Continue" : "Download"; iconName: "download"; onClicked: audioIntel.installFeatures([row.modelData]) }
+                        PillButton { visible: !row.f.ready && !row.busy; enabled: row.f.supported; text: row.f.state === "partial" ? "Continue" : "Download"; iconName: "download"; onClicked: audioIntel.installFeatures([row.modelData]) }
                         PillButton { visible: row.busy; text: "Cancel"; onClicked: audioIntel.cancelInstall() }
                         PillButton { visible: row.f.ready; text: "Remove"; iconName: "trash"; onClicked: audioIntel.removeFeature(row.modelData) }
                     }
                     Rectangle { visible: row.f.state === "downloading"; Layout.fillWidth: true; Layout.preferredHeight: 4; radius: 2; color: theme.surface
                         Rectangle { width: parent.width * row.f.progress; height: parent.height; radius: 2; color: theme.accent } }
+                    Text { visible: !row.f.supported && !row.f.ready; Layout.fillWidth: true; text: "Not available here: " + row.f.unsupportedReason; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: theme.warn; font.pixelSize: 11 }
                     Text { visible: row.f.error !== "" && !row.busy && !row.f.ready; Layout.fillWidth: true; text: row.f.error; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: theme.danger; font.pixelSize: 11 }
                 }
             }

@@ -27,9 +27,12 @@ TaskSuggestController::TaskSuggestController(NotchController *notch, AudioContro
 {
     m_pool.setMaxThreadCount(1);
     m_autoMeetings = settings().value(QStringLiteral("suggestMeetings"), true).toBool();
+    m_autoAdd = settings().value(QStringLiteral("addMeetings"), false).toBool();
     load();
     connect(audio, &AudioController::finished, this, [this](qlonglong id, bool ok) {
-        if (ok && m_autoMeetings)
+        if (ok && m_autoAdd)
+            addMeeting(id);
+        else if (ok && m_autoMeetings)
             fromMeeting(id);
     });
 }
@@ -47,6 +50,43 @@ void TaskSuggestController::setAutoMeetings(bool on)
     m_autoMeetings = on;
     { QSettings s = settings(); s.setValue(QStringLiteral("suggestMeetings"), on); }
     emit changed();
+}
+
+void TaskSuggestController::setAutoAdd(bool on)
+{
+    if (on == m_autoAdd)
+        return;
+    m_autoAdd = on;
+    { QSettings s = settings(); s.setValue(QStringLiteral("addMeetings"), on); }
+    emit changed();
+}
+
+QVariantMap TaskSuggestController::addMeeting(qlonglong id)
+{
+    QSet<QString> have;
+    for (const QVariant &t : m_tasks->list())
+        have.insert(TaskSuggest::normalizedTitle(t.toMap().value(QStringLiteral("title")).toString()));
+    int added = 0, skipped = 0;
+    for (const TaskSuggest::Suggestion &s : TaskSuggest::fromActions(id, m_audio->meetingTitle(id), m_audio->actionItemsOf(id), QDateTime::currentDateTime())) {
+        for (int i = 0; i < m_list.size(); ++i) // it was offered: it is on the list now, so not offered any more
+            if (m_list[i].id == s.id) {
+                m_list.removeAt(i);
+                break;
+            }
+        m_dismissed.insert(s.id);
+        const QString key = TaskSuggest::normalizedTitle(s.title);
+        if (have.contains(key)) {
+            ++skipped;
+            continue;
+        }
+        have.insert(key);
+        m_tasks->add(s.title, s.due.isValid() ? s.due.toString(Qt::ISODate) : QString());
+        ++added;
+    }
+    save();
+    m_status = added > 0 ? tr("%n task(s) added to the list.", nullptr, added) : tr("No new tasks to add.");
+    emit changed();
+    return {{QStringLiteral("added"), added}, {QStringLiteral("skipped"), skipped}};
 }
 
 void TaskSuggestController::load()

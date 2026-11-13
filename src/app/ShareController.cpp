@@ -41,7 +41,7 @@ QHash<int, QByteArray> ShareController::roleNames() const
     return {{IdRole, "sessionId"}, {NameRole, "name"}, {ModeRole, "mode"}, {StatusRole, "status"}, {UrlRole, "url"},
             {ProgressRole, "progress"}, {ExpiresAtRole, "expiresAt"}, {FileCountRole, "fileCount"},
             {DownloadsRole, "downloads"}, {MessageRole, "message"}, {EndReasonRole, "endReason"},
-            {ProtectionRole, "protection"}, {ActiveRole, "active"}, {SingleUseRole, "singleUse"},
+            {ProtectionRole, "protection"}, {ActiveRole, "active"}, {SingleUseRole, "singleUse"}, {MaxDownloadsRole, "maxDownloads"}, {PeopleRole, "people"}, {MaxPeopleRole, "maxPeople"},
             {ServerNameRole, "serverName"}};
 }
 
@@ -65,6 +65,9 @@ QVariant ShareController::data(const QModelIndex &index, int role) const
     case ProtectionRole: return s->protection();
     case ActiveRole: return s->active();
     case SingleUseRole: return s->singleUse();
+    case MaxDownloadsRole: return s->maxDownloads();
+    case PeopleRole: return s->people();
+    case MaxPeopleRole: return s->maxPeople();
     case ServerNameRole: return s->mode() == QLatin1String("relay") ? s->serverName() : QString();
     default: return {};
     }
@@ -92,6 +95,21 @@ void ShareController::add(ShareSession *s)
     beginInsertRows({}, 0, 0);
     m_sessions.prepend(s);
     endInsertRows();
+    connect(s, &ShareSession::activity, this, [this, s](const QString &kind, const QString &device, const QString &what) {
+        if (kind == QLatin1String("download")) {
+            if (notifyDownloads())
+                m_notch->announce(tr("Downloaded"), tr("%1 took %2").arg(device, what), QStringLiteral("document-save"));
+        } else if (kind == QLatin1String("limit")) {
+            if (notifyLimits())
+                m_notch->announce(tr("Limit reached"), tr("%1: the link has ended").arg(what), QStringLiteral("dialog-information"));
+        } else if (kind == QLatin1String("turned_away") && notifyLimits()) {
+            const qint64 now = QDateTime::currentSecsSinceEpoch(); // once a minute at most per share: a phone that retries is not a flood
+            if (now - s->property("lastTurnedAway").toLongLong() >= 60) {
+                s->setProperty("lastTurnedAway", now);
+                m_notch->announce(tr("Turned away"), tr("%1 came after the people allowed had started (%2)").arg(device, what), QStringLiteral("dialog-warning"));
+            }
+        }
+    });
     connect(s, &ShareSession::changed, this, [this, s] {
         if (const int row = rowOf(s); row >= 0)
             emit dataChanged(index(row), index(row));
@@ -104,14 +122,20 @@ void ShareController::add(ShareSession *s)
 // ---- running sessions ------------------------------------------------------------------------
 
 QString ShareController::start(const QStringList &ids, const QString &mode, int ttlSeconds, const QString &protection,
-                               const QString &secret, bool oneDownload, const QString &address, const QString &serverId)
+                               const QString &secret, int maxDownloads, int maxPeople, const QString &address, const QString &serverId)
 {
     ShareSession::Options o;
     o.mode = mode;
     o.ttl = ttlSeconds;
     o.protection = protection;
     o.secret = secret;
-    o.oneDownload = oneDownload;
+    o.maxDownloads = maxDownloads;
+    o.maxPeople = maxPeople;
+    {   // a server that was tested and does not announce the people limit is older than it: said, not ignored
+        const QString id = accessFor(serverId).id;
+        const QVariantMap st = m_status.value(id);
+        o.relayPeopleLimit = !st.value(QStringLiteral("ok")).toBool() || st.value(QStringLiteral("peopleLimit")).toBool();
+    }
     o.workRoot = m_notch->scratchPath(false);
     const auto sources = m_notch->shareSources(ids);
     for (const auto &s : sources)
@@ -488,6 +512,9 @@ void ShareController::testServer(const QString &id)
                 auto num = [](const QJsonValue &v) { return v.toVariant().toLongLong(); };
                 st = {{QStringLiteral("member"), o.value(QStringLiteral("member")).toString()},
                       {QStringLiteral("owner"), o.value(QStringLiteral("owner")).toBool()},
+                      {QStringLiteral("peopleLimit"), o.value(QStringLiteral("people_limit")).toBool()},
+                      {QStringLiteral("formsOk"), o.value(QStringLiteral("forms")).toBool()},
+                      {QStringLiteral("formsSchedule"), o.value(QStringLiteral("forms_schedule")).toBool()}, {QStringLiteral("formsEdit"), o.value(QStringLiteral("forms_edit")).toBool()}, {QStringLiteral("formsOnce"), o.value(QStringLiteral("forms_once")).toBool()},
                       // An older relay has no "limits": its max_file / max_ttl still say what it takes.
                       {QStringLiteral("maxFile"), num(lim.value(QStringLiteral("max_file"))) ? num(lim.value(QStringLiteral("max_file"))) : num(o.value(QStringLiteral("max_file")))},
                       {QStringLiteral("maxTtl"), num(lim.value(QStringLiteral("max_ttl"))) ? num(lim.value(QStringLiteral("max_ttl"))) : num(o.value(QStringLiteral("max_ttl")))},

@@ -37,7 +37,7 @@ Window {
     property bool devWide: false
     // The panel is as wide as its page needs, and never narrower than the row of section buttons (Files, Music, Timer, Tasks,
     // Color, Sharing, Lyrics, Note, Add): with every button there, it grows (up to the window) instead of cutting them off.
-    readonly property int panelWidth: Math.max(lyricsSplit ? 780 : page === "settings" ? 720 : page === "dev" ? (devWide ? 980 : 720) : page === "tasks" ? 620 : page === "audio" || page === "docs" ? 760 : openWidth,
+    readonly property int panelWidth: Math.max(lyricsSplit ? 780 : page === "settings" ? 720 : page === "dev" ? (devWide ? 980 : 720) : page === "tasks" ? 620 : page === "audio" || page === "docs" || page === "assistant" ? 760 : openWidth,
                                                Math.min(width - 20, Math.max(actionBarLoader.item && actionBarLoader.item.visible ? Math.ceil(actionBarLoader.item.implicitWidth) + 44 : 0,
                                                                               Math.ceil(headerRow.implicitWidth) + 36)))
 
@@ -48,7 +48,8 @@ Window {
     readonly property real shareNeed: shareLoader.item !== null && shareLoader.item.visible ? shareLoader.item.height + 40 : 0
     // This monitor's own choices (Settings → General → Monitors); 0 = as in the general settings. Reads `screens` so it follows changes.
     readonly property var screenOptions: { monitors.screens; return monitors.options(screenName) }
-    readonly property string capsuleMode: screenOptions.mode === 1 ? "capsule" : screenOptions.mode === 2 ? "hidden" : activities.capsuleMode
+    // "Hide Notch when an app is full screen": the mode is Hidden for as long as it lasts, and what it was (this monitor's choice, or the general one) is back after
+    readonly property string capsuleMode: gaming.soft ? "hidden" : screenOptions.mode === 1 ? "capsule" : screenOptions.mode === 2 ? "hidden" : activities.capsuleMode
     readonly property real capsuleScale: screenOptions.scale === 1 ? 0.85 : screenOptions.scale === 2 ? 1.0 : screenOptions.scale === 3 ? 1.15 : activities.capsuleScale
     onCapsuleModeChanged: {
         pinned = capsuleMode === "open" // "Always open" is a pin that stays
@@ -58,7 +59,7 @@ Window {
         if (capsuleMode === "open") pinned = true
         loadWidgetPos()
         applyGeometry()
-        desktop.setClickThrough(root, gaming.active)
+        desktop.setClickThrough(root, gaming.strict)
         applyReserve()
     }
 
@@ -189,7 +190,7 @@ Window {
     property bool searchOpen: false
     property bool searchFocused: false // the window has had the keys since the search opened
     function openSearch() {
-        if (gaming.active)
+        if (gaming.appFullScreen) // not over an app that fills the screen
             return
         open = false
         searchFocused = false
@@ -197,6 +198,14 @@ Window {
         desktop.grabKeyboard(root, true) // exclusive for a moment, so the keys arrive without a click first
         searchGuard.restart()
         searchSettle.restart() // the window may already be "active": no change will tell us, so look again in a moment
+    }
+    // a result of the search box: the recording at that second, the file, the answers of a form, the task
+    function openSearchResult(r) {
+        closeSearch()
+        if (r.kind === "recording") { audioOpen = { id: parseInt(r.ref), sec: r.startSec }; page = "audio" }
+        else if (r.kind === "file") notch.open(r.ref)
+        else if (r.kind === "form") { docsTab = "forms"; docsAction = "open-answers"; docsPick = r.ref; page = "docs" }
+        else if (r.kind === "task") page = "tasks"
     }
     function closeSearch() {
         searchGuard.stop()
@@ -299,7 +308,7 @@ Window {
             dbg("dragframe " + (lastFrame > 0 ? now - lastFrame : 0))
         lastFrame = now
     }
-    readonly property bool engaged: !gaming.active && (pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt" && mode !== "search" && !floating)
+    readonly property bool engaged: !gaming.strict && (pinned || dwelled || holdTimer.running || (islandHover.hovered && mode !== "idle" && mode !== "prompt" && mode !== "search" && !floating)
                                     || dragOver || anyMenu || (dragging && mode === "open")
                                     // (the Dev hub closes like every page when the pointer leaves; a dialog or menu in it, or Pin, keeps it open)
                                     || dialogs > 0) // any file dialog, the ones of the pages too
@@ -724,6 +733,12 @@ Window {
             out.push("the page is taller than the island (" + Math.round(panel.implicitHeight) + " > " + Math.round(island.height) + "): part of it is cut off")
         if (mode === "open" && !island.transitioning && island.y + island.height * island.scale > root.height + 1)
             out.push("the open panel runs past the bottom of the window (" + Math.round(island.y + island.height * island.scale) + " > " + Math.round(root.height) + "): the lowest part is cut off")
+        // A page that is not open must not stay loaded in the panel: it keeps its height, and the panel stays tall (a loader whose `active`
+        // binding was broken by an assignment did exactly this with the Note page).
+        const pageLoaders = {note: notePageLoader, timer: timerPageLoader, tasks: tasksPageLoader, dev: devPageLoader}
+        for (const name in pageLoaders)
+            if (page !== name && pageLoaders[name].active && pageLoaders[name].visible)
+                out.push("the " + name + " page stays loaded and visible on the " + page + " page: it keeps the panel tall")
         let seen = 0
         const walk = (it, path) => {
             if (!it || !it.visible || seen > 4000)
@@ -766,7 +781,7 @@ Window {
             const pop = sharePopup()
             const ids = notch.visibleIds()
             pop.openFor(ids.slice(0, count))
-            pop.debugBegin(kind === "pin" ? "482193" : "")
+            pop.debugBegin(kind === "pin" ? "482193" : "", kind === "limits")
             if (kind === "list") {
                 pop.openFor(ids.slice(0, 1)) // a second share
                 pop.debugBegin("")
@@ -774,7 +789,7 @@ Window {
             }
         })
     }
-    function debugShare() { sharePopup().openFor([]) } // `notch --shot-page file.png share`: the share window, for a picture
+    function debugShare() { const pop = sharePopup(); pop.openFor([]); pop.optionsOpen = true; pop.maxDownloads = 3; pop.maxPeople = 3 } // `notch --shot-page file.png share`: the share window, for a picture
     // `notch --shot-page x.png camera-record-test`: a camera-only recording of a few seconds, made and put together for real (main.cpp waits for it)
     function debugRecord(seconds, what) {
         const page = cameraPageLoader.item
@@ -990,7 +1005,7 @@ Window {
         // region does it (one corner pixel stays, as an empty mask means none). Elsewhere (Windows) a mask also clips what is
         // drawn, so the mask stays the notch's own shape and the window is made click-through instead (setClickThrough).
         let live = Qt.rect(0, 0, width, height)
-        if (gaming.active && desktop.layerShell) {
+        if (gaming.strict && desktop.layerShell) {
             live = Qt.rect(0, height - 1, 1, 1)
             desktop.setInputRegion(root, live)
         } else if (anyMenu) {
@@ -1152,7 +1167,7 @@ Window {
     Connections {
         target: gaming
         function onChanged() {
-            desktop.setClickThrough(root, gaming.active)
+            desktop.setClickThrough(root, gaming.strict)
             root.updateMask()
             if (gaming.active) { // a full-screen app arrived: let go of the pointer and close
                 root.toastQueue = []
@@ -1355,7 +1370,7 @@ Window {
     onPageChanged: {
         memtune.setContext(page)
         if (page === "note") {
-            notePageLoader.active = true
+            // (the loader's own `active: page === "note"` loads it: assigning `active` here broke that binding, and the Note page then stayed in the panel, keeping it tall)
             if (notePageLoader.item)
                 notePageLoader.item.load()
         } else if (page === "settings")
@@ -2146,6 +2161,7 @@ Window {
                     width: parent.width
                     active: root.searchOpen
                     onCloseRequested: root.closeSearch()
+                    onOpenResult: (r) => root.openSearchResult(r)
                 }
             }
         }
@@ -2253,7 +2269,7 @@ Window {
                         text: root.selecting ? root.selection.length + " selected"
                             : root.page === "settings" ? "Settings" : root.page === "preview" ? root.preview.name
                             : root.page === "note" ? (root.noteId !== "" ? "Edit note" : "New note")
-                            : root.page === "timer" ? "Timer" : root.page === "tasks" ? "Tasks" : root.page === "music" ? "Now playing" : root.page === "color" ? "Color picker" : root.page === "clipboard" ? "Clipboard" : root.page === "audio" ? "Audio" : root.page === "docs" ? "Documents" : root.page === "camera" ? "Camera" : root.page === "dev" ? "Dev" : "Olyzano Notch"
+                            : root.page === "timer" ? "Timer" : root.page === "tasks" ? "Tasks" : root.page === "music" ? "Now playing" : root.page === "color" ? "Color picker" : root.page === "clipboard" ? "Clipboard" : root.page === "audio" ? "Audio" : root.page === "docs" ? "Documents" : root.page === "assistant" ? "Assistant" : root.page === "camera" ? "Camera" : root.page === "dev" ? "Dev" : "Olyzano Notch"
                         color: root.textPrimary
                         font.family: theme.displayFont !== "" ? theme.displayFont : Qt.application.font.family
                         font.pixelSize: 17
@@ -2404,7 +2420,7 @@ Window {
                         onClicked: assistant.start()
                     }
                     IconButton {
-                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "audio" || root.page === "docs" || root.page === "camera" || root.page === "dev") && !root.selecting
+                        visible: (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "audio" || root.page === "docs" || root.page === "assistant" || root.page === "camera" || root.page === "dev") && !root.selecting
                         iconName: "gear"
                         Accessible.name: "Settings"
                         onClicked: root.page = "settings"
@@ -2423,7 +2439,7 @@ Window {
                 Loader {
                     id: actionBarLoader
                     visible: active
-                    active: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "audio" || root.page === "docs" || root.page === "camera" || root.page === "dev")
+                    active: !root.selecting && (root.page === "shelf" || root.page === "music" || root.page === "timer" || root.page === "tasks" || root.page === "color" || root.page === "clipboard" || root.page === "audio" || root.page === "docs" || root.page === "assistant" || root.page === "camera" || root.page === "dev")
                     Layout.fillWidth: true
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
@@ -2782,6 +2798,17 @@ Window {
                     Layout.leftMargin: 12
                     Layout.rightMargin: 12
                     sourceComponent: DocsPage { shell: root }
+                }
+
+                // ---- Assistant: talk to Notch ----
+                Loader {
+                    active: root.page === "assistant"
+                    visible: active
+                    Layout.fillWidth: true
+                    Layout.maximumWidth: 100000
+                    Layout.leftMargin: 12
+                    Layout.rightMargin: 12
+                    sourceComponent: AssistantPage { shell: root }
                 }
 
                 // ---- Camera: a mirror, and a photo booth ----
@@ -3534,6 +3561,7 @@ Window {
                     Layout.leftMargin: 8
                     Layout.rightMargin: 8
                     sourceComponent: NotePage { shell: root }
+                    onLoaded: item.load()
                 }
 
                 Loader {

@@ -109,6 +109,9 @@ public:
     LlamaSession(ModelStore *store, std::function<int()> threads, Mode mode) : m_store(store), m_threads(std::move(threads)), m_vision(mode == Mode::Vision), m_embed(mode == Mode::Embed) {}
     ~LlamaSession() { stop(); }
     static bool available(const ModelStore *store);
+    // The catalog id of the model that writes notes and answers: the one chosen (Qwen3 8B or 14B) when it is installed and this computer can run it on a
+    // graphics card, else the standard Qwen3 4B. Never waits for the card to be looked for: until it is known, the standard one.
+    static QString textModelId(const ModelStore *store);
     static bool embedAvailable(const ModelStore *store);  // the embedding model and the program are downloaded
     static bool visionAvailable(const ModelStore *store); // the picture model, its mmproj and the program are all downloaded
     static QString gpuHelperId(); // the Vulkan build of the program (for graphics cards)
@@ -124,7 +127,8 @@ public:
     void stop();
 
 private:
-    QString startWith(const QString &helper, int layers, const std::atomic_bool *cancel); // layers: how many go to the graphics card (0: none)
+    QString startWith(const QString &helper, int layers, const std::atomic_bool *cancel);
+    QString m_modelId; // the language model this session runs (set when it starts) // layers: how many go to the graphics card (0: none)
     QString complete(const QJsonArray &messages, const QJsonObject &schema, const std::atomic_bool *cancel, int maxTokens);
     ModelStore *m_store;
     std::function<int()> m_threads;

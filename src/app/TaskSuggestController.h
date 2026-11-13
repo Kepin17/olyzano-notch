@@ -23,6 +23,7 @@ class TaskSuggestController : public QObject
     Q_PROPERTY(int count READ count NOTIFY changed)
     Q_PROPERTY(bool busy READ busy NOTIFY changed)
     Q_PROPERTY(QString status READ status NOTIFY changed)     // "Looking for tasks in Tugas.pdf…", or what was found
+    Q_PROPERTY(bool autoAdd READ autoAdd WRITE setAutoAdd NOTIFY changed) // put the tasks of a recording on the list at once (not only offer them)
     Q_PROPERTY(bool autoMeetings READ autoMeetings WRITE setAutoMeetings NOTIFY changed) // offer the tasks of a recording when its notes are made
 
 public:
@@ -35,7 +36,11 @@ public:
     QString status() const { return m_status; }
     bool autoMeetings() const { return m_autoMeetings; }
     void setAutoMeetings(bool on);
+    bool autoAdd() const { return m_autoAdd; }
+    void setAutoAdd(bool on);
 
+    // The tasks of that recording straight onto the Tasks list: the ones that are on it already (or done) are left; {added, skipped}
+    Q_INVOKABLE QVariantMap addMeeting(qlonglong id);
     Q_INVOKABLE void fromMeeting(qlonglong id);   // the action items of that recording's notes
     Q_INVOKABLE void findInPdf(const QString &itemId); // a PDF of the shelf: the language model reads it for things to do
     Q_INVOKABLE void accept(const QString &id);
@@ -60,6 +65,6 @@ private:
     QSet<QString> m_dismissed;
     QThreadPool m_pool;
     std::atomic_bool m_cancel{false};
-    bool m_busy = false, m_autoMeetings = true;
+    bool m_busy = false, m_autoMeetings = true, m_autoAdd = false;
     QString m_status;
 };

@@ -2,6 +2,7 @@
 
 #include "audio/AskPrompt.h"
 #include "audio/AudioController.h"
+#include "services/Chunker.h"
 
 #include <QElapsedTimer>
 #include <QMutex>
@@ -37,6 +38,9 @@ class KnowledgeController : public QObject
     Q_PROPERTY(QString askStage READ askStage NOTIFY changed)     // understanding | searching | reading | ""
     Q_PROPERTY(QVariantMap answer READ answer NOTIFY changed)     // {question, text, notFound, sources:[...], scopeText}
     Q_PROPERTY(QString askError READ askError NOTIFY changed)
+    Q_PROPERTY(bool indexForms READ indexForms WRITE setIndexForms NOTIFY changed) // the answers of forms are searched too
+    Q_PROPERTY(QVariantList globalResults READ globalResults NOTIFY globalChanged) // what the search box found, in groups: [{group, kind, title, subtitle, snippet, ref, page, startSec}]
+    Q_PROPERTY(int globalSerial READ globalSerial NOTIFY globalChanged)            // grows with every result list: an older one never replaces a newer
     Q_PROPERTY(int answerSerial READ answerSerial NOTIFY changed) // grows with each answer: a panel that keeps the conversation adds one message when it changes
 
 public:
@@ -51,6 +55,15 @@ public:
     void setIndexPdf(bool on);
     void setIndexOcr(bool on);
     void setIndexImages(bool on);
+    bool indexForms() const { return m_forms; }
+    void setIndexForms(bool on);
+    QVariantList globalResults() const { return m_global; }
+    int globalSerial() const { return m_globalSerial; }
+    // One form's answers into the index (a document of kind "form": a passage for each answer, `page` its number), replacing what was there; or out of it.
+    void indexForm(const QString &id, const QString &title, const QList<Knowledge::Chunk> &chunks, const QString &fingerprint);
+    void removeForm(const QString &id);
+    // What the search box shows for what was typed: passages of recordings (and their notes), files and forms, and documents by name. Answers by globalChanged.
+    Q_INVOKABLE void globalSearch(const QString &query);
     bool indexing() const { return m_indexing; }
     QString status() const { return m_status; }
     QVariantMap stats() const { return m_stats; }
@@ -77,6 +90,8 @@ public:
 
 signals:
     void changed();
+    void globalChanged();
+    void formsToggled(bool on); // the answers of forms are in the index now, or not any more: the forms are told to send or to withdraw them
 
 private:
     struct Job; // what a question or a search needs, made on the worker thread
@@ -91,7 +106,11 @@ private:
 
     NotchController *m_notch;
     AudioController *m_audio;
-    QThreadPool m_indexPool, m_pool;
+    QThreadPool m_indexPool, m_pool, m_quickPool; // m_quickPool: the search box and the forms (small jobs, one at a time)
+    std::atomic<int> m_globalWanted{0};
+    QVariantList m_global;
+    int m_globalSerial = 0;
+    bool m_forms = true;
     std::atomic_bool m_cancelIndex{false}, m_cancelAsk{false}, m_pause{false};
     QTimer m_scanTimer, m_pauseTimer, m_idleTimer;
     bool m_enabled = true, m_pdf = true, m_ocr = false, m_images = false;

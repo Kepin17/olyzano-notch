@@ -34,6 +34,7 @@ RowLayout {
             { id: "clipboard", label: "Clipboard", icon: "copy", badge: 0, on: true },
             { id: "audio", label: "Audio", icon: "mic", badge: 0, on: true },
             { id: "docs", label: "Docs", icon: "doc", badge: 0, on: true },
+            { id: "assistant", label: "Assistant", icon: "ai", badge: 0, on: true },
             { id: "camera", label: "Camera", icon: "camera", badge: 0, on: true },
             { id: "dev", label: "Dev", icon: "server", badge: 0, on: true }
         ].filter(p => p.on)

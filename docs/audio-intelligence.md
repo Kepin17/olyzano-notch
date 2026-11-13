@@ -45,6 +45,14 @@ Linux plays through the computer's own default sound output (ffmpeg and `paplay`
 ## The notes
 A professional, structured document per style. **Meeting:** overview, topics (in order, with times), decisions (with the reason and who, when said), action items as a table (task, owner, due, priority, time), risks, open questions, next steps. **Lecture:** overview, topics, concepts and definitions, key points, questions. **Interview:** overview, topics, questions and answers, notable quotes, key points. **General:** overview, topics, key points, decisions, tasks. Long recordings are read in pieces and then written once more as a whole. **Copy** puts the notes on the clipboard as Markdown.
 
+## Follow-up
+
+The **Follow-up** tab of a recording with notes writes what comes after the meeting, from the notes only:
+
+- **Email to the people who were there**: a subject and a body with the summary, the decisions, the tasks by person (with their dates), the open questions and the next steps. It is written without any model, so it is always there and says only what the notes say; with the language model installed it is then smoothed, and the smoothed version is used only if it keeps every number, name and task of the draft. Edit it, *Copy*, *Open in mail app* (a long email is cut there: use Copy) or *Save…*.
+- **Agenda for the next meeting**: the tasks not done (the pressing first), the open questions, the risks and the next steps, at most 12 lines.
+- **Tasks**: *Add the tasks to Tasks* puts the recording's tasks on your Tasks list with their dates; those already on it are left alone. The same button, *Add all to Tasks*, is on the Tasks tab. *Settings → AI → Files & knowledge* can do it by itself when the notes are made ("Add the tasks of a recording to Tasks by themselves", off by default).
+
 ## Notes you can trust
 The transcript is handed to the model as **data** (fenced; "ignore the above" inside a recording is not obeyed). Every decision and task must carry a quote that really appears in the transcript near its timestamp, checked by code, not by the model: invented items are dropped, items without a matching quote are marked **Needs review**, and a person or deadline that was not said stays empty ("not said"). Long recordings are read in pieces and merged. Styles: Meeting, Lecture, Interview, General.
 

@@ -16,6 +16,8 @@ class GamingMode : public QObject
     Q_PROPERTY(bool enabled READ enabled WRITE setEnabled NOTIFY changed)           // Gaming mode (the gamepad button)
     Q_PROPERTY(bool hideInFullScreen READ hideInFullScreen WRITE setHideInFullScreen NOTIFY changed) // only step aside, nothing muted
     Q_PROPERTY(bool active READ active NOTIFY changed) // Notch is out of the way: a full-screen app is in front and one of the two asks for it
+    Q_PROPERTY(bool soft READ soft NOTIFY changed)     // only "hide in full screen": the notch goes to its Hidden mode (the top edge still opens it)
+    Q_PROPERTY(bool appFullScreen READ appFullScreen NOTIFY changed) // an app fills the screen: the search is not offered
     Q_PROPERTY(bool strict READ strict NOTIFY changed) // Gaming mode is keeping it away: the tray menu is locked, sounds are quiet
 
 public:
@@ -24,6 +26,8 @@ public:
     bool enabled() const { return m_state.enabled; }
     bool active() const { return m_state.active(); }
     bool strict() const { return m_state.strict(); }
+    bool soft() const { return m_state.soft(); }
+    bool appFullScreen() const { return m_state.searchBlocked(); }
     bool muting() const { return m_state.muting(); }
     bool hideInFullScreen() const { return m_state.hideInFullScreen; }
     void setEnabled(bool on);

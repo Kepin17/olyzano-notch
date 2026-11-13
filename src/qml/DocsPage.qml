@@ -60,7 +60,8 @@ Item {
         if (shell.docsPick === "") return
         const id = shell.docsPick, tab = shell.docsTab, action = shell.docsAction
         shell.docsPick = ""; shell.docsTab = ""; shell.docsAction = ""
-        if (tab === "tools") { mode = "tools"; pdfTools.pick(id); if (action !== "" && pdfTools.actions.some(a => a[0] === action)) pdfTools.action = action }
+        if (tab === "forms") { mode = "forms"; if (action === "open-answers") formsTab.openAnswers(id); else formsTab.debug(action) }
+        else if (tab === "tools") { mode = "tools"; pdfTools.pick(id); if (action !== "" && pdfTools.actions.some(a => a[0] === action)) pdfTools.action = action }
         else pickItem(id)
     }
     Connections { target: shell; function onDocsPickChanged() { page.takeRequest() } }
@@ -85,7 +86,7 @@ Item {
     AudioTabs {
         id: modeTabs
         anchors { left: parent.left; right: parent.right; top: parent.top; rightMargin: 10 }
-        model: [["notes", "Study notes"], ["ask", "Ask your files"], ["tools", "Convert"]]
+        model: [["notes", "Study notes"], ["ask", "Ask your files"], ["tools", "Convert"], ["forms", "Forms"]]
         value: page.mode
         onPicked: (v) => page.mode = v
     }
@@ -105,6 +106,16 @@ Item {
             onOpenSource: (s) => page.openSource(s)
             onGrew: Qt.callLater(() => { const f = askScroll.contentItem; f.contentY = Math.max(0, f.contentHeight - f.height + 18) })
         }
+    }
+
+    ScrollView {
+        id: formsScroll
+        visible: page.mode === "forms"
+        anchors { left: parent.left; right: parent.right; top: modeTabs.bottom; topMargin: 8; bottom: parent.bottom }
+        contentWidth: availableWidth
+        bottomPadding: 18
+        clip: true
+        FormsTab { id: formsTab; shell: page.shell; width: formsScroll.availableWidth - 10 }
     }
 
     ScrollView {

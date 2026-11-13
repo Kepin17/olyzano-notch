@@ -13,6 +13,11 @@ struct GamingModel {
     bool revealed = false;          // the person brought Notch up over it from the tray
 
     bool strict() const { return enabled && fullScreen; }                     // Gaming mode is keeping Notch away
+    // "Hide Notch when an app is full screen" on its own (no Gaming mode): the notch does not become unreachable, it goes to its Hidden mode (whatever mode
+    // it was in), where the top edge still opens it, and goes back to the person's mode when the app is not full screen any more.
+    bool soft() const { return !strict() && hideInFullScreen && fullScreen && !revealed; }
+    // The search (Shift + Space) is not offered over an app that fills the screen, whatever the preferences say.
+    bool searchBlocked() const { return fullScreen; }
     bool hidden() const { return strict() || (hideInFullScreen && fullScreen && !revealed); }
     bool active() const { return hidden(); }                                  // "Notch is out of the way" (what the windows follow)
     bool muting() const { return strict(); }                                  // sounds and reminders held back

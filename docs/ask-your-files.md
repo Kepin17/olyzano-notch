@@ -32,3 +32,7 @@ Measured on this computer (Qwen3 4B, six PDFs and one recording made for the tes
 
 ## Not tested here
 Your own documents and languages (only generated ones), collections of tens of thousands of passages, NVIDIA/Intel/Windows, and the search by meaning on real files.
+
+## Search from the notch (Shift + Space)
+
+The search box finds apps, and also what is **inside** things, from the same local index: passages of your **recordings** (what was said, with the time, and their notes: overview, decisions, tasks), your **files** (PDFs and text, with the page) and the **answers of forms** ("Answer #3 · Budi"), plus documents by their name and your open **tasks**. Results are grouped under small titles, three to a group; the passage is shown with the words you typed in bold. Enter opens the highlighted one: a recording at that second, the file, the answers screen of that form, the Tasks page. Search follows the typing (words, not meaning) and needs *Settings → Files → Search* on; *Include the answers of forms* turns the answers of forms in or out of the index (they stay on this computer, and turning it off removes them).

@@ -87,14 +87,17 @@ Item {
             visible: !!detail.info.hasTranscript
             Layout.fillWidth: true
             model: [["summary", "Summary"], ["transcript", "Transcript" + (detail.info.segments > 0 ? " · " + detail.info.segments : "")],
-                    ["actions", "Tasks" + (detail.info.actionCount > 0 ? " · " + detail.info.actionCount : "")], ["ask", "Ask"]]
+                    ["actions", "Tasks" + (detail.info.actionCount > 0 ? " · " + detail.info.actionCount : "")], ["followup", "Follow-up"], ["ask", "Ask"]]
             value: page.tab
             onPicked: (v) => page.tab = v
+            IconButton { visible: page.tab === "transcript"; iconName: "globe"; Accessible.name: "Translate the transcript"; implicitWidth: 26; implicitHeight: 26; onClicked: page.translateOpen = !page.translateOpen }
             IconButton { visible: page.tab === "transcript"; iconName: "search"; Accessible.name: "Find in the transcript"; implicitWidth: 26; implicitHeight: 26; onClicked: page.findOpen = !page.findOpen }
             IconButton { visible: page.tab === "transcript"; iconName: "download"; Accessible.name: "Export the transcript (SRT, VTT, text)"; implicitWidth: 26; implicitHeight: 26; onClicked: exportMenu.popup() }
             IconButton { visible: page.tab === "summary" && !!detail.info.hasNotes && detail.chapters !== ""; iconName: "doc"; Accessible.name: "Chapters for a video description"; implicitWidth: 26; implicitHeight: 26; onClicked: chapterMenu.popup() }
             IconButton { visible: page.tab === "summary" && !!detail.info.hasNotes; iconName: "copy"; Accessible.name: "Copy the notes as Markdown"; implicitWidth: 26; implicitHeight: 26; onClicked: { audioIntel.copyNotes(); page.shell.say("Notes copied as Markdown", 1400) } }
         }
+
+        AudioTranslate { page: detail.page }
 
         Item {
             id: area
@@ -105,6 +108,7 @@ Item {
             AudioNotes { anchors.fill: parent; page: detail.page; visible: opacity > 0; opacity: page.tab === "summary" ? 1 : 0; Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 120 } } }
             AudioTranscript { anchors.fill: parent; page: detail.page; visible: opacity > 0; opacity: page.tab === "transcript" ? 1 : 0; Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 120 } } }
             AudioActions { anchors.fill: parent; page: detail.page; visible: opacity > 0; opacity: page.tab === "actions" ? 1 : 0; Behavior on opacity { enabled: activities.animations; NumberAnimation { duration: 120 } } }
+            AudioFollowUp { anchors.fill: parent; page: detail.page; visible: opacity > 0 && page.tab === "followup"; opacity: page.tab === "followup" ? 1 : 0 }
             ScrollView {
                 id: askArea
                 anchors.fill: parent

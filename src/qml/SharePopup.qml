@@ -19,7 +19,8 @@ Popup {
     readonly property bool optionsShown: optionsOpen || protection !== "none" || (tried && secretError !== "")
     property int ttl: 3600
     property string protection: "none" // none | pin | password
-    property bool single: true
+    property int maxDownloads: 0 // how many times the whole share may be downloaded (0 = no limit)
+    property int maxPeople: 0    // how many different devices may start (0 = no limit)
     property string address: ""
     property var addresses: []
     property bool tried: false
@@ -85,6 +86,8 @@ Popup {
             share.testAllServers() // limits and usage up to date (not worth a network round trip without a server)
         mode = share.lastMode === "relay" && share.relayConfigured ? "relay" : "local"
         ttl = share.defaultTtl
+        maxDownloads = newIds.length === 1 ? 1 : 0 // one file: it is gone after the first download, as it always was
+        maxPeople = 0
         protection = "none"
         tried = false
         nearbyId = ""
@@ -99,11 +102,12 @@ Popup {
         view = "sessions"
         open()
     }
-    function debugBegin(pin) { // pictures only: share on "This WiFi" with an optional PIN
+    function debugBegin(pin, limits) { // pictures only: share on "This WiFi" with an optional PIN
         mode = "local"
         protection = pin !== "" ? "pin" : "none"
         secret.text = pin
-        single = false
+        maxDownloads = limits ? 3 : 0 // `limits`: a share with limits, for the picture
+        maxPeople = limits ? 3 : 0
         begin()
     }
     function begin() {
@@ -115,7 +119,7 @@ Popup {
         tried = true
         if (secretError !== "")
             return
-        readyId = share.start(ids, mode, ttl, protection, secret.text, single, address, serverId)
+        readyId = share.start(ids, mode, ttl, protection, secret.text, maxDownloads, maxPeople, address, serverId)
         secret.clear()
         view = readyId !== "" ? "ready" : "sessions"
     }
@@ -132,7 +136,9 @@ Popup {
         if (d.status === "preparing") return "Preparing…"
         if (d.status === "uploading") return "Uploading " + Math.round(Math.max(0, d.progress) * 100) + "%"
         if (d.status === "ready")
-            return "Expires in " + countdown(d.expiresAt) + (d.downloads > 0 ? " · downloaded " + d.downloads + "×" : "")
+            return "Expires in " + countdown(d.expiresAt)
+                   + (d.maxDownloads > 0 ? " · downloaded " + d.downloads + " of " + d.maxDownloads + "×" : d.downloads > 0 ? " · downloaded " + d.downloads + "×" : "")
+                   + (d.maxPeople > 0 ? " · " + d.people + " of " + d.maxPeople + (d.maxPeople === 1 ? " person" : " people") : d.people > 0 ? " · " + d.people + (d.people === 1 ? " person" : " people") : "")
         return d.message
     }
     function qrSource(text) {
@@ -338,6 +344,8 @@ Popup {
                     Layout.fillWidth: true
                     text: "Expires in " + (({ 600: "10 min", 3600: "1 hour", 86400: "24 hours" })[pop.ttl] || Math.round(pop.ttl / 60) + " min")
                           + " · " + (pop.protection === "none" ? "no PIN or password" : pop.protection === "pin" ? "PIN" : "password")
+                          + (pop.maxDownloads > 0 ? " · " + pop.maxDownloads + (pop.maxDownloads === 1 ? " download" : " downloads") : "")
+                          + (pop.maxPeople > 0 ? " · " + pop.maxPeople + (pop.maxPeople === 1 ? " person" : " people") : "")
                 }
                 PillButton { text: pop.optionsShown ? "Fewer options" : "Options"; checked: pop.optionsShown; onClicked: pop.optionsOpen = !pop.optionsOpen }
             }
@@ -398,13 +406,14 @@ Popup {
                     }
                     PillButton { id: showSecret; text: "Show"; checkable: true }
                 }
-                SettingToggle {
-                    visible: pop.mode === "relay" && pop.ids.length === 1
+                LimitRow { visible: pop.mode !== "nearby"; title: "Downloads"; value: pop.maxDownloads; onEdited: v => pop.maxDownloads = v }
+                LimitRow { visible: pop.mode !== "nearby"; title: "People"; value: pop.maxPeople; onEdited: v => pop.maxPeople = v }
+                Caption {
+                    visible: pop.mode !== "nearby" && (pop.maxDownloads > 0 || pop.maxPeople > 0)
                     Layout.fillWidth: true
-                    title: "Single download"
-                    caption: "The link stops working after the first download."
-                    checked: pop.single
-                    onToggled: pop.single = !pop.single
+                    text: (pop.maxDownloads > 0 ? "A download is the whole share taken in full" + (pop.ids.length > 1 ? " (every file)" : "") + "; the link ends after the last. " : "")
+                          + (pop.maxPeople > 0 ? "A person is a device (its network address): others are turned away once that many have started." : "")
+                          + (pop.limited && pop.maxPeople > 0 && !pop.server.peopleLimit ? " Your server needs an update for the limit on people." : "")
                 }
             }
             RowLayout {
@@ -439,12 +448,15 @@ Popup {
                     required property double expiresAt
                     required property int fileCount
                     required property int downloads
+                    required property int maxDownloads
+                    required property int people
+                    required property int maxPeople
                     required property string message
                     required property string endReason
                     required property string protection
                     required property string serverName
                     required property bool active
-                    readonly property var snapshot: ({ status: status, progress: progress, expiresAt: expiresAt, downloads: downloads, message: message })
+                    readonly property var snapshot: ({ status: status, progress: progress, expiresAt: expiresAt, downloads: downloads, maxDownloads: maxDownloads, people: people, maxPeople: maxPeople, message: message })
                     visible: sessionId === pop.readyId
                     Layout.fillWidth: true
                     columns: pop.width >= 480 ? 2 : 1
@@ -610,12 +622,15 @@ Popup {
                             required property double expiresAt
                             required property int fileCount
                             required property int downloads
+                            required property int maxDownloads
+                            required property int people
+                            required property int maxPeople
                             required property string message
                             required property string endReason
                             required property string protection
                             required property string serverName
                             required property bool active
-                            readonly property var snapshot: ({ status: status, progress: progress, expiresAt: expiresAt, downloads: downloads, message: message })
+                            readonly property var snapshot: ({ status: status, progress: progress, expiresAt: expiresAt, downloads: downloads, maxDownloads: maxDownloads, people: people, maxPeople: maxPeople, message: message })
                             Layout.fillWidth: true
                             implicitHeight: body.implicitHeight + 20
                             radius: theme.radiusMd

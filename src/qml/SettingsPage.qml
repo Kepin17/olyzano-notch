@@ -210,7 +210,7 @@ RowLayout {
                     }
                     SettingToggle {
                         title: "Hide Notch when an app is full screen"
-                        caption: "The notch, the status bar and the dock step aside while an app or game fills the screen, and come back when it does not. Sounds still play, and the tray icon's menu can still bring Notch up over the app."
+                        caption: "While an app or game fills the screen the notch goes to Hidden mode, whatever mode it is in (you can still open it from the top edge), and the status bar and the dock step aside; when the app is not full screen any more everything is back as you had it. Sounds still play, and the tray icon's menu can still bring Notch up over the app."
                         checked: gaming.hideInFullScreen
                         onToggled: gaming.hideInFullScreen = !gaming.hideInFullScreen
                     }
@@ -1751,8 +1751,16 @@ RowLayout {
                     SectionLabel { text: "Language" }
                     LanguagePicker { value: audioIntel.language; onPicked: (c) => audioIntel.language = c; onMoreRequested: settingsScroll.category = "languages" }
                     SectionLabel { text: "Quality" }
-                    Segmented { Layout.fillWidth: true; model: [["standard", "Standard"], ["high", "High quality"]]; value: audioIntel.quality; onPicked: (v) => audioIntel.quality = v }
+                    Segmented { Layout.fillWidth: true; model: audioIntel.largeModels.max.installed ? [["standard", "Standard"], ["high", "High quality"], ["max", "Best (graphics card)"]] : [["standard", "Standard"], ["high", "High quality"]]; value: audioIntel.quality; onPicked: (v) => audioIntel.quality = v }
                     Caption { Layout.fillWidth: true; text: "High quality is slower and needs more memory." }
+                    Caption { visible: audioIntel.largeModels.max.installed && !audioIntel.largeModels.max.supported; Layout.fillWidth: true; color: theme.warn; text: "Best is not used on this computer: " + audioIntel.largeModels.max.reason + ". High quality is used instead." }
+                    SectionLabel { visible: audioIntel.largeModels.large.installed || audioIntel.largeModels.xl.installed; text: "Notes, documents and Ask" }
+                    Segmented { visible: audioIntel.largeModels.large.installed || audioIntel.largeModels.xl.installed; Layout.fillWidth: true
+                        model: { const m = [["standard", "Standard"]]; if (audioIntel.largeModels.large.installed) m.push(["large", "Larger"]); if (audioIntel.largeModels.xl.installed) m.push(["xl", "Largest"]); return m }
+                        value: audioIntel.notesModel; onPicked: (v) => audioIntel.notesModel = v }
+                    Caption { visible: audioIntel.notesModel !== "standard" && !!audioIntel.largeModels[audioIntel.notesModel] && audioIntel.largeModels[audioIntel.notesModel].installed && !audioIntel.largeModels[audioIntel.notesModel].supported; Layout.fillWidth: true; color: theme.warn
+                        text: "The larger model is not used on this computer: " + (audioIntel.largeModels[audioIntel.notesModel] || {}).reason + ". The standard one is used instead." }
+                    Caption { visible: audioIntel.largeModels.large.installed || audioIntel.largeModels.xl.installed; Layout.fillWidth: true; text: "The same model writes the notes of recordings, summarizes documents and answers in Ask your files. It runs on the graphics card only." }
                     SectionLabel { text: "Notes style" }
                     Segmented { Layout.fillWidth: true; model: [["meeting", "Meeting"], ["lecture", "Lecture"], ["interview", "Interview"], ["general", "General"]]; value: audioIntel.tmpl; onPicked: (v) => audioIntel.tmpl = v }
                     SectionLabel { text: "Telling speakers apart" }
@@ -2054,6 +2062,14 @@ RowLayout {
                         background: Rectangle { radius: theme.chipRadius + 2; color: theme.well; border.width: 1; border.color: deviceField.activeFocus ? theme.accent : theme.outline }
                         onEditingFinished: nearby.deviceName = text
                     }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+                    SectionLabel { text: "Notices" }
+                    SettingToggle { title: "Tell me when something is downloaded"; caption: "A notice such as «iPhone · Safari took report.pdf» when a phone or computer has taken a file you shared."; checked: share.notifyDownloads; onToggled: share.notifyDownloads = !share.notifyDownloads }
+                    SettingToggle { title: "Tell me about limits"; caption: "When the downloads allowed are used up and the link ends, and when a device is turned away because the people allowed have started."; checked: share.notifyLimits; onToggled: share.notifyLimits = !share.notifyLimits }
                 }
 
                 ColumnLayout {

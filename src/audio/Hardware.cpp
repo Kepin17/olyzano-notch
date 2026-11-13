@@ -83,6 +83,21 @@ QString Hardware::setting() const
     return v == QLatin1String("cpu") || v == QLatin1String("gpu") ? v : QStringLiteral("auto");
 }
 
+QString Hardware::notesModel() const
+{
+    QSettings s = settings();
+    s.sync();
+    const QString v = s.value(QStringLiteral("notesModel"), QStringLiteral("standard")).toString();
+    return v == QLatin1String("large") || v == QLatin1String("xl") ? v : QStringLiteral("standard");
+}
+
+void Hardware::setNotesModel(const QString &v)
+{
+    QSettings s = settings();
+    s.setValue(QStringLiteral("notesModel"), v == QLatin1String("large") || v == QLatin1String("xl") ? v : QStringLiteral("standard"));
+    s.sync();
+}
+
 void Hardware::setSetting(const QString &v)
 {
     QSettings s = settings();
@@ -119,7 +134,7 @@ void Hardware::setBench(double speedup)
     s.sync();
 }
 
-HwPlan Hardware::plan(bool llmVulkanInstalled)
+HwPlan Hardware::plan(bool llmVulkanInstalled, qint64 llmNeedBytes)
 {
     Gpu::Info i = info();
     if (Whisper::gpusBuilt() && Whisper::gpus().isEmpty())
@@ -131,7 +146,10 @@ HwPlan Hardware::plan(bool llmVulkanInstalled)
     for (const QString &engine : {QStringLiteral("whisper"), QStringLiteral("llm")})
         if (!key.isEmpty() && s.value(QStringLiteral("gpu/failed/") + engine).toString() == key)
             failed.insert(engine);
-    return planHardware(i, hwSettingOf(setting()), bench(), HwNeeds{}, failed, llmVulkanInstalled);
+    HwNeeds needs;
+    if (llmNeedBytes > 0)
+        needs.llm = llmNeedBytes;
+    return planHardware(i, hwSettingOf(setting()), bench(), needs, failed, llmVulkanInstalled);
 }
 
 void Hardware::markFailed(const QString &engine, const QString &why)

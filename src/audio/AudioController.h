@@ -5,6 +5,7 @@
 #include "AudioModels.h"
 #include "AudioPipeline.h"
 #include "AudioStore.h"
+#include "Hardware.h"
 #include "InstallQueue.h"
 #include "ModelBundles.h"
 #include "LiveSession.h"
@@ -56,7 +57,9 @@ class AudioController : public QObject
     Q_PROPERTY(QVariantMap readiness READ readiness NOTIFY modelsChanged)
     Q_PROPERTY(QVariantMap hardware READ hardware NOTIFY hardwareChanged) // the graphics cards, the setting, and what runs where
     Q_PROPERTY(int threads READ threads WRITE setThreads NOTIFY settingsChanged)
-    Q_PROPERTY(QString quality READ quality WRITE setQuality NOTIFY settingsChanged)
+    Q_PROPERTY(QString quality READ quality WRITE setQuality NOTIFY settingsChanged) // standard | high | max (max: Whisper Large v3, only on a computer that can run it)
+    Q_PROPERTY(QString notesModel READ notesModel WRITE setNotesModel NOTIFY settingsChanged) // standard | large | xl: the model for notes, documents and Ask
+    Q_PROPERTY(QVariantMap largeModels READ largeModels NOTIFY hardwareChanged) // for each large model: {installed, supported, reason}
     Q_PROPERTY(QString language READ language WRITE setLanguage NOTIFY settingsChanged)
     Q_PROPERTY(QString tmpl READ tmpl WRITE setTmpl NOTIFY settingsChanged)
     Q_PROPERTY(bool detectSound READ detectSound WRITE setDetectSound NOTIFY settingsChanged) // tell music and other sounds from speech (when the sound model is installed)
@@ -126,6 +129,8 @@ public:
     // For the knowledge index: the recordings that have a transcript ({id, title, created, fingerprint}) and the lines of one (main thread).
     QVariantList knowledgeMeetings() const;
     QList<Knowledge::Utterance> transcriptLines(qlonglong id) const;
+    QString notesText(qlonglong id) const;                       // the notes of a recording as plain text (overview, points, decisions, tasks, open questions), for searching
+    QList<Audio::Segment> segmentsOf(qlonglong id) const;        // the transcript of a recording as it reads (edited words, speakers by name, sounds as they are)
     QList<Audio::ActionItem> actionItemsOf(qlonglong id) const; // the open tasks of a recording's notes
     QString meetingTitle(qlonglong id) const { return m_store.meeting(id).title; }
     bool processing() const { return m_busy != 0 || !m_queue.isEmpty() || m_recorder.recording(); } // the processor is busy with a recording
@@ -133,6 +138,11 @@ public:
     void setThreads(int n);
     QString quality() const { return m_settings.value(QStringLiteral("quality"), QStringLiteral("standard")).toString(); }
     void setQuality(const QString &q);
+    QString notesModel() const { return Audio::Hardware::instance().notesModel(); }
+    void setNotesModel(const QString &m) { Audio::Hardware::instance().setNotesModel(m); emit settingsChanged(); emit hardwareChanged(); }
+    QVariantMap largeModels() const;
+    Audio::LargeSupport largeSupport(const QString &featureId) const; // whether this computer can run the large model of that feature (and why not)
+    QString resolveQuality(const QString &q) const;                  // "max" becomes "high" or "standard" where Whisper Large v3 is not installed or cannot run
     QString language() const { return m_settings.value(QStringLiteral("language"), QStringLiteral("auto")).toString(); }
     void setLanguage(const QString &l);
     QString speakerSplit() const { const QString v = m_settings.value(QStringLiteral("speakerSplit"), QStringLiteral("balanced")).toString(); return v == QLatin1String("fewer") || v == QLatin1String("more") ? v : QStringLiteral("balanced"); }
@@ -176,6 +186,7 @@ public:
     Q_INVOKABLE QString notesMarkdown() const;
     // The open recording's transcript as a file: format "srt" | "vtt" | "txt", `sounds` keeps the lines for music and other sounds as [markers].
     // `target` is a path or a file:// address. "" on success, else why not.
+    Q_INVOKABLE QString saveText(const QString &text, const QString &target) const; // "" or why not
     Q_INVOKABLE QString exportTranscript(const QString &format, bool sounds, const QString &target) const;
     Q_INVOKABLE QString suggestedFileName(const QString &format) const; // title + extension, for the save dialog
     // The chapters (the notes' topics that say when they begin): "youtube" | "list". "" when the notes give fewer than three.
@@ -190,6 +201,9 @@ public:
     Q_INVOKABLE void editSegment(qlonglong segmentId, const QString &text);
     Q_INVOKABLE void deleteSegment(qlonglong segmentId);
     Q_INVOKABLE void setActionDone(qlonglong actionId, bool done);
+    // The email that follows a recording and the agenda of the next meeting, from its notes ("email" | "agenda"): the draft comes at once (followUpReady with
+    // polished=false); with the language model installed the email is then smoothed and comes again (polished=true).
+    Q_INVOKABLE void followUp(qlonglong id, const QString &kind);
     Q_INVOKABLE int segmentAt(double seconds) const { return m_transcript.rowAt(seconds); }
     Q_INVOKABLE void clearError() { setError({}); }
 
@@ -206,6 +220,7 @@ public:
     Q_INVOKABLE void removeModel(const QString &id);
 
 signals:
+    void followUpReady(qlonglong id, const QString &kind, const QString &subject, const QString &text, bool polished);
     void currentChanged();
     void notesChanged();
     void speakersChanged();

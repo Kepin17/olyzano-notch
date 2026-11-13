@@ -81,4 +81,35 @@ inline HwPlan planHardware(const Gpu::Info &info, HwSetting setting, const HwBen
     return p;
 }
 
+// Whether a model that needs `needBytes` of graphics memory can be used on this computer, and if not, why in plain words. The memory counts as the
+// card's total (what is free changes while other programs run; when it is short at the moment of starting, the engine falls back by itself).
+struct LargeSupport {
+    bool ok = false;
+    QString reason;
+};
+
+inline LargeSupport largeModelSupport(const Gpu::Info &info, bool detected, HwSetting setting, const HwBench &bench, qint64 needBytes)
+{
+    if (setting == HwSetting::Cpu)
+        return {false, QObject::tr("Set to use the processor only (Settings → AI → Graphics card)")};
+    if (!detected)
+        return {false, QObject::tr("Checking the graphics card…")};
+    if (!info.vulkan)
+        return {false, QObject::tr("No Vulkan driver was found for the graphics card")};
+    const Gpu::Device *best = nullptr;
+    for (const Gpu::Device &d : info.devices)
+        if (!best || (best->integrated && !d.integrated) || (best->integrated == d.integrated && d.vramTotal > best->vramTotal))
+            best = &d;
+    if (!best)
+        return {false, QObject::tr("No graphics processor was found")};
+    if (setting == HwSetting::Auto && best->integrated && !(bench.known && bench.speedup >= 1.3))
+        return {false, bench.known ? QObject::tr("%1 shares the computer's memory and was not quicker in the speed test").arg(best->name)
+                                   : QObject::tr("%1 shares the computer's memory: run the speed test to see if it helps").arg(best->name)};
+    const qint64 margin = Q_INT64_C(400) << 20;
+    if (best->vramTotal < needBytes + margin)
+        return {false, QObject::tr("Needs about %1 GB of graphics memory; %2 has %3 GB").arg(QString::number(double(needBytes) / double(Q_INT64_C(1) << 30), 'f', 0), best->name,
+                                                                                            QString::number(double(best->vramTotal) / double(Q_INT64_C(1) << 30), 'f', 1))};
+    return {true, QObject::tr("Runs on %1").arg(best->name)};
+}
+
 } // namespace Audio

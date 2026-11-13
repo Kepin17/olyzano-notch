@@ -52,6 +52,11 @@ public:
 
     // `match`: an FTS5 query (see matchQuery). Best first.
     QList<Hit> search(const QString &match, const Filter &filter, int limit = 40) const;
+    // The documents whose NAME has all of these words (a part of a word counts), newest first: {kind, ref, name}.
+    struct NameHit {
+        QString kind, ref, name;
+    };
+    QList<NameHit> searchNames(const QStringList &words, const QStringList &kinds, int limit = 10) const;
     // The text of passages by id (for ranking by vectors and for context)
     QList<Hit> chunks(const QList<qint64> &ids) const;
     QList<Hit> docChunks(const QString &kind, const QString &ref, int limit = 200) const; // the beginning of one document

@@ -19,11 +19,27 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, unquote, urlparse
 
 import cloud as cloud_mod
+import forms as forms_mod
 
 cloud_ok = lambda oid: bool(cloud_mod.CLOUD_ID_RE.match(oid))
 
 HERE = os.path.dirname(os.path.abspath(__file__))
+def device_label(ua):
+    """What a download came from, in a few words ("iPhone · Safari"): the same rules as DeviceLabel.h in the app. Only these words
+    are kept, never the address or the User-Agent itself."""
+    ua = (ua or "")[:400]
+    has = lambda *parts: any(p in ua for p in parts)
+    os_name = ("iPhone" if has("iPhone", "iPod") else "iPad" if has("iPad") else "Android" if has("Android") else "ChromeOS" if has("CrOS")
+               else "Windows" if has("Windows") else "Mac" if has("Macintosh", "Mac OS X") else "Linux" if has("Linux", "X11") else "")
+    browser = ("Edge" if has("Edg/", "EdgA/", "EdgiOS/") else "Opera" if has("OPR/", "Opera") else "Firefox" if has("Firefox/", "FxiOS/")
+               else "Chrome" if has("CriOS/", "Chrome/") else "Safari" if has("Safari/") and has("Version/") else "curl" if has("curl/") else "")
+    if os_name and browser:
+        return os_name + " \u00b7 " + browser
+    return os_name or browser or "A device"
+
+
 PAGE = open(os.path.join(HERE, "page.html"), "rb").read()
+FORM_PAGE = open(os.path.join(HERE, "form.html"), "rb").read()
 JOIN_PAGE = open(os.path.join(HERE, "join.html"), "rb").read()
 
 
@@ -276,9 +292,11 @@ class Store:
     def delete(self, sid):
         shutil.rmtree(self.path(sid), ignore_errors=True)
 
+    extra_used = staticmethod(lambda owner=None: 0)  # set to the forms' count of bytes: they take room from the same quota
+
     def used(self, owner=None):
-        """Bytes of live shares: all of them, or only one member's."""
-        total = 0
+        """Bytes of live shares and forms: all of them, or only one member's."""
+        total = self.extra_used(owner)
         for sid in os.listdir(self.cfg.data_dir):
             if not ID_RE.match(sid):
                 continue
@@ -320,8 +338,24 @@ class Store:
         for sid in os.listdir(self.cfg.data_dir):
             if ID_RE.match(sid):
                 self.meta(sid)  # deletes it when expired or used up
+        if getattr(self, "forms", None):
+            self.forms.sweep()
 
-    def reserve(self, sid):
+    def note(self, sid, kind, device):
+        """Remember what happened on a share (the last 20 events, numbered) so the sender's app can say it: "download" or
+        "turned_away", with the device's words and nothing that tells who it was."""
+        with self.lock:
+            m = self.meta(sid)
+            if not m:
+                return
+            n = m.get("event_n", 0) + 1
+            events = m.setdefault("events", [])
+            events.append({"n": n, "kind": kind, "device": device})
+            del events[:-20]
+            m["event_n"] = n
+            self.save_meta(sid, m)
+
+    def reserve(self, sid, device=""):
         """Claim a download just before the last byte range goes out, atomically with the single-use check, so
         two requests racing for a single-use link cannot both win. Give it back with release() if the
         transfer breaks."""
@@ -330,8 +364,32 @@ class Store:
             if not m:
                 return False
             m["downloads"] += 1
+            if device:  # said in the same write: the last download of a limited share ends it, and there is no second look
+                n = m.get("event_n", 0) + 1
+                m.setdefault("events", []).append({"n": n, "kind": "download", "device": device})
+                del m["events"][:-20]
+                m["event_n"] = n
             self.save_meta(sid, m)
             return True
+
+    def admit(self, sid, ip):
+        """A device may start downloading: it is one of the people the sender allowed, or the places are not used up yet
+        (then it takes one). Atomic with the other claims, so two new devices racing for the last place cannot both
+        win. Only a hash of the address is kept, never the address. "ok", "full" (the people are used up) or "gone"
+        (the share ended meanwhile: expired, or a single-use link that someone else just used up)."""
+        with self.lock:
+            m = self.meta(sid)
+            if not m:
+                return "gone"
+            people = m.setdefault("people", [])
+            who = hashlib.sha256((m.get("people_salt", "") + ip).encode()).hexdigest()[:16]
+            if who in people:
+                return "ok"
+            if 0 < m.get("max_people", 0) <= len(people):
+                return "full"
+            people.append(who)
+            self.save_meta(sid, m)
+            return "ok"
 
     def release(self, sid):
         with self.lock:
@@ -489,12 +547,15 @@ class Handler(BaseHTTPRequestHandler):
             free = max(0, min(lim["quota"] - used, c.max_total - self.store.used()))
             info = {"ok": True, "member": member["name"], "max_file": lim["max_file"],
                     "max_ttl": lim["max_ttl"], "free": free,
-                    "owner": member["id"] == OWNER, "limits": lim, "usage": {"used": used, "active": active}}
+                    "owner": member["id"] == OWNER, "limits": lim, "usage": {"used": used, "active": active},
+                    "people_limit": True, "forms": True, "forms_schedule": True, "forms_edit": True, "forms_once": True}  # X-Max-People is understood (an older relay ignores it, and the app says so)
             if self.server.cloud:
                 info["cloud"] = {"on": True, "used": self.server.cloud.used(member["id"]), "quota": lim["cloud_quota"]}
             return self.reply(200, info)
         if path == "/api/v1/cloud" or path.startswith("/api/v1/cloud/"):
             return self.cloud_get(path)
+        if path.startswith("/f/") or path.startswith("/api/v1/forms/"):
+            return self.forms_get(path)
         m = re.match(r"^/api/v1/shares/([^/]+)$", path)
         if m and ID_RE.match(m.group(1)):  # progress check for the sender
             member = self.auth()
@@ -503,8 +564,15 @@ class Handler(BaseHTTPRequestHandler):
             info = self.store.meta(m.group(1))
             if not self.own(member, info):
                 return self.reply(404, {"error": "gone"})
+            try:
+                since = int(parse_qs(urlparse(self.path).query).get("since", ["0"])[0])
+            except ValueError:
+                since = 0
+            seen = info.get("event_n", 0)
+            events = [] if since < 0 else [{"kind": e["kind"], "device": e["device"]} for e in info.get("events", []) if e["n"] > since]
             return self.reply(200, {"downloads": info["downloads"], "max_downloads": info["max_downloads"],
-                                    "expires_at": info["expires_at"]})
+                                    "people": len(info.get("people", [])), "max_people": info.get("max_people", 0),
+                                    "expires_at": info["expires_at"], "events": events, "events_next": seen})
         m = re.match(r"^/s/([^/]+)(/meta|/blob)?$", path)
         if not m or not ID_RE.match(m.group(1)):
             if self.wants_page() and not path.startswith("/api/"):  # a browser: a page, not JSON
@@ -523,11 +591,19 @@ class Handler(BaseHTTPRequestHandler):
             # now: lets the page count down against the server's clock, not the phone's
             return self.reply(200, {"size": info["size"], "pin_required": bool(info["pin_hash"]), "pin_length": info.get("pin_len", 0),
                                     "expires_at": info["expires_at"], "now": int(time.time()),
-                                    "single_use": info["max_downloads"] == 1})
+                                    "single_use": info["max_downloads"] == 1, "max_downloads": info["max_downloads"],
+                                    "max_people": info.get("max_people", 0)})
         if self.store.pin_locked(sid, self.ip()):
             return self.reply(429, {"error": "too many tries"})
         if not self.store.pin_ok(sid, self.ip(), self.headers.get("X-Pin", ""), info):
             return self.reply(403, {"error": "wrong pin"})
+        if self.command != "HEAD":
+            admitted = self.store.admit(sid, self.ip())
+            if admitted == "gone":
+                return self.reply(404, {"error": "expired"})
+            if admitted == "full":
+                self.store.note(sid, "turned_away", device_label(self.headers.get("User-Agent", "")))
+                return self.reply(423, {"error": "people limit", "message": "The sender allowed only a number of people to download this"})
         self.send_blob(sid, info)
 
     do_HEAD = do_GET
@@ -547,7 +623,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(416, b"", extra={"Content-Range": "bytes */%d" % size})
             code = 206
         counted = end == size - 1 and self.command != "HEAD"  # the final range is "a download"
-        if counted and not self.store.reserve(sid):
+        if counted and not self.store.reserve(sid, device_label(self.headers.get("User-Agent", ""))):
             return self.reply(404, {"error": "expired"})
         extra = {"Accept-Ranges": "bytes", "Content-Disposition": "attachment; filename=share.bin"}
         if code == 206:
@@ -594,11 +670,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        if path not in ("/api/v1/shares", "/api/v1/cloud/objects"):  # everything but an upload has a small body: read it before answering, whatever the answer is
+        is_form_post = path == "/api/v1/forms" or re.match(r"^/f/[^/]+/(submit|edit/[0-9a-f]{64})$", path)
+        if path not in ("/api/v1/shares", "/api/v1/cloud/objects") and not is_form_post:  # everything but an upload has a small body: read it before answering, whatever the answer is
             body = self.read_body()
             if body is None:
                 return
             self.body = body
+        if is_form_post:
+            return self.forms_post(path)
         if path == "/api/v1/join":
             return self.join()
         if path == "/api/v1/members" or re.match(r"^/api/v1/members/[^/]+/(invite|limits|disable|enable)$", path):
@@ -614,7 +693,8 @@ class Handler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", ""))
             ttl = min(int(self.headers.get("X-TTL", "3600")), lim["max_ttl"])
-            max_dl = max(0, int(self.headers.get("X-Max-Downloads", "0")))
+            max_dl = min(10_000, max(0, int(self.headers.get("X-Max-Downloads", "0"))))
+            max_people = min(10_000, max(0, int(self.headers.get("X-Max-People", "0"))))
         except ValueError:
             return self.reply(400, {"error": "bad headers"})
         if length <= 0 or ttl <= 0:
@@ -631,11 +711,11 @@ class Handler(BaseHTTPRequestHandler):
                                    limit=lim["quota"], used=used)
             return self.refuse(413, "server_full", "The server is full right now")
         try:
-            self.upload(member, length, ttl, max_dl)
+            self.upload(member, length, ttl, max_dl, max_people)
         finally:
             self.store.unclaim(member["id"], length)  # by now the share is on disk (and counted) or the upload failed
 
-    def upload(self, member, length, ttl, max_dl):
+    def upload(self, member, length, ttl, max_dl, max_people=0):
         pin = self.headers.get("X-Pin", "")
         salt = secrets.token_bytes(16)
         sid = secrets.token_urlsafe(16)
@@ -665,11 +745,232 @@ class Handler(BaseHTTPRequestHandler):
         expires = int(time.time()) + ttl
         self.store.save_meta(sid, {
             "size": length, "expires_at": expires, "max_downloads": max_dl, "downloads": 0, "owner": member["id"],
+            "max_people": max_people, "people": [], "people_salt": secrets.token_hex(8),
             "pin_len": len(pin) if pin.isdigit() and len(pin) <= 12 else 0,  # only how many digits, so the page can draw the boxes
             "pin_salt": salt.hex() if pin else "",
             "pin_hash": hashlib.pbkdf2_hmac("sha256", pin.encode(), salt, 100_000).hex() if pin else "",
         })
         self.reply(201, {"id": sid, "expires_at": expires})
+
+    # ---- forms ----------------------------------------------------------------------------
+    def form_pin_ok(self, fid, m):
+        """True, or answers 429/403 and False."""
+        if self.store.pin_locked(fid, self.ip()):
+            self.reply(429, {"error": "too many tries"})
+            return False
+        if not self.store.pin_ok(fid, self.ip(), self.headers.get("X-Pin", ""), m):
+            self.reply(403, {"error": "wrong pin"})
+            return False
+        return True
+
+    def forms_get(self, path):
+        forms = self.server.forms
+        m = re.match(r"^/f/([^/]+)(/meta|/def)?$", path)
+        if m:
+            fid, part = m.group(1), m.group(2)
+            info = forms.meta(fid)
+            if part is None:
+                if info:
+                    csp = ("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; img-src data:; "
+                           "form-action 'none'; frame-ancestors 'none'")
+                    return self.reply(200, FORM_PAGE, "text/html; charset=utf-8", {"Content-Security-Policy": csp})
+                return self.reply(404, NOT_FOUND_PAGE.replace(b"share", b"form"), "text/html; charset=utf-8", {"Content-Security-Policy": NOTE_CSP})
+            if not info:
+                return self.reply(404, {"error": "expired"})
+            if part == "/meta":
+                return self.reply(200, {"expires_at": info["expires_at"], "now": int(time.time()), "pin_required": bool(info["pin_hash"]), "pin_length": info.get("pin_len", 0),
+                                        "full": info["received"] >= info["max_responses"], "opens_at": info.get("opens_at", 0)})
+            if not self.form_pin_ok(fid, info):
+                return
+            with open(forms.path(fid, "def.blob"), "rb") as f:
+                return self.reply(200, f.read(), "application/octet-stream")
+        m = re.match(r"^/f/([^/]+)/edit/([0-9a-f]{64})$", path)
+        if m:  # the copy of an answer a person may change: whoever has the personal link knows the hash
+            info = forms.meta(m.group(1))
+            if not info or not info.get("allow_edit"):
+                return self.reply(404, {"error": "not_found"})
+            if not self.form_pin_ok(m.group(1), info):
+                return
+            blob = forms.load_edit(m.group(1), m.group(2))
+            return self.reply(200, blob, "application/octet-stream") if blob is not None else self.reply(404, {"error": "not_found"})
+        if path.startswith("/f/"):  # not a page of a form: nothing to say, and nothing to ask a key for
+            return self.reply(404, {"error": "not found"})
+        member = self.auth()
+        if not member:
+            return self.deny()
+        m = re.match(r"^/api/v1/forms/([^/]+)/responses$", path)
+        if m:
+            fid = m.group(1)
+            info = forms.meta(fid)
+            if not self.own(member, info):
+                return self.reply(404, {"error": "gone"})
+            try:
+                after = int(parse_qs(urlparse(self.path).query).get("after", ["0"])[0])
+            except ValueError:
+                after = 0
+            return self.reply(200, {"responses": forms.responses(fid, after), "received": info["received"], "max_responses": info["max_responses"],
+                                    "people": len(info.get("people", [])), "max_people": info.get("max_people", 0), "expires_at": info["expires_at"]})
+        m = re.match(r"^/api/v1/forms/([^/]+)/responses/(\d{1,9})$", path)
+        if m:
+            fid, n = m.group(1), int(m.group(2))
+            if not self.own(member, forms.meta(fid)):
+                return self.reply(404, {"error": "gone"})
+            try:
+                with open(forms.response_path(fid, n), "rb") as f:
+                    return self.reply(200, f.read(), "application/octet-stream")
+            except OSError:
+                return self.reply(404, {"error": "gone"})
+        return self.reply(404, {"error": "not found"})
+
+    def forms_post(self, path):
+        forms = self.server.forms
+        if path == "/api/v1/forms":
+            return self.form_create()
+        edit = re.match(r"^/f/([^/]+)/edit/([0-9a-f]{64})$", path)
+        if edit:  # keeps the sealed copy a person changes their answer from (small; the form must take changes)
+            info = forms.meta(edit.group(1))
+            if not info or not info.get("allow_edit"):
+                return self.refuse(404, "not_found", "This form takes no changes")
+            if not self.form_pin_ok(edit.group(1), info):
+                return self.drain()
+            if not forms.rate_ok(edit.group(1), self.ip()):
+                return self.refuse(429, "rate", "Too many tries from this address. Try again later.")
+            data = self.read_body(forms_mod.MAX_EDIT_BYTES)
+            if data is None:
+                return
+            if not data:
+                return self.reply(400, {"error": "empty"})
+            got = forms.save_edit(edit.group(1), edit.group(2), data)
+            if got != "ok":
+                return self.refuse(409 if got == "full" else 404, got, "The copy could not be kept")
+            return self.reply(200, {"ok": True})
+        fid = re.match(r"^/f/([^/]+)/submit$", path).group(1)
+        info = forms.meta(fid)
+        if not info:
+            return self.refuse(404, "expired", "This form has ended")
+        if not self.form_pin_ok(fid, info):
+            return self.drain()
+        ip = self.ip()
+        if info.get("opens_at", 0) > time.time():  # scheduled: not yet (and nobody takes a place before it opens)
+            return self.refuse(425, "not_open", "This form is not open yet", opens_at=info["opens_at"])
+        replace = self.headers.get("X-Edit-Replace", "")
+        if replace:  # a person changing the answer they sent: not a new person, and it takes no place (the copy kept for them proves it was theirs)
+            if not (re.fullmatch(r"[0-9a-f]{64}", replace) and info.get("allow_edit") and forms.has_edit(fid, replace)):
+                return self.refuse(404, "not_found", "This answer cannot be changed any more")
+            admitted = "ok"
+        else:
+            if forms.has_answered(fid, ip):  # a form that takes one from each device
+                return self.refuse(409, "already", "You already answered this form.")
+            admitted = forms.admit(fid, ip)
+        if admitted != "ok":
+            code = {"full": 423, "closed": 410, "gone": 404}[admitted]
+            return self.refuse(code, "people limit" if admitted == "full" else admitted, "The form cannot take this answer")
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+        except ValueError:
+            return self.refuse(411, "length", "Length required")
+        if length <= 0 or length > info["max_bytes"]:
+            return self.refuse(413, "too_big", "This answer is too big (up to %d MB)" % (info["max_bytes"] // MB))
+        if not forms.rate_ok(fid, ip):
+            return self.refuse(429, "rate", "Too many answers from this address. Try again later.")
+        cfg = self.server.cfg
+        owner = info.get("owner", OWNER)
+        quota = info.get("quota", cfg.max_total)  # the owner's space, as it was when the form was made
+        refused = self.store.claim(owner, length, quota, cfg.max_total, 0)
+        if refused:
+            return self.refuse(413, refused[0], "The server has no room for this answer")
+        staged = os.path.join(self.store.tmp, "f" + secrets.token_hex(8))
+        got = 0
+        try:
+            with open(staged, "wb") as f:
+                while got < length:
+                    chunk = self.rfile.read(min(65536, length - got))
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    got += len(chunk)
+            self.body_left = 0
+            if got != length:
+                raise OSError("short upload")
+            n = forms.add_response(fid, staged, length, device_label(self.headers.get("User-Agent", "")), bool(replace), ip)
+        except OSError:
+            n = None
+            self.close_connection = True
+        finally:
+            self.store.unclaim(owner, length)
+            if os.path.exists(staged):
+                os.remove(staged)
+        if n == "already":
+            return self.reply(409, {"error": "already", "message": "You already answered this form."})
+        if n is None:
+            return self.reply(410, {"error": "closed", "message": "The form is full."})
+        self.reply(201, {"ok": True})
+
+    def drain(self):
+        left = min(self.body_left, 64 * MB)
+        try:
+            while left > 0:
+                chunk = self.rfile.read(min(65536, left))
+                if not chunk:
+                    break
+                left -= len(chunk)
+        except OSError:
+            pass
+        self.close_connection = True
+
+    def form_create(self):
+        forms = self.server.forms
+        member = self.auth()
+        if not member:
+            self.drain()
+            return self.deny()
+        lim = self.server.members.limits(member)
+        try:
+            length = int(self.headers.get("Content-Length", ""))
+            ttl = min(int(self.headers.get("X-TTL", "86400")), lim["max_ttl"])
+            max_responses = int(self.headers.get("X-Max-Responses", "100"))
+            max_people = int(self.headers.get("X-Max-People", "0"))
+            max_bytes = int(self.headers.get("X-Max-Response-Bytes", str(25 * MB)))
+            opens_at = max(0, int(self.headers.get("X-Opens-At", "0")))
+            allow_edit = self.headers.get("X-Allow-Edit", "") == "1"
+            one_answer = self.headers.get("X-One-Answer", "") == "1"
+        except ValueError:
+            self.drain()
+            return self.reply(400, {"error": "bad headers"})
+        if length > forms_mod.MAX_DEF_BYTES:
+            return self.refuse(413, "too_large", "The form is too big")
+        if not (0 < length) or ttl <= 0 or not (1 <= max_responses <= forms_mod.MAX_RESPONSES) or not (0 <= max_people <= forms_mod.MAX_RESPONSES):
+            self.drain()
+            return self.reply(400, {"error": "bad headers"})
+        max_bytes = min(max(1 * MB, max_bytes), lim["max_file"])
+        if forms.count(member["id"]) >= forms_mod.MAX_FORMS_PER_OWNER:
+            return self.refuse(429, "too_many_forms", "You can have %d forms open at once on this server" % forms_mod.MAX_FORMS_PER_OWNER)
+        definition = self.read_body(forms_mod.MAX_DEF_BYTES)
+        if definition is None:
+            return
+        pin = self.headers.get("X-Pin", "")
+        salt = secrets.token_bytes(16)
+        fid, expires = forms.create(member["id"], definition, ttl, max_responses, max_people, max_bytes, lim["quota"], salt.hex() if pin else "",
+                                    hashlib.pbkdf2_hmac("sha256", pin.encode(), salt, 100_000).hex() if pin else "",
+                                    len(pin) if pin.isdigit() and len(pin) <= 12 else 0, opens_at, allow_edit, one_answer)
+        self.reply(201, {"id": fid, "expires_at": expires, "max_bytes": max_bytes})
+
+    def forms_delete(self, path):
+        forms = self.server.forms
+        member = self.auth()
+        if not member:
+            return self.deny()
+        m = re.match(r"^/api/v1/forms/([^/]+)/responses/(\d{1,9})$", path)
+        if m:
+            if self.own(member, forms.meta(m.group(1))):
+                forms.drop_response(m.group(1), int(m.group(2)))
+            return self.reply(200, {"ok": True})
+        m = re.match(r"^/api/v1/forms/([^/]+)$", path)
+        if not m:
+            return self.reply(404, {"error": "not found"})
+        if self.own(member, forms.meta(m.group(1))):
+            forms.delete(m.group(1))
+        self.reply(200, {"ok": True})
 
     def join(self):
         """Trade an invite token for the member's key (shown once)."""
@@ -929,6 +1230,8 @@ class Handler(BaseHTTPRequestHandler):
             return self.members_api("DELETE", urlparse(self.path).path)
         if urlparse(self.path).path.startswith("/api/v1/cloud/objects/"):
             return self.cloud_delete(urlparse(self.path).path)
+        if urlparse(self.path).path.startswith("/api/v1/forms/"):
+            return self.forms_delete(urlparse(self.path).path)
         m = re.match(r"^/api/v1/shares/([^/]+)$", urlparse(self.path).path)
         if not m or not ID_RE.match(m.group(1)):
             return self.reply(404, {"error": "not found"})
@@ -944,6 +1247,8 @@ def make_server(cfg):
     os.makedirs(cfg.data_dir, exist_ok=True)
     srv = ThreadingHTTPServer((cfg.host, cfg.port), Handler)
     srv.cfg, srv.store, srv.members = cfg, Store(cfg), Members(cfg)
+    srv.forms = srv.store.forms = forms_mod.RelayForms(cfg, ID_RE, OWNER)
+    srv.store.extra_used = srv.forms.used
     srv.cloud = None
     if cfg.cloud_on:
         s3 = cloud_mod.S3(cfg.s3_endpoint, cfg.s3_bucket, cfg.s3_access, cfg.s3_secret, cfg.s3_region, cfg.s3_prefix)

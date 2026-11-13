@@ -23,6 +23,7 @@ struct Feature {
     QString id, category, title, note;
     QStringList ids;    // catalog ids, for this system
     bool extra = false; // better quality at a higher price: left out of "recommended"
+    qint64 gpuNeed = 0; // a model for a graphics card: the graphics memory it wants (0: runs anywhere); never part of "Install everything"
 };
 
 // the catalog id of a program that has one build per system ("llama-server" -> "llama-server-linux" | "-windows")
@@ -39,7 +40,8 @@ inline QList<Category> categories()
 {
     return {{QStringLiteral("audio"), QStringLiteral("Audio & recordings"), QStringLiteral("Turning recordings into text, speakers and notes.")},
             {QStringLiteral("documents"), QStringLiteral("Documents & files"), QStringLiteral("Finding and asking about your files.")},
-            {QStringLiteral("pictures"), QStringLiteral("Pictures"), QStringLiteral("Reading and changing pictures.")}};
+            {QStringLiteral("pictures"), QStringLiteral("Pictures"), QStringLiteral("Reading and changing pictures.")},
+            {QStringLiteral("large"), QStringLiteral("Large models (graphics card)"), QStringLiteral("Bigger models for audio and documents. They need a good graphics card; the ones this computer cannot run say why.")}};
 }
 
 inline QList<Feature> features()
@@ -71,7 +73,15 @@ inline QList<Feature> features()
         {QStringLiteral("cutout"), QStringLiteral("pictures"), QStringLiteral("Remove backgrounds"),
          QStringLiteral("Cuts the subject out of a picture (U2-Netp, fast). Right-click a picture → Tools → Remove background, or in Convert."), {QStringLiteral("matting-u2netp"), ort}, false},
         {QStringLiteral("cutout-hq"), QStringLiteral("pictures"), QStringLiteral("Best-quality cut-out"),
-         QStringLiteral("IS-Net: finer edges (hair, fur), slower, about 3 GB of memory. Optional."), {QStringLiteral("matting-isnet"), ort}, true}};
+         QStringLiteral("IS-Net: finer edges (hair, fur), slower, about 3 GB of memory. Optional."), {QStringLiteral("matting-isnet"), ort}, true},
+        {QStringLiteral("speech-max"), QStringLiteral("large"), QStringLiteral("Best speech to text"),
+         QStringLiteral("Whisper Large v3, the most accurate. Choose it under Quality in Audio. Needs about 4 GB of graphics memory."), {QStringLiteral("whisper-large-v3")}, true, Q_INT64_C(4) << 30},
+        {QStringLiteral("notes-large"), QStringLiteral("large"), QStringLiteral("Larger notes model"),
+         QStringLiteral("Qwen3 8B writes the notes of recordings, summaries of documents and answers in Ask better than the standard one. Needs about 7 GB of graphics memory."),
+         {QStringLiteral("qwen3-8b"), llama, platformId(QStringLiteral("gpu-llama"))}, true, Q_INT64_C(7) << 30},
+        {QStringLiteral("notes-xl"), QStringLiteral("large"), QStringLiteral("Largest notes model"),
+         QStringLiteral("Qwen3 14B: the best notes and answers Notch can give. Needs about 11 GB of graphics memory."),
+         {QStringLiteral("qwen3-14b"), llama, platformId(QStringLiteral("gpu-llama"))}, true, Q_INT64_C(11) << 30}};
 }
 
 inline Feature feature(const QString &id)
@@ -91,7 +101,14 @@ inline QStringList featureIds(const QString &category = {}, bool withExtras = tr
     return out;
 }
 inline QStringList recommended() { return featureIds({}, false); }
-inline QStringList everything() { return featureIds({}, true); }
+inline QStringList everything() // not the large models: they are many gigabytes and only for some computers, so each is asked for by itself
+{
+    QStringList out;
+    for (const Feature &f : features())
+        if (f.gpuNeed == 0)
+            out << f.id;
+    return out;
+}
 
 // the catalog ids of some features, each once, in the order they are met
 inline QStringList idsOf(const QStringList &featureList)

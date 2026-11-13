@@ -1,5 +1,6 @@
 #include "app/CloudController.h"
 #include "app/NotchController.h"
+#include "app/FormController.h"
 #include "app/ShareController.h"
 #include "services/Invite.h"
 #include "services/ShareCrypto.h"
@@ -32,6 +33,32 @@ class TestCloud : public QObject
     }
 
 private slots:
+    // The files of a form go to the shelf by themselves: one category named like the form, tidy names, nothing twice; and the report shows the pictures.
+    void formFilesGoToTheShelfInOrder()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        NotchController shelf(dir.path());
+        QVERIFY(shelf.start());
+        ShareController share(&shelf);
+        FormController forms(&shelf, &share);
+        const QString id = forms.debugSample(); // "Team lunch": Budi sent two pictures
+        const int before = shelf.count();
+        QCOMPARE(forms.saveFiles(id, 0), 2);
+        QTRY_COMPARE_WITH_TIMEOUT(shelf.count(), before + 2, 10000);
+        QCOMPARE(forms.saveFiles(id, 0), 0); // already there: not twice
+        bool found = false;
+        for (const QVariant &c : shelf.categories())
+            found = found || c.toMap().value(QStringLiteral("name")).toString() == QLatin1String("Team lunch");
+        QVERIFY(found);
+        // the report: a page of its own, pictures inside it, text kept from being read as markup
+        const QString html = forms.reportHtml(id);
+        QVERIFY(html.contains("data:image/")); // the pictures are inside the page (a JPEG, or a PNG where there is no JPEG writer)
+        QVERIFY(html.contains("Budi") && html.contains("table.png"));
+        QVERIFY(!html.contains("<script"));
+        QVERIFY(html.contains("Content-Security-Policy"));
+    }
+
     void cloudEntriesCanBeSearchedAndSorted()
     {
         CloudModel source;
@@ -168,7 +195,7 @@ private slots:
         QFile shared(sharedPath);
         QVERIFY(shared.open(QIODevice::ReadOnly));
         QCOMPARE(shared.readAll(), QByteArray("secret contents of the plan"));
-        const QString sessionId = share.start({localId}, QStringLiteral("relay"), 3600, QStringLiteral("none"), QString(), false, QString(), memberId);
+        const QString sessionId = share.start({localId}, QStringLiteral("relay"), 3600, QStringLiteral("none"), QString(), 0, 0, QString(), memberId);
         QVERIFY(!sessionId.isEmpty());
         QString link;
         QTRY_VERIFY_WITH_TIMEOUT(

@@ -52,9 +52,10 @@ Item {
         }
     }
 
-    property string tab: audioIntel.firstTab
+    property string tab: audioIntel.firstTab.split("+")[0]   // NOTCH_SHOT_TAB=transcript+translate: for pictures, the translate row open
     property bool showHistory: false
     property bool findOpen: false
+    property bool translateOpen: audioIntel.firstTab.indexOf("+translate") > 0
     property string findText: ""
     property bool styleOpen: false
     property bool confirmDelete: false
@@ -99,7 +100,7 @@ Item {
         follow()
         player.item.playFrom(seconds)
     }
-    function openMeeting(id) { tab = audioIntel.firstTab; confirmDelete = false; findOpen = false; redetect = false; styleOpen = false; audioIntel.open(id) }
+    function openMeeting(id) { tab = audioIntel.firstTab.split("+")[0]; confirmDelete = false; findOpen = false; redetect = false; styleOpen = false; audioIntel.open(id) }
     function closeDetail() { if (player.item) player.item.stop(); audioIntel.close() }
     function removeCurrent() { if (player.item) player.item.stop(); audioIntel.remove(audioIntel.current, true) }
     function openFiles() { fileDialog.open() }

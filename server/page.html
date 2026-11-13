@@ -236,7 +236,7 @@ function nameParts(name) {
 function localBackend() {
   let pin = "", files = DATA.files || [];
   const headers = () => pin ? { "X-Pin": pin } : {};
-  const check = status => { if (status === 403) throw fail("wrong"); if (status === 429) throw fail("locked"); if (status === 404) throw fail("gone"); if (status < 200 || status > 299) throw fail("net"); };
+  const check = status => { if (status === 403) throw fail("wrong"); if (status === 423) throw fail("full"); if (status === 429) throw fail("locked"); if (status === 404) throw fail("gone"); if (status < 200 || status > 299) throw fail("net"); };
   return {
     thumbsOk: true,
     async init() {
@@ -288,6 +288,7 @@ function relayBackend() {
   async function range(a, z, onProgress) { // inclusive byte range of the blob
     const r = await fetch("/s/" + id + "/blob", { headers: { "X-Pin": pin, Range: "bytes=" + a + "-" + z } });
     if (r.status === 403) throw fail("wrong");
+    if (r.status === 423) throw fail("full");
     if (r.status === 429) throw fail("locked");
     if (r.status === 404) throw fail("gone");
     if (r.status !== 206 && r.status !== 200) throw fail("net");
@@ -427,6 +428,7 @@ const ERRORS = {
   decrypt: ["alert", "Could not open the file", "It may be damaged. Try again, or ask the sender to share it again."],
   net: ["alert", "Connection problem", "The file could not be loaded completely. Check your connection and try again."],
   locked: ["lock", "Too many wrong tries", "Wait a few minutes before trying the PIN again."],
+  full: ["lock", "This link is full", "The sender allowed only a number of people to download this, and they have already started. Ask the sender for a new link."],
 };
 function showError(code) {
   const [icon, title, text] = ERRORS[code] || ERRORS.net;
@@ -592,7 +594,7 @@ async function downloadOne(i) {
   try {
     const blob = await getBlob(i, f => progress(i, f));
     save(blob, S.files[i].name); setAct(i, "done");
-  } catch (e) { setAct(i, "error"); if (e.code === "gone") showError("gone"); }
+  } catch (e) { setAct(i, "error"); if (e.code === "gone" || e.code === "full") showError(e.code); }
   S.busy = false; refreshBar();
 }
 
@@ -613,7 +615,7 @@ async function downloadMany(indices) {
     }
     save(makeZip(entries), "Olyzano Notch share.zip");
     for (const i of indices) setAct(i, "done");
-  } catch (e) { if (e.code === "gone") showError("gone"); else { $("hint").hidden = false; $("hint").className = "hint warn"; $("hint").textContent = "Something went wrong. Try again, or download the files one by one."; } }
+  } catch (e) { if (e.code === "gone" || e.code === "full") showError(e.code); else { $("hint").hidden = false; $("hint").className = "hint warn"; $("hint").textContent = "Something went wrong. Try again, or download the files one by one."; } }
   fill.style.width = "0"; S.busy = false; refreshBar();
 }
 
@@ -627,7 +629,7 @@ function renderSolo() {
     try {
       const blob = await getBlob(0, p => { fill.style.width = (p * 100) + "%"; label.textContent = "Downloading… " + Math.round(p * 100) + "%"; });
       save(blob, f.name); label.textContent = "Saved ✓";
-    } catch (e) { fill.style.width = "0"; label.textContent = "Try again"; if (e.code === "gone") return showError("gone"); }
+    } catch (e) { fill.style.width = "0"; label.textContent = "Try again"; if (e.code === "gone" || e.code === "full") return showError(e.code); }
     btn.disabled = false; S.busy = false;
   };
   show(h("div", { class: "solo" }, thumb, h("div", { class: "name" }, h("span", { class: "stem", text: stem }), h("span", { class: "ext", text: ext })),

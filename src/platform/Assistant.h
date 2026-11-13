@@ -82,6 +82,7 @@ public:
     QString transcribeFile(const QString &wavPath);
     double lastConfidence() const { return m_confidence; }
     QString describe(const AssistantModel::Intent &in) const; // what the command would do, in words (no action)
+    QString run(const AssistantModel::Intent &in);             // does it: what was done, in words (the chat page runs what the person approved)
     static QString modelPath(const QString &model);
 
 signals:
@@ -100,7 +101,6 @@ private:
     void listenEnded(bool speech);
     void act(const QString &text, double confidence = 1.0);
     QString vocabulary() const; // names that may come up (installed apps, the sites), for the recognizer
-    QString run(const AssistantModel::Intent &in);
     void checkModel();
     void releaseIdle(); // unload the speech model when it has not been used for a while
     void downloadChunk();

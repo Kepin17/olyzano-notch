@@ -22,6 +22,7 @@
 #include <QStorageInfo>
 #include <QStandardPaths>
 #include <QThread>
+#include "FollowUp.h"
 #include <QtConcurrent>
 
 namespace {
@@ -116,9 +117,43 @@ void AudioController::setThreads(int n)
 
 void AudioController::setQuality(const QString &q)
 {
-    m_settings.setValue(QStringLiteral("quality"), q == QLatin1String("high") ? q : QStringLiteral("standard"));
+    m_settings.setValue(QStringLiteral("quality"), q == QLatin1String("high") || q == QLatin1String("max") ? q : QStringLiteral("standard"));
     emit settingsChanged();
     emit modelsChanged();
+}
+
+Audio::LargeSupport AudioController::largeSupport(const QString &featureId) const
+{
+    Audio::Hardware &hw = Audio::Hardware::instance();
+    if (!hw.detected())
+        (void)hardware(); // starts the search for the card (off this thread) for the next look
+    Gpu::Info info = hw.known();
+    if (hw.detected() && Whisper::gpusBuilt() && Whisper::gpus().isEmpty())
+        info.vulkan = false; // the graphics library found no card to use, whatever the system's files say
+    return Audio::largeModelSupport(info, hw.detected(), Audio::hwSettingOf(hw.setting()), hw.detected() ? hw.bench() : Audio::HwBench{}, Audio::Bundles::feature(featureId).gpuNeed);
+}
+
+QString AudioController::resolveQuality(const QString &q) const
+{
+    if (q != QLatin1String("max"))
+        return q;
+    if (!m_models.path(Audio::WhisperAsr::modelFor(QStringLiteral("max"))).isEmpty() && largeSupport(QStringLiteral("speech-max")).ok)
+        return q;
+    return !m_models.path(Audio::WhisperAsr::modelFor(QStringLiteral("high"))).isEmpty() ? QStringLiteral("high") : QStringLiteral("standard");
+}
+
+QVariantMap AudioController::largeModels() const
+{
+    QVariantMap out;
+    for (const auto &pair : {qMakePair(QStringLiteral("max"), QStringLiteral("speech-max")), qMakePair(QStringLiteral("large"), QStringLiteral("notes-large")), qMakePair(QStringLiteral("xl"), QStringLiteral("notes-xl"))}) {
+        const Audio::Bundles::Feature f = Audio::Bundles::feature(pair.second);
+        bool installed = !f.ids.isEmpty();
+        for (const QString &id : f.ids)
+            installed = installed && m_models.state(id) == QLatin1String("ready");
+        const Audio::LargeSupport s = largeSupport(pair.second);
+        out.insert(pair.first, QVariantMap{{QStringLiteral("installed"), installed}, {QStringLiteral("supported"), s.ok}, {QStringLiteral("reason"), s.reason}});
+    }
+    return out;
 }
 
 void AudioController::setLanguage(const QString &l)
@@ -223,7 +258,7 @@ QVariantMap AudioController::readiness() const
     const bool ffmpeg = !Audio::FfmpegPreprocessor::program().isEmpty();
     if (!Whisper::compiled())
         messages << tr("This build of Notch has no speech recognition.");
-    else if (!(quality() == QLatin1String("high") ? asrHigh : asr))
+    else if (!(resolveQuality(quality()) != QLatin1String("standard") ? !m_models.path(Audio::WhisperAsr::modelFor(resolveQuality(quality()))).isEmpty() : asr))
         messages << tr("Download the speech model to turn recordings into text.");
     if (!m_diar.available())
         messages << tr("Optional: download the speaker model to tell the speakers apart.");
@@ -243,7 +278,7 @@ QVariantList AudioController::knowledgeMeetings() const
     for (const AudioStore::Meeting &m : m_store.meetings())
         if (m.segments > 0)
             out.append(QVariantMap{{QStringLiteral("id"), m.id}, {QStringLiteral("title"), m.title}, {QStringLiteral("created"), m.created.toSecsSinceEpoch()},
-                                   {QStringLiteral("fingerprint"), QStringLiteral("%1|%2|%3").arg(m.segments).arg(m.updated.toSecsSinceEpoch()).arg(m.title)}});
+                                   {QStringLiteral("fingerprint"), QStringLiteral("%1|%2|%3|n%4").arg(m.segments).arg(m.updated.toSecsSinceEpoch()).arg(m.title).arg(qHash(notesText(m.id)))}});
     return out;
 }
 
@@ -254,6 +289,66 @@ QList<Knowledge::Utterance> AudioController::transcriptLines(qlonglong id) const
         if (s.speakerLabel != Audio::Sound::Speaker) // music and noise are not what was said (Ask, search)
             out.append({s.start, s.who(), s.text()});
     return out;
+}
+
+void AudioController::followUp(qlonglong id, const QString &kind)
+{
+    const Audio::Summary s = m_store.summary(id);
+    const AudioStore::Meeting m = m_store.meeting(id);
+    if (kind == QLatin1String("agenda")) {
+        QStringList lines;
+        for (const QString &item : Audio::FollowUp::agendaFromSummary(s, m.language))
+            lines << QStringLiteral("- ") + item;
+        emit followUpReady(id, kind, m.title, lines.join(QLatin1Char('\n')), false);
+        return;
+    }
+    const Audio::FollowUp::Email draft = Audio::FollowUp::emailFromSummary(s, m.title, m.language);
+    emit followUpReady(id, kind, draft.subject, draft.body, false);
+    if (!Audio::LlamaSession::available(&m_models))
+        return;
+    QStringList people = s.participants;
+    for (const Audio::ActionItem &a : s.actions)
+        if (!a.assignee.simplified().isEmpty() && !people.contains(a.assignee.simplified()))
+            people << a.assignee.simplified();
+    ModelStore *store = &m_models;
+    const int threadCount = threads();
+    (void)QtConcurrent::run(&m_pool, [this, id, kind, draft, people, store, threadCount] {
+        Audio::LlamaSession session(store, [threadCount] { return threadCount; });
+        std::atomic_bool noCancel{false};
+        if (!session.start(&noCancel).isEmpty())
+            return;
+        const Audio::ChatFn chat = [&](const QString &sys, const QString &user, const QJsonObject &schema) { return session.chat(sys, user, schema, &noCancel, 1400); };
+        const Audio::FollowUp::Email out = Audio::FollowUp::polishEmail(draft, people, chat);
+        session.stop();
+        if (out.polished)
+            QMetaObject::invokeMethod(this, [this, id, kind, out] { emit followUpReady(id, kind, out.subject, out.body, true); }, Qt::QueuedConnection);
+    });
+}
+
+QString AudioController::notesText(qlonglong id) const
+{
+    const Audio::Summary s = m_store.summary(id);
+    QStringList lines;
+    if (!s.executive.simplified().isEmpty())
+        lines << s.executive.simplified();
+    for (const QString &k : s.keyPoints)
+        lines << k.simplified();
+    for (const Audio::Decision &d : s.decisions)
+        lines << d.description.simplified();
+    for (const Audio::ActionItem &a : s.actions)
+        lines << (a.assignee.isEmpty() ? a.task.simplified() : a.assignee + QStringLiteral(": ") + a.task.simplified());
+    for (const QString &q : s.openQuestions)
+        lines << q.simplified();
+    lines.removeAll(QString());
+    return lines.join(QLatin1Char('\n'));
+}
+
+QList<Audio::Segment> AudioController::segmentsOf(qlonglong id) const
+{
+    QList<Audio::Segment> segments;
+    for (const AudioStore::SegmentRow &r : m_store.segments(id))
+        segments.append({r.start, r.end, r.text(), r.speakerLabel == Audio::Sound::Speaker ? r.speakerLabel : r.who(), r.approx});
+    return segments;
 }
 
 QList<Audio::ActionItem> AudioController::actionItemsOf(qlonglong id) const
@@ -368,7 +463,7 @@ QString AudioController::readinessProblem(const QString &quality) const
 {
     if (!Whisper::compiled())
         return tr("This build of Notch has no speech recognition.");
-    const QString id = Audio::WhisperAsr::modelFor(quality);
+    const QString id = Audio::WhisperAsr::modelFor(resolveQuality(quality));
     if (m_models.path(id).isEmpty())
         return tr("The speech model (%1) is not installed. Download it in Settings → AI.").arg(m_models.item(id).title);
     const qint64 limit = qint64(ramLimitMb()) << 20;
@@ -426,7 +521,7 @@ QVariantMap AudioController::inspect(const QString &pathOrUrl) const
     out.insert(QStringLiteral("durationText"), seconds > 0 ? Audio::clock(seconds) : tr("unknown"));
     out.insert(QStringLiteral("ffmpeg"), !Audio::FfmpegPreprocessor::program().isEmpty());
     out.insert(QStringLiteral("needsFfmpeg"), !nativeWav);
-    const Audio::CatalogItem asr = m_models.item(Audio::WhisperAsr::modelFor(quality()));
+    const Audio::CatalogItem asr = m_models.item(Audio::WhisperAsr::modelFor(resolveQuality(quality())));
     out.insert(QStringLiteral("memoryText"), tr("about %1 of memory while it is transcribed (%2)").arg(QLocale().formattedDataSize(asr.memory), asr.title));
     QString warning;
     if (seconds > MaxSeconds)
@@ -456,7 +551,7 @@ qlonglong AudioController::importFile(const QString &pathOrUrl, const QString &t
     m.audioPath = fi.absoluteFilePath();
     m.duration = qMax(0.0, check.value(QStringLiteral("seconds")).toDouble());
     m.language = LanguageSettings::valid(language);
-    m.quality = quality == QLatin1String("high") ? quality : QStringLiteral("standard");
+    m.quality = quality == QLatin1String("high") || quality == QLatin1String("max") ? quality : QStringLiteral("standard");
     m.tmpl = Audio::templateId(Audio::templateFrom(tmplId));
     m.source = QStringLiteral("import");
     m.speakersHint = qBound(0, speakers, 8);
@@ -609,6 +704,8 @@ QString AudioController::suggestedFileName(const QString &format) const
     title.replace(QRegularExpression(QStringLiteral("[\\\\/:*?\"<>|]")), QStringLiteral("_"));
     return (title.simplified().isEmpty() ? QStringLiteral("transcript") : title.simplified()) + u'.' + Audio::Export::extension(Audio::Export::formatOf(format));
 }
+
+QString AudioController::saveText(const QString &text, const QString &target) const { return text.trimmed().isEmpty() ? tr("There is nothing to save") : writeTextFile(text, target); }
 
 QString AudioController::exportTranscript(const QString &format, bool sounds, const QString &target) const
 {
@@ -777,7 +874,8 @@ QVariantList AudioController::aiFeatures() const
                                {QStringLiteral("extra"), f.extra}, {QStringLiteral("state"), state}, {QStringLiteral("ready"), state == QLatin1String("ready")},
                                {QStringLiteral("progress"), total > 0 ? done / double(total) : 0.0}, {QStringLiteral("sizeText"), QLocale().formattedDataSize(total)},
                                {QStringLiteral("leftText"), QLocale().formattedDataSize(left)}, {QStringLiteral("left"), left}, {QStringLiteral("diskText"), QLocale().formattedDataSize(have)},
-                               {QStringLiteral("error"), error}, {QStringLiteral("count"), int(f.ids.size())}});
+                               {QStringLiteral("error"), error}, {QStringLiteral("count"), int(f.ids.size())}, {QStringLiteral("gpu"), f.gpuNeed > 0},
+                               {QStringLiteral("supported"), f.gpuNeed == 0 || largeSupport(f.id).ok}, {QStringLiteral("unsupportedReason"), f.gpuNeed > 0 ? largeSupport(f.id).reason : QString()}});
     }
     return out;
 }
@@ -840,7 +938,11 @@ QVariantMap AudioController::aiSummary() const
 void AudioController::installFeatures(const QStringList &featureIds)
 {
     m_installMessage.clear();
-    const QStringList ids = Audio::Bundles::missing(Audio::Bundles::idsOf(featureIds), [this](const QString &id) { return m_models.state(id) == QLatin1String("ready"); });
+    QStringList usable; // a large model this computer cannot run is not downloaded: its row says why
+    for (const QString &fid : featureIds)
+        if (Audio::Bundles::feature(fid).gpuNeed == 0 || largeSupport(fid).ok)
+            usable << fid;
+    const QStringList ids = Audio::Bundles::missing(Audio::Bundles::idsOf(usable), [this](const QString &id) { return m_models.state(id) == QLatin1String("ready"); });
     if (ids.isEmpty()) {
         emit modelsChanged();
         return;
@@ -995,7 +1097,7 @@ void AudioController::start(qlonglong id, bool notesOnly, bool summarize)
 
     Audio::PipelineOptions opt;
     opt.language = m.language.isEmpty() ? QStringLiteral("auto") : m.language;
-    opt.quality = m.quality;
+    opt.quality = resolveQuality(m.quality);
     opt.tmpl = Audio::templateFrom(m.tmpl);
     opt.stereo = m.stereo;
     opt.youLabel = tr("You");

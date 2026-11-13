@@ -13,15 +13,6 @@
 #include <QUuid>
 #include <QtConcurrent>
 
-QNetworkRequest RelayAccess::request(const QString &path) const
-{
-    QUrl url = base;
-    url.setPath(url.path() + path);
-    QNetworkRequest req(url);
-    req.setRawHeader("Authorization", "Bearer " + apiKey);
-    req.setTransferTimeout(120000);
-    return req;
-}
 
 static QString networkError(QNetworkReply *reply)
 {
@@ -53,8 +44,14 @@ ShareSession::ShareSession(QNetworkAccessManager *nam, const RelayAccess &relay,
     connect(&m_expire, &QTimer::timeout, this, [this] { end(QStringLiteral("expired")); });
     m_poll.setInterval(4000);
     connect(&m_poll, &QTimer::timeout, this, &ShareSession::poll);
-    connect(&m_server, &ShareServer::fileDownloaded, this, [this] {
-        ++m_downloads;
+    connect(&m_server, &ShareServer::downloaded, this, [this](int total, const QString &device) { // the whole share, by one more device
+        m_downloads = total;
+        emit activity(QStringLiteral("download"), device, takenWhat());
+        emit changed();
+    });
+    connect(&m_server, &ShareServer::turnedAway, this, [this](const QString &device) { emit activity(QStringLiteral("turned_away"), device, m_name); });
+    connect(&m_server, &ShareServer::peopleChanged, this, [this](int n) {
+        m_people = n;
         emit changed();
     });
     connect(&m_server, &ShareServer::finished, this, [this](const QString &reason) {
@@ -105,10 +102,14 @@ void ShareSession::clean()
     m_workDir.clear();
 }
 
+QString ShareSession::takenWhat() const { return m_fileCount > 1 ? tr("all %1 files").arg(m_fileCount) : m_name; }
+
 void ShareSession::end(const QString &reason)
 {
     if (!active())
         return;
+    if (reason == QLatin1String("downloaded") && m_maxDownloads > 0)
+        emit activity(QStringLiteral("limit"), QString(), m_name);
     if (m_mode == QLatin1String("relay") && !m_relayId.isEmpty() && reason == QLatin1String("stopped")) {
         QNetworkReply *r = m_nam->deleteResource(m_relay.request(QStringLiteral("/api/v1/shares/") + m_relayId));
         connect(r, &QNetworkReply::finished, r, &QObject::deleteLater);
@@ -144,7 +145,9 @@ void ShareSession::begin(const QList<NotchController::ShareSource> &sources, con
     m_fileCount = sources.size();
     m_ttl = qBound(60, o.ttl, 7 * 86400);
     m_name = sources.size() == 1 ? sources.first().name : tr("%1 files").arg(sources.size());
-    m_singleUse = o.oneDownload && sources.size() == 1;
+    m_maxDownloads = qBound(0, o.maxDownloads, 10000);
+    m_maxPeople = qBound(0, o.maxPeople, 10000);
+    m_singleUse = m_maxDownloads == 1; // a preview must not use up the one download
     m_status = QStringLiteral("preparing");
     emit changed();
     if (sources.isEmpty())
@@ -155,6 +158,8 @@ void ShareSession::begin(const QList<NotchController::ShareSource> &sources, con
         return fail(why);
     if (m_mode == QLatin1String("relay") && !m_relay.valid())
         return fail(tr("Set up your server first (Settings → Sharing)"));
+    if (m_mode == QLatin1String("relay") && m_maxPeople > 0 && !o.relayPeopleLimit)
+        return fail(tr("Your server needs an update to limit the number of people (see server/README.md). Choose no limit on people, or update it."));
     m_bindAddress = o.address;
     if (m_mode == QLatin1String("local") && m_bindAddress.isNull())
         return fail(tr("No network connection found. Connect to WiFi first"));
@@ -212,7 +217,7 @@ ShareSession::Prepared ShareSession::prepare(const QList<NotchController::ShareS
 
 void ShareSession::onPrepared(const Prepared &p)
 {
-    const QString why = m_server.start(m_bindAddress, p.entries, m_ttl, m_protection, m_secret);
+    const QString why = m_server.start(m_bindAddress, p.entries, m_ttl, m_protection, m_secret, m_maxDownloads, m_maxPeople);
     if (!why.isEmpty())
         return fail(why);
     m_link = m_server.url().toString();
@@ -231,7 +236,8 @@ void ShareSession::upload(const Prepared &p)
     QNetworkRequest req = m_relay.request(QStringLiteral("/api/v1/shares"));
     req.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/octet-stream"));
     req.setRawHeader("X-TTL", QByteArray::number(m_ttl));
-    req.setRawHeader("X-Max-Downloads", m_singleUse ? "1" : "0");
+    req.setRawHeader("X-Max-Downloads", QByteArray::number(m_maxDownloads));
+    req.setRawHeader("X-Max-People", QByteArray::number(m_maxPeople));
     if (m_protection == QLatin1String("pin"))
         req.setRawHeader("X-Pin", m_secret.toUtf8());
     m_progress = 0;
@@ -289,21 +295,36 @@ void ShareSession::poll()
     if (m_status != QLatin1String("ready") || m_relayId.isEmpty())
         return;
     const int gen = m_generation;
-    QNetworkReply *reply = m_nam->get(m_relay.request(QStringLiteral("/api/v1/shares/") + m_relayId));
+    QNetworkReply *reply = m_nam->get(m_relay.request(QStringLiteral("/api/v1/shares/") + m_relayId + QStringLiteral("?since=") + QString::number(m_eventSeen)));
     connect(reply, &QNetworkReply::finished, this, [this, reply, gen] {
         reply->deleteLater();
         if (gen != m_generation || m_status != QLatin1String("ready"))
             return;
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (status == 200) {
-            const int n = QJsonDocument::fromJson(reply->readAll()).object().value(QStringLiteral("downloads")).toInt();
-            if (n != m_downloads) {
+            const QJsonObject o = QJsonDocument::fromJson(reply->readAll()).object();
+            const int n = o.value(QStringLiteral("downloads")).toInt(), people = o.value(QStringLiteral("people")).toInt();
+            if (n != m_downloads || people != m_people) {
                 m_downloads = n;
+                m_people = people;
                 emit changed();
             }
+            // what happened since the last look (a relay that does not say has no events): once each, never again after a restart
+            if (o.contains(QStringLiteral("events_next"))) {
+                const bool first = m_eventSeen < 0;
+                for (const QJsonValue &v : o.value(QStringLiteral("events")).toArray()) {
+                    const QJsonObject e = v.toObject();
+                    if (!first)
+                        emit activity(e.value(QStringLiteral("kind")).toString(), e.value(QStringLiteral("device")).toString(), takenWhat());
+                }
+                m_eventSeen = o.value(QStringLiteral("events_next")).toInt();
+            }
         } else if (status == 404) {
-            end(m_singleUse && QDateTime::currentSecsSinceEpoch() < m_expiresAt ? QStringLiteral("downloaded")
-                                                                                   : QStringLiteral("expired"));
+            // gone before its time with a limit on downloads: they were used up (the last one may have come between two polls)
+            const bool used = m_maxDownloads > 0 && QDateTime::currentSecsSinceEpoch() < m_expiresAt;
+            if (used)
+                m_downloads = m_maxDownloads;
+            end(used ? QStringLiteral("downloaded") : QStringLiteral("expired"));
         }
     });
 }
@@ -317,6 +338,10 @@ QJsonObject ShareSession::toJson() const
             {QStringLiteral("relayId"), m_relayId},
             {QStringLiteral("expiresAt"), double(m_expiresAt)},
             {QStringLiteral("singleUse"), m_singleUse},
+            {QStringLiteral("maxDownloads"), m_maxDownloads},
+            {QStringLiteral("maxPeople"), m_maxPeople},
+            {QStringLiteral("people"), m_people},
+            {QStringLiteral("eventSeen"), m_eventSeen},
             {QStringLiteral("protection"), m_protection},
             {QStringLiteral("serverId"), m_relay.id},
             {QStringLiteral("downloads"), m_downloads}};
@@ -335,7 +360,11 @@ ShareSession *ShareSession::fromJson(const QJsonObject &o, QNetworkAccessManager
     s->m_link = o.value(QStringLiteral("url")).toString();
     s->m_relayId = o.value(QStringLiteral("relayId")).toString();
     s->m_expiresAt = expires;
-    s->m_singleUse = o.value(QStringLiteral("singleUse")).toBool();
+    s->m_maxDownloads = o.value(QStringLiteral("maxDownloads")).toInt(o.value(QStringLiteral("singleUse")).toBool() ? 1 : 0); // an older file only knows single use
+    s->m_maxPeople = o.value(QStringLiteral("maxPeople")).toInt();
+    s->m_people = o.value(QStringLiteral("people")).toInt();
+    s->m_eventSeen = o.value(QStringLiteral("eventSeen")).toInt(-1);
+    s->m_singleUse = s->m_maxDownloads == 1;
     s->m_protection = o.value(QStringLiteral("protection")).toString();
     s->m_downloads = o.value(QStringLiteral("downloads")).toInt();
     s->m_status = QStringLiteral("ready");

@@ -1,0 +1,860 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Form</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #ffffff; --surface: #f5f6f8; --hover: #f0f1f4; --line: #e3e5e9; --line-strong: #cfd3d9; --fg: #111418; --dim: #5c6370;
+    --accent: #1a6df0; --accent-soft: rgba(26, 109, 240, .10); --on-accent: #ffffff; --ok: #1d8a45; --danger: #d92b20; --danger-soft: rgba(217, 43, 32, .08);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1114; --surface: #171a1f; --hover: #1c2026; --line: #262a31; --line-strong: #363b44; --fg: #ecedef; --dim: #9aa0aa;
+      --accent: #5b9dff; --accent-soft: rgba(91, 157, 255, .14); --on-accent: #0b1220; --ok: #4cc272; --danger: #ff6b61; --danger-soft: rgba(255, 107, 97, .10);
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { background: var(--bg); }
+  body { margin: 0; min-height: 100vh; min-height: 100dvh; background: var(--bg); color: var(--fg);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; -webkit-font-smoothing: antialiased; }
+  .app { max-width: 600px; margin: 0 auto; min-height: 100dvh; display: flex; flex-direction: column; padding: 0 20px; }
+  [hidden] { display: none !important; }
+  button, input, textarea { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  svg.i { width: 18px; height: 18px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+  header { padding: calc(env(safe-area-inset-top) + 20px) 0 0; }
+  .brand { display: flex; align-items: center; gap: 8px; padding-bottom: 16px; margin-bottom: 28px; border-bottom: 1px solid var(--line); font-size: 14px; font-weight: 600; }
+  .brand svg { width: 20px; height: 20px; color: var(--accent); }
+  main { flex: 1; padding-bottom: 28px; }
+  footer { padding: 18px 0 calc(env(safe-area-inset-bottom) + 24px); color: var(--dim); font-size: 12.5px; text-align: center; }
+
+  /* ---- the form ---- */
+  h1 { margin: 0; font-size: 26px; line-height: 1.2; font-weight: 650; letter-spacing: -.015em; overflow-wrap: anywhere; }
+  .lead { margin: 10px 0 0; color: var(--dim); font-size: 15px; white-space: pre-line; overflow-wrap: anywhere; }
+  .note { margin: 22px 0 0; padding-top: 14px; border-top: 1px solid var(--line); font-size: 13px; color: var(--dim); }
+  .note b { color: var(--danger); font-weight: 600; }
+  form { margin: 0; }
+  .q { margin-top: 26px; }
+  .q > label, .q > .lab { display: block; font-size: 14.5px; font-weight: 600; margin: 0 0 3px; overflow-wrap: anywhere; }
+  .q .req { color: var(--danger); margin-left: 3px; font-weight: 600; }
+  .q .hint { margin: 0 0 9px; font-size: 13px; color: var(--dim); overflow-wrap: anywhere; }
+  .q:not(:has(.hint)) > label, .q:not(:has(.hint)) > .lab { margin-bottom: 9px; }
+
+  .text { width: 100%; min-height: 44px; padding: 10px 13px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--bg); color: var(--fg); transition: border-color .12s, box-shadow .12s; }
+  textarea.text { min-height: 124px; resize: vertical; line-height: 1.5; }
+  .text:hover { border-color: var(--dim); }
+  .text:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+  .text::placeholder { color: var(--dim); opacity: .7; }
+  input[type=date].text { min-height: 44px; }
+
+  /* choices: one bordered list, like the files of a share */
+  .opts { border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; background: var(--bg); }
+  .pts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pts .pt { min-width: 44px; height: 44px; padding: 0 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--fg); font: inherit; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; transition: background .12s, border-color .12s; }
+  .pts .pt:hover { border-color: var(--accent); }
+  .pts .pt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .pts.stars .pt { border: 0; background: transparent; min-width: 40px; padding: 0; color: var(--dim); }
+  .pts.stars .pt svg { width: 30px; height: 30px; }
+  .pts.stars .pt.on { color: var(--accent); }
+  .pts.stars .pt.on svg path { fill: currentColor; }
+  .pts.nums .pt.on { background: var(--accent); border-color: var(--accent); color: var(--on-accent, #fff); }
+  .ends { display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; font-size: 12.5px; color: var(--dim); }
+  .padwrap { position: relative; border: 1px solid var(--line); border-radius: 12px; background: #fff; overflow: hidden; }
+  .padwrap canvas { display: block; width: 100%; height: 170px; touch-action: none; cursor: crosshair; }
+  .padwrap .hintline { position: absolute; left: 16px; right: 16px; bottom: 34px; border-bottom: 1px dashed #b8bfcc; pointer-events: none; }
+  .padwrap .hintline span { position: absolute; left: 0; bottom: 4px; color: #9aa3b5; font-size: 13px; }
+  .padtools { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; }
+  .opt.full { opacity: .5; cursor: not-allowed; }
+  .opt.full .tag { margin-left: auto; font-size: 12px; color: var(--dim); }
+  .opt { display: flex; align-items: center; gap: 12px; min-height: 46px; padding: 8px 14px; border-top: 1px solid var(--line); cursor: pointer; transition: background .12s; overflow-wrap: anywhere; }
+  .opt:first-child { border-top: 0; }
+  .opt:hover { background: var(--hover); }
+  .opt:has(input:checked) { background: var(--accent-soft); }
+  .opt input { position: absolute; opacity: 0; pointer-events: none; }
+  .mark { position: relative; flex: none; width: 18px; height: 18px; border: 1.5px solid var(--dim); background: var(--bg); transition: background .12s, border-color .12s; }
+  .mark.radio { border-radius: 50%; }
+  .mark.check { border-radius: 5px; }
+  .opt input:checked + .mark { border-color: var(--accent); background: var(--accent); }
+  .mark.radio::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: var(--on-accent); opacity: 0; }
+  .opt input:checked + .mark.radio::after { opacity: 1; }
+  .mark.check svg { position: absolute; inset: 1px; width: 13px; height: 13px; stroke: var(--on-accent); stroke-width: 3; opacity: 0; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+  .opt input:checked + .mark.check svg { opacity: 1; }
+  .opt input:focus-visible + .mark { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* files */
+  .drop { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border: 1.5px dashed var(--line-strong); border-radius: 10px; background: var(--surface); transition: border-color .12s, background .12s; }
+  .drop.over { border-color: var(--accent); background: var(--accent-soft); }
+  .drop svg.i { width: 22px; height: 22px; color: var(--dim); }
+  .drop .t { flex: 1; min-width: 0; font-size: 14px; }
+  .drop .t small { display: block; color: var(--dim); font-size: 13px; }
+  .files { margin: 10px 0 0; padding: 0; list-style: none; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .files:empty { display: none; }
+  .file { position: relative; display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 12px; padding: 9px 8px 9px 14px; border-top: 1px solid var(--line); }
+  .file:first-child { border-top: 0; }
+  .file svg.i { color: var(--dim); }
+  .file .nm { display: flex; min-width: 0; font-size: 14px; }
+  .file .stem { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+  .file .ext { flex: none; color: var(--dim); }
+  .file .sz { color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .file .bar { position: absolute; left: 0; bottom: 0; height: 2px; width: 0; background: var(--accent); transition: width .15s; }
+  .file .done { color: var(--ok); }
+  .x { width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent; color: var(--dim); display: grid; place-items: center; cursor: pointer; transition: background .12s, color .12s; }
+  .x:hover { background: var(--surface); color: var(--fg); }
+
+  /* errors */
+  .err { display: flex; align-items: flex-start; gap: 7px; margin-top: 8px; color: var(--danger); font-size: 13px; }
+  .err svg.i { width: 15px; height: 15px; margin-top: 2px; }
+  .q.bad .text, .q.bad .opts, .q.bad .drop { border-color: var(--danger); }
+  .q.bad .text:focus { box-shadow: 0 0 0 3px var(--danger-soft); }
+
+  /* slides: the progress above, the section's heading, the pager below */
+  .steps { margin: 0 0 22px; }
+  .steps .row { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: var(--dim); font-variant-numeric: tabular-nums; margin-bottom: 8px; }
+  .steps .track { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+  .steps .track > i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 2px; transition: width .25s; }
+  .slide { outline: 0; }
+  .slide > header.sec { margin: 0 0 4px; }
+  .sec h2 { margin: 0; font-size: 19px; line-height: 1.3; font-weight: 650; overflow-wrap: anywhere; }
+  .sec p { margin: 6px 0 0; color: var(--dim); font-size: 14.5px; white-space: pre-line; overflow-wrap: anywhere; }
+  .kicker { margin: 0 0 6px; font-size: 12.5px; font-weight: 600; letter-spacing: .02em; text-transform: uppercase; color: var(--accent); }
+  .inline-sec { margin-top: 34px; padding-top: 16px; border-top: 1px solid var(--line); }
+  .slides-one .q { margin-top: 8px; }
+  .slides-one .q > label, .slides-one .q > .lab { font-size: 18px; line-height: 1.35; }
+
+  /* the bar with the buttons: under the form, and fixed at the bottom on a phone */
+  .send { margin-top: 32px; padding-top: 18px; border-top: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+  .send p { margin: 0; color: var(--dim); font-size: 13px; }
+  .send .pager { display: flex; gap: 10px; margin-left: auto; }
+  .btn { position: relative; overflow: hidden; min-height: 44px; padding: 0 26px; border-radius: 8px; border: 1px solid var(--accent); background: var(--accent); color: var(--on-accent);
+         font-weight: 600; font-size: 15px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; white-space: nowrap; transition: filter .12s; }
+  .btn:hover { filter: brightness(1.08); }
+  .btn:disabled { opacity: .7; cursor: default; filter: none; }
+  .btn.ghost { background: transparent; color: var(--fg); border-color: var(--line-strong); }
+  .btn.ghost:hover { background: var(--surface); filter: none; }
+  .btn.small { min-height: 36px; padding: 0 14px; font-size: 14px; }
+  .btn .fill { position: absolute; inset: 0 auto 0 0; width: 0; background: rgba(255, 255, 255, .26); transition: width .2s; }
+  .btn > span { position: relative; }
+  .fail { margin-top: 12px; padding: 10px 12px; border-radius: 8px; background: var(--danger-soft); color: var(--danger); font-size: 13.5px; }
+  @media (max-width: 599px) {
+    .send { position: sticky; bottom: 0; margin: 28px -20px 0; padding: 12px 20px calc(env(safe-area-inset-bottom) + 12px); background: var(--bg); }
+    .send p { display: none; }
+    .send .pager { flex: 1; }
+    .send .btn { flex: 1; }
+  }
+  .card .when { margin-top: 6px; font-weight: 600; color: var(--fg); font-size: 16px; font-variant-numeric: tabular-nums; }
+  .mine { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--line); text-align: left; }
+  .mine .dim { margin: 0 0 8px; color: var(--dim); font-size: 13px; }
+  .linkrow { display: flex; gap: 8px; margin-bottom: 10px; }
+  .linkrow input { flex: 1; min-width: 0; font-size: 12px; }
+  .card .link { margin-top: 16px; text-decoration: none; }
+
+  /* ---- states ---- */
+  .card { border: 1px solid var(--line); border-radius: 10px; padding: 40px 24px 30px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  .card h2 { margin: 6px 0 0; font-size: 19px; font-weight: 650; }
+  .card p { margin: 0; color: var(--dim); font-size: 14.5px; max-width: 40ch; }
+  .card .badge { width: 44px; height: 44px; border-radius: 50%; background: var(--surface); color: var(--dim); display: grid; place-items: center; }
+  .card .badge svg.i { width: 24px; height: 24px; }
+  .card .badge.ok { color: var(--ok); background: color-mix(in srgb, var(--ok) 12%, transparent); }
+  .card .btn { margin-top: 14px; }
+  .pin { width: 100%; max-width: 240px; min-height: 48px; margin-top: 12px; text-align: center; font-size: 20px; letter-spacing: .3em; }
+  .pin::placeholder { letter-spacing: normal; font-size: 15px; }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5V14a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 14z"/><path d="M9.5 4v.5a2.5 2.5 0 0 0 5 0V4"/><path d="M8 20h8"/></svg><span>Olyzano Notch</span></div>
+  </header>
+  <main id="app" aria-live="polite"></main>
+  <footer>Shared with Olyzano Notch</footer>
+</div>
+<script id="form-data" type="application/json">null</script>
+<script>
+"use strict";
+/* The page of a form (see src/services/FormServer.h). It shows the questions, sends each file on its own (PUT up), then the answers (POST submit).
+   Whatever comes from the form, the visitor or the server goes in as text, never as HTML. */
+const DATA = JSON.parse(document.getElementById("form-data").textContent) || {};
+const app = document.getElementById("app");
+const SVG = "http://www.w3.org/2000/svg";
+const ICONS = {
+  upload: '<path d="M12 15.5V4.5M7.5 9l4.5-4.5L16.5 9M5 19.5h14"/>',
+  file: '<path d="M7 3.5h7l4 4V20a.5.5 0 0 1-.5.5h-10.5a.5.5 0 0 1-.5-.5V4a.5.5 0 0 1 .5-.5z"/><path d="M14 3.5V8h4"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  clock: '<circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/>',
+  lock: '<rect x="5" y="11" width="14" height="9" rx="1.5"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
+  star: '<path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9 6.8 19.7l1-5.9L3.5 9.7l5.9-.8z"/>',
+  alert: '<path d="M12 4l9 15.5H3z"/><path d="M12 10v4.5M12 17.2v.01"/>',
+  close: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+  wifi: '<path d="M4.5 9.5a11 11 0 0 1 15 0M7.5 12.8a6.8 6.8 0 0 1 9 0M10.4 16a2.6 2.6 0 0 1 3.2 0M12 19.2v.01"/>',
+};
+const icon = (name, cls) => { // the paths above are fixed text of this page: they are parsed as SVG, nothing else is
+  const doc = new DOMParser().parseFromString('<svg xmlns="' + SVG + '" viewBox="0 0 24 24">' + ICONS[name] + "</svg>", "image/svg+xml");
+  const s = document.importNode(doc.documentElement, true);
+  s.setAttribute("class", "i" + (cls ? " " + cls : ""));
+  s.setAttribute("aria-hidden", "true");
+  return s;
+};
+const el = (tag, props, ...kids) => {
+  const n = document.createElement(tag);
+  for (const k in (props || {})) {
+    if (k === "text") n.textContent = props[k];
+    else if (k === "class") n.className = props[k];
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), props[k]);
+    else if (props[k] !== undefined && props[k] !== false) n.setAttribute(k, props[k] === true ? "" : props[k]);
+  }
+  for (const kid of kids.flat()) if (kid != null) n.append(kid);
+  return n;
+};
+const show = (...kids) => { app.replaceChildren(...kids); window.scrollTo(0, 0); };
+const MAX = { short: 300, long: 5000 };
+let pin = "";
+
+const isRelay = location.pathname.startsWith("/f/");
+let AVAIL = {}; // the choices that have taken all they may: {question id: [choices]} (this WiFi only: through a server the answers are sealed and not counted)
+/* ---------- the local backend: plain requests to this address ---------- */
+const localBackend = {
+  headers() { return pin ? { "X-Pin": pin } : {}; },
+  async loadForm() {
+    const r = await fetch("def", { headers: this.headers() });
+    if (r.status === 403) throw Object.assign(new Error("wrong"), { code: "wrong" });
+    if (r.status === 429) throw Object.assign(new Error("locked"), { code: "locked" });
+    if (!r.ok) throw Object.assign(new Error("gone"), { code: "gone" });
+    return (await r.json()).form;
+  },
+  upload(file, field, onProgress) {
+    return new Promise((resolve, reject) => {
+      const x = new XMLHttpRequest();
+      x.open("PUT", "up?field=" + encodeURIComponent(field) + "&name=" + encodeURIComponent(file.name) + (editCtx && editCtx.replace ? "&replace=1&e=" + editCtx.id : ""));
+      for (const [k, v] of Object.entries(this.headers())) x.setRequestHeader(k, v);
+      x.upload.onprogress = e => { if (e.lengthComputable) onProgress(e.loaded, e.total); };
+      x.onload = () => {
+        let body = {};
+        try { body = JSON.parse(x.responseText); } catch (e) { /* not JSON */ }
+        if (x.status === 200 && body.id) return resolve(body.id);
+        reject(Object.assign(new Error(body.message || "The file could not be sent."), { code: x.status === 425 ? "early" : x.status === 409 ? "already" : x.status === 423 ? "full" : x.status === 404 ? "gone" : "send" }));
+      };
+      x.onerror = () => reject(Object.assign(new Error("The connection broke. Check your WiFi and try again."), { code: "net" }));
+      x.send(file);
+    });
+  },
+  async mine(id) { // the answer of a personal link
+    const r = await fetch("mine?e=" + encodeURIComponent(id), { headers: this.headers(), cache: "no-store" });
+    if (!r.ok) throw Object.assign(new Error("gone"), { code: "gone" });
+    return (await r.json()).answers;
+  },
+  async submit(answers, uploads, kept, onProgress) {
+    const r = await fetch("submit" + (editCtx && editCtx.replace ? "?replace=1&e=" + editCtx.id : ""), { method: "POST", headers: Object.assign({ "Content-Type": "application/json" }, this.headers()), body: JSON.stringify({ answers, uploads, edit: editCtx ? editCtx.id : undefined }) });
+    let body = {};
+    try { body = await r.json(); } catch (e) { /* not JSON */ }
+    if (r.status === 201 || r.status === 200) return body;
+    if (r.status === 409 && body.error === "option_full") throw Object.assign(new Error(body.message || "That choice is full."), { code: "option_full", field: body.field, option: body.option });
+    throw Object.assign(new Error(body.message || "The answer could not be sent."), { code: r.status === 425 ? "early" : r.status === 409 ? "already" : r.status === 423 ? "full" : r.status === 410 ? "closed" : r.status === 404 ? "gone" : "send" });
+  },
+};
+
+/* ---------- the relay backend: the key is in the link after the #, the server only ever holds sealed bytes (see src/services/ShareCrypto.h) ---------- */
+const relayBackend = (() => {
+  const id = location.pathname.split("/")[2];
+  const enc = new TextEncoder();
+  const be32 = n => new Uint8Array([n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255]);
+  const CHUNK = 1 << 20;
+  let key = null, meta = null;
+  const held = new Map(); // id -> {file, field}: files wait here until the answer is sealed
+  let counter = 0;
+  const b64 = t => { t = t.replace(/-/g, "+").replace(/_/g, "/"); while (t.length % 4) t += "="; return Uint8Array.from(atob(t), c => c.charCodeAt(0)); };
+  const api = { id,
+    headers() { return pin ? { "X-Pin": pin } : {}; },
+    async init() {
+      let raw = null;
+      try { raw = b64(location.hash.slice(1).split(".")[0]); } catch (e) { /* not a key */ }
+      if (!raw || raw.length !== 32) throw Object.assign(new Error("nokey"), { code: "nokey" });
+      key = await crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+      const r = await fetch("/f/" + id + "/meta");
+      if (!r.ok) throw Object.assign(new Error("gone"), { code: "gone" });
+      meta = await r.json();
+      if (meta.full) throw Object.assign(new Error("closed"), { code: "closed" });
+      return meta;
+    },
+    async loadForm() {
+      const r = await fetch("/f/" + id + "/def", { headers: this.headers() });
+      if (r.status === 403) throw Object.assign(new Error("wrong"), { code: "wrong" });
+      if (r.status === 429) throw Object.assign(new Error("locked"), { code: "locked" });
+      if (!r.ok) throw Object.assign(new Error("gone"), { code: "gone" });
+      const sealed = new Uint8Array(await r.arrayBuffer());
+      try {
+        const plain = await crypto.subtle.decrypt({ name: "AES-GCM", iv: sealed.slice(0, 12), additionalData: enc.encode("notch-blob") }, key, sealed.slice(12));
+        return JSON.parse(new TextDecoder().decode(plain)).form;
+      } catch (e) { throw Object.assign(new Error("badkey"), { code: "badkey" }); }
+    },
+    upload(file, field, onProgress) { // nothing is sent yet: the file is sealed with the answer
+      const uid = "u" + (++counter);
+      held.set(uid, { file, field });
+      onProgress(file.size, file.size);
+      return Promise.resolve(uid);
+    },
+    async keepCopy(hash, answers, files, kept) { // the small sealed copy the server keeps, so that the link can bring the answer back (the files only by name)
+      const copy = Object.assign({}, answers), byField = {};
+      for (const f of files) (byField[f.field] = byField[f.field] || []).push(f.name);
+      for (const field in kept) if (!byField[field] && kept[field].length) byField[field] = kept[field]; // not sent again: the same files stay
+      Object.assign(copy, byField);
+      const r = await fetch("/f/" + id + "/edit/" + hash, { method: "POST", headers: this.headers(), body: await this.sealSmall({ answers: copy }) });
+      if (!r.ok) throw new Error("copy");
+    },
+    async seal(entries) { // entries: [{name, type, blob}] -> one Blob in the NSH1 format
+      const prefix = crypto.getRandomValues(new Uint8Array(8));
+      const head = enc.encode(JSON.stringify({ files: entries.map(e => ({ name: e.name, type: e.type || "application/octet-stream", size: e.blob.size })) }));
+      let records = 1;
+      for (const e of entries) records += Math.ceil(e.blob.size / CHUNK);
+      const parts = [enc.encode("NSH1"), prefix, be32(CHUNK)];
+      let index = 0;
+      const put = async plain => {
+        const iv = new Uint8Array(12); iv.set(prefix); iv.set(be32(index), 8);
+        const aad = new Uint8Array(5); aad.set(be32(index)); aad[4] = index === records - 1 ? 1 : 0;
+        const sealed = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: aad }, key, plain));
+        parts.push(be32(sealed.length), sealed);
+        ++index;
+      };
+      await put(head);
+      for (const e of entries)
+        for (let off = 0; off < e.blob.size; off += CHUNK) await put(new Uint8Array(await e.blob.slice(off, off + CHUNK).arrayBuffer()));
+      return new Blob(parts);
+    },
+    async hashOf(editId) { return [...new Uint8Array(await crypto.subtle.digest("SHA-256", enc.encode(editId)))].map(b => b.toString(16).padStart(2, "0")).join(""); },
+    async sealSmall(obj) { // iv | AES-GCM, as the form itself is sealed
+      const iv = crypto.getRandomValues(new Uint8Array(12));
+      const ct = new Uint8Array(await crypto.subtle.encrypt({ name: "AES-GCM", iv, additionalData: enc.encode("notch-blob") }, key, enc.encode(JSON.stringify(obj))));
+      const out = new Uint8Array(12 + ct.length); out.set(iv); out.set(ct, 12);
+      return out;
+    },
+    async mine(editId) { // the sealed copy kept for this link, opened with the key of the link
+      const r = await fetch("/f/" + id + "/edit/" + await this.hashOf(editId), { headers: this.headers() });
+      if (!r.ok) throw Object.assign(new Error("gone"), { code: "gone" });
+      const sealed = new Uint8Array(await r.arrayBuffer());
+      try { return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv: sealed.slice(0, 12), additionalData: enc.encode("notch-blob") }, key, sealed.slice(12)))).answers; }
+      catch (e) { throw Object.assign(new Error("gone"), { code: "gone" }); }
+    },
+    async submit(answers, uploads, kept, onProgress) {
+      const entries = [], files = [];
+      let k = 0;
+      for (const uid of uploads) {
+        const h = held.get(uid);
+        const entry = "f" + String(++k).padStart(4, "0");
+        entries.push({ name: entry, type: h.file.type, blob: h.file });
+        files.push({ field: h.field, name: h.file.name, entry });
+      }
+      const doc = { answers, files };
+      if (editCtx) { doc.edit = editCtx.id; if (editCtx.replace) doc.replace = true; }
+      entries.unshift({ name: "answers.json", type: "application/json", blob: new Blob([JSON.stringify(doc)]) });
+      const blob = await this.seal(entries);
+      const editHash = editCtx ? await this.hashOf(editCtx.id) : "";
+      if (editCtx && !editCtx.replace) await this.keepCopy(editHash, answers, files, kept); // before the answer: the personal link works as soon as there is an answer
+
+      return new Promise((resolve, reject) => {
+        const x = new XMLHttpRequest();
+        x.open("POST", "/f/" + id + "/submit");
+        for (const [h, v] of Object.entries(this.headers())) x.setRequestHeader(h, v);
+        if (editCtx && editCtx.replace) x.setRequestHeader("X-Edit-Replace", editHash);
+        x.upload.onprogress = e => { if (e.lengthComputable) onProgress(e.loaded / e.total); };
+        x.onload = async () => {
+          let body = {};
+          try { body = JSON.parse(x.responseText); } catch (e) { /* not JSON */ }
+          if (x.status === 201) { if (editCtx && editCtx.replace) { try { await this.keepCopy(editHash, answers, files, kept); } catch (e) { /* the answer is in; the copy is for the next change */ } } return resolve(body); }
+          const code = x.status === 425 ? "early" : x.status === 409 ? "already" : x.status === 423 ? "full" : x.status === 410 ? "closed" : x.status === 404 ? "gone" : "send";
+          reject(Object.assign(new Error(x.status === 413 ? "This answer is too big for the form." : body.message || "The answer could not be sent."), { code }));
+        };
+        x.onerror = () => reject(Object.assign(new Error("The connection broke. Check your connection and try again."), { code: "net" }));
+        x.send(blob);
+      });
+    },
+  };
+  return api;
+})();
+const backend = isRelay ? relayBackend : localBackend;
+
+/* ---------- states ---------- */
+function stateCard(name, title, text, tone, ...extra) {
+  show(el("div", { class: "card" }, el("div", { class: "badge" + (tone ? " " + tone : "") }, icon(name)), el("h2", { text: title }), el("p", { text }), ...extra));
+}
+const ERRORS = {
+  gone: ["clock", "This form has ended", "The link has expired or the form was closed. Ask the sender for a new one."],
+  closed: ["check", "This form is full", "It already has all the answers it takes."],
+  full: ["lock", "This form is full", "The sender allowed only a number of people to answer, and they have already started."],
+  net: ["wifi", "Connection problem", "Check your connection and the one of the sender, then try again."],
+  nokey: ["alert", "This link is incomplete", "The part after # is missing. Open the whole link, or scan the QR code again."],
+  badkey: ["alert", "This link looks damaged", "The key does not match this form. Ask the sender for a new link."],
+  locked: ["lock", "Too many wrong tries", "Wait a few minutes before trying the PIN again."],
+};
+const showError = code => { const [i, t, x] = ERRORS[code] || ERRORS.net; stateCard(i, t, x); };
+
+const size = n => n >= 1048576 ? (n / 1048576).toFixed(n >= 10485760 ? 0 : 1) + " MB" : Math.max(1, Math.round(n / 1024)) + " KB";
+const splitName = name => { const dot = name.lastIndexOf("."); return dot > 0 && name.length - dot <= 8 ? [name.slice(0, dot), name.slice(dot)] : [name, ""]; };
+
+/* ---------- the form ---------- */
+const nowSec = () => Math.floor(Date.now() / 1000) + skew; // the server's clock, not the visitor's
+let skew = 0;
+/* which questions are asked, given the answers so far: the same rules as visibleIds() in FormModel.h (the app checks again when it takes the answer) */
+function visibleIds(form, answers) {
+  const vals = v => Array.isArray(v) ? v.map(x => String(x).trim()) : typeof v === "string" && v.trim() ? [v.trim()] : [];
+  const shown = new Set();
+  let ended = false, secHidden = false;
+  for (const f of form.fields) {
+    if (ended) break;
+    if (f.type === "section") secHidden = false;
+    let rule = true;
+    const si = f.showIf;
+    if (si && si.field) { const got = vals(answers[si.field]); rule = shown.has(si.field) && (si.values || []).some(v => got.includes(v)); }
+    if (f.type === "section" && !rule) secHidden = true;
+    if (!rule || secHidden) continue;
+    shown.add(f.id);
+    if ((f.endOn || []).length && f.endOn.includes(vals(answers[f.id])[0])) ended = true;
+  }
+  return shown;
+}
+const okLink = u => { try { const x = new URL(u); return (x.protocol === "https:" || x.protocol === "http:") && !!x.host; } catch (e) { return false; } };
+
+/* what this browser remembers of its own answer: that it answered, and the token of its personal link */
+const doneKey = () => "notch-done:" + (isRelay ? location.pathname.split("/")[2] : location.pathname);
+const readDone = () => { try { return JSON.parse(localStorage.getItem(doneKey())) || null; } catch (e) { return null; } };
+const writeDone = edit => { try { localStorage.setItem(doneKey(), JSON.stringify({ edit: edit || null })); } catch (e) { /* no storage: the server still holds the line */ } };
+function alreadyCard(form, mark) {
+  const extra = form.allowEdit && mark && mark.edit ? [el("button", { class: "btn", type: "button", style: "margin-top:14px", text: "Change my answer", onclick: () => start(true, mark.edit) })] : [];
+  const card = el("div", { class: "card" }, el("div", { class: "badge ok" }, icon("check")), el("h2", { text: "You already answered" }),
+                  el("p", { text: "This form takes one answer from each person." + (extra.length ? "" : " Thank you!") }), ...extra);
+  show(card);
+  card.setAttribute("tabindex", "-1");
+  card.focus({ preventScroll: true });
+}
+
+let editCtx = null; // {id, replace}: the token of a personal link, and whether this send changes an answer that is already in
+const newEditId = () => { const b = crypto.getRandomValues(new Uint8Array(16)); return btoa(String.fromCharCode(...b)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""); };
+const personalLink = id => isRelay ? location.origin + location.pathname + "#" + location.hash.slice(1).split(".")[0] + "." + id : location.origin + location.pathname + "?e=" + id;
+const editIdFromUrl = () => { const v = isRelay ? location.hash.slice(1).split(".")[1] : new URLSearchParams(location.search).get("e"); return v && /^[A-Za-z0-9_-]{16,64}$/.test(v) ? v : null; };
+
+function showEnding(form, how) {
+  const end = form.ending || {};
+  const extra = [];
+  if (end.buttonLabel && end.buttonUrl && okLink(end.buttonUrl))
+    extra.push(el("a", { class: "btn link", href: end.buttonUrl, target: "_blank", rel: "noopener noreferrer", text: end.buttonLabel }));
+  if (form.allowEdit && editCtx) { // the way back to this answer
+    const link = personalLink(editCtx.id);
+    extra.push(el("div", { class: "mine" }, el("p", { class: "dim", text: "Want to change your answer later? Keep this link; it is yours alone." }),
+      el("div", { class: "linkrow" }, el("input", { class: "text", readonly: true, value: link, "aria-label": "Your personal link", onfocus: e => e.target.select() }),
+        el("button", { class: "btn ghost small", type: "button", text: "Copy", onclick: e => { try { navigator.clipboard.writeText(link); e.target.textContent = "Copied"; } catch (x) { /* select it by hand */ } } })),
+      el("button", { class: "btn ghost", type: "button", text: "Change my answer", onclick: () => start(true, editCtx.id) })));
+  }
+  if (!form.oneAnswer) extra.push(el("button", { class: "btn ghost", type: "button", style: "margin-top:12px", text: "Send another answer", onclick: () => { editCtx = null; start(true); } }));
+  const card = el("div", { class: "card" }, el("div", { class: "badge ok" }, icon("check")), el("h2", { text: how === "changed" ? "Answer updated" : end.title || "Thank you" }),
+                  el("p", { style: "white-space:pre-line", text: how === "changed" ? "Your changes were saved." : end.message || "Your answer was sent." }), ...extra);
+  show(card);
+  card.setAttribute("tabindex", "-1");
+  card.focus({ preventScroll: true });
+}
+
+function buildForm(form, prefill) {
+  document.title = form.title || "Form";
+  const inputs = {}; // question id -> {get, box, err, field}
+  const chosen = {}; // file question id -> [{file, id, bar, mark}]
+  const kept = {};   // file question id -> the names of the files already sent (changing an answer)
+  const inputs_pending = {}; // question id -> a function that makes ready what it sends (the picture of a signature)
+  const hasRequired = form.fields.some(f => f.required);
+  const layout = ["sections", "slides"].includes(form.layout) ? form.layout : "single";
+  const root = el("form", { novalidate: true, autocomplete: "off", class: layout === "slides" ? "slides-one" : "" });
+  root.addEventListener("submit", e => e.preventDefault());
+
+  /* the slides: which questions are on which, and the heading of each */
+  const slides = [];
+  let current = { title: "", desc: "", boxes: [], ids: [] };
+  const flush = () => { if (current.boxes.length || current.title) slides.push(current); };
+  let kicker = "";
+  const newSlide = (title, desc, sec) => { flush(); current = { title, desc, boxes: [], ids: [], sec }; };
+  const fieldEls = {}; // field id -> its box, so a question that is not asked can be hidden
+  const fieldBox = f => {
+    const id = "f" + f.id;
+    const box = el("div", { class: "q" });
+    const isGroup = f.type === "choice" || f.type === "multi" || f.type === "file";
+    box.append(el(isGroup ? "div" : "label", Object.assign({ class: isGroup ? "lab" : "", id: id + "-l" }, isGroup ? {} : { for: id }), f.label, f.required ? el("span", { class: "req", text: "*", "aria-hidden": "true" }) : null));
+    if (f.help) box.append(el("div", { class: "hint", text: f.help }));
+    const err = el("div", { class: "err", hidden: true });
+    let get, set = () => {};
+    if (f.type === "long") {
+      const t = el("textarea", { class: "text", id, maxlength: MAX.long, "aria-required": f.required ? "true" : undefined });
+      box.append(t); get = () => t.value.trim(); set = v => { t.value = typeof v === "string" ? v : ""; };
+    } else if (f.type === "choice" || f.type === "multi") {
+      const multi = f.type === "multi";
+      const group = el("div", { class: "opts", role: multi ? "group" : "radiogroup", "aria-labelledby": id + "-l" });
+      for (const o of f.options) {
+        const isFull = !prefill && ((AVAIL[f.id] || []).includes(o)); // a choice that has taken all it may (when changing an answer, the server decides: its own choice is not counted against it)
+        group.append(el("label", { class: "opt" + (isFull ? " full" : ""), "data-q": f.id, "data-o": o },
+          el("input", { type: multi ? "checkbox" : "radio", name: id, value: o, disabled: isFull || undefined }),
+          el("span", { class: "mark " + (multi ? "check" : "radio") }, multi ? icon("check") : null),
+          el("span", { text: o }), isFull ? el("span", { class: "tag", text: "Full" }) : null));
+      }
+      box.append(group);
+      get = multi ? () => [...group.querySelectorAll("input:checked")].map(i => i.value) : () => { const c = group.querySelector("input:checked"); return c ? c.value : ""; };
+      set = v => { const want = Array.isArray(v) ? v : [v]; for (const i of group.querySelectorAll("input")) i.checked = want.includes(i.value); };
+    } else if (f.type === "rating" || f.type === "scale") {
+      const max = Math.min(10, Math.max(3, f.scaleMax || 5)), stars = f.type === "rating";
+      let val = "";
+      const group = el("div", { class: "pts " + (stars ? "stars" : "nums"), role: "radiogroup", "aria-labelledby": id + "-l" });
+      const btns = [];
+      const pick = (k, quiet) => {
+        val = String(k);
+        btns.forEach((b, i) => { b.classList.toggle("on", stars ? i < k : i + 1 === k); b.setAttribute("aria-checked", String(i + 1 === k)); b.tabIndex = i + 1 === k ? 0 : -1; });
+        if (!quiet) group.dispatchEvent(new Event("input", { bubbles: true }));
+      };
+      for (let k = 1; k <= max; k++) {
+        const b = el("button", { type: "button", class: "pt", role: "radio", "aria-checked": "false", tabindex: k === 1 ? "0" : "-1", "aria-label": stars ? k + (k === 1 ? " star" : " stars") : String(k) },
+                     stars ? icon("star") : el("span", { text: String(k) }));
+        b.addEventListener("click", () => pick(k));
+        b.addEventListener("keydown", e => {
+          const cur = parseInt(val || "0", 10);
+          const to = e.key === "ArrowRight" || e.key === "ArrowUp" ? Math.min(max, (cur || 0) + 1) : e.key === "ArrowLeft" || e.key === "ArrowDown" ? Math.max(1, (cur || 2) - 1) : 0;
+          if (to) { e.preventDefault(); pick(to); btns[to - 1].focus(); }
+        });
+        btns.push(b);
+        group.append(b);
+      }
+      box.append(group);
+      if (!stars && (f.lowLabel || f.highLabel)) box.append(el("div", { class: "ends" }, el("span", { text: f.lowLabel || "" }), el("span", { text: f.highLabel || "" })));
+      get = () => val;
+      set = v => { const k = parseInt(v, 10); if (k >= 1 && k <= max) pick(k, true); };
+    } else if (f.type === "signature") {
+      chosen[f.id] = [];
+      const wrap = el("div", { class: "padwrap" });
+      const pad = el("canvas", { "aria-label": "Draw your signature here" });
+      const line = el("div", { class: "hintline" }, el("span", { text: "Sign here" }));
+      wrap.append(pad, line);
+      let ctx = null, drawing = false, last = null, strokes = 0;
+      const size = () => { // the drawing keeps its look when the box is resized: only done while it is empty
+        if (strokes > 0) return;
+        const r = pad.getBoundingClientRect(), ratio = window.devicePixelRatio || 1;
+        if (!r.width) return;
+        pad.width = Math.round(r.width * ratio); pad.height = Math.round(r.height * ratio);
+        ctx = pad.getContext("2d");
+        ctx.scale(ratio, ratio); ctx.lineWidth = 2.4; ctx.lineCap = "round"; ctx.lineJoin = "round"; ctx.strokeStyle = "#111827";
+      };
+      const at = e => { const r = pad.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
+      pad.addEventListener("pointerdown", e => { size(); if (!ctx) return; e.preventDefault(); pad.setPointerCapture(e.pointerId); drawing = true; last = at(e); ctx.beginPath(); ctx.arc(last[0], last[1], 0.6, 0, 7); ctx.stroke(); line.hidden = true; });
+      pad.addEventListener("pointermove", e => { if (!drawing) return; const p = at(e); ctx.beginPath(); ctx.moveTo(last[0], last[1]); ctx.lineTo(p[0], p[1]); ctx.stroke(); last = p; });
+      const stop = () => { if (!drawing) return; drawing = false; ++strokes; box.dispatchEvent(new Event("input", { bubbles: true })); };
+      pad.addEventListener("pointerup", stop); pad.addEventListener("pointercancel", stop);
+      const had = el("div", { class: "hint", hidden: true });
+      const clear = () => { strokes = 0; size(); if (ctx) { ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, pad.width, pad.height); ctx.restore(); } line.hidden = false; box.dispatchEvent(new Event("input", { bubbles: true })); };
+      box.append(wrap, el("div", { class: "padtools" }, el("button", { class: "btn ghost small", type: "button", text: "Clear", onclick: clear }), had));
+      new ResizeObserver(size).observe(pad);
+      get = () => strokes > 0 ? ["signature.png"] : (kept[f.id] || []);
+      set = names => { kept[f.id] = Array.isArray(names) ? names : []; had.hidden = !kept[f.id].length; had.textContent = kept[f.id].length ? "Already signed. Draw again to replace it." : ""; };
+      inputs_pending[f.id] = async () => { // the picture, as a file to send with the answer (white behind, small enough)
+        chosen[f.id] = [];
+        if (strokes === 0) return;
+        const out = document.createElement("canvas");
+        for (let scale = 1; scale > 0.2; scale *= 0.7) {
+          out.width = Math.max(1, Math.round(pad.width * scale)); out.height = Math.max(1, Math.round(pad.height * scale));
+          const c = out.getContext("2d"); c.fillStyle = "#fff"; c.fillRect(0, 0, out.width, out.height); c.drawImage(pad, 0, 0, out.width, out.height);
+          const blob = await new Promise(res => out.toBlob(res, "image/png"));
+          if (blob && blob.size <= 300 * 1024) { chosen[f.id] = [{ file: new File([blob], "signature.png", { type: "image/png" }), uploadId: null, bar: null }]; return; }
+        }
+        throw new Error("The signature is too detailed. Clear it and sign again, simpler.");
+      };
+    } else if (f.type === "file") {
+      chosen[f.id] = [];
+      const picker = el("input", { type: "file", hidden: true, multiple: f.maxFiles > 1 });
+      const list = el("ul", { class: "files" });
+      const drop = el("div", { class: "drop" }, icon("upload"),
+        el("div", { class: "t" }, f.maxFiles > 1 ? "Drop files here, or choose them" : "Drop a file here, or choose it",
+          el("small", { text: "Up to " + f.maxFiles + (f.maxFiles > 1 ? " files" : " file") + " · " + form.limits.maxFileMb + " MB each" })),
+        el("button", { class: "btn ghost small", type: "button", text: "Choose", onclick: () => picker.click() }));
+      const redraw = () => {
+        list.replaceChildren(...chosen[f.id].map((c, i) => {
+          const [stem, ext] = splitName(c.file.name);
+          c.bar = el("i", { class: "bar" });
+          return el("li", { class: "file" }, icon("file"), el("span", { class: "nm" }, el("span", { class: "stem", text: stem }), el("span", { class: "ext", text: ext })),
+            el("span", { class: "sz", text: size(c.file.size) }),
+            el("button", { class: "x", type: "button", "aria-label": "Remove " + c.file.name, onclick: () => { chosen[f.id].splice(i, 1); redraw(); } }, icon("close")), c.bar);
+        }));
+      };
+      const addFiles = files => {
+        err.hidden = true;
+        for (const file of files) {
+          if (chosen[f.id].length >= f.maxFiles) { setErr(f.id, "At most " + f.maxFiles + (f.maxFiles > 1 ? " files." : " file.")); break; }
+          if (file.size > form.limits.maxFileMb * 1048576) { setErr(f.id, file.name + " is bigger than " + form.limits.maxFileMb + " MB."); continue; }
+          chosen[f.id].push({ file, uploadId: null, bar: null });
+        }
+        redraw();
+      };
+      picker.addEventListener("change", () => { addFiles([...picker.files]); picker.value = ""; });
+      for (const ev of ["dragenter", "dragover"]) drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); });
+      for (const ev of ["dragleave", "drop"]) drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); });
+      drop.addEventListener("drop", e => addFiles([...e.dataTransfer.files]));
+      const had = el("div", { class: "hint", hidden: true });
+      box.append(drop, picker, list, had);
+      get = () => chosen[f.id].length ? chosen[f.id].map(c => c.file.name) : (kept[f.id] || []); // the files already sent count, when changing an answer
+      set = names => { kept[f.id] = Array.isArray(names) ? names : []; had.hidden = !kept[f.id].length; had.textContent = kept[f.id].length ? "Already sent: " + kept[f.id].join(", ") + ". Add files here to replace them." : ""; };
+    } else {
+      const type = f.type === "email" ? "email" : f.type === "date" ? "date" : "text";
+      const t = el("input", { class: "text", id, type, maxlength: MAX.short, inputmode: f.type === "number" ? "decimal" : undefined, autocomplete: f.type === "email" ? "email" : "off",
+                              "aria-required": f.required ? "true" : undefined });
+      t.addEventListener("keydown", e => { if (e.key === "Enter" && slides.length > 1) { e.preventDefault(); go(1); } }); // Enter on a one-line answer goes on
+      box.append(t); get = () => t.value.trim(); set = v => { t.value = typeof v === "string" ? v : ""; };
+    }
+    box.append(err);
+    inputs[f.id] = { get, set, box, err, field: f };
+    return box;
+  };
+  for (const f of form.fields) {
+    if (f.type === "section") {
+      if (layout === "sections") newSlide(f.label, f.help, f.id);
+      else if (layout === "slides") kicker = f.label;
+      else { const h = el("div", { class: "inline-sec sec" }, el("h2", { text: f.label }), f.help ? el("p", { text: f.help }) : null); fieldEls[f.id] = h; current.boxes.push(h); }
+      continue;
+    }
+    if (layout === "slides") { newSlide("", ""); if (kicker) current.kicker = kicker; }
+    const box = fieldBox(f);
+    fieldEls[f.id] = box;
+    current.boxes.push(box);
+    current.ids.push(f.id);
+  }
+  flush();
+  if (!slides.length) slides.push({ title: "", desc: "", boxes: [], ids: [] });
+
+  /* the page: the heading of the form, the progress, the slides, the buttons */
+  const head = el("div", {}, el("h1", { text: form.title }), form.description ? el("p", { class: "lead", text: form.description }) : null,
+                  hasRequired ? el("p", { class: "note" }, el("b", { text: "*" }), " marks a question that needs an answer.") : null);
+  const stepText = el("span"), stepTrack = el("i");
+  const progress = el("div", { class: "steps", hidden: slides.length < 2 }, el("div", { class: "row" }, stepText, el("span", { id: "pct" })), el("div", { class: "track" }, stepTrack));
+  const slideEls = slides.map((sl, i) => {
+    const part = el("div", { class: "slide", tabindex: "-1", "data-i": i, hidden: true },
+      sl.kicker ? el("p", { class: "kicker", text: sl.kicker }) : null,
+      sl.title ? el("header", { class: "sec" }, el("h2", { text: sl.title }), sl.desc ? el("p", { text: sl.desc }) : null) : null, ...sl.boxes);
+    return part;
+  });
+  const sendLabel = el("span", { text: "Send" });
+  const fill = el("i", { class: "fill" });
+  const sendBtn = el("button", { class: "btn", type: "button" }, fill, sendLabel);
+  const backBtn = el("button", { class: "btn ghost", type: "button", text: "Back", onclick: () => go(-1) });
+  const nextBtn = el("button", { class: "btn", type: "button", text: "Next", onclick: () => go(1) });
+  const fail = el("div", { class: "fail", hidden: true, role: "alert" });
+  const bar = el("div", { class: "send" }, el("p", { text: "Your answer goes to the person who made this form." }), el("div", { class: "pager" }, backBtn, nextBtn, sendBtn));
+  root.append(head, progress, ...slideEls, bar, fail);
+
+  let at = 0, shown = new Set(), vs = [0];
+  const collect = () => { const a = {}; for (const id in inputs) a[id] = inputs[id].get(); return a; };
+  const slideShown = sl => sl.ids.length ? sl.ids.some(id => shown.has(id)) : sl.sec ? shown.has(sl.sec) : true;
+  function refresh() { // what is asked changes with the answers: hide the rest, and count only the slides that are left
+    shown = visibleIds(form, collect());
+    for (const id in fieldEls) fieldEls[id].hidden = !shown.has(id);
+    vs = slides.map((sl, i) => i).filter(i => slideShown(slides[i]));
+    if (!vs.length) vs = [at];
+    if (!vs.includes(at)) at = vs.find(i => i > at) ?? vs[vs.length - 1];
+  }
+  function render(focus) {
+    refresh();
+    const pos = vs.indexOf(at);
+    slideEls.forEach((n, i) => { n.hidden = i !== at; });
+    head.hidden = pos > 0 && layout !== "single"; // the heading of the form is on the first slide only
+    progress.hidden = vs.length < 2;
+    stepText.textContent = "Step " + (pos + 1) + " of " + vs.length;
+    stepTrack.style.width = Math.round((pos + 1) / vs.length * 100) + "%";
+    backBtn.hidden = pos === 0;
+    nextBtn.hidden = pos === vs.length - 1;
+    sendBtn.hidden = pos !== vs.length - 1;
+    fail.hidden = true;
+    if (focus) { window.scrollTo(0, 0); slideEls[at].focus({ preventScroll: true }); }
+  }
+  const answered = () => { refresh(); const pos = vs.indexOf(at); nextBtn.hidden = pos === vs.length - 1; sendBtn.hidden = pos !== vs.length - 1; progress.hidden = vs.length < 2; stepText.textContent = "Step " + (pos + 1) + " of " + vs.length; stepTrack.style.width = Math.round((pos + 1) / vs.length * 100) + "%"; };
+  root.addEventListener("input", answered);
+  root.addEventListener("change", answered);
+  function setErr(id, msg) {
+    const i = inputs[id];
+    i.box.classList.toggle("bad", !!msg);
+    i.err.replaceChildren(...(msg ? [icon("alert"), el("span", { text: msg })] : []));
+    i.err.hidden = !msg;
+  }
+  function check(ids) { // only the questions of these ids: the slide that is being left
+    let first = null;
+    for (const id of ids.filter(i => shown.has(i))) {
+      const { get, field } = inputs[id];
+      const v = get();
+      let msg = "";
+      const empty = Array.isArray(v) ? v.length === 0 : v === "";
+      if (empty) { if (field.required) msg = "This question needs an answer."; }
+      else if (field.type === "number" && !/^-?\d+([.,]\d+)?$/.test(v)) msg = "Enter a number.";
+      else if (field.type === "email" && !/^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@.]{2,24}$/.test(v)) msg = "Enter an email address.";
+      else if (field.type === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(v)) msg = "Pick a date.";
+      setErr(id, msg);
+      if (msg && !first) first = inputs[id].box;
+    }
+    if (first) first.scrollIntoView({ behavior: "smooth", block: "center" });
+    return !first;
+  }
+  function go(by) {
+    refresh();
+    if (by > 0 && !check(slides[at].ids)) return;
+    refresh();
+    const to = vs[Math.max(0, Math.min(vs.length - 1, vs.indexOf(at) + by))];
+    if (to === at) return;
+    at = to;
+    if (history.pushState) history.pushState({ slide: at }, "");
+    render(true);
+  }
+  window.onpopstate = e => { const to = e.state && Number.isInteger(e.state.slide) ? e.state.slide : 0; if (to !== at && to < slides.length) { at = to; render(true); } }; // the browser's Back goes a slide back, answers kept
+  for (const id in inputs) // an answer given clears its own complaint
+    inputs[id].box.addEventListener("input", () => { if (inputs[id].box.classList.contains("bad")) setErr(id, ""); });
+
+  sendBtn.addEventListener("click", async () => {
+    fail.hidden = true;
+    refresh();
+    for (const i of vs) // all the slides that are asked: the first with a problem is shown
+      if (!check(slides[i].ids)) { if (i !== at) { at = i; render(true); check(slides[i].ids); } return; }
+    sendBtn.disabled = true;
+    sendLabel.textContent = "Sending…";
+    if (!prefill && form.allowEdit && !editCtx) editCtx = { id: newEditId(), replace: false }; // the token of this answer's personal link
+    const all = Object.entries(chosen).filter(([id]) => shown.has(id)).flatMap(([, v]) => v);
+    const total = all.reduce((a, c) => a + c.file.size, 0) || 1;
+    let done = 0;
+    try {
+      for (const id in inputs_pending) if (shown.has(id)) await inputs_pending[id]();
+      const uploads = [];
+      for (const id in chosen)
+        for (const c of shown.has(id) ? chosen[id] : []) {
+          if (!c.uploadId) {
+            let last = 0;
+            c.uploadId = await backend.upload(c.file, id, (loaded, whole) => {
+              done += loaded - last; last = loaded;
+              fill.style.width = Math.min(100, Math.round(done / total * 100)) + "%";
+              if (c.bar) c.bar.style.width = Math.round(loaded / whole * 100) + "%";
+            });
+          }
+          uploads.push(c.uploadId);
+        }
+      const answers = {};
+      for (const id in inputs) if (!(id in chosen) && shown.has(id)) answers[id] = inputs[id].get();
+      await backend.submit(answers, uploads, kept, p => { fill.style.width = Math.min(100, Math.round(p * 100)) + "%"; });
+      window.onpopstate = null;
+      if (!prefill && (form.oneAnswer || form.allowEdit)) writeDone(editCtx && editCtx.id);
+      showEnding(form, prefill ? "changed" : "sent");
+    } catch (e) {
+      sendBtn.disabled = false;
+      sendLabel.textContent = prefill ? "Save changes" : "Send";
+      fill.style.width = "0";
+      if (e.code === "early") return start(true);
+      if (e.code === "already") return alreadyCard(form, readDone());
+      if (e.code === "option_full") { // somebody took the last place: the choice is switched off here, and the person is told where
+        await loadAvail();
+        for (const lab of root.querySelectorAll("label.opt[data-q]")) {
+          const isFull = (AVAIL[lab.dataset.q] || []).includes(lab.dataset.o) || (lab.dataset.q === e.field && lab.dataset.o === e.option);
+          lab.classList.toggle("full", isFull);
+          const input = lab.querySelector("input");
+          input.disabled = isFull;
+          if (isFull) { input.checked = false; if (!lab.querySelector(".tag")) lab.append(el("span", { class: "tag", text: "Full" })); }
+        }
+        if (inputs[e.field]) { setErr(e.field, e.message); const at2 = slides.findIndex(sl => sl.ids.includes(e.field)); if (at2 >= 0 && at2 !== at) { at = at2; render(true); } }
+        return;
+      }
+      if (e.code === "full" || e.code === "closed" || e.code === "gone") return showError(e.code);
+      fail.textContent = e.message || "The answer could not be sent.";
+      fail.hidden = false;
+      fail.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  });
+  show(root);
+  if (prefill) { // changing an answer: the form again, with what was sent
+    for (const id in inputs) if (id in prefill) inputs[id].set(prefill[id]);
+    sendLabel.textContent = "Save changes";
+    head.append(el("p", { class: "note" }, "You are changing the answer you sent. Nothing changes until you press Save changes."));
+  }
+  at = 0;
+  render(false);
+  if (history.replaceState) history.replaceState({ slide: 0 }, "");
+}
+
+/* a form that opens later: when, in the visitor's own time, and a countdown that opens it by itself */
+function notOpenYet(form, opensAt) {
+  const when = el("div", { class: "when" }), left = el("p", { class: "dim" });
+  const card = el("div", { class: "card" }, el("div", { class: "badge" }, icon("clock")), el("h2", { text: "This form is not open yet" }),
+                  el("p", { text: "It opens on" }), when, left,
+                  el("button", { class: "btn ghost", type: "button", style: "margin-top:14px", text: "Check again", onclick: () => start(true) }));
+  when.textContent = new Date(opensAt * 1000).toLocaleString(undefined, { dateStyle: "full", timeStyle: "short" });
+  const tick = () => {
+    const rest = opensAt - nowSec();
+    if (rest <= 0) { clearInterval(timer); return start(true); }
+    const d = Math.floor(rest / 86400), h = Math.floor(rest % 86400 / 3600), m = Math.floor(rest % 3600 / 60), s = rest % 60;
+    left.textContent = "In " + (d ? d + " d " : "") + (d || h ? h + " h " : "") + (d || h || m ? m + " min " : "") + (!d && !h ? s + " s" : "");
+  };
+  const timer = setInterval(tick, 1000);
+  tick();
+  show(card);
+}
+
+function askPin() {
+  const input = el("input", { class: "text pin", type: "password", inputmode: "numeric", autocomplete: "off", placeholder: "PIN", "aria-label": "PIN" });
+  const msg = el("div", { class: "err", hidden: true, style: "justify-content:center" });
+  const go = async () => {
+    pin = input.value;
+    msg.hidden = true;
+    try { openForm(await backend.loadForm()); }
+    catch (e) {
+      if (e.code === "wrong") { msg.replaceChildren(icon("alert"), el("span", { text: "That PIN is not right." })); msg.hidden = false; input.select(); }
+      else showError(e.code);
+    }
+  };
+  input.addEventListener("keydown", e => { if (e.key === "Enter") go(); });
+  show(el("div", { class: "card" }, el("div", { class: "badge" }, icon("lock")), el("h2", { text: "Enter the PIN" }), el("p", { text: "The person who made this form gave it to you." }),
+          input, msg, el("button", { class: "btn", type: "button", text: "Open", onclick: go })));
+  input.focus();
+}
+
+// `again`: look at the form afresh; `changeId`: open the form to change the answer of that personal link (else the one in the address, if any)
+async function loadAvail() { // local only
+  if (isRelay) return;
+  try { const r = await fetch("avail", { headers: backend.headers(), cache: "no-store" }); if (r.ok) AVAIL = (await r.json()).full || {}; } catch (e) { /* the server will say when a choice is full */ }
+}
+
+async function openForm(form, changeId) {
+  await loadAvail();
+  const id = changeId || (form.allowEdit ? editIdFromUrl() : null);
+  if (!id && form.oneAnswer && readDone()) return alreadyCard(form, readDone()); // this browser has sent its one
+  if (!id || !form.allowEdit) { editCtx = null; return buildForm(form); }
+  try {
+    const mine = await backend.mine(id);
+    editCtx = { id, replace: true };
+    buildForm(form, mine);
+  } catch (e) { // not an answer that can be changed any more: the plain form, and a word about it
+    editCtx = null;
+    buildForm(form);
+    document.querySelector("form").prepend(el("div", { class: "fail", role: "status", text: "That answer cannot be changed any more. You can send a new one." }));
+  }
+}
+
+async function start(again, changeId) {
+  if (isRelay) {
+    try {
+      const meta = await backend.init();
+      skew = meta.now ? meta.now - Math.floor(Date.now() / 1000) : 0;
+      if (meta.expires_at && meta.now && meta.expires_at <= meta.now) return showError("gone");
+      const form = meta.pin_required ? null : await backend.loadForm();
+      if (meta.opens_at && meta.opens_at > nowSec()) return notOpenYet(form, meta.opens_at);
+      if (meta.pin_required) return askPin();
+      return openForm(form, changeId);
+    } catch (e) { return showError(e.code || "net"); }
+  }
+  if (again) { // the local page is data in the page itself: a fresh look is a fresh load
+    try { const r = await fetch(location.pathname, { cache: "no-store" }); const m = /<script id="form-data" type="application\/json">([\s\S]*?)<\/script>/.exec(await r.text()); if (m) Object.assign(DATA, JSON.parse(m[1])); } catch (e) { /* keep what we have */ }
+  }
+  skew = DATA.now ? DATA.now - Math.floor(Date.now() / 1000) : 0;
+  if (DATA.expires_at && DATA.now && DATA.expires_at <= nowSec()) return showError("gone");
+  if (DATA.opens_at && DATA.opens_at > nowSec()) return notOpenYet(DATA.form, DATA.opens_at);
+  if (DATA.protection === "pin") return askPin();
+  if (DATA.form) return openForm(DATA.form, changeId);
+  showError("gone");
+}
+start();
+</script>
+</body>
+</html>

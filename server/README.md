@@ -97,7 +97,15 @@ multi-file share is fetched with a byte `Range`, so only that file travels, neve
 ## Limits and safety
 
 - Upload needs the API key; download needs the long random link (and the PIN, if set).
-- Each share has an expiry (up to `MAX_TTL_HOURS`) and can be limited to N downloads.
+- Forms: `POST /api/v1/forms` (a sealed definition and `X-Max-Responses`, `X-Max-People`, `X-Max-Response-Bytes`), the page at `/f/<id>`, answers as sealed blobs
+  at `POST /f/<id>/submit`, fetched and acknowledged by the owner with `GET`/`DELETE /api/v1/forms/<id>/responses[/n]`. The server only counts and keeps them (up to
+  20 forms per member; the answers waiting count in the member's space). `GET /api/v1/ping` says `"forms": true` (and `"forms_once": true` when it can take one answer from each device (`X-One-Answer`, `409 already`), `"forms_edit": true` when it keeps sealed copies for personal links (`X-Allow-Edit`, `POST`/`GET /f/<id>/edit/<hash>`, `X-Edit-Replace` on submit), `"forms_schedule": true` when it understands `X-Opens-At`: a form that opens later answers `425` until then). Update the server (copy `relay.py`, `forms.py`,
+  `form.html` and the rest, then `docker compose up -d --build`) to use *Documents → Forms → My server*.
+- Each share has an expiry (up to `MAX_TTL_HOURS`) and can be limited to N downloads (`X-Max-Downloads`) and to N different
+  people (`X-Max-People`): the devices are told apart by the address the proxy saw (`TRUST_PROXY`/`PROXY_HOPS`, as for the
+  PIN lock), only a hash of each is kept, and a device that comes after the places are used up gets `423`. Update the relay
+  to use the limit on people: `GET /api/v1/ping` says `"people_limit": true` when it is understood, and Notch refuses to
+  start such a share on a server that does not say so.
 - Wrong PIN: 5 tries, then that IP is locked out of that share for 10 minutes. (A password never reaches the
   server: it locks the key inside the link, and the page unlocks it in the browser.)
 - `MAX_FILE_MB` per file, `MAX_TOTAL_MB` in total; uploads beyond that get HTTP 413.

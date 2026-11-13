@@ -2,6 +2,7 @@
 
 #include "EngineParse.h"
 #include "Hardware.h"
+#include "ModelBundles.h"
 #include "Summarize.h"
 #include "SystemMemory.h"
 #include "platform/ChildLife.h"
@@ -103,7 +104,10 @@ QString FfmpegPreprocessor::convert(const QString &source, const QString &wavOut
 
 // ---- whisper.cpp -------------------------------------------------------------------------------
 
-QString WhisperAsr::modelFor(const QString &quality) { return quality == QLatin1String("high") ? QStringLiteral("whisper-turbo") : QStringLiteral("whisper-small"); }
+QString WhisperAsr::modelFor(const QString &quality)
+{
+    return quality == QLatin1String("max") ? QStringLiteral("whisper-large-v3") : quality == QLatin1String("high") ? QStringLiteral("whisper-turbo") : QStringLiteral("whisper-small");
+}
 
 QString WhisperAsr::prepare(const QString &quality)
 {
@@ -266,7 +270,20 @@ QString LlamaSummarizer::helperId()
 
 bool LlamaSummarizer::available() const { return !m_store->path(helperId()).isEmpty() && !m_store->path(QStringLiteral("qwen3-4b")).isEmpty(); }
 
-bool LlamaSession::available(const ModelStore *store) { return !store->path(LlamaSummarizer::helperId()).isEmpty() && !store->path(QStringLiteral("qwen3-4b")).isEmpty(); }
+bool LlamaSession::available(const ModelStore *store) { return !store->path(LlamaSummarizer::helperId()).isEmpty() && !store->path(textModelId(store)).isEmpty(); }
+
+QString LlamaSession::textModelId(const ModelStore *store)
+{
+    Audio::Hardware &hw = Audio::Hardware::instance();
+    const QString choice = hw.notesModel();
+    if (choice == QLatin1String("standard") || !hw.detected())
+        return QStringLiteral("qwen3-4b");
+    const QString id = choice == QLatin1String("xl") ? QStringLiteral("qwen3-14b") : QStringLiteral("qwen3-8b");
+    const Audio::Bundles::Feature f = Audio::Bundles::feature(choice == QLatin1String("xl") ? QStringLiteral("notes-xl") : QStringLiteral("notes-large"));
+    if (store->path(id).isEmpty() || store->path(gpuHelperId()).isEmpty())
+        return QStringLiteral("qwen3-4b");
+    return Audio::largeModelSupport(hw.known(), true, Audio::hwSettingOf(hw.setting()), hw.bench(), f.gpuNeed).ok ? id : QStringLiteral("qwen3-4b");
+}
 
 void LlamaSession::stop()
 {
@@ -302,9 +319,31 @@ QString LlamaSession::gpuHelperId()
 // the failure is remembered so that the card is not tried again at every start.
 QString LlamaSession::start(const std::atomic_bool *cancel)
 {
-    const QString modelId = m_embed ? QStringLiteral("embed-qwen3") : m_vision ? QStringLiteral("vision-qwen3vl") : QStringLiteral("qwen3-4b");
+    QString modelId = m_embed ? QStringLiteral("embed-qwen3") : m_vision ? QStringLiteral("vision-qwen3vl") : textModelId(m_store);
     if (m_embed ? !embedAvailable(m_store) : m_vision ? !visionAvailable(m_store) : !available(m_store))
         return m_embed ? QObject::tr("The search model is not installed") : m_vision ? QObject::tr("The picture model is not installed") : QObject::tr("The language model is not installed");
+    const bool large = !m_embed && !m_vision && modelId != QLatin1String("qwen3-4b");
+    if (large) { // a larger model runs wholly on the graphics card, or not at all: on the processor it would be too slow, so the standard one takes its place
+        m_modelId = modelId;
+        const Audio::HwPlan big = Audio::Hardware::instance().plan(!m_store->path(gpuHelperId()).isEmpty(), m_store->item(modelId).memory);
+        if (big.llmVulkan && big.llmLayers >= 99) {
+            const QString err = startWith(gpuHelperId(), 99, cancel);
+            if (err.isEmpty()) {
+                Audio::Hardware::instance().report(QStringLiteral("notes"), m_store->item(modelId).title + QStringLiteral(" · GPU: ") + big.device);
+                return {};
+            }
+            if (err == QLatin1String("cancelled"))
+                return err;
+            stop();
+            Audio::Hardware::instance().markFailed(QStringLiteral("llm"), QObject::tr("The larger language model could not use the graphics card (%1); the standard one runs instead.").arg(err.left(200)));
+        } else {
+            Audio::Hardware::instance().report(QStringLiteral("notes"), QObject::tr("the larger model needs the whole graphics card memory (%1); the standard one runs").arg(big.reason));
+        }
+        modelId = QStringLiteral("qwen3-4b");
+        if (m_store->path(modelId).isEmpty())
+            return QObject::tr("The larger language model could not run on the graphics card, and the standard one is not installed");
+    }
+    m_modelId = modelId;
     if (const QString why = memoryWarning(m_store->item(modelId).memory, m_store->item(modelId).title); !why.isEmpty())
         return why;
     const Audio::HwPlan plan = Audio::Hardware::instance().plan(!m_store->path(gpuHelperId()).isEmpty());
@@ -327,7 +366,7 @@ QString LlamaSession::start(const std::atomic_bool *cancel)
 
 QString LlamaSession::startWith(const QString &helper, int layers, const std::atomic_bool *cancel)
 {
-    const QString program = m_store->path(helper), folder = m_store->folder(helper), model = m_store->path(m_embed ? QStringLiteral("embed-qwen3") : m_vision ? QStringLiteral("vision-qwen3vl") : QStringLiteral("qwen3-4b"));
+    const QString program = m_store->path(helper), folder = m_store->folder(helper), model = m_store->path(m_modelId);
     // a free port on this computer only, and a token that only this program and the server know
     int port = 0;
     {

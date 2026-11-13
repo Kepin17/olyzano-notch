@@ -1,5 +1,7 @@
 #include "KnowledgeController.h"
 
+#include "services/GlobalSearch.h"
+
 #include "NotchController.h"
 #include "audio/AudioEngines.h"
 #include "platform/NotchPaths.h"
@@ -144,12 +146,14 @@ KnowledgeController::KnowledgeController(NotchController *notch, AudioController
 {
     m_indexPool.setMaxThreadCount(1);
     m_pool.setMaxThreadCount(1);
+    m_quickPool.setMaxThreadCount(1);
     {
         QSettings s = settings();
         m_enabled = s.value(QStringLiteral("index"), true).toBool();
         m_pdf = s.value(QStringLiteral("pdf"), true).toBool();
         m_ocr = s.value(QStringLiteral("ocr"), false).toBool();
         m_images = s.value(QStringLiteral("images"), false).toBool();
+        m_forms = s.value(QStringLiteral("forms"), true).toBool();
     }
     m_status = m_enabled ? tr("Waiting to look at your files…") : tr("Indexing is off");
     // looking for what changed: a little after start, then every few minutes, and when a recording is done
@@ -188,6 +192,7 @@ KnowledgeController::~KnowledgeController()
     m_cancelAsk = true;
     m_indexPool.waitForDone(8000);
     m_pool.waitForDone(8000);
+    m_quickPool.waitForDone(8000);
     if (m_llm)
         m_llm->stop();
 }
@@ -353,9 +358,13 @@ void KnowledgeController::index(const QVariantList &items, const QVariantList &m
         if (store.fingerprint(QStringLiteral("meeting"), ref) == fp)
             continue;
         QList<Knowledge::Utterance> lines; // the transcript lives with the audio database on the interface thread
-        QMetaObject::invokeMethod(this, [&] { lines = m_audio->transcriptLines(id); }, Qt::BlockingQueuedConnection);
+        QString notes;
+        QMetaObject::invokeMethod(this, [&] { lines = m_audio->transcriptLines(id); notes = m_audio->notesText(id); }, Qt::BlockingQueuedConnection);
+        QList<Knowledge::Chunk> chunks = Knowledge::chunkTranscript(lines);
+        for (const Knowledge::Chunk &c : Knowledge::chunkPage(0, notes)) // the notes (overview, decisions, tasks) are found too: a passage with "notes" as its speaker
+            chunks.append({0, -1, QStringLiteral("notes"), c.text});
         store.setDoc(QStringLiteral("meeting"), ref, m.value(QStringLiteral("title")).toString(), QDateTime::fromSecsSinceEpoch(m.value(QStringLiteral("created")).toLongLong(), Qt::UTC), fp,
-                     Knowledge::chunkTranscript(lines));
+                     chunks);
         ++changed;
     }
     // the meaning of each new passage, when the embedding model is there
@@ -688,6 +697,127 @@ void KnowledgeController::ask(const QString &questionRaw, const QVariantMap &sco
             m_answer = result;
             ++m_answerSerial;
             emit changed();
+        }, Qt::QueuedConnection);
+    });
+}
+
+void KnowledgeController::setIndexForms(bool on)
+{
+    if (on == m_forms)
+        return;
+    m_forms = on;
+    { QSettings st = settings(); st.setValue(QStringLiteral("forms"), on); }
+    if (!on)
+        (void)QtConcurrent::run(&m_quickPool, [] { // the answers leave the index at once
+            KnowledgeStore store(uniqueName());
+            if (!store.open(dbPath()).isEmpty())
+                return;
+            for (const QString &ref : store.refs(QStringLiteral("form")))
+                store.removeDoc(QStringLiteral("form"), ref);
+        });
+    emit formsToggled(on);
+    emit changed();
+}
+
+void KnowledgeController::indexForm(const QString &id, const QString &title, const QList<Knowledge::Chunk> &chunks, const QString &fingerprint)
+{
+    if (!m_enabled || !m_forms)
+        return;
+    (void)QtConcurrent::run(&m_quickPool, [id, title, chunks, fingerprint] {
+        KnowledgeStore store(uniqueName());
+        if (!store.open(dbPath()).isEmpty())
+            return;
+        if (store.fingerprint(QStringLiteral("form"), id) == fingerprint)
+            return;
+        store.setDoc(QStringLiteral("form"), id, title, QDateTime::currentDateTimeUtc(), fingerprint, chunks);
+    });
+}
+
+void KnowledgeController::removeForm(const QString &id)
+{
+    (void)QtConcurrent::run(&m_quickPool, [id] {
+        KnowledgeStore store(uniqueName());
+        if (store.open(dbPath()).isEmpty())
+            store.removeDoc(QStringLiteral("form"), id);
+    });
+}
+
+// The search box: what was typed is looked for in the passages of recordings (transcripts and notes), files and the answers of forms, and in the names of
+// all of them. Words only (no meaning search: it has to answer as the person types). Three to a group, two to a document.
+void KnowledgeController::globalSearch(const QString &query)
+{
+    const int mine = ++m_globalWanted;
+    const QStringList words = Knowledge::wordsOf(query);
+    if (!m_enabled || words.isEmpty()) {
+        if (!m_global.isEmpty()) {
+            m_global.clear();
+            ++m_globalSerial;
+            emit globalChanged();
+        }
+        return;
+    }
+    const bool forms = m_forms;
+    (void)QtConcurrent::run(&m_quickPool, [this, words, mine, forms] {
+        if (m_globalWanted.load() != mine)
+            return; // typed on since: not worth looking for
+        thread_local std::unique_ptr<KnowledgeStore> store;
+        if (!store) {
+            store = std::make_unique<KnowledgeStore>(uniqueName());
+            if (!store->open(dbPath()).isEmpty())
+                store.reset();
+        }
+        QVariantList out;
+        if (store) {
+            struct Group { QString title, kind, docKind; };
+            QList<Group> groups;
+            groups.append({QStringLiteral("Recordings"), QStringLiteral("recording"), QStringLiteral("meeting")});
+            groups.append({QStringLiteral("Files"), QStringLiteral("file"), QStringLiteral("shelf")});
+            if (forms)
+                groups.append({QStringLiteral("Forms"), QStringLiteral("form"), QStringLiteral("form")});
+            const QString match = KnowledgeStore::matchQuery(words);
+            for (const Group &g : groups) {
+                KnowledgeStore::Filter f;
+                f.kinds = {g.docKind};
+                QSet<QString> shown;
+                QHash<QString, int> perDoc;
+                int count = 0;
+                for (const KnowledgeStore::Hit &h : store->search(match, f, 24)) {
+                    if (count >= 3 || perDoc.value(h.ref) >= 2)
+                        continue;
+                    ++perDoc[h.ref];
+                    ++count;
+                    shown.insert(h.ref);
+                    QString sub;
+                    if (g.kind == QLatin1String("recording")) {
+                        if (h.who == QLatin1String("notes")) {
+                            sub = QStringLiteral("Notes");
+                        } else {
+                            if (h.startSec >= 0)
+                                sub = Audio::clock(h.startSec);
+                            if (!h.who.isEmpty() && h.startSec >= 0)
+                                sub += QStringLiteral(" · ") + h.who;
+                        }
+                    } else if (g.kind == QLatin1String("file"))
+                        sub = h.page > 0 ? QStringLiteral("page %1").arg(h.page) : QString();
+                    else
+                        sub = QStringLiteral("Answer #%1").arg(h.page) + (h.who.isEmpty() ? QString() : QStringLiteral(" · ") + h.who);
+                    out.append(QVariantMap{{QStringLiteral("group"), g.title}, {QStringLiteral("kind"), g.kind}, {QStringLiteral("title"), h.name}, {QStringLiteral("subtitle"), sub},
+                                           {QStringLiteral("snippet"), Knowledge::snippetHtml(h.text, words)}, {QStringLiteral("ref"), h.ref}, {QStringLiteral("page"), h.page}, {QStringLiteral("startSec"), h.startSec}});
+                }
+                for (const KnowledgeStore::NameHit &n : store->searchNames(words, {g.docKind}, 3)) // a document with the words in its name
+                    if (count < 3 && !shown.contains(n.ref)) {
+                        ++count;
+                        out.append(QVariantMap{{QStringLiteral("group"), g.title}, {QStringLiteral("kind"), g.kind}, {QStringLiteral("title"), n.name}, {QStringLiteral("subtitle"), QString()},
+                                               {QStringLiteral("snippet"), QString()}, {QStringLiteral("ref"), n.ref}, {QStringLiteral("page"), 0}, {QStringLiteral("startSec"), -1.0}});
+                    }
+            }
+        }
+        QMetaObject::invokeMethod(this, [this, out, mine] {
+            if (m_globalWanted.load() != mine)
+                return; // an older answer never replaces a newer
+            m_global = out;
+            ++m_globalSerial;
+            emit globalChanged();
         }, Qt::QueuedConnection);
     });
 }

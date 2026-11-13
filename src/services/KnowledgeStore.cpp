@@ -232,6 +232,32 @@ QList<KnowledgeStore::Hit> KnowledgeStore::search(const QString &match, const Fi
     return out;
 }
 
+QList<KnowledgeStore::NameHit> KnowledgeStore::searchNames(const QStringList &words, const QStringList &kinds, int limit) const
+{
+    QList<NameHit> out;
+    if (words.isEmpty() || !m_open)
+        return out;
+    QVariantList args;
+    QString sql = QStringLiteral("SELECT d.kind, d.ref, d.name FROM docs d WHERE 1=1");
+    for (const QString &w : words) {
+        QString like = w;
+        like.replace(QLatin1Char('\\'), QStringLiteral("\\\\")).replace(QLatin1Char('%'), QStringLiteral("\\%")).replace(QLatin1Char('_'), QStringLiteral("\\_"));
+        sql += QStringLiteral(" AND d.name LIKE ? ESCAPE '\\'");
+        args << QStringLiteral("%") + like + QStringLiteral("%");
+    }
+    Filter f;
+    f.kinds = kinds;
+    sql += where(f, &args) + QStringLiteral(" ORDER BY d.added_at DESC LIMIT %1").arg(limit);
+    QSqlQuery q(QSqlDatabase::database(m_conn));
+    q.prepare(sql);
+    for (const QVariant &a : std::as_const(args))
+        q.addBindValue(a);
+    if (q.exec())
+        while (q.next())
+            out.append({q.value(0).toString(), q.value(1).toString(), q.value(2).toString()});
+    return out;
+}
+
 QList<KnowledgeStore::Hit> KnowledgeStore::chunks(const QList<qint64> &ids) const
 {
     QList<Hit> out;

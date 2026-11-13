@@ -6,8 +6,11 @@
 #include "app/DocSummaryController.h"
 #include "app/KnowledgeController.h"
 #include "app/TaskSuggestController.h"
+#include "app/AssistantChat.h"
+#include "app/TranslateController.h"
 #include "app/MattingController.h"
 #include "app/RecordController.h"
+#include "app/FormController.h"
 #include "app/VisionController.h"
 #include "app/LanguageController.h"
 #include "app/ShareController.h"
@@ -252,7 +255,11 @@ int main(int argc, char *argv[])
     VisionController vision(&controller, &audioIntel);
     MattingController matting(&controller, &audioIntel);
     RecordController recorder(&controller);
+    FormController forms(&controller, &share);
     KnowledgeController knowledge(&controller, &audioIntel);
+    forms.setIndex([&knowledge](const QString &id, const QString &title, const QList<Knowledge::Chunk> &chunks, const QString &fp) { knowledge.indexForm(id, title, chunks, fp); },
+                   [&knowledge](const QString &id) { knowledge.removeForm(id); });
+    QObject::connect(&knowledge, &KnowledgeController::formsToggled, &forms, [&forms](bool on) { if (on) forms.reindexAll(); });
     NearbyController nearby(&controller);
 
     DesktopIntegration desktop;
@@ -285,6 +292,7 @@ int main(int argc, char *argv[])
     Doomscroll doomscroll(&dock, &media, &wellbeing);
     Tasks tasks;
     TaskSuggestController taskSuggest(&controller, &audioIntel, &tasks);
+    TranslateController translator(&controller, &audioIntel);
     ApiTester apiTester;
     SshManager sshManager;
     DatabaseManager dbManager;
@@ -292,6 +300,7 @@ int main(int argc, char *argv[])
     Prayer prayer;
     Updates updates;
     Assistant assistant(&launcher, &tasks, &quick, &media, &activities, &controller);
+    AssistantChat assistantChat(&assistant, &tasks, &controller, &audioIntel, &knowledge);
     // `notch --assistant-say "buka firefox"`: what the words would do (nothing is done); `--assistant-wav file.wav`: the same from a
     // 16 kHz mono 16-bit recording, through whisper (the model must be downloaded).
     if (const int i = app.arguments().indexOf(QStringLiteral("--assistant-say")); i >= 0 && i + 1 < app.arguments().size()) {
@@ -443,6 +452,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("matting"), &matting);
     recorder.setEngine(&engine);
     engine.rootContext()->setContextProperty(QStringLiteral("recorder"), &recorder);
+    engine.rootContext()->setContextProperty(QStringLiteral("forms"), &forms);
     engine.rootContext()->setContextProperty(QStringLiteral("knowledge"), &knowledge);
     engine.rootContext()->setContextProperty(QStringLiteral("languages"), &languages);
     engine.rootContext()->setContextProperty(QStringLiteral("kdeconnect"), &kdeconnect);
@@ -472,6 +482,8 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("assistant"), &assistant);
     engine.rootContext()->setContextProperty(QStringLiteral("tasks"), &tasks);
     engine.rootContext()->setContextProperty(QStringLiteral("taskSuggest"), &taskSuggest);
+    engine.rootContext()->setContextProperty(QStringLiteral("translator"), &translator);
+    engine.rootContext()->setContextProperty(QStringLiteral("assistantChat"), &assistantChat);
     engine.rootContext()->setContextProperty(QStringLiteral("apiTester"), &apiTester);
     engine.rootContext()->setContextProperty(QStringLiteral("sshManager"), &sshManager);
     engine.rootContext()->setContextProperty(QStringLiteral("dbManager"), &dbManager);
@@ -695,7 +707,7 @@ int main(int argc, char *argv[])
     // `notch --shot-page file.png <timer|color|shelf|tasks|capsule>`: the open panel on that page, the same way.
     if (const int i = app.arguments().indexOf(QStringLiteral("--shot-page")); i >= 0 && i + 2 < app.arguments().size()) {
         const QString path = app.arguments().at(i + 1), page = app.arguments().at(i + 2);
-        QTimer::singleShot(1200, &app, [&windows, &app, &activities, &doomscroll, &assistant, &audioIntel, &recorder, path, page] {
+        QTimer::singleShot(1200, &app, [&windows, &app, &activities, &doomscroll, &assistant, &assistantChat, &audioIntel, &recorder, path, page] {
             QQuickWindow *w = windows.isEmpty() ? nullptr : windows.constBegin().value();
             if (!w)
                 return app.quit();
@@ -740,7 +752,20 @@ int main(int argc, char *argv[])
                 w->setProperty("page", QStringLiteral("audio"));
                 return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 1800, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
             }
+            if (page == QLatin1String("chat-demo") || page == QLatin1String("chat")) { // the talk page; chat-demo has a talk to look at
+                if (page == QLatin1String("chat-demo"))
+                    assistantChat.debugFill();
+                w->setProperty("page", QStringLiteral("assistant"));
+                return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 2200, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+            }
             if (page.startsWith(QLatin1String("docs-"))) { // the Documents page with a PDF of the shelf chosen: docs-<item id>
+                if (page == QLatin1String("docs-forms")) { // the Forms tab; NOTCH_SHOT_ACTION=edit | share | answers
+                    w->setProperty("docsTab", QStringLiteral("forms"));
+                    w->setProperty("docsAction", qEnvironmentVariable("NOTCH_SHOT_ACTION"));
+                    w->setProperty("docsPick", QStringLiteral("forms"));
+                    w->setProperty("page", QStringLiteral("docs"));
+                    return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 2200, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+                }
                 const bool tools = page.mid(5).startsWith(QLatin1String("tools-")); // docs-tools-<id>: the PDF tools tab
                 w->setProperty("docsTab", tools ? QStringLiteral("tools") : QString());
                 w->setProperty("docsAction", qEnvironmentVariable("NOTCH_SHOT_ACTION")); // for a picture of one action: mark | stamp | protect
@@ -825,6 +850,8 @@ int main(int argc, char *argv[])
         auto steps = std::make_shared<QList<Step>>();
         for (const QString &pg : {QStringLiteral("shelf"), QStringLiteral("timer"), QStringLiteral("tasks"), QStringLiteral("color"), QStringLiteral("clipboard"), QStringLiteral("audio"), QStringLiteral("docs"), QStringLiteral("dev")})
             steps->append({pg, pg, QString()});
+        steps->append({QStringLiteral("note"), QStringLiteral("note"), QString()});
+        steps->append({QStringLiteral("shelf (after note)"), QStringLiteral("shelf"), QString()}); // a page that was open must let go of its room
         for (const QString &sec : {QStringLiteral("general"), QStringLiteral("appearance"), QStringLiteral("panel"), QStringLiteral("dock"), QStringLiteral("alerts"),
                                    QStringLiteral("files"), QStringLiteral("sharing"), QStringLiteral("ai"), QStringLiteral("languages"), QStringLiteral("wellbeing"), QStringLiteral("about")})
             steps->append({QStringLiteral("settings/") + sec, QStringLiteral("settings"), sec});
