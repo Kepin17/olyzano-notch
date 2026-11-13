@@ -1,50 +1,90 @@
 ## Olyzano Notch 0.18.0
 
-**Audio** record or import a recording and get a transcript, who said what, and notes with decisions and tasks, all on your computer.
+Notch lives at the top of your screen and keeps your files, recordings, tasks and forms one click away. This version teaches it to **listen, read, translate and answer**, and everything the AI does runs on your own computer.
 
-### New
-- **Audio page** (action bar → *Audio*): a list of recordings with status, search, and **Record** / **Import** (or drop a file). Open one for a player with a clickable waveform and 1× / 1.5× / 2×, then **Summary**, **Transcript** and **Action items** tabs.
-- **Transcript with timestamps** (whisper.cpp, built in), Indonesian, English or automatic. Click a time to play from there; double-click a line to fix it (the original is kept); delete lines; find text.
-- **Who said what:** a recording made by Notch keeps *you* (microphone) and *the others* (computer sound) on separate channels; imported files are separated by voice. Rename a speaker once for every line. Speakers are grouped by voice, not identified.
-- **Notes you can check:** summary, key points, decisions, tasks (who / by when, only if said), open questions. Each decision and task must quote the transcript; what cannot be matched is dropped or marked *Needs review*. Styles: Meeting, Lecture, Interview, General.
-- **Speakers you can steer:** say how many people there are (when importing or with *Detect again*), a voice heard for a moment is no longer a "person", a recording made by Notch separates the people at the microphone too, and a *Telling speakers apart* setting lets you choose Fewer / Balanced / More.
-- **Names from the conversation:** "my name is Budi" or "Halo Budi" suggests the name; you press Apply.
-- **Structured notes:** overview, topics with times, decisions with the reason, action items as a table, risks, next steps (and concepts, questions and answers, quotes for lectures and interviews); **Copy** gives Markdown. The transcript follows the audio as it plays.
-- **A cleaner Audio page:** a short header with the player, tabs with a line under the chosen one (Summary, Transcript, Tasks), a thin strip for what is being processed, transcript lines grouped by speaker with the line being played marked, and a first-steps screen when there are no recordings yet.
-- **Live meetings** (*Audio → Live*; with a graphics card and the Large v3 Turbo model downloaded, Live uses that more accurate model and updates about twice as often): the transcript appears while the meeting happens (you and the others on separate sides), in the languages you choose, with optional translation of every line into the language you choose and **Suggest answer** for three drafts of what to say next. All local; the recording is saved and can be improved afterwards.
-- **Ask your files** (*Documents → Ask your files*, the *Ask* tab of a recording): questions about a PDF, a recording or everything, answered only from your files with the page or minute and a checked quote for each claim; "not found" instead of a guess. **Smart search** (✦ in Files) finds a file from a sentence ("kuitansi listrik bulan lalu"). **Suggested tasks** on the Tasks page from a recording's action items and from PDFs; nothing is added until you press Add. Optional download for search by meaning. All local.
-- **Reading images (optional, Settings → AI → Reading images):** a picture model (Qwen3-VL 4B, ~2.9 GB, downloaded only when you press Download) describes a picture or reads the writing in it (*Tools → Image (AI)* on the shelf) and describes the charts and diagrams of a PDF when you summarize it. Local only. The Settings section *Audio AI* is now simply *AI*.
-- **Graphics card** (*Settings → AI*): Notch finds it by itself and runs the speech model on it (several times quicker; Live and recordings), and the language model too once you download its small Vulkan program. Automatic, processor-only or card; it falls back to the processor if the card does not work.
-- **Many languages** (*Settings → Languages*): about thirty languages to choose from for what is said in a recording, the language of its notes, the study notes of a PDF, and reading pictures. Speech and notes need no extra download; OCR needs one small pack per language, downloaded only when you press Download (or installed on the system). *Automatic* picks among the languages you use, the headings of the study notes are translated for fifteen of them, and Arabic, Hebrew, Persian and Urdu notes are laid out right to left. See `docs/languages.md`.
-- **PDF ↔ Word and watermarks** (*Documents → Convert*, or right-click → *Tools*; any file can be chosen or dropped there, and the result goes straight onto the shelf): PDF → Word (.docx) or OpenDocument (.odt) as editable text (a scanned PDF is read with OCR and only its words come over; columns and tables may differ), Word → PDF, and a watermark such as **CONFIDENTIAL DOCUMENT** on every page or the pages you choose: presets or your own text, diagonal / straight / repeated, colour, strength, size, with a preview. The result is a new file on the shelf; the original is never changed. Forms and links in a marked PDF may not stay interactive. See `docs/pdf-tools.md`.
-- **Stamp, signature and password** (*Convert → Stamp / Protect*): an APPROVED / PAID / … stamp or a picture of your signature, placed where you click on a preview of the page; and a PDF locked with a password (printing, copying and editing can be limited) or opened again with it. The original is never changed; a locked PDF is refused by the other tools until it is opened. The signature is a picture, not a digital signature, and the lock is 128-bit RC4 (Ghostscript has no stronger). See `docs/pdf-tools.md`.
-- **Forms** (Documents → Forms): build a form (short and long text, numbers, emails, dates, choices, file uploads), share it on your WiFi by QR with an optional PIN and limits on answers, people and time, and collect the answers: cards, a .csv for your spreadsheet, and the files people sent, onto your shelf. **Notices for shares**: a notice when a phone takes your file ("iPhone · Safari took report.pdf"), when the limit is reached or a device is turned away (Settings → Sharing). Forms also work through your own server, with the answers sealed in the browser (update `server/`). Forms can be shown **one slide at a time** (by section or one question per slide), end with **your own message and a link button** (e.g. to join a group), and be open **between dates and times** chosen on a calendar. Questions can depend on earlier answers (or end the form early), the Answers screen has a **Summary** (bars, averages, answers per day), people can **change their answer** from a personal link if you allow it, a form can take **one answer from each device** or as many as people like, files from forms go to **Files by themselves** (a category per form, tidy names) with thumbnails and a **Report (.html)** with the pictures inside. See `docs/forms.md`.
-- **Hide Notch when an app is full screen** now sends the notch to its **Hidden mode** (from whatever mode it was in: capsule, widget, always open…) instead of locking it away: the top edge still opens it, and when the app is not full screen any more it is back in the mode you had. Gaming mode keeps its stricter lock. The search (Shift + Space) is not offered over a full-screen app.
-- **Assistant** (action bar → Assistant): talk to the language model of this computer. Ask about your tasks, recordings and files (with sources), or tell it what to do ("add a task: send the report tomorrow 9"): what changes something waits for **Add**, and what is written in your files can never give it an order. See `docs/assistant-chat.md`.
-- **Search finds what is inside** (Shift + Space): passages of recordings and their notes, files, and the answers of forms, with the words in bold and the page or the time; Enter opens the recording at that second, the file or the form's answers. See `docs/ask-your-files.md`.
-- **New Forms questions**: star **rating**, **scale** (1 to 3–10 with words for the ends), **signature** (drawn on the screen, kept as a picture) and a **limit per choice** ("Saturday: 10", on this WiFi). See `docs/forms.md`.
-- **Translation** (all on this computer): translate a recording's transcript (Transcript tab, globe button) and save subtitles with **two languages in each cue** (SRT/WebVTT) or the translation alone; translate a PDF page by page (*Docs → Convert → Translate*) into a new PDF and Markdown file. See `docs/transcript-export.md`, `docs/pdf-tools.md`.
-- **Follow-up for recordings** (Audio → a recording → Follow-up): an email to the people who were there, the agenda of the next meeting and the tasks onto your Tasks list (also by themselves if you like), all from the notes. See `docs/audio-intelligence.md`.
-- **Large models for a graphics card** (*Settings → AI*): optional Whisper Large v3, Qwen3 8B and Qwen3 14B for audio notes, PDF summaries and Ask. They are never in "Install recommended/everything", and on a computer that cannot run them (no Vulkan, too little graphics memory, an integrated processor that was not quicker) the Download is turned off with the reason. A larger model runs wholly on the graphics card, otherwise the standard model is used. See `docs/ai-models.md`.
-- **Limits on a share**: Share via QR can now be limited to a number of downloads of the whole share and a number of people (devices) that you choose with a slider or by typing, on This WiFi and on your own server; the open share shows "downloaded 1 of 3× · 2 of 3 people". The limit on people needs the updated `server/relay.py`. See `docs/user-guide.md` §4.
-- **One page for AI models** (Settings → AI → AI models): every model by category (Audio & recordings, Documents & files, Pictures), with *Install recommended*, *Install everything* and *Install all* per category, two downloads at a time and shared programs downloaded once. It replaces the separate model cards. See `docs/ai-models.md`.
-- **Music and sounds in transcripts** (Settings → AI → AI models, optional ~28 MB): music, applause, crowds and other sounds show as lines of their own («♪ Music») instead of words the speech model made up, and are not given to it; speech over music is still written down. See `docs/sound-detection.md`.
-- **Screen recorder** (*Camera → Record screen*): record the screen, a window, or only the camera, with the camera laid over it where you put it (corner, size, rounded/square/circle), your microphone and the sound of the computer, into an MP4 on the shelf. Linux first. See `docs/screen-recorder.md`.
-- **Stamps with your own picture** (a logo, a scanned stamp, a signature): size, tilt and strength sliders, quick places, and a PNG with a transparent background is used as it is. **Removing backgrounds** (Settings → AI, optional download: Fast ~16 MB or Best quality ~190 MB, local): *Convert → Remove background* and *Tools → Images → Remove background…* make a transparent PNG; the stamp can cut a photographed signature out of its paper. See `docs/pdf-tools.md`.
-- **Clean up sound before writing** (Settings → AI → *Clean up sound*; optional models in AI models): *Reduce noise* (GTCRN, 0.5 MB) or *Voice from music* (Spleeter, 35 MB) before the speech recognizer, so a noisy recording or a song with a singer is written down without made-up words. The music and speaker models still hear the original. See `docs/audio-cleanup.md`.
-- **Punctuation for English** (optional, 30 MB): full stops, commas and capitals for English text that has none. English only: Indonesian is left as Whisper wrote it. See `docs/audio-cleanup.md`.
-- **Export a transcript and chapters:** SRT, WebVTT or text (with or without the music and sound lines) from the Transcript tab, and chapters for a video description (`00:00 Title`) from the topics of the notes. See `docs/transcript-export.md`.
-- **Screen recorder keeps recording when the panel closes**, with a red *Recording screen* pill and the time in the closed notch that opens the recorder, and a fix for the crash of Preview in Qt's PipeWire capture (see `docs/screen-recorder.md`).
-- **Record one application, and a lighter camera:** *Camera → Record screen → Window* lists the open applications (and a *Record <app>* button for the one that was in front), names the file after it and shows its name in the closed notch (on Wayland the system's own window still confirms the share). *Adjust the camera* sets quality (480p / 720p / 1080p, 720p by default instead of the camera's biggest size), zoom, brightness and contrast, also in the recording. See `docs/screen-recorder.md`.
-- **A cleaner look:** buttons, choices, cards and switches are filled, without outlines, a little taller and rounder, with larger text; the main action of a page is the one solid button; the page bar and the header are quieter; the recorder is grouped into Source, Camera and Sound with Record always in sight. Every theme and light/dark keep working; Washi keeps its ink lines.
-- **Docs page** (action bar → *Docs*): choose a PDF (one from your shelf, or any file, or drop it), pick the style, length, language and pages, and follow the progress; what was made stays in a list with buttons to open the PDF and the Markdown.
-- **Summarize a PDF as study notes** (the Docs page, or right-click a PDF → *Tools → PDF tools → Summarize as study notes…*): the text of each page is read (pages that are pictures are read with OCR), a local language model writes an overview, an outline, key points, terms with definitions, formulas and practice questions with answers, each point checked against the page it quotes, and a laid-out PDF plus a Markdown file are saved on your shelf. Styles: Study notes, Brief, Flash cards, Cheat sheet. About a minute a page on a CPU. See `docs/pdf-summary.md`.
-- **Record** the microphone and the sound the computer plays (Linux and Windows), up to 60 minutes. It never starts by itself.
-- Stopped or failed jobs **continue** from the last good stage. Models and helpers (*Settings → AI*) are downloaded only when you press Download, resumed, and verified.
+### Highlights
+- 🎙️ **Recordings become notes.** Record or import a recording and get a transcript, who said what, a summary, decisions and tasks.
+- 💬 **Talk to Notch.** Ask about your tasks, recordings and files, or tell it what to do. It always asks before it changes anything.
+- 📝 **Forms that feel like Google Forms.** Page-by-page forms, your own thank-you message, opening and closing dates, star ratings, signatures, and answers you can search.
+- 🔍 **Search finds what is inside.** Press Shift + Space to look inside your recordings, files and form answers, not just app names.
+- 🌍 **Translate.** Turn a transcript into subtitles in two languages, or translate a PDF, page by page.
 
-### Not in this version
-Export, search across recordings, asking questions of a recording, live transcription. Needs `ffmpeg` (Windows: on PATH). See `docs/audio-intelligence.md`.
+---
+
+### Talk to Notch
+- **Assistant** (action bar → *Assistant*). Ask "What is due this week?" or "Summarize my last recording", or say "Add a task: send the report tomorrow 9". Anything that changes something shows an **Add** button first, and text inside your files can never give it orders.
+- **Voice commands.** Press the microphone and say "open Firefox" or "timer 5 minutes". Nothing is recorded or sent anywhere.
+- **Ask your files** (*Docs → Ask your files*). Ask a question about a PDF, a recording, or everything. Each answer shows where it came from, and Notch says "not found" instead of guessing.
+
+### Recordings & meetings
+- **Record or import** (action bar → *Audio*). Record your microphone and the sound of your computer, or drop in a file.
+- **Transcript with times.** Click a time to play from there, fix any line, and find words. Indonesian, English, or automatic.
+- **Who said what.** Notch separates voices; rename a speaker once and every line changes.
+- **Notes you can trust.** Summary, key points, decisions, tasks and open questions. Each decision and task must quote the transcript, and anything Notch cannot back up is marked *Needs review*.
+- **Follow-up in one click** (a recording → *Follow-up*). Get a ready-to-send email, an agenda for the next meeting, and your tasks added to the Tasks list.
+- **Translate** (a recording → *Transcript* → globe button). Save subtitles with two languages at once, or the translation alone.
+- **Live meetings.** Watch the transcript appear while the meeting happens, with optional translation and three suggested replies.
+- **Cleaner sound.** Optional noise reduction, music detection (shown as "♪ Music" instead of invented words), and punctuation for English.
+- **Export.** Save a transcript as subtitles or text, and get chapters for a video description.
+- **About thirty languages** (*Settings → Languages*). Choose what is spoken in a recording and the language of your notes. Reading text in pictures needs one small pack per language, downloaded only when you ask.
+- **Jobs pick up where they stopped.** If a job fails or you stop it, it continues from the last good step.
+
+### Documents & files
+- **Study notes from a PDF** (*Docs*). Get an overview, key points, terms and practice questions, each checked against the page it came from.
+- **Translate a PDF** (*Docs → Convert → Translate*). You get a new PDF and a text file, page by page.
+- **Convert and mark** (*Docs → Convert*). PDF to Word, Word to PDF, watermarks, stamps and your signature, and password protection. Your original is never changed.
+- **Remove backgrounds** from pictures, and have a picture described or its text read.
+- **Smart search in Files.** Find a file by describing it: "last month's electricity receipt".
+- **Suggested tasks.** Notch spots tasks in your recordings and PDFs and offers them on the Tasks page. Nothing is added until you press Add.
+
+### Forms
+- **Make a form** (*Docs → Forms*). Use text, numbers, choices, dates, uploads, **star ratings**, **scales** and **signatures**.
+- **One page or one question at a time.** Group questions into sections, and show or skip questions based on earlier answers.
+- **Your own ending.** Write a thank-you message with a button, for example to join a group.
+- **Open between two dates.** Pick the days on a calendar.
+- **One answer or many.** Choose one answer per device, or let people answer as often as they like.
+- **Change an answer later.** If you allow it, people get a personal link to edit what they sent.
+- **Limits per choice.** For example, "Saturday: 10 places". This works on your WiFi.
+- **See the results.** Charts and averages, a table for your spreadsheet, and a report with pictures. Files people send go to Files in a folder named after the form.
+- **Share it your way.** Use a QR code on your WiFi, or your own server.
+
+### Sharing
+- **Share by QR code** with limits: how many downloads, and how many people. Set them with a slider or by typing.
+- **Notices.** Notch tells you when a phone takes your file or when a limit is reached.
+
+### Search
+- **Shift + Space.** Find apps, and also passages inside your recordings (with their notes), your files and your form answers. The words you typed are in bold, and **Enter** opens the right place: the recording at that second, the file, or the answers of that form.
+- **Not over full-screen apps.** Search stays out of the way of a game or video that fills the screen.
+
+### Look & feel
+- **Hidden in full screen.** With *Hide Notch when an app is full screen* on, Notch goes into **Hidden mode** while a game or video fills the screen. You can still open it from the top edge, and it goes back to your usual mode afterwards. *Gaming mode* stays the stricter option that also mutes sounds.
+- **Screen recorder** (*Camera → Record screen*). Record the screen, one window or just the camera. Place the camera in a corner, add your microphone and the computer's sound, and get an MP4 in Files. Linux first.
+- **A cleaner design.** Calmer buttons, cards and switches, with one clear main action on each page.
+- **AI models in one place** (*Settings → AI*). See everything Notch can download, grouped by use, and install a whole group with one click.
+
+### Good to know
+- **Everything runs on your computer.** Nothing is sent to a cloud service, and models are downloaded only when you press **Download**.
+- **Bigger models for a good graphics card.** Whisper Large v3, Qwen3 8B and Qwen3 14B are optional. If your computer cannot run one, its Download button is turned off and tells you why.
+- **Forms on your own server need its files updated.** Copy the new `server/` folder and restart it. Without that, "one answer per device", "change my answer" and opening dates will not work there.
+- **Limits per choice only work on your WiFi.** Through your own server the answers are sealed, so Notch cannot count them.
+- **Small AI, check the details.** The standard AI is good for Indonesian and English. For other languages, and for dates and numbers, read what it writes against your own data.
+- **Your graphics card is used automatically** to make speech recognition and the AI much quicker. You can switch to "processor only" in *Settings → AI*, and Notch falls back by itself if the card does not work.
+- Notch needs `ffmpeg` for audio (on Windows it must be on PATH).
+
+### Optional downloads
+| What | Good for | Size (about) |
+| --- | --- | --- |
+| Speech recognition (Small) | Transcripts | 0.3 GB |
+| Speech recognition (more accurate) | Better transcripts | 0.9 GB |
+| Notes AI (Qwen3 4B) | Notes, Ask, translation, assistant | 2.5 GB |
+| Picture reader (Qwen3-VL) | Describing pictures and charts | 2.9 GB |
+| Search by meaning | Finding files by what they mean | 0.6 GB |
+| Speaker separation | Who said what | 0.1 GB |
+| Noise reduction, music detection, background removal | Cleaner sound and pictures | 0.5 to 190 MB each |
+| Whisper Large v3, Qwen3 8B, Qwen3 14B | Best quality on a graphics card | 3 GB, 5 GB, 9 GB |
+
+More details: `docs/forms.md`, `docs/audio-intelligence.md`, `docs/ai-models.md`, `docs/assistant-chat.md`, `docs/ask-your-files.md`, `docs/pdf-tools.md`, `docs/transcript-export.md`, `docs/screen-recorder.md`.
 
 ### Downloads
-- **Linux:** `notch_0.18.0_amd64.deb` for Debian 13, Ubuntu 25.04 or newer (Qt 6.5+). Install with `sudo apt install ./notch_0.18.0_amd64.deb`, then restart Olyzano Notch.
+- **Linux:** `notch_0.18.0_amd64.deb` for Debian 13 or Ubuntu 25.04 and newer. Install it with `sudo apt install ./notch_0.18.0_amd64.deb`, then restart Olyzano Notch.
 - **Windows:** `Notch-0.18.0-windows-x64-setup.exe`, or the portable `.zip`.
