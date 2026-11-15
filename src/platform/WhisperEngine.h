@@ -34,6 +34,7 @@ public:
     bool fellBack() const;    // the last load was asked for the GPU and had to use the processor
     bool loaded() const;
     void unload();
+    void setVocabulary(const QString &names) { m_vocabulary = names; } // spellings the person wants (names): added to the prompt of the next recordings
     // What was heard, and how sure the model was: the mean probability of the words (0..1), and the pieces it doubted.
     struct Transcript {
         QString text;
@@ -60,6 +61,7 @@ public:
                                QString *detectedLanguage, const QStringList &candidates = {}, bool fast = false);
 
 private:
+    QString m_vocabulary;
     struct Impl;
     std::unique_ptr<Impl> d;
 };

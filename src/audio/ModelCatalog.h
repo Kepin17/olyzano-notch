@@ -124,7 +124,7 @@ inline QList<CatalogItem> fullCatalog()
          QStringLiteral("Splits the voice from the music, so a song with a singer is written without words made up for the band. Slower than the rest; runs on this computer only. MIT licence."),
          QStringLiteral("sherpa-onnx-spleeter-2stems-fp16.tar.bz2"),
          gh + QStringLiteral("k2-fsa/sherpa-onnx/releases/download/source-separation-models/sherpa-onnx-spleeter-2stems-fp16.tar.bz2"), 35271738,
-         QStringLiteral("c6c5c4307673bc6813ddf58d4efdff57c26d2dfc3f25b05c7a32db453d70aca6"), {}, QStringLiteral("vocals.fp16.onnx"), Q_INT64_C(1) << 30},
+         QStringLiteral("d54561979bd2e08a51e7dbd99ac36bb47564e089eefd403636dbca93e811bba2"), {}, QStringLiteral("vocals.fp16.onnx"), Q_INT64_C(1) << 30},
         {QStringLiteral("punct-en"), Kind::Helper, QStringLiteral("Punctuation, English (CNN-BiLSTM)"),
          QStringLiteral("Adds full stops, commas and capital letters to English text that has none. English only. Apache-2.0 licence."),
          QStringLiteral("sherpa-onnx-online-punct-en-2024-08-06.tar.bz2"),

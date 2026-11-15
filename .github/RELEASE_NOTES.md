@@ -1,4 +1,4 @@
-## Olyzano Notch 0.18.0
+## Olyzano Notch 0.18.1
 
 Notch lives at the top of your screen and keeps your files, recordings, tasks and forms one click away. This version teaches it to **listen, read, translate and answer**, and everything the AI does runs on your own computer.
 
@@ -26,6 +26,7 @@ Notch lives at the top of your screen and keeps your files, recordings, tasks an
 - **Translate** (a recording → *Transcript* → globe button). Save subtitles with two languages at once, or the translation alone.
 - **Live meetings.** Watch the transcript appear while the meeting happens, with optional translation and three suggested replies.
 - **Processing feels alive.** While a recording is being processed, the progress bar glides with a light running along it, the percent counts up smoothly, and each step fades into the next with a small pop when it is done.
+- **Tidy a transcript.** In a transcript, the pen button removes "eee" and "um" and repeated words, and fixes names with your own word list (*Settings → AI*). It shows what will change first, and Undo brings it back.
 - **Cleaner sound.** Optional noise reduction, music detection (shown as "♪ Music" instead of invented words), and punctuation for English.
 - **Export.** Save a transcript as subtitles or text, and get chapters for a video description.
 - **About thirty languages** (*Settings → Languages*). Choose what is spoken in a recording and the language of your notes. Reading text in pictures needs one small pack per language, downloaded only when you ask.
@@ -35,6 +36,7 @@ Notch lives at the top of your screen and keeps your files, recordings, tasks an
 - **Study notes from a PDF** (*Docs*). Get an overview, key points, terms and practice questions, each checked against the page it came from.
 - **Translate a PDF** (*Docs → Convert → Translate*). You get a new PDF and a text file, page by page.
 - **Convert and mark** (*Docs → Convert*). PDF to Word, Word to PDF, watermarks, stamps and your signature, and password protection. Your original is never changed.
+- **Tasks from a photo** (right-click a picture → *Tools → Image (AI)* → *Find tasks*). Notch reads a photo of a whiteboard, note or schedule and offers the tasks it finds; nothing is added until you press Add.
 - **Remove backgrounds** from pictures, and have a picture described or its text read.
 - **Smart search in Files.** Find a file by describing it: "last month's electricity receipt".
 - **Suggested tasks.** Notch spots tasks in your recordings and PDFs and offers them on the Tasks page. Nothing is added until you press Add.
@@ -88,5 +90,5 @@ Notch lives at the top of your screen and keeps your files, recordings, tasks an
 More details: `docs/forms.md`, `docs/audio-intelligence.md`, `docs/ai-models.md`, `docs/assistant-chat.md`, `docs/ask-your-files.md`, `docs/pdf-tools.md`, `docs/transcript-export.md`, `docs/screen-recorder.md`.
 
 ### Downloads
-- **Linux:** `notch_0.18.0_amd64.deb` for Debian 13 or Ubuntu 25.04 and newer. Install it with `sudo apt install ./notch_0.18.0_amd64.deb`, then restart Olyzano Notch.
-- **Windows:** `Notch-0.18.0-windows-x64-setup.exe`, or the portable `.zip`.
+- **Linux:** `notch_0.18.1_amd64.deb` for Debian 13 or Ubuntu 25.04 and newer. Install it with `sudo apt install ./notch_0.18.1_amd64.deb`, then restart Olyzano Notch.
+- **Windows:** `Notch-0.18.1-windows-x64-setup.exe`, or the portable `.zip`.

@@ -43,7 +43,7 @@ void VisionController::run(const QString &kind, const QString &itemId)
         emit changed();
         return;
     }
-    const bool read = kind.startsWith(QLatin1String("read")), toNote = kind.endsWith(QLatin1String("note"));
+    const bool tasks = kind == QLatin1String("tasks"), read = tasks || kind.startsWith(QLatin1String("read")), toNote = kind.endsWith(QLatin1String("note"));
     const QString path = info.value(QStringLiteral("path")).toString(), base = info.value(QStringLiteral("base")).toString(), name = info.value(QStringLiteral("name")).toString();
     const QString code = m_audio->language();
     const QString language = Lang::known(code) ? Lang::englishName(code) : QStringLiteral("the language of the writing in the picture (English when there is none)");
@@ -54,7 +54,7 @@ void VisionController::run(const QString &kind, const QString &itemId)
     m_error.clear();
     m_status = tr("Starting the picture model…");
     emit changed();
-    (void)QtConcurrent::run(&m_pool, [this, store, threads, path, base, name, read, toNote, language] {
+    (void)QtConcurrent::run(&m_pool, [this, store, threads, path, base, name, read, toNote, tasks, itemId, language] {
         QString error, text;
         const auto status = [this](const QString &s) { QMetaObject::invokeMethod(this, [this, s] { m_status = s; emit changed(); }, Qt::QueuedConnection); };
         const QByteArray png = Audio::Vision::scaledPng(path, 1568, &error);
@@ -75,13 +75,18 @@ void VisionController::run(const QString &kind, const QString &itemId)
         }
         if (m_cancel)
             error = QStringLiteral("cancelled");
-        QMetaObject::invokeMethod(this, [this, error, text, base, name, read, toNote] {
+        QMetaObject::invokeMethod(this, [this, error, text, base, name, read, toNote, tasks, itemId] {
             m_busy = false;
             m_status.clear();
             if (error == QLatin1String("cancelled")) {
                 // stopped by the person: nothing to say
             } else if (!error.isEmpty()) {
                 m_error = error;
+            } else if (tasks) {
+                if (text.simplified().size() < 20)
+                    m_error = tr("No text could be read in %1, so there is nothing to find tasks in.").arg(name);
+                else
+                    emit textForTasks(itemId, name, text);
             } else if (toNote) {
                 const QString file = base + (read ? tr(" (text from picture).txt") : tr(" (description).txt"));
                 if (m_notch->addDocument(file, QStringLiteral("text/plain"), text.toUtf8(), tr("Read from %1 by the picture model").arg(name)))

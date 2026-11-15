@@ -67,6 +67,9 @@ class AudioController : public QObject
     Q_PROPERTY(QString cleanMode READ cleanMode WRITE setCleanMode NOTIFY settingsChanged) // off | denoise | vocals: done before the recognizer (when its model is installed)
     Q_PROPERTY(bool denoiseReady READ denoiseReady NOTIFY modelsChanged)
     Q_PROPERTY(bool vocalsReady READ vocalsReady NOTIFY modelsChanged)
+    Q_PROPERTY(bool tidyNew READ tidyNew WRITE setTidyNew NOTIFY settingsChanged) // fillers and words said three times in a row are taken out of new transcripts
+    Q_PROPERTY(QVariantList dictionary READ dictionary NOTIFY settingsChanged)   // [{heard, written}]: words the recognizer gets wrong, and how the person writes them
+    Q_PROPERTY(bool canUndoTidy READ canUndoTidy NOTIFY tidyChanged)
     Q_PROPERTY(bool punctuate READ punctuate WRITE setPunctuate NOTIFY settingsChanged) // marks and capitals for English text that has none
     Q_PROPERTY(bool punctReady READ punctReady NOTIFY modelsChanged)
     Q_PROPERTY(QString speakerSplit READ speakerSplit WRITE setSpeakerSplit NOTIFY settingsChanged) // fewer | balanced | more
@@ -155,6 +158,18 @@ public:
     bool vocalsReady() const { return m_cleaner.available(Audio::Clean::Vocals); }
     bool punctuate() const { return m_settings.value(QStringLiteral("punctuate"), false).toBool(); }
     void setPunctuate(bool on) { m_settings.setValue(QStringLiteral("punctuate"), on); emit settingsChanged(); }
+    bool tidyNew() const { return m_settings.value(QStringLiteral("tidyNew"), false).toBool(); }
+    void setTidyNew(bool on) { m_settings.setValue(QStringLiteral("tidyNew"), on); emit settingsChanged(); }
+    QVariantList dictionary() const;
+    QList<Audio::Tidy::Word> dictionaryWords() const;
+    bool canUndoTidy() const { return !m_tidyUndo.isEmpty(); }
+    Q_INVOKABLE void addWord(const QString &heard, const QString &written);
+    Q_INVOKABLE void removeWord(int index);
+    // Tidying the transcript that is open: how many lines would change (with a few before/after), then doing it (kept apart from the recognized
+    // text, so each line can go back) and undoing the last tidy.
+    Q_INVOKABLE QVariantMap tidyPreview(bool fillers, bool repeats, bool words) const;
+    Q_INVOKABLE int tidyApply(bool fillers, bool repeats, bool words);
+    Q_INVOKABLE int tidyUndo();
     bool punctReady() const { return m_punct.available(); }
     void setSpeakerSplit(const QString &v) { m_settings.setValue(QStringLiteral("speakerSplit"), v); emit settingsChanged(); }
     QString tmpl() const { return m_settings.value(QStringLiteral("template"), QStringLiteral("meeting")).toString(); }
@@ -220,6 +235,7 @@ public:
     Q_INVOKABLE void removeModel(const QString &id);
 
 signals:
+    void tidyChanged();
     void followUpReady(qlonglong id, const QString &kind, const QString &subject, const QString &text, bool polished);
     void currentChanged();
     void notesChanged();
@@ -264,6 +280,7 @@ private:
     AudioPlayback m_playback;
     QThreadPool m_pool;
     Audio::FfmpegPreprocessor m_pre;
+    QList<QPair<qint64, QString>> m_tidyUndo; // segment id and the text it had before the last tidy ("" = the recognized text)
     Audio::WhisperAsr m_asr;
     Audio::SherpaDiarizer m_diar;
     Audio::SherpaTagger m_tagger;

@@ -477,6 +477,16 @@ PipelineResult AudioPipeline::run(const QString &source, const QString &workDir,
     if (cancel.load())
         return stopped();
 
+    // ---- fillers, repeated words and the person's own spellings (the text only; a line that would be left empty stays as it was) ----
+    if ((options.tidy || !options.words.isEmpty()) && !asr.isEmpty()) {
+        Tidy::Options tidy;
+        tidy.fillers = tidy.repeats = options.tidy;
+        tidy.words = !options.words.isEmpty();
+        for (Segment &seg : asr)
+            if (const QString clean = Tidy::cleanSegment(seg.text, tidy, options.words); !clean.isEmpty())
+                seg.text = clean;
+    }
+
     // ---- marks and capitals for English text that has none (the text only; times and speakers stay) ----
     if (options.punctuate && m_punct && !asr.isEmpty()) {
         const QString lang = options.language != QLatin1String("auto") ? options.language : r.language;

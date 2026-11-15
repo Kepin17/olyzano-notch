@@ -42,6 +42,7 @@ public:
     // The tasks of that recording straight onto the Tasks list: the ones that are on it already (or done) are left; {added, skipped}
     Q_INVOKABLE QVariantMap addMeeting(qlonglong id);
     Q_INVOKABLE void fromMeeting(qlonglong id);   // the action items of that recording's notes
+    Q_INVOKABLE void findInText(const QString &itemId, const QString &name, const QString &text, const QString &kind = QStringLiteral("image")); // text read from a picture: the language model looks for things to do
     Q_INVOKABLE void findInPdf(const QString &itemId); // a PDF of the shelf: the language model reads it for things to do
     Q_INVOKABLE void accept(const QString &id);
     Q_INVOKABLE void dismiss(const QString &id);

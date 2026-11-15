@@ -485,6 +485,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("updates"), &updates);
     engine.rootContext()->setContextProperty(QStringLiteral("assistant"), &assistant);
     engine.rootContext()->setContextProperty(QStringLiteral("tasks"), &tasks);
+    QObject::connect(&vision, &VisionController::textForTasks, &taskSuggest, [&taskSuggest](const QString &id, const QString &name, const QString &text) { taskSuggest.findInText(id, name, text); });
     engine.rootContext()->setContextProperty(QStringLiteral("taskSuggest"), &taskSuggest);
     engine.rootContext()->setContextProperty(QStringLiteral("translator"), &translator);
     engine.rootContext()->setContextProperty(QStringLiteral("assistantChat"), &assistantChat);

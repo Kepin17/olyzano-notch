@@ -28,6 +28,7 @@ public:
     QString transcribe(const QVector<float> &samples, const QString &language, const std::atomic_bool *cancel, QList<Segment> *segments,
                        QString *detectedLanguage) override;
     void release() override { m_whisper.unload(); m_loaded.clear(); }
+    void setVocabulary(const QString &names) { m_whisper.setVocabulary(names); }
     void setFast(bool on) { m_fast = on; } // for live use: greedy decoding
     static QString modelFor(const QString &quality);
 

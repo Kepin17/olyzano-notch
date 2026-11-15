@@ -59,6 +59,11 @@ The transcript is handed to the model as **data** (fenced; "ignore the above" in
 ## Editing
 Double-click a line to change it (the recognized text is kept as the original); delete a line; click a time to play from there; the current line follows the player.
 
+## Tidying a transcript
+Plain rules, no language model, so the result is predictable and nothing is made up. In a recording's **Transcript** the pen button opens *Tidy the transcript*: it takes out sounds with no meaning ("eee", "emm", "hmm", "um", "uh"), turns a word said three times or more in a row into one ("saya saya saya" → "saya"; twice is kept, it can be meant), and applies **your word list** (*Settings → AI → Words the recognizer gets wrong*: "kuen → Qwen", whole words, any case). It shows how many lines would change, with examples, before anything is written. Each line keeps the recognized text underneath, and **Undo** brings the last tidy back. The notes are not rewritten; make them again if the changes matter.
+
+*Tidy new transcripts* (same card) does the same while a recording is processed, and the written words of the list are also given to the speech model as a prompt, which makes it spell those names that way more often. Mark that as a nudge, not a guarantee.
+
 ## Not yet
 Export (Markdown/PDF/JSON/TXT), search across recordings, "ask the recording", a speaker-model choice, speeding up Live with the graphics card or NPU.
 

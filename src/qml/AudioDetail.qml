@@ -90,6 +90,7 @@ Item {
                     ["actions", "Tasks" + (detail.info.actionCount > 0 ? " · " + detail.info.actionCount : "")], ["followup", "Follow-up"], ["ask", "Ask"]]
             value: page.tab
             onPicked: (v) => page.tab = v
+            IconButton { visible: page.tab === "transcript"; iconName: "pen"; Accessible.name: "Tidy the transcript (um, eee, your own word list)"; implicitWidth: 26; implicitHeight: 26; onClicked: page.tidyOpen = !page.tidyOpen }
             IconButton { visible: page.tab === "transcript"; iconName: "globe"; Accessible.name: "Translate the transcript"; implicitWidth: 26; implicitHeight: 26; onClicked: page.translateOpen = !page.translateOpen }
             IconButton { visible: page.tab === "transcript"; iconName: "search"; Accessible.name: "Find in the transcript"; implicitWidth: 26; implicitHeight: 26; onClicked: page.findOpen = !page.findOpen }
             IconButton { visible: page.tab === "transcript"; iconName: "download"; Accessible.name: "Export the transcript (SRT, VTT, text)"; implicitWidth: 26; implicitHeight: 26; onClicked: exportMenu.popup() }
@@ -97,6 +98,7 @@ Item {
             IconButton { visible: page.tab === "summary" && !!detail.info.hasNotes; iconName: "copy"; Accessible.name: "Copy the notes as Markdown"; implicitWidth: 26; implicitHeight: 26; onClicked: { audioIntel.copyNotes(); page.shell.say("Notes copied as Markdown", 1400) } }
         }
 
+        AudioTidy { page: detail.page }
         AudioTranslate { page: detail.page }
 
         Item {

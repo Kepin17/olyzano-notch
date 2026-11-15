@@ -4015,6 +4015,7 @@ Window {
             Action { text: "Describe image (to note)"; enabled: vision.ready && !vision.busy; onTriggered: { vision.run("describe-note", toolsMenu.targets[0]); root.clearSelection() } }
             Action { text: "Read text (copy)"; enabled: vision.ready && !vision.busy; onTriggered: { vision.run("read-copy", toolsMenu.targets[0]); root.clearSelection() } }
             Action { text: "Read text (to note)"; enabled: vision.ready && !vision.busy; onTriggered: { vision.run("read-note", toolsMenu.targets[0]); root.clearSelection() } }
+            Action { text: "Find tasks"; enabled: vision.ready && !vision.busy && !taskSuggest.busy; onTriggered: { vision.run("tasks", toolsMenu.targets[0]); root.clearSelection() } }
         }
         DarkMenu {
             title: "Text (OCR)"

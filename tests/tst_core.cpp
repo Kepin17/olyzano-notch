@@ -49,6 +49,7 @@
 #include "services/Stamp.h"
 #include "audio/SoundEvents.h"
 #include "audio/SherpaRun.h"
+#include "audio/TranscriptClean.h"
 #include "audio/TranscriptExport.h"
 #include "services/Matting.h"
 #include "services/RecordMix.h"
@@ -1609,6 +1610,51 @@ private slots:
         // the parser of what the program prints
         QCOMPARE(Audio::SherpaRun::parsePunctuated(QStringLiteral("a.cc:Run:10 loading\nInput text: how are you\nOutput text: How are you?\n")), QStringLiteral("How are you?"));
         QCOMPARE(Audio::SherpaRun::parsePunctuated(QStringLiteral("/x/online-punctuation.cc:main:30 args\nHow are you?\n")), QStringLiteral("How are you?"));
+    }
+
+    void pipelineTidiesNewTranscripts()
+    {
+        const QString source = writeSample(QStringLiteral("tidy.mp3"), QByteArray("pretend this is an mp3"));
+        FakeAudio::Pre pre;
+        pre.signal = FakeAudio::burstSignal(12, {{1, 9}});
+        FakeAudio::Diarizer diar;
+        diar.turns = {{0, 12, "SPEAKER_00"}};
+        FakeAudio::Summarizer sum;
+        struct Messy : FakeAudio::Asr {
+            QString transcribe(const QVector<float> &s, const QString &l, const std::atomic_bool *c, QList<Audio::Segment> *o, QString *lang) override
+            {
+                const QString e = FakeAudio::Asr::transcribe(s, l, c, o, lang);
+                o->last().text = QStringLiteral("Eee, kuen kuen kuen itu bagus");
+                return e;
+            }
+        } asr;
+        Audio::AudioPipeline pipe(&pre, &asr, &diar, &sum);
+        Audio::PipelineOptions opt;
+        opt.windowSeconds = 10;
+        std::atomic_bool cancel{false};
+        // off: the recognizer's words as they came
+        QCOMPARE(pipe.run(source, m_tmp.filePath(QStringLiteral("job-tidy-off")), opt, cancel, {}).segments.value(0).text, QStringLiteral("Eee, kuen kuen kuen itu bagus"));
+        // only the person's list
+        opt.words = {{QStringLiteral("kuen"), QStringLiteral("Qwen")}};
+        QCOMPARE(pipe.run(source, m_tmp.filePath(QStringLiteral("job-tidy-words")), opt, cancel, {}).segments.value(0).text, QStringLiteral("Eee, Qwen Qwen Qwen itu bagus"));
+        // the list and the tidying
+        opt.tidy = true;
+        QCOMPARE(pipe.run(source, m_tmp.filePath(QStringLiteral("job-tidy-all")), opt, cancel, {}).segments.value(0).text, QStringLiteral("Qwen itu bagus"));
+    }
+
+    void catalogChecksumsAreWellFormedAndDistinct()
+    {
+        // a wrong checksum makes a finished download be thrown away ("does not match"): catch a typo here, not on a person's computer
+        QSet<QString> seen;
+        for (const Audio::CatalogItem &i : Audio::catalog()) {
+            if (i.sha256.isEmpty())
+                continue;
+            QVERIFY2(QRegularExpression(QStringLiteral("^[0-9a-f]{64}$")).match(i.sha256).hasMatch(), qPrintable(i.id));
+            QVERIFY2(i.size > 0 && i.url.startsWith(QLatin1String("https://")), qPrintable(i.id));
+            QVERIFY2(!seen.contains(i.sha256 + i.url), qPrintable(i.id));
+            seen.insert(i.sha256 + i.url);
+        }
+        QCOMPARE(Audio::catalog().size() > 20, true);
     }
 
     void cleanBundles()
@@ -7325,6 +7371,40 @@ private slots:
         QVERIFY(fingerprint({"a"}) != fingerprint({"b"}));
     }
 
+    void transcriptTidyingKeepsMeaningAndIsRepeatable()
+    {
+        using namespace Audio::Tidy;
+        const QList<Word> words{{QStringLiteral("kuen"), QStringLiteral("Qwen")}, {QStringLiteral("olizano"), QStringLiteral("Olyzano")}, {QStringLiteral("rapat"), QStringLiteral("meeting")}};
+        // the list: whole words only, any case, the written form kept; a capital carries over when the written word has none
+        QCOMPARE(applyWords(QStringLiteral("Pakai kuen dan Kuen3 serta KUEN."), words), QStringLiteral("Pakai Qwen dan Kuen3 serta Qwen."));
+        QCOMPARE(applyWords(QStringLiteral("Rapat besok, rapatnya jam 9"), words), QStringLiteral("Meeting besok, rapatnya jam 9"));
+        QCOMPARE(applyWords(QStringLiteral("x"), {{QString(), QStringLiteral("y")}, {QStringLiteral("x"), QStringLiteral("x")}}), QStringLiteral("x")); // empty or the same: nothing
+        // fillers: sounds with no meaning, on their own
+        QCOMPARE(removeFillers(QStringLiteral("Eee, saya mau emm pergi, hmm, sekarang")), QStringLiteral("saya mau pergi, sekarang"));
+        QCOMPARE(removeFillers(QStringLiteral("So um we are uh done")), QStringLiteral("So we are done"));
+        for (const QString keep : {QStringLiteral("Emas itu mahal"), QStringLiteral("Mereka er... ada"), QStringLiteral("Ember penuh"), QStringLiteral("Humor dan umur")})
+            QVERIFY2(removeFillers(keep).contains(keep.left(4)), qPrintable(keep)); // never inside a longer word
+        QCOMPARE(removeFillers(QStringLiteral("Selesai.")), QStringLiteral("Selesai."));
+        QCOMPARE(removeFillers(QStringLiteral("Saya pergi um.")), QStringLiteral("Saya pergi ."));
+        // repeats: three or more, not two
+        QCOMPARE(collapseRepeats(QStringLiteral("saya saya saya mau")), QStringLiteral("saya mau"));
+        QCOMPARE(collapseRepeats(QStringLiteral("Ya, ya, ya, ya baik")), QStringLiteral("Ya baik"));
+        QCOMPARE(collapseRepeats(QStringLiteral("pelan pelan saja")), QStringLiteral("pelan pelan saja"));
+        QCOMPARE(collapseRepeats(QStringLiteral("they said no no no")), QStringLiteral("they said no"));
+        // a whole line, and doing it twice changes nothing more
+        Options all;
+        const QString line = QStringLiteral("Eee, kuen kuen kuen itu bagus , ya.");
+        const QString once = cleanSegment(line, all, words);
+        QCOMPARE(once, QStringLiteral("Qwen itu bagus, ya."));
+        QCOMPARE(cleanSegment(once, all, words), once);
+        QCOMPARE(cleanSegment(QStringLiteral("eee"), all, words), QString()); // only a filler: empty, the caller leaves the line
+        Options off;
+        off.fillers = off.repeats = off.words = false;
+        QCOMPARE(cleanSegment(QStringLiteral("eee saya saya saya"), off, words), QStringLiteral("eee saya saya saya"));
+        // what the speech model is told: the written words, once each, within a limit
+        QCOMPARE(vocabularyOf({{QStringLiteral("a"), QStringLiteral("Qwen")}, {QStringLiteral("b"), QStringLiteral("qwen")}, {QStringLiteral("c"), QStringLiteral("Olyzano")}}), QStringLiteral("Qwen, Olyzano"));
+        QVERIFY(vocabularyOf({{QStringLiteral("a"), QString(50, 'x')}, {QStringLiteral("b"), QString(50, 'y')}}, 60).size() <= 60);
+    }
     void bilingualSubtitlesHoldTheWordsAndTheirTranslation()
     {
         using namespace Audio;

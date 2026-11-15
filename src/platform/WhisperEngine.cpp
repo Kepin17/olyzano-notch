@@ -208,8 +208,10 @@ QString Whisper::transcribeSegments(const QVector<float> &samples, const QString
     wp.language = lang.constData();
     wp.detect_language = false;
     // A sentence in the language, with its punctuation and capitals, makes the model write that way (and spell names as people do).
-    const QByteArray style = lang == "id" ? QByteArray("Halo, selamat pagi. Terima kasih sudah hadir. Baik, kita mulai rapatnya.")
+    QByteArray style = lang == "id" ? QByteArray("Halo, selamat pagi. Terima kasih sudah hadir. Baik, kita mulai rapatnya.")
                            : lang == "en" ? QByteArray("Hello, good morning. Thank you all for coming. Okay, let's get started.") : QByteArray();
+    if (!m_vocabulary.isEmpty()) // the person's own spellings, said as a sentence so the model writes them that way
+        style += (style.isEmpty() ? QByteArray("Names: ") : QByteArray(" Names: ")) + m_vocabulary.left(200).toUtf8() + ".";
     if (!style.isEmpty())
         wp.initial_prompt = style.constData();
     wp.abort_callback = [](void *user) { return user && static_cast<const std::atomic_bool *>(user)->load(); };

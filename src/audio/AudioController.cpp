@@ -13,6 +13,9 @@
 #include <QElapsedTimer>
 #include <cmath>
 #include <QDir>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QFileInfo>
 #include <QGuiApplication>
 #include <QProcess>
@@ -1011,6 +1014,117 @@ void AudioController::editSegment(qlonglong segmentId, const QString &text)
             m_transcript.replaceRow(row, r);
 }
 
+// ---- tidying a transcript -----------------------------------------------------------------------------------
+
+QList<Audio::Tidy::Word> AudioController::dictionaryWords() const
+{
+    QList<Audio::Tidy::Word> out;
+    const QJsonArray a = QJsonDocument::fromJson(m_settings.value(QStringLiteral("dictionary")).toString().toUtf8()).array();
+    for (const QJsonValue &v : a)
+        out.append({v.toObject().value(QStringLiteral("heard")).toString(), v.toObject().value(QStringLiteral("written")).toString()});
+    return out;
+}
+
+QVariantList AudioController::dictionary() const
+{
+    QVariantList out;
+    for (const Audio::Tidy::Word &w : dictionaryWords())
+        out << QVariantMap{{QStringLiteral("heard"), w.heard}, {QStringLiteral("written"), w.written}};
+    return out;
+}
+
+static QString wordsJson(const QList<Audio::Tidy::Word> &words)
+{
+    QJsonArray a;
+    for (const Audio::Tidy::Word &x : words)
+        a.append(QJsonObject{{QStringLiteral("heard"), x.heard}, {QStringLiteral("written"), x.written}});
+    return QString::fromUtf8(QJsonDocument(a).toJson(QJsonDocument::Compact));
+}
+
+void AudioController::addWord(const QString &heard, const QString &written)
+{
+    const QString h = heard.simplified().left(40), w = written.simplified().left(40);
+    if (h.isEmpty() || w.isEmpty() || h == w)
+        return;
+    QList<Audio::Tidy::Word> words = dictionaryWords();
+    bool known = false;
+    for (Audio::Tidy::Word &x : words)
+        if (x.heard.compare(h, Qt::CaseInsensitive) == 0) { // the same word said again: the new spelling replaces the old
+            x.written = w;
+            known = true;
+        }
+    if (!known && words.size() >= 100)
+        return;
+    if (!known)
+        words.append({h, w});
+    m_settings.setValue(QStringLiteral("dictionary"), wordsJson(words));
+    emit settingsChanged();
+}
+
+void AudioController::removeWord(int index)
+{
+    QList<Audio::Tidy::Word> words = dictionaryWords();
+    if (index < 0 || index >= words.size())
+        return;
+    words.removeAt(index);
+    m_settings.setValue(QStringLiteral("dictionary"), wordsJson(words));
+    emit settingsChanged();
+}
+
+QVariantMap AudioController::tidyPreview(bool fillers, bool repeats, bool words) const
+{
+    Audio::Tidy::Options o;
+    o.fillers = fillers;
+    o.repeats = repeats;
+    o.words = words;
+    const QList<Audio::Tidy::Word> list = dictionaryWords();
+    int count = 0;
+    QVariantList samples;
+    for (const AudioStore::SegmentRow &r : m_store.segments(m_current)) {
+        const QString before = r.text(), after = Audio::Tidy::cleanSegment(before, o, list);
+        if (after.isEmpty() || after == before)
+            continue;
+        ++count;
+        if (samples.size() < 3)
+            samples << QVariantMap{{QStringLiteral("before"), before}, {QStringLiteral("after"), after}};
+    }
+    return {{QStringLiteral("count"), count}, {QStringLiteral("samples"), samples}};
+}
+
+int AudioController::tidyApply(bool fillers, bool repeats, bool words)
+{
+    Audio::Tidy::Options o;
+    o.fillers = fillers;
+    o.repeats = repeats;
+    o.words = words;
+    const QList<Audio::Tidy::Word> list = dictionaryWords();
+    QList<QPair<qint64, QString>> undo;
+    for (const AudioStore::SegmentRow &r : m_store.segments(m_current)) {
+        const QString before = r.text(), after = Audio::Tidy::cleanSegment(before, o, list);
+        if (after.isEmpty() || after == before || !m_store.editSegment(r.id, after))
+            continue;
+        undo.append({r.id, r.edited});
+    }
+    if (undo.isEmpty())
+        return 0;
+    m_tidyUndo = undo;
+    loadCurrent(); // the lines, the search index and the counts see the new text
+    emit tidyChanged();
+    return int(undo.size());
+}
+
+int AudioController::tidyUndo()
+{
+    int n = 0;
+    for (const auto &u : std::as_const(m_tidyUndo))
+        if (m_store.editSegment(u.first, u.second))
+            ++n;
+    m_tidyUndo.clear();
+    loadCurrent();
+    emit tidyChanged();
+    return n;
+}
+
 void AudioController::deleteSegment(qlonglong segmentId)
 {
     const int row = m_transcript.rowOf(segmentId);
@@ -1108,6 +1222,9 @@ void AudioController::start(qlonglong id, bool notesOnly, bool summarize)
     opt.detectSound = detectSound();
     opt.cleanMode = cleanMode();
     opt.punctuate = punctuate();
+    opt.tidy = tidyNew();
+    opt.words = dictionaryWords();
+    m_asr.setVocabulary(Audio::Tidy::vocabularyOf(opt.words));
     QList<Audio::Segment> existing;
     if (notesOnly)
         for (const AudioStore::SegmentRow &r : m_store.segments(id))

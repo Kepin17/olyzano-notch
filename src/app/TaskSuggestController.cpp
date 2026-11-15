@@ -118,7 +118,7 @@ QVariantList TaskSuggestController::list() const
     QVariantList out;
     for (const TaskSuggest::Suggestion &s : m_list) {
         const bool meeting = s.kind == QLatin1String("meeting");
-        QString source = meeting ? tr("Recording · %1").arg(s.sourceName) : tr("PDF · %1").arg(s.sourceName);
+        QString source = meeting ? tr("Recording · %1").arg(s.sourceName) : s.kind == QLatin1String("image") ? tr("Picture · %1").arg(s.sourceName) : tr("PDF · %1").arg(s.sourceName);
         if (meeting && s.timestamp >= 0)
             source += QStringLiteral(" · ") + Audio::clock(s.timestamp);
         else if (!meeting && s.page > 0)
@@ -150,6 +150,53 @@ void TaskSuggestController::fromMeeting(qlonglong id)
 }
 
 void TaskSuggestController::cancel() { m_cancel = true; }
+
+void TaskSuggestController::findInText(const QString &itemId, const QString &name, const QString &text, const QString &kind)
+{
+    if (m_busy)
+        return;
+    if (!Audio::LlamaSession::available(m_audio->modelStore())) {
+        m_status = tr("Finding tasks needs the language model: download it in Settings → AI.");
+        emit changed();
+        return;
+    }
+    m_busy = true;
+    m_cancel = false;
+    m_status = tr("Looking for tasks in %1…").arg(name);
+    emit changed();
+    ModelStore *store = m_audio->modelStore();
+    const int threads = m_audio->threads();
+    (void)QtConcurrent::run(&m_pool, [this, itemId, name, text, kind, store, threads] {
+        QList<TaskSuggest::Suggestion> found;
+        Audio::LlamaSession session(store, [threads] { return threads; });
+        QString error = session.start(&m_cancel);
+        if (error.isEmpty()) {
+            const Audio::ChatFn chat = [&](const QString &s, const QString &u, const QJsonObject &sc) { return session.chat(s, u, sc, &m_cancel, 700); };
+            for (TaskSuggest::Suggestion s : TaskSuggest::findTasks(chat, text, 0, name, itemId, QDateTime::currentDateTime())) {
+                s.kind = kind; // shown as "Picture · name"; the quote still has to be in the text, which findTasks checks
+                s.page = 0;
+                found.append(s);
+            }
+        }
+        session.stop();
+        if (m_cancel.load())
+            error = QStringLiteral("cancelled");
+        QMetaObject::invokeMethod(this, [this, found, error, name] {
+            m_busy = false;
+            if (error == QLatin1String("cancelled")) {
+                m_status.clear();
+                emit changed();
+            } else if (!error.isEmpty()) {
+                m_status = error;
+                emit changed();
+            } else {
+                const qsizetype before = m_list.size();
+                offer(found, name);
+                m_notch->announce(m_list.size() > before ? tr("Tasks found in the picture") : tr("No new tasks"), m_status, QStringLiteral("check"));
+            }
+        }, Qt::QueuedConnection);
+    });
+}
 
 void TaskSuggestController::findInPdf(const QString &itemId)
 {

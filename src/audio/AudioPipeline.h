@@ -4,6 +4,7 @@
 #include "Punct.h"
 #include "SoundEvents.h"
 #include "SummaryModel.h"
+#include "TranscriptClean.h"
 
 #include <QList>
 #include <QString>
@@ -94,6 +95,8 @@ struct PipelineOptions {
     bool summarize = true;
     QString cleanMode = QStringLiteral("off"); // off | denoise | vocals (Clean::): done before the recognizer, when the model is installed
     bool punctuate = false;  // marks and capitals for English text that has none (when the model is installed)
+    bool tidy = false;       // fillers and words said three times or more in a row are taken out (Tidy::)
+    QList<Tidy::Word> words; // the person's list of words the recognizer gets wrong, applied to the text
     bool detectSound = true; // tell music and other sounds from speech (when the sound model is installed)
     bool stereo = false;   // a recording from Notch: microphone left, the computer's sound right
     QString youLabel = QStringLiteral("Anda");

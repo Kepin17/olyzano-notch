@@ -55,6 +55,7 @@ Item {
     property string tab: audioIntel.firstTab.split("+")[0]   // NOTCH_SHOT_TAB=transcript+translate: for pictures, the translate row open
     property bool showHistory: false
     property bool findOpen: false
+    property bool tidyOpen: audioIntel.firstTab.indexOf("+tidy") > 0
     property bool translateOpen: audioIntel.firstTab.indexOf("+translate") > 0
     property string findText: ""
     property bool styleOpen: false

@@ -16,6 +16,7 @@ ColumnLayout {
     // live text always available for save, even if the draft binding lags
     readonly property alias text: tf.text
     signal edited(string text)
+    function clear() { tf.text = "" }
     visible: show
     Layout.fillWidth: true
     spacing: 4

@@ -29,13 +29,14 @@ public:
     QString status() const { return m_status; }
     QString lastError() const { return m_error; }
 
-    // kind: describe-copy | describe-note | read-copy | read-note
+    // kind: describe-copy | describe-note | read-copy | read-note | tasks (the writing is read, then offered to the task finder)
     Q_INVOKABLE void run(const QString &kind, const QString &itemId);
     Q_INVOKABLE void cancel();
     Q_INVOKABLE void clearError();
 
 signals:
     void changed();
+    void textForTasks(const QString &itemId, const QString &name, const QString &text); // kind "tasks": what the picture says, once the picture model has finished
 
 private:
     NotchController *m_notch;

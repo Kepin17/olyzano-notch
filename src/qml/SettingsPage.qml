@@ -1773,6 +1773,27 @@ RowLayout {
                                                           : audioIntel.cleanMode === "vocals" ? (audioIntel.vocalsReady ? "Only the voice goes to the recognizer, so a song with a singer is written without words made up for the music. Slow: it can take as long as the recording. Applies to the next recording." : "Download Voice from music under AI models to use this. Without it the recording is used as it is.")
                                                           : "Off: the recording goes to the recognizer as it is." }
                     SettingToggle { title: "Punctuation for English"; caption: audioIntel.punctReady ? "Adds full stops, commas and capitals to English text that has none. English only: other languages, Indonesian included, are left as Whisper wrote them. Applies to the next recording." : "English only. Download Punctuation under AI models to use it; Whisper already punctuates Indonesian and English."; checked: audioIntel.punctuate; onToggled: audioIntel.punctuate = !audioIntel.punctuate }
+                    SettingToggle { title: "Tidy new transcripts"; caption: "Takes out \"eee\" and \"um\" and a word said three times in a row. The line keeps what was recognized underneath. Applies to the next recording; for one you already have, use the pen button in its transcript."; checked: audioIntel.tidyNew; onToggled: audioIntel.tidyNew = !audioIntel.tidyNew }
+                    SectionLabel { text: "Words the recognizer gets wrong" }
+                    Caption { Layout.fillWidth: true; text: "Names and terms it hears wrongly, and how you write them. They are fixed in new transcripts, in Tidy, and the speech model is told to spell them this way." }
+                    Repeater {
+                        model: audioIntel.dictionary
+                        delegate: RowLayout {
+                            required property var modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            spacing: 8
+                            Text { Layout.fillWidth: true; text: modelData.heard + "  →  " + modelData.written; textFormat: Text.PlainText; elide: Text.ElideRight; color: theme.text; font.pixelSize: 12 }
+                            IconButton { iconName: "close"; implicitWidth: 24; implicitHeight: 24; Accessible.name: "Remove this word"; onClicked: audioIntel.removeWord(index) }
+                        }
+                    }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Field { id: heardField; label: "Heard as"; placeholder: "kuen" }
+                        Field { id: writtenField; label: "Write as"; placeholder: "Qwen" }
+                        PillButton { Layout.alignment: Qt.AlignBottom; text: "Add"; enabled: heardField.text.trim() !== "" && writtenField.text.trim() !== ""; onClicked: { audioIntel.addWord(heardField.text, writtenField.text); heardField.clear(); writtenField.clear() } }
+                    }
                     SectionLabel { text: "CPU threads" }
                     Segmented { Layout.fillWidth: true; model: [[2, "2"], [4, "4"], [6, "6"], [8, "8"], [12, "12"]]; value: audioIntel.threads; onPicked: (v) => audioIntel.threads = v }
                     SectionLabel { text: "Memory limit" }
