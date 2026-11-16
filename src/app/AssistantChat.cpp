@@ -1,4 +1,5 @@
 #include "AssistantChat.h"
+#include "audio/ModelUse.h"
 
 #include "KnowledgeController.h"
 #include "NotchController.h"
@@ -28,6 +29,12 @@ QString plainSystem()
 }
 }
 
+void AssistantChat::freeNow()
+{
+    if (!m_busy)
+        (void)QtConcurrent::run(&m_pool, [this] { if (m_session) { m_session->stop(); m_session.reset(); } });
+}
+
 QString AssistantChat::path() { return NotchPaths::dataDir() + QStringLiteral("/chat.json"); }
 
 AssistantChat::AssistantChat(Assistant *assistant, Tasks *tasks, NotchController *notch, AudioController *audio, KnowledgeController *knowledge, QObject *parent)
@@ -35,7 +42,6 @@ AssistantChat::AssistantChat(Assistant *assistant, Tasks *tasks, NotchController
 {
     m_pool.setMaxThreadCount(1);
     m_idle.setSingleShot(true);
-    m_idle.setInterval(2 * 60 * 1000);
     connect(&m_idle, &QTimer::timeout, this, [this] { // the model is let go when the talk is quiet (it holds memory)
         if (!m_busy)
             (void)QtConcurrent::run(&m_pool, [this] { if (m_session) { m_session->stop(); m_session.reset(); } });
@@ -81,6 +87,7 @@ void AssistantChat::setStage(const QString &stage, bool busy)
         m_stage.clear();
         m_elapsed = 0;
         m_busy = false;
+        m_idle.start(int(Audio::ModelUse::idleMs())); // the talk is over: the model goes after the idle time (it was never started before)
     } else if (stage != m_stage) {
         for (QVariant &v : m_steps) {
             QVariantMap s = v.toMap();
@@ -90,6 +97,7 @@ void AssistantChat::setStage(const QString &stage, bool busy)
         m_steps.append(QVariantMap{{QStringLiteral("text"), stage}, {QStringLiteral("state"), QStringLiteral("active")}});
         m_stage = stage;
         if (!m_busy) {
+            m_idle.stop();
             m_busy = true;
             m_elapsed = 0;
             m_tick.start();

@@ -39,6 +39,8 @@ class KnowledgeController : public QObject
     Q_PROPERTY(QVariantMap answer READ answer NOTIFY changed)     // {question, text, notFound, sources:[...], scopeText}
     Q_PROPERTY(QString askError READ askError NOTIFY changed)
     Q_PROPERTY(bool indexForms READ indexForms WRITE setIndexForms NOTIFY changed) // the answers of forms are searched too
+    Q_PROPERTY(bool indexTasks READ indexTasks WRITE setIndexTasks NOTIFY changed) // the tasks are asked about too
+    Q_PROPERTY(bool indexClipboard READ indexClipboard WRITE setIndexClipboard NOTIFY changed) // what was copied (text only) is asked about too: off until turned on
     Q_PROPERTY(QVariantList globalResults READ globalResults NOTIFY globalChanged) // what the search box found, in groups: [{group, kind, title, subtitle, snippet, ref, page, startSec}]
     Q_PROPERTY(int globalSerial READ globalSerial NOTIFY globalChanged)            // grows with every result list: an older one never replaces a newer
     Q_PROPERTY(int answerSerial READ answerSerial NOTIFY changed) // grows with each answer: a panel that keeps the conversation adds one message when it changes
@@ -57,6 +59,14 @@ public:
     void setIndexImages(bool on);
     bool indexForms() const { return m_forms; }
     void setIndexForms(bool on);
+    bool indexTasks() const { return m_taskIndex; }
+    void setIndexTasks(bool on);
+    bool indexClipboard() const { return m_clipIndex; }
+    void setIndexClipboard(bool on);
+    // The tasks / the copied texts as they are now ([{id, title, owner, course, done, hasDue, dueMs}] / [{id, text}]): a little later the index is made to match
+    // (changed ones set, gone ones taken out). Called whenever they change; a burst of calls is one job.
+    void syncTasks(const QVariantList &tasks);
+    void syncClipboard(const QVariantList &texts);
     QVariantList globalResults() const { return m_global; }
     int globalSerial() const { return m_globalSerial; }
     // One form's answers into the index (a document of kind "form": a passage for each answer, `page` its number), replacing what was there; or out of it.
@@ -102,6 +112,9 @@ private:
     QVariantList chips(const Audio::Ask::Query &q) const;
     Audio::ChatFn chatFn(int maxTokens); // on the worker thread: starts the model when it is first needed; empty when it cannot be
     void idleCheck();
+public:
+    void freeNow(); // let go of the warm language model now (Settings: Free now)
+private:
     static QString dbPath();
 
     NotchController *m_notch;
@@ -110,7 +123,11 @@ private:
     std::atomic<int> m_globalWanted{0};
     QVariantList m_global;
     int m_globalSerial = 0;
-    bool m_forms = true;
+    bool m_forms = true, m_taskIndex = true, m_clipIndex = false;
+    QTimer m_taskSyncTimer, m_clipSyncTimer;
+    QVariantList m_taskPayload, m_clipPayload;
+    void runTaskSync();
+    void runClipSync();
     std::atomic_bool m_cancelIndex{false}, m_cancelAsk{false}, m_pause{false};
     QTimer m_scanTimer, m_pauseTimer, m_idleTimer;
     bool m_enabled = true, m_pdf = true, m_ocr = false, m_images = false;

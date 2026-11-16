@@ -50,6 +50,7 @@
 #include "audio/SoundEvents.h"
 #include "audio/SherpaRun.h"
 #include "audio/TranscriptClean.h"
+#include "platform/AndroidAdb.h"
 #include "audio/TranscriptExport.h"
 #include "services/Matting.h"
 #include "services/RecordMix.h"
@@ -78,6 +79,7 @@
 #include "platform/GlassModel.h"
 #include "platform/SystemStatsModel.h"
 #include "platform/ClipboardHistoryModel.h"
+#include "audio/ModelUse.h"
 #include "platform/BounceModel.h"
 #include "platform/PhotoModel.h"
 #include "platform/UtteranceModel.h"
@@ -586,6 +588,62 @@ private slots:
         QCOMPARE(damp(0.9, 0.0), 1.0);
         QVERIFY(damp(0.05, 0.55) >= 0.12);                 // never so loose it rings for ever
         QVERIFY(damp(0.9, 1.7) <= 1.0);                    // nor over-damped past critical
+    }
+
+    void tasksAndCopiedTextsAreFoundOnlyWhenAskedFor()
+    {
+        QTemporaryDir dir;
+        KnowledgeStore store(QStringLiteral("knowledge-kinds"));
+        QVERIFY2(store.open(dir.filePath("k.db")).isEmpty(), "FTS5 is needed");
+        store.setDoc(QStringLiteral("task"), QStringLiteral("t1"), QStringLiteral("Kirim laporan"), QDateTime::currentDateTimeUtc(), QStringLiteral("a"), Knowledge::chunkPage(0, QStringLiteral("Kirim laporan. For Budi. Not done yet")));
+        store.setDoc(QStringLiteral("clipboard"), QStringLiteral("c1"), QStringLiteral("laporan keuangan"), QDateTime::currentDateTimeUtc(), QStringLiteral("b"), Knowledge::chunkPage(0, QStringLiteral("laporan keuangan kuartal tiga")));
+        KnowledgeStore::Filter tasks, clip, both;
+        tasks.kinds = {QStringLiteral("task")};
+        clip.kinds = {QStringLiteral("clipboard")};
+        QCOMPARE(store.search(KnowledgeStore::matchQuery({"laporan"}), tasks, 10).size(), 1);
+        QCOMPARE(store.search(KnowledgeStore::matchQuery({"laporan"}), tasks, 10).first().kind, QStringLiteral("task"));
+        QCOMPARE(store.search(KnowledgeStore::matchQuery({"laporan"}), clip, 10).first().kind, QStringLiteral("clipboard"));
+        QCOMPARE(store.search(KnowledgeStore::matchQuery({"laporan"}), both, 10).size(), 2); // no filter: everywhere
+        store.removeDoc(QStringLiteral("clipboard"), QStringLiteral("c1")); // turned off: gone from the index
+        QCOMPARE(store.search(KnowledgeStore::matchQuery({"laporan"}), both, 10).size(), 1);
+        QVERIFY(store.refs(QStringLiteral("clipboard")).isEmpty());
+    }
+
+    void tasksFromATalkNameOnlyWhoWasNamed()
+    {
+        const QString talk = QStringLiteral("Budi: Saya akan kirim laporan hari Jumat.\nSiti: Oke, aku cek anggarannya besok.");
+        const QString json = R"({"tasks":[
+            {"title":"Kirim laporan","due_text":"Jumat","quote":"akan kirim laporan hari Jumat","assignee":"Budi"},
+            {"title":"Cek anggaran","due_text":"besok","quote":"aku cek anggarannya besok","assignee":"Rudi"},
+            {"title":"Rapikan arsip","due_text":"","quote":"kutipan yang tidak ada","assignee":"Budi"}]})";
+        const auto got = TaskSuggest::parseTasks(json, talk, 0, QStringLiteral("Rapat"), QStringLiteral("7"), QDateTime(QDate(2026, 11, 16), QTime(9, 0)));
+        QCOMPARE(got.size(), 2);                                  // the one with a quote that was never said is dropped
+        QCOMPARE(got[0].assignee, QStringLiteral("Budi"));         // said in the talk
+        QCOMPARE(got[1].assignee, QString());                      // "Rudi" is not in the talk: not guessed
+        const QJsonObject withOwner = TaskSuggest::tasksSchema(true), plain = TaskSuggest::tasksSchema(false);
+        const auto props = [](const QJsonObject &o) { return o.value("properties").toObject().value("tasks").toObject().value("items").toObject().value("properties").toObject(); };
+        QVERIFY(props(withOwner).contains("assignee"));
+        QVERIFY(!props(plain).contains("assignee"));
+    }
+
+    void modelMemoryAndIdleSettings()
+    {
+        using namespace Audio::ModelUse;
+        QCOMPARE(validIdleMinutes(1), 1);
+        QCOMPARE(validIdleMinutes(10), 10);
+        QCOMPARE(validIdleMinutes(7), 2);   // not one of the choices: the default
+        QCOMPARE(validIdleMinutes(0), 2);
+        QCOMPARE(parseVmRss("Name:\tx\nVmRSS:\t   2048 kB\nThreads:\t1\n"), qint64(2048) * 1024);
+        QCOMPARE(parseVmRss("Name:\tx\n"), qint64(0));
+        QCOMPARE(sizeText(420LL << 20), QStringLiteral("420 MB"));
+        QCOMPARE(sizeText((3LL << 30) + (100LL << 20)), QStringLiteral("3.1 GB"));
+        QVERIFY(rssBytes(QCoreApplication::applicationPid()) > 0); // this very process can be read
+        QCOMPARE(rssBytes(0), qint64(0));
+        Running &r = Running::instance();
+        r.add(4242, QStringLiteral("Qwen3 4B"));
+        QCOMPARE(r.list().value(4242), QStringLiteral("Qwen3 4B"));
+        r.remove(4242);
+        QVERIFY(!r.list().contains(4242));
     }
 
     void clipboardHistoryModel()
@@ -1148,6 +1206,43 @@ private slots:
         QVERIFY(mine[0].start < 0.1 && std::abs(mine[0].end - 2.0) < 0.15);
     }
 
+    void theOtherSideIsNotTakenForYouWhenItLeaksIntoTheMicrophone()
+    {
+        using namespace Audio;
+        const int rate = 16000;
+        const auto tone = [&](QVector<float> &x, double from, double to, float amp, double freq) {
+            for (int i = int(from * rate); i < int(to * rate); ++i)
+                x[i] = amp * float(std::sin(i * freq));
+        };
+        // Speakers, played quietly: the computer's channel is small (0.02) but the room carries it to the microphone louder (0.1). With a fixed ratio of
+        // 1.6 the microphone "wins" at every moment the other side talks, so they were taken for "You".
+        QVector<float> mic(rate * 12, 0.0001f), sys(rate * 12, 0.0001f);
+        for (const auto &[a, b] : {std::pair{1.0, 3.0}, std::pair{5.0, 7.0}, std::pair{9.0, 11.0}}) {
+            tone(sys, a, b, 0.02f, 0.2);
+            tone(mic, a, b, 0.10f, 0.2); // the leak
+        }
+        QVERIFY(leakRatio(mic, sys, rate) > 10);
+        QVERIFY(micTurns(mic, sys, rate, QStringLiteral("You"), 1.6, 0.7, 0.3, 0.0).size() > 0); // the fixed ratio alone (leakFactor 0) takes the other side for "You"
+        QCOMPARE(micTurns(mic, sys, rate, QStringLiteral("You")).size(), 0); // nobody at the microphone spoke
+        // ...and the person really speaking, over the leak and alone, is still "You"
+        tone(mic, 5.5, 6.5, 0.4f, 0.31);   // me, while the other side talks (the leak is under it)
+        tone(mic, 3.5, 4.5, 0.4f, 0.31);   // me, alone
+        const QList<Turn> mine = micTurns(mic, sys, rate, QStringLiteral("You"));
+        QCOMPARE(mine.size(), 2);
+        QVERIFY(mine[0].start > 3.3 && mine[0].end < 4.7);
+        QVERIFY(mine[1].start > 5.3 && mine[1].end < 6.7);
+        // headphones: nothing leaks, and the old behaviour stays
+        QVector<float> clean(rate * 6, 0.0001f), far(rate * 6, 0.0001f);
+        tone(far, 3, 5, 0.3f, 0.2);
+        tone(clean, 0, 2, 0.3f, 0.3);
+        QVERIFY(leakRatio(clean, far, rate) < 0.1);
+        QCOMPARE(micTurns(clean, far, rate, QStringLiteral("You")).size(), 1);
+        // the computer plays nothing at all: no leak to measure, the microphone alone decides
+        QVector<float> silent(rate * 6, 0.0001f);
+        QCOMPARE(leakRatio(clean, silent, rate), 0.0);
+        QCOMPARE(micTurns(clean, silent, rate, QStringLiteral("You")).size(), 1);
+    }
+
     void summaryIsBelievedOnlyWhereTheTranscriptSupportsIt()
     {
         using namespace Audio;
@@ -1269,6 +1364,19 @@ private slots:
         QVERIFY(!store.segments(id)[1].isEdited());
         QVERIFY(store.deleteSegment(rows[2].id));
         QCOMPARE(store.segments(id).size(), 2);
+        // correcting who spoke: one line to someone else, and two speakers that are one person
+        rows = store.segments(id);
+        QVERIFY(store.setSegmentSpeaker(id, rows[1].id, QStringLiteral("SPEAKER_00")));      // the second line was SPEAKER_01's
+        QCOMPARE(store.segments(id)[1].who(), QStringLiteral("Project Manager"));
+        QCOMPARE(store.speakerLabels(id), (QStringList{"SPEAKER_00"}));                    // SPEAKER_01 has no line left: not listed
+        QVERIFY(store.setSegmentSpeaker(id, rows[1].id, QStringLiteral("SPEAKER_07")));     // someone who was not heard before
+        QCOMPARE(store.segments(id)[1].speakerLabel, QStringLiteral("SPEAKER_07"));
+        QVERIFY(!store.setSegmentSpeaker(id, rows[1].id, QStringLiteral("SOUND")));         // a sound is no speaker
+        QVERIFY(store.mergeSpeakers(id, QStringLiteral("SPEAKER_07"), QStringLiteral("SPEAKER_00")));
+        QCOMPARE(store.speakerLabels(id), (QStringList{"SPEAKER_00"}));
+        QCOMPARE(store.segments(id)[1].who(), QStringLiteral("Project Manager"));            // the name of the one kept
+        QVERIFY(!store.mergeSpeakers(id, QStringLiteral("SPEAKER_00"), QStringLiteral("SPEAKER_00")));
+        QVERIFY(!store.mergeSpeakers(id, QStringLiteral("NOBODY"), QStringLiteral("SPEAKER_00")));
         // a new transcript keeps the names given to speakers with the same label, and drops the old edits
         QVERIFY(store.replaceTranscript(id, seg));
         QCOMPARE(store.segments(id)[0].who(), QStringLiteral("Project Manager"));
@@ -1655,6 +1763,92 @@ private slots:
             seen.insert(i.sha256 + i.url);
         }
         QCOMPARE(Audio::catalog().size() > 20, true);
+    }
+
+    void androidAdbParsingAndTouchMapping()
+    {
+        using namespace Android;
+        const QByteArray out = "* daemon not running; starting now at tcp:5037\n* daemon started successfully\nList of devices attached\n"
+                               "R58M123ABC            device usb:1-2 product:beyond1 model:SM_G973F device:beyond1 transport_id:3\n"
+                               "192.168.1.20:5555     device product:x model:Pixel_7 device:panther transport_id:5\n"
+                               "adb-XYZ._adb-tls-connect._tcp unauthorized transport_id:6\n"
+                               "emulator-5554         offline\n"
+                               "0123456789            no permissions (user is not in the plugdev group)\n\n";
+        const QList<Device> d = parseDevices(out);
+        QCOMPARE(d.size(), 5);
+        QCOMPARE(d[0].serial, QStringLiteral("R58M123ABC"));
+        QCOMPARE(d[0].model, QStringLiteral("SM G973F"));
+        QVERIFY(d[0].usable() && !d[0].wifi);
+        QVERIFY(d[1].usable() && d[1].wifi && d[1].model == QStringLiteral("Pixel 7"));
+        QCOMPARE(d[2].state, QStringLiteral("unauthorized"));
+        QVERIFY(d[2].wifi && !d[2].usable());
+        QCOMPARE(d[3].state, QStringLiteral("offline"));
+        QCOMPARE(d[4].state, QStringLiteral("other"));
+        QVERIFY(parseDevices("List of devices attached\n\n").isEmpty());
+        // the size of the screen: a lowered size is what is drawn
+        QCOMPARE(parseWmSize(QStringLiteral("Physical size: 1080x2400\n")), QSize(1080, 2400));
+        QCOMPARE(parseWmSize(QStringLiteral("Physical size: 1080x2400\nOverride size: 720x1600\n")), QSize(720, 1600));
+        QVERIFY(parseWmSize(QStringLiteral("error: closed")).isEmpty());
+        // the picture asked for: the long side at most 1280, the shape kept, both sides even
+        QCOMPARE(streamSize(QSize(1080, 2400)), QSize(576, 1280));
+        QCOMPARE(streamSize(QSize(800, 600), 1280), QSize(800, 600));
+        QVERIFY(streamSize(QSize(1081, 2399)).width() % 2 == 0 && streamSize(QSize(1081, 2399)).height() % 2 == 0);
+        QVERIFY(streamSize(QSize(0, 10)).isEmpty());
+        // a point on the picture -> a pixel of the screen, also when the phone is turned
+        QCOMPARE(toDevice(0, 0, QSize(576, 1280), QSize(1080, 2400)), QPoint(0, 0));
+        QCOMPARE(toDevice(1, 1, QSize(576, 1280), QSize(1080, 2400)), QPoint(1079, 2399));
+        QCOMPARE(toDevice(0.5, 0.25, QSize(576, 1280), QSize(1080, 2400)), QPoint(540, 600));
+        QCOMPARE(toDevice(1, 1, QSize(1280, 576), QSize(1080, 2400)), QPoint(2399, 1079)); // landscape picture of a portrait screen
+        QCOMPARE(toDevice(-3, 9, QSize(576, 1280), QSize(1080, 2400)), QPoint(0, 2399));    // outside the picture: the edge
+        // the commands
+        QCOMPARE(tapCommand(QPoint(10, 20)), QStringLiteral("input tap 10 20"));
+        QCOMPARE(swipeCommand(QPoint(1, 2), QPoint(3, 4), 300), QStringLiteral("input swipe 1 2 3 4 300"));
+        QCOMPARE(swipeCommand(QPoint(1, 2), QPoint(3, 4), 99999), QStringLiteral("input swipe 1 2 3 4 5000"));
+        QCOMPARE(keyCommand(QStringLiteral("home")), QStringLiteral("input keyevent KEYCODE_HOME"));
+        QVERIFY(keyCommand(QStringLiteral("HOME; reboot")).isEmpty());
+        QString why;
+        QCOMPARE(textCommand(QStringLiteral("hi there"), &why), QStringLiteral("input text 'hi%sthere'"));
+        QCOMPARE(textCommand(QStringLiteral("it's $(id); ok"), &why), QStringLiteral("input text 'it'\\''s%s$(id);%sok'")); // inside single quotes nothing is run
+        QVERIFY(textCommand(QStringLiteral("caf\u00e9"), &why).isEmpty() && !why.isEmpty());
+        QVERIFY(textCommand(QStringLiteral("a%sb"), &why).isEmpty());
+        QVERIFY(textCommand(QStringLiteral("line\nbreak"), &why).isEmpty());
+        QVERIFY(textCommand(QString(), &why).isEmpty());
+        // what adb says
+        QVERIFY(connectedOrPaired(QStringLiteral("connected to 192.168.1.20:5555")));
+        QVERIFY(connectedOrPaired(QStringLiteral("already connected to 192.168.1.20:5555")));
+        QVERIFY(connectedOrPaired(QStringLiteral("Successfully paired to 192.168.1.20:37099 [guid=adb-XYZ]")));
+        QVERIFY(!connectedOrPaired(QStringLiteral("failed to connect to '192.168.1.20:5555'")));
+        QVERIFY(!connectedOrPaired(QStringLiteral("Failed: Wrong password or password is in wrong format")));
+        QVERIFY(validEndpoint(QStringLiteral("192.168.1.20:5555")) && validEndpoint(QStringLiteral("phone.local:37099")));
+        for (const QString bad : {QStringLiteral("-s:5555"), QStringLiteral("1.2.3.4"), QStringLiteral("1.2.3.4:99999"), QStringLiteral("1.2.3.4:5555 x"), QStringLiteral("a;b:5555"), QString()})
+            QVERIFY2(!validEndpoint(bad), qPrintable(bad));
+        QVERIFY(adbCandidates(QStringLiteral("/home/a"), QString(), QString()).contains(QStringLiteral("/home/a/Android/Sdk/platform-tools/adb")));
+        QVERIFY(adbCandidates(QString(), QString(), QString()).isEmpty());
+    }
+
+    void jpegSplitterCutsPicturesFromAStream()
+    {
+        using namespace Android;
+        const QByteArray a = QByteArray("\xFF\xD8", 2) + "AAA\xFF\x00" + QByteArray("BB") + QByteArray("\xFF\xD9", 2);
+        const QByteArray b = QByteArray("\xFF\xD8", 2) + "second" + QByteArray("\xFF\xD9", 2);
+        const QByteArray stream = "junk" + a + b;
+        // all at once
+        JpegSplitter whole;
+        const QList<QByteArray> two = whole.feed(stream);
+        QCOMPARE(two.size(), 2);
+        QCOMPARE(two[0], a);
+        QCOMPARE(two[1], b);
+        // one byte at a time: the same pictures
+        JpegSplitter bytes;
+        QList<QByteArray> got;
+        for (char c : stream)
+            got += bytes.feed(QByteArray(1, c));
+        QCOMPARE(got, two);
+        // an unfinished picture waits for its end; a stream with no start gives nothing
+        JpegSplitter half;
+        QVERIFY(half.feed(a.left(5)).isEmpty());
+        QCOMPARE(half.feed(a.mid(5)).value(0), a);
+        QVERIFY(JpegSplitter().feed("no pictures here").isEmpty());
     }
 
     void cleanBundles()
@@ -2517,7 +2711,8 @@ private slots:
         done.task = QStringLiteral("Sudah selesai"); done.done = true;
         const QList<TaskSuggest::Suggestion> m = TaskSuggest::fromActions(7, QStringLiteral("Rapat anggaran"), {a, b, done}, now);
         QCOMPARE(m.size(), 2);
-        QCOMPARE(m[0].title, QStringLiteral("Siapkan proposal penghematan energi (Budi)"));
+        QCOMPARE(m[0].title, QStringLiteral("Siapkan proposal penghematan energi")); // the person is the owner, not part of the title
+        QCOMPARE(m[0].assignee, QStringLiteral("Budi"));
         QCOMPARE(m[0].due, QDateTime(QDate(2026, 12, 5), QTime(9, 0)));
         QCOMPARE(m[1].due, QDateTime(QDate(2026, 11, 20), QTime(9, 0)));
         QCOMPARE(m[0].id, TaskSuggest::idOf(QStringLiteral("meeting"), QStringLiteral("7"), QStringLiteral("siapkan  Proposal penghematan energi")));  // the same task has the same id
@@ -3507,6 +3702,10 @@ private slots:
         withCourse.course = QStringLiteral("CS101");
         QCOMPARE(fromJson(toJson({withCourse})).first().course, QStringLiteral("CS101"));
         QCOMPARE(fromJson(R"([{"id":"x","title":"old","due":"","done":false,"warned":false,"notified":false}])").first().course, QString());
+        QCOMPARE(fromJson(R"([{"id":"x","title":"old","due":"","done":false,"warned":false,"notified":false}])").first().owner, QString()); // an older file has no owner
+        Task withOwner = withCourse;
+        withOwner.owner = QStringLiteral("Budi");
+        QCOMPARE(fromJson(toJson({withOwner})).first().owner, QStringLiteral("Budi"));
         // H-3 band: critical before the 15-minute heads-up, soon closer in.
         QCOMPARE(int(dueState(Task{"k", "crit", {}, now.addSecs(2 * 3600)}, now)), int(DueState::Critical));
         QCOMPARE(int(dueState(Task{"f", "far", {}, now.addSecs(4 * 3600)}, now)), int(DueState::Later));

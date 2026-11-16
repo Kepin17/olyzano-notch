@@ -45,6 +45,8 @@ public:
     virtual bool available() const = 0;
     // A 16 kHz mono WAV -> who spoke when. "" or why not. `speakers`: how many people there are when that is known, else 0 (found from the voices).
     virtual QString diarize(const QString &wavPath, const std::atomic_bool *cancel, QList<Turn> *turns, int speakers = 0) = 0;
+    // What the result depends on besides the audio and the count (the threshold of "Fewer / More speakers"): a saved result is used again only when it is the same.
+    virtual QString signature() const { return {}; }
 };
 
 class ISoundTagger {

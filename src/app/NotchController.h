@@ -144,6 +144,9 @@ public:
     // A drop as QML sees it. Browsers add the page title as a bogus relative "URL" and, for an
     // image inside a link, list only the link: the image itself is in the HTML.
     Q_INVOKABLE void addDrop(const QList<QUrl> &urls, const QString &html, const QString &categoryId = {});
+    // The picture itself, as the browser put it in the drop (an image of a page that has only a blob: address, which only that tab can open):
+    // `mime` is an image type, `bytes` the file. Returns false (and says why) when it is not a picture.
+    Q_INVOKABLE bool addDroppedImage(const QString &mime, const QByteArray &bytes, const QString &categoryId = {});
     // Stops the copies and zips in progress (and the listing of a folder); what was half done is removed.
     Q_INVOKABLE void cancelCopies();
     Q_INVOKABLE void cancelCopy(const QString &id);

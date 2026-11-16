@@ -1,5 +1,6 @@
 #include "platform/NotchPaths.h"
 #include "Assistant.h"
+#include "audio/ModelUse.h"
 
 #include "app/NotchController.h"
 #include "models/FileItem.h"
@@ -67,7 +68,7 @@ Assistant::Assistant(Launcher *launcher, Tasks *tasks, QuickSettings *quick, Med
       m_settings(configPath(), QSettings::IniFormat)
 {
     m_unloadTimer.setSingleShot(true);
-    m_unloadTimer.setInterval(60000); // the model (and its working buffers) goes a minute after the last command; the next one loads it again
+    m_unloadTimer.setInterval(int(Audio::ModelUse::idleMs())); // the model (and its working buffers) goes after the idle time (Settings) from the last command; the next one loads it again
     connect(&m_unloadTimer, &QTimer::timeout, this, &Assistant::releaseIdle);
     m_idleTimer.setSingleShot(true);
     m_idleTimer.setInterval(3500);
@@ -80,7 +81,7 @@ Assistant::Assistant(Launcher *launcher, Tasks *tasks, QuickSettings *quick, Med
             finish(QStringLiteral("error"), QString(), why);
     });
     connect(&m_watcher, &QFutureWatcher<Whisper::Transcript>::finished, this, [this] {
-        m_unloadTimer.start();
+        m_unloadTimer.start(int(Audio::ModelUse::idleMs()));
         const Whisper::Transcript t = m_watcher.result();
         if (m_state != QLatin1String("thinking"))
             return; // cancelled meanwhile
@@ -288,7 +289,7 @@ QString Assistant::transcribeFile(const QString &wavPath)
     m_loadedModel = model();
     const Whisper::Transcript t = m_whisper.hear(samples, language(), vocabulary());
     m_confidence = t.confidence;
-    m_unloadTimer.start();
+    m_unloadTimer.start(int(Audio::ModelUse::idleMs()));
     return t.text;
 }
 

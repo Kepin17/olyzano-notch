@@ -4,7 +4,7 @@ import QtQuick.Layouts
 
 // Ask your files, as a conversation: your question on the right, the reply on the left in the language you wrote in, with a marker [1] after each claim
 // and the sources under it (the file and the page, or the recording and the minute, with the quote that proves it). A marker or a source opens the
-// file at that place. `scopeKind`: all | files | recordings | file | recording (the last two with `scopeRef`).
+// file at that place. `scopeKind`: all | files | recordings | tasks | clipboard | file | recording (the last two with `scopeRef`).
 ColumnLayout {
     id: panel
     property string scopeKind: "all"
@@ -63,9 +63,9 @@ ColumnLayout {
     }
 
     Segmented {
-        visible: panel.pickScope && panel.messages.length === 0 && (panel.scopeKind === "all" || panel.scopeKind === "files" || panel.scopeKind === "recordings")
+        visible: panel.pickScope && panel.messages.length === 0 && ["all", "files", "recordings", "tasks", "clipboard"].indexOf(panel.scopeKind) >= 0
         Layout.fillWidth: true
-        model: [["all", "Everything"], ["files", "Files"], ["recordings", "Recordings"]]
+        model: [["all", "Everything"], ["files", "Files"], ["recordings", "Recordings"], ["tasks", "Tasks"]].concat(knowledge.indexClipboard ? [["clipboard", "Clipboard"]] : [])
         value: panel.scopeKind
         onPicked: (v) => panel.scopeKind = v
     }
@@ -142,7 +142,7 @@ ColumnLayout {
                                     Layout.fillWidth: true
                                     spacing: 6
                                     Text { visible: srcRow.modelData.mark > 0; text: "[" + srcRow.modelData.mark + "]"; color: theme.accentText; font.pixelSize: 11; font.weight: Font.DemiBold }
-                                    LineIcon { glyph: srcRow.modelData.kind === "recording" ? "mic" : "doc"; sourceSize: Qt.size(12, 12); color: theme.textDim }
+                                    LineIcon { glyph: srcRow.modelData.kind === "recording" ? "mic" : srcRow.modelData.kind === "task" ? "check" : srcRow.modelData.kind === "clipboard" ? "copy" : "doc"; sourceSize: Qt.size(12, 12); color: theme.textDim }
                                     Text { Layout.fillWidth: true; text: srcRow.modelData.name; textFormat: Text.PlainText; elide: Text.ElideRight; color: theme.text; font.pixelSize: 11; font.weight: Font.DemiBold }
                                     Text { visible: srcRow.modelData.where !== ""; text: srcRow.modelData.where; color: theme.accentText; font.pixelSize: 10 }
                                 }

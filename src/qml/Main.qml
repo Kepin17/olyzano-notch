@@ -1191,7 +1191,13 @@ Window {
             notch.addTextNote(d.text, notch.categoryFilter)
             d.acceptProposedAction()
         } else if (isFileDrop(d)) {
-            notch.addDrop(d.urls, d.html, notch.categoryFilter) // into the category being viewed
+            // A picture with a blob: address cannot be fetched from outside its tab; when the browser also hands over the picture itself, that is kept.
+            const blob = d.hasUrls && d.urls.some(u => String(u).indexOf("blob:") === 0)
+            const image = blob ? d.formats.find(f => String(f).indexOf("image/") === 0) : undefined
+            if (image !== undefined)
+                notch.addDroppedImage(image, d.getDataAsArrayBuffer(image), notch.categoryFilter)
+            else
+                notch.addDrop(d.urls, d.html, notch.categoryFilter) // into the category being viewed
             d.acceptProposedAction()
         }
     }
@@ -3301,7 +3307,7 @@ Window {
                     readonly property int tilesPerRow: Math.max(1, Math.floor((usable + gap) / (96 + gap)))
                     cellWidth: usable / tilesPerRow
                     readonly property real tileWidth: cellWidth - gap
-                    cellHeight: 154
+                    cellHeight: 132
                     property bool firstRowPending: false
                     function showFirstRow() {
                         firstRowPending = true

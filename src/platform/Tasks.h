@@ -33,7 +33,7 @@ public:
     QStringList courseSuggestions() const;
 
     Q_INVOKABLE bool addQuick(const QString &line); // "Buy milk tomorrow 17:00": false when the line is empty
-    Q_INVOKABLE bool add(const QString &title, const QString &dueIso, const QString &course = {}); // course free-text; "" = none
+    Q_INVOKABLE bool add(const QString &title, const QString &dueIso, const QString &course = {}, const QString &owner = {}); // course free-text; "" = none; owner: who it falls to ("" = nobody named)
     Q_INVOKABLE void toggle(const QString &id);
     Q_INVOKABLE void remove(const QString &id);
     Q_INVOKABLE void clearDone();

@@ -8,6 +8,38 @@ ColumnLayout {
     id: view
     required property var page
     spacing: 8
+    property int menuSegment: 0      // the line whose speaker is being changed
+    property string menuLabel: ""    // its speaker now (or the one to merge into another)
+    function shownName(sp) { return sp.name !== "" ? sp.name : page.friendly(sp.label) }
+    DarkMenu {
+        id: moveMenu
+        width: 220
+        Repeater {
+            model: audioIntel.speakers
+            delegate: MenuItem {
+                required property var modelData
+                visible: modelData.label !== view.menuLabel
+                height: visible ? implicitHeight : 0
+                text: "Move this line to " + view.shownName(modelData)
+                onTriggered: { const y = page.transcriptList ? page.transcriptList.contentY : 0; audioIntel.moveSegmentToSpeaker(view.menuSegment, modelData.label); Qt.callLater(() => { if (page.transcriptList) page.transcriptList.contentY = y }) }
+            }
+        }
+        MenuItem { text: "Move this line to someone new"; onTriggered: { const y = page.transcriptList ? page.transcriptList.contentY : 0; audioIntel.moveSegmentToSpeaker(view.menuSegment, ""); Qt.callLater(() => { if (page.transcriptList) page.transcriptList.contentY = y }) } }
+    }
+    DarkMenu {
+        id: mergeMenu
+        width: 220
+        Repeater {
+            model: audioIntel.speakers
+            delegate: MenuItem {
+                required property var modelData
+                visible: modelData.label !== view.menuLabel
+                height: visible ? implicitHeight : 0
+                text: "Same person as " + view.shownName(modelData)
+                onTriggered: { const y = page.transcriptList ? page.transcriptList.contentY : 0; audioIntel.mergeSpeakers(view.menuLabel, modelData.label); Qt.callLater(() => { if (page.transcriptList) page.transcriptList.contentY = y }) }
+            }
+        }
+    }
 
     // who is in it
     Flow {
@@ -31,6 +63,15 @@ ColumnLayout {
                     Text { text: sp.shown; textFormat: Text.PlainText; color: theme.text; font.pixelSize: 12; anchors.verticalCenter: parent.verticalCenter }
                     HoverHandler { cursorShape: Qt.PointingHandCursor }
                     TapHandler { onTapped: { page.renaming = sp.modelData.label; renameField.text = sp.modelData.name; renameField.forceActiveFocus() } }
+                    LineIcon { // the same person under two names: merge them
+                        visible: audioIntel.speakers.length > 1
+                        glyph: "chevron"
+                        sourceSize: Qt.size(10, 10)
+                        color: theme.textDim
+                        anchors.verticalCenter: parent.verticalCenter
+                        HoverHandler { cursorShape: Qt.PointingHandCursor }
+                        TapHandler { onTapped: { view.menuLabel = sp.modelData.label; mergeMenu.popup() } }
+                    }
                 }
                 TextField {
                     id: renameField
@@ -207,7 +248,9 @@ ColumnLayout {
                             visible: !line.sameAsPrev
                             Layout.fillWidth: true
                             spacing: 8
-                            Text { text: line.person + (line.approx ? " · approx." : ""); textFormat: Text.PlainText; color: line.tint; font.pixelSize: 12; font.weight: Font.DemiBold }
+                            Text { text: line.person + (line.approx ? " · approx." : ""); textFormat: Text.PlainText; color: line.tint; font.pixelSize: 12; font.weight: Font.DemiBold
+                                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                                TapHandler { onTapped: { view.menuSegment = line.segmentId; view.menuLabel = line.speakerLabel; moveMenu.popup() } } }
                             Text { text: line.startText; color: theme.textFaint; font.pixelSize: 10; font.family: "monospace"
                                 HoverHandler { cursorShape: Qt.PointingHandCursor }
                                 TapHandler { onTapped: page.playAt(line.start) } }

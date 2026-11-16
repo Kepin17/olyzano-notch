@@ -171,6 +171,22 @@ void AudioController::setTmpl(const QString &t)
     emit settingsChanged();
 }
 
+QVariantMap AudioController::modelMemory() const
+{
+    QVariantList rows;
+    qint64 total = 0;
+    const auto running = Audio::ModelUse::Running::instance().list();
+    for (auto it = running.cbegin(); it != running.cend(); ++it) {
+        const qint64 bytes = Audio::ModelUse::rssBytes(it.key());
+        if (bytes <= 0) // it ended (or cannot be read): not listed
+            continue;
+        total += bytes;
+        rows.append(QVariantMap{{QStringLiteral("name"), it.value()}, {QStringLiteral("text"), Audio::ModelUse::sizeText(bytes)}});
+    }
+    const qint64 own = Audio::ModelUse::rssBytes(QCoreApplication::applicationPid());
+    return {{QStringLiteral("rows"), rows}, {QStringLiteral("notchText"), Audio::ModelUse::sizeText(own)}, {QStringLiteral("totalText"), Audio::ModelUse::sizeText(total + own)}};
+}
+
 void AudioController::setRamLimitMb(int mb)
 {
     m_settings.setValue(QStringLiteral("ramLimitMb"), qMax(0, mb));
@@ -592,11 +608,9 @@ void AudioController::close()
     emit waveformChanged();
 }
 
-void AudioController::loadCurrent()
+// The speakers of the open recording (with the name given and how many lines each has) as the list in the transcript shows them.
+void AudioController::rebuildSpeakers()
 {
-    if (!m_current)
-        return;
-    m_transcript.setAll(m_store.segments(m_current));
     m_speakers.clear();
     for (const QString &label : m_store.speakerLabels(m_current)) {
         QString name;
@@ -609,6 +623,14 @@ void AudioController::loadCurrent()
         m_speakers.append(QVariantMap{{QStringLiteral("label"), label}, {QStringLiteral("name"), name}, {QStringLiteral("count"), count},
                                       {QStringLiteral("index"), m_speakers.size()}});
     }
+}
+
+void AudioController::loadCurrent()
+{
+    if (!m_current)
+        return;
+    m_transcript.setAll(m_store.segments(m_current));
+    rebuildSpeakers();
     m_notes.clear();
     if (m_store.hasSummary(m_current)) {
         QList<qint64> ids;
@@ -1000,6 +1022,37 @@ void AudioController::renameSpeaker(const QString &label, const QString &name)
             v = m;
         }
     }
+    computeHints();
+    emit speakersChanged();
+}
+
+void AudioController::moveSegmentToSpeaker(qlonglong segmentId, const QString &label)
+{
+    if (!m_current)
+        return;
+    QString target = label;
+    if (target.isEmpty()) { // someone new: the first SPEAKER_NN that is not taken
+        const QStringList taken = m_store.speakerLabels(m_current);
+        for (int i = 0; target.isEmpty(); ++i) {
+            const QString candidate = QStringLiteral("SPEAKER_%1").arg(i, 2, 10, QLatin1Char('0'));
+            if (!taken.contains(candidate))
+                target = candidate;
+        }
+    }
+    if (!m_store.setSegmentSpeaker(m_current, segmentId, target))
+        return;
+    m_transcript.setAll(m_store.segments(m_current));
+    rebuildSpeakers();
+    computeHints();
+    emit speakersChanged();
+}
+
+void AudioController::mergeSpeakers(const QString &from, const QString &to)
+{
+    if (!m_current || !m_store.mergeSpeakers(m_current, from, to))
+        return;
+    m_transcript.setAll(m_store.segments(m_current));
+    rebuildSpeakers();
     computeHints();
     emit speakersChanged();
 }

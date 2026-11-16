@@ -358,6 +358,61 @@ bool AudioStore::renameSpeaker(qint64 meetingId, const QString &label, const QSt
     return exec(QStringLiteral("UPDATE speakers SET display_name=? WHERE meeting_id=? AND speaker_label=?"), {name.simplified().left(60), meetingId, label});
 }
 
+// The id of the speaker `label` of this meeting; made when there is none (a line is given to someone who was not heard before). 0 on failure.
+static qint64 speakerId(const QSqlDatabase &db, qint64 meetingId, const QString &label, bool create)
+{
+    QSqlQuery q(db);
+    q.prepare(QStringLiteral("SELECT id FROM speakers WHERE meeting_id=? AND speaker_label=?"));
+    q.addBindValue(meetingId);
+    q.addBindValue(label);
+    if (q.exec() && q.next())
+        return q.value(0).toLongLong();
+    if (!create)
+        return 0;
+    QSqlQuery ins(db);
+    ins.prepare(QStringLiteral("INSERT INTO speakers(meeting_id, speaker_label) VALUES(?,?)"));
+    ins.addBindValue(meetingId);
+    ins.addBindValue(label);
+    return ins.exec() ? ins.lastInsertId().toLongLong() : 0;
+}
+
+bool AudioStore::setSegmentSpeaker(qint64 meetingId, qint64 segmentId, const QString &label)
+{
+    if (label.trimmed().isEmpty() || label == QLatin1String("SOUND"))
+        return false;
+    QSqlDatabase db = QSqlDatabase::database(m_conn);
+    db.transaction();
+    const qint64 sid = speakerId(db, meetingId, label, true);
+    if (sid <= 0 || !exec(QStringLiteral("UPDATE transcript_segments SET speaker_id=? WHERE id=? AND meeting_id=?"), {sid, segmentId, meetingId})) {
+        db.rollback();
+        return false;
+    }
+    // a speaker with no line left is not in the list any more
+    exec(QStringLiteral("DELETE FROM speakers WHERE meeting_id=? AND id NOT IN (SELECT speaker_id FROM transcript_segments WHERE speaker_id IS NOT NULL)"), {meetingId});
+    return db.commit();
+}
+
+bool AudioStore::mergeSpeakers(qint64 meetingId, const QString &from, const QString &to)
+{
+    if (from == to || from == QLatin1String("SOUND") || to == QLatin1String("SOUND"))
+        return false;
+    QSqlDatabase db = QSqlDatabase::database(m_conn);
+    db.transaction();
+    const qint64 a = speakerId(db, meetingId, from, false), b = speakerId(db, meetingId, to, false);
+    if (a <= 0 || b <= 0) {
+        db.rollback();
+        return false;
+    }
+    const bool ok = exec(QStringLiteral("UPDATE speakers SET display_name=(SELECT display_name FROM speakers WHERE id=?) WHERE id=? AND display_name=''"), {a, b})
+                    && exec(QStringLiteral("UPDATE transcript_segments SET speaker_id=? WHERE speaker_id=?"), {b, a})
+                    && exec(QStringLiteral("DELETE FROM speakers WHERE id=?"), {a});
+    if (!ok) {
+        db.rollback();
+        return false;
+    }
+    return db.commit();
+}
+
 QStringList AudioStore::speakerLabels(qint64 meetingId) const
 {
     QStringList out;

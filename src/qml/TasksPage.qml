@@ -303,6 +303,15 @@ RowLayout {
                                     }
                                 }
                                 Text {
+                                    visible: row.modelData.owner !== ""
+                                    Layout.fillWidth: true
+                                    textFormat: Text.PlainText
+                                    elide: Text.ElideRight
+                                    color: theme.textDim
+                                    font.pixelSize: 11
+                                    text: "For " + row.modelData.owner
+                                }
+                                Text {
                                     visible: row.modelData.hasDue
                                     Layout.fillWidth: true
                                     color: theme.textDim

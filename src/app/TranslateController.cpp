@@ -121,7 +121,7 @@ void TranslateController::translateMeeting(qlonglong id, const QString &code)
     (void)QtConcurrent::run(&m_pool, [this, store, threads, lang, sources, path] {
         QString error;
         Translate::Result result;
-        Audio::LlamaSession session(store, [threads] { return threads; });
+        Audio::LlamaSession session(store, [threads] { return threads; }, Audio::LlamaSession::Mode::Light);
         error = session.start(&m_cancel);
         if (error.isEmpty()) {
             const Audio::ChatFn chat = [&](const QString &s, const QString &u, const QJsonObject &sc) { return session.chat(s, u, sc, &m_cancel, 1800); };
@@ -242,7 +242,7 @@ void TranslateController::beginPdf(const QString &file, const QString &name, con
                     pageOf << p.number;
                 }
             }
-            Audio::LlamaSession session(store, [threads] { return threads; });
+            Audio::LlamaSession session(store, [threads] { return threads; }, Audio::LlamaSession::Mode::Light);
             error = paragraphs.isEmpty() ? tr("There is no text to translate.") : session.start(&m_cancel);
             Translate::Result result;
             if (error.isEmpty()) {

@@ -25,7 +25,7 @@ Item {
     readonly property var activeStage: { const st = audioIntel.stages; for (let i = 0; i < st.length; ++i) if (st[i].state === "active") return st[i]; return null }
     readonly property var palette: ["#5b9bd5", "#5fb878", "#e0a030", "#d0607a", "#9a85e0", "#40b0c0"]
     readonly property var templates: [["meeting", "Meeting"], ["lecture", "Lecture"], ["interview", "Interview"], ["general", "General"]]
-    readonly property var speakerCounts: [[0, "Auto"], [2, "2"], [3, "3"], [4, "4"], [5, "5"]]
+    readonly property var speakerCounts: [[0, "Auto"], [2, "2"], [3, "3"], [4, "4"], [5, "5"], [6, "6"], [7, "7"], [8, "8"]]
     readonly property alias player: playerLoader
     property var transcriptList: null // set by the transcript, to make it follow the audio again
     property real rate: 1

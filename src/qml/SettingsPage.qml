@@ -613,7 +613,7 @@ RowLayout {
                             value: clipboardHistory.maxAgeHours
                             onPicked: (v) => clipboardHistory.maxAgeHours = v
                         }
-                        Caption { Layout.fillWidth: true; text: "Pinned items never expire. At most 50 items; text up to 20 KB and pictures up to 5 MB." }
+                        Caption { Layout.fillWidth: true; text: "Pinned items never expire. At most 30 items, the oldest unpinned one is dropped first; text up to 20 KB and pictures up to 5 MB." }
                         PillButton { text: "Clear history"; iconName: "trash"; enabled: clipboardHistory.total > 0; onClicked: clipboardHistory.clear() }
                     }
                 }
@@ -1798,6 +1798,26 @@ RowLayout {
                     Segmented { Layout.fillWidth: true; model: [[2, "2"], [4, "4"], [6, "6"], [8, "8"], [12, "12"]]; value: audioIntel.threads; onPicked: (v) => audioIntel.threads = v }
                     SectionLabel { text: "Memory limit" }
                     Segmented { Layout.fillWidth: true; model: [[0, "None"], [4096, "4 GB"], [8192, "8 GB"], [12288, "12 GB"]]; value: audioIntel.ramLimitMb; onPicked: (v) => audioIntel.ramLimitMb = v }
+                    SectionLabel { text: "Free models after" }
+                    Segmented { Layout.fillWidth: true; model: [[1, "1 min"], [2, "2 min"], [5, "5 min"], [10, "10 min"]]; value: audioIntel.idleMinutes; onPicked: (v) => audioIntel.idleMinutes = v }
+                    Caption { Layout.fillWidth: true; text: "A language model that sits unused is let go of after this long, and loaded again the next time it is needed." }
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Text {
+                            id: ramLine
+                            Layout.fillWidth: true
+                            wrapMode: Text.Wrap
+                            color: theme.text
+                            font.pixelSize: 12
+                            property var mem: ({ rows: [], notchText: "", totalText: "" })
+                            // only while this part of Settings is on screen
+                            Timer { interval: 2000; repeat: true; running: ramLine.visible && settingsScroll.visible; triggeredOnStart: true; onTriggered: ramLine.mem = audioIntel.modelMemory() }
+                            text: (mem.rows.length === 0 ? "No language model is running." : "Running now: " + mem.rows.map(r => r.name + " " + r.text).join(" · "))
+                                  + (mem.notchText !== "" ? "\nNotch itself: " + mem.notchText + " (the speech model is part of this)" : "")
+                        }
+                        PillButton { text: "Free now"; enabled: ramLine.mem.rows.length > 0; onClicked: { audioIntel.freeModels(); ramLine.mem = audioIntel.modelMemory() } }
+                    }
                 }
 
                 AiModelsCard { Layout.fillWidth: true }

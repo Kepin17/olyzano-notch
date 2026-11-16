@@ -40,6 +40,7 @@ public:
     Q_INVOKABLE void pin(const QString &id, bool pinned);
     Q_INVOKABLE void remove(const QString &id);
     Q_INVOKABLE void clear();                              // everything, pinned too
+    QVariantList textEntries() const;                      // [{id, text}] of the texts kept (pictures are not), whatever the search shows; none while the history is off
 
 signals:
     void settingsChanged();

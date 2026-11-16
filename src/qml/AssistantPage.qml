@@ -22,6 +22,8 @@ Item {
     }
     function openSource(s) {
         if (s.kind === "recording") { page.shell.audioOpen = { id: parseInt(s.ref), sec: s.startSec >= 0 ? s.startSec : 0 }; page.shell.page = "audio" }
+        else if (s.kind === "task") page.shell.page = "tasks"
+        else if (s.kind === "clipboard") page.shell.page = "clipboard"
         else notch.open(s.ref)
     }
     function send(text) { assistantChat.send(text); field.text = "" }

@@ -80,7 +80,7 @@ QVariantMap TaskSuggestController::addMeeting(qlonglong id)
             continue;
         }
         have.insert(key);
-        m_tasks->add(s.title, s.due.isValid() ? s.due.toString(Qt::ISODate) : QString());
+        m_tasks->add(s.title, s.due.isValid() ? s.due.toString(Qt::ISODate) : QString(), QString(), s.assignee);
         ++added;
     }
     save();
@@ -168,7 +168,7 @@ void TaskSuggestController::findInText(const QString &itemId, const QString &nam
     const int threads = m_audio->threads();
     (void)QtConcurrent::run(&m_pool, [this, itemId, name, text, kind, store, threads] {
         QList<TaskSuggest::Suggestion> found;
-        Audio::LlamaSession session(store, [threads] { return threads; });
+        Audio::LlamaSession session(store, [threads] { return threads; }, Audio::LlamaSession::Mode::Light);
         QString error = session.start(&m_cancel);
         if (error.isEmpty()) {
             const Audio::ChatFn chat = [&](const QString &s, const QString &u, const QJsonObject &sc) { return session.chat(s, u, sc, &m_cancel, 700); };
@@ -193,6 +193,78 @@ void TaskSuggestController::findInText(const QString &itemId, const QString &nam
                 const qsizetype before = m_list.size();
                 offer(found, name);
                 m_notch->announce(m_list.size() > before ? tr("Tasks found in the picture") : tr("No new tasks"), m_status, QStringLiteral("check"));
+            }
+        }, Qt::QueuedConnection);
+    });
+}
+
+void TaskSuggestController::findInTranscript(qlonglong meetingId)
+{
+    if (m_busy)
+        return;
+    if (!Audio::LlamaSession::available(m_audio->modelStore())) {
+        m_status = tr("Finding tasks needs the language model: download it in Settings → AI.");
+        emit changed();
+        return;
+    }
+    const QString name = m_audio->meetingTitle(meetingId);
+    // the talk in windows of about 4500 characters, each line "who: words" with its time kept apart so a task can point back to the minute
+    struct Line { double start; QString text; };
+    QList<Line> lines;
+    for (const Audio::Segment &g : m_audio->segmentsOf(meetingId))
+        lines.append({g.start, (g.speaker.isEmpty() ? QString() : g.speaker + QStringLiteral(": ")) + g.text.simplified()});
+    if (lines.isEmpty()) {
+        m_status = tr("This recording has no transcript to read.");
+        emit changed();
+        return;
+    }
+    m_busy = true;
+    m_cancel = false;
+    m_status = tr("Looking for tasks in %1…").arg(name);
+    emit changed();
+    ModelStore *store = m_audio->modelStore();
+    const int threads = m_audio->threads();
+    const QString ref = QString::number(meetingId);
+    (void)QtConcurrent::run(&m_pool, [this, lines, name, ref, store, threads] {
+        QList<TaskSuggest::Suggestion> found;
+        Audio::LlamaSession session(store, [threads] { return threads; }, Audio::LlamaSession::Mode::Light);
+        QString error = session.start(&m_cancel);
+        if (error.isEmpty()) {
+            const QDateTime now = QDateTime::currentDateTime();
+            const Audio::ChatFn chat = [&](const QString &s, const QString &u, const QJsonObject &sc) { return session.chat(s, u, sc, &m_cancel, 700); };
+            qsizetype i = 0;
+            while (i < lines.size() && !m_cancel.load()) {
+                QString window;
+                const qsizetype first = i;
+                while (i < lines.size() && (window.isEmpty() || window.size() + lines[i].text.size() < 4500))
+                    window += lines[i++].text + QLatin1Char('\n');
+                for (TaskSuggest::Suggestion s : TaskSuggest::findTasks(chat, window, 0, name, ref, now, true)) {
+                    s.kind = QStringLiteral("meeting");
+                    s.page = 0;
+                    for (qsizetype k = first; k < i; ++k) // the minute of the line the quote is on
+                        if (DocSummary::quoteOnPage(s.quote, lines[k].text)) {
+                            s.timestamp = lines[k].start;
+                            break;
+                        }
+                    found.append(s);
+                }
+            }
+        }
+        session.stop();
+        if (m_cancel.load())
+            error = QStringLiteral("cancelled");
+        QMetaObject::invokeMethod(this, [this, found, error, name] {
+            m_busy = false;
+            if (error == QLatin1String("cancelled")) {
+                m_status.clear();
+                emit changed();
+            } else if (!error.isEmpty()) {
+                m_status = error;
+                emit changed();
+            } else {
+                const qsizetype before = m_list.size();
+                offer(found, name);
+                m_notch->announce(m_list.size() > before ? tr("Tasks found in the recording") : tr("No new tasks"), m_status, QStringLiteral("check"));
             }
         }, Qt::QueuedConnection);
     });
@@ -227,7 +299,7 @@ void TaskSuggestController::findInPdf(const QString &itemId)
         if (pages.isEmpty())
             error = tr("No text could be read from %1.").arg(name);
         else {
-            Audio::LlamaSession session(store, [threads] { return threads; });
+            Audio::LlamaSession session(store, [threads] { return threads; }, Audio::LlamaSession::Mode::Light);
             error = session.start(&m_cancel);
             if (error.isEmpty()) {
                 const QDateTime now = QDateTime::currentDateTime();
@@ -266,7 +338,7 @@ void TaskSuggestController::accept(const QString &id)
     for (int i = 0; i < m_list.size(); ++i)
         if (m_list[i].id == id) {
             const TaskSuggest::Suggestion s = m_list.takeAt(i);
-            m_tasks->add(s.title, s.due.isValid() ? s.due.toString(Qt::ISODate) : QString());
+            m_tasks->add(s.title, s.due.isValid() ? s.due.toString(Qt::ISODate) : QString(), QString(), s.assignee);
             m_dismissed.insert(s.id); // on the list now: not offered again
             save();
             emit changed();

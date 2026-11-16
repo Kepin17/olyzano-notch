@@ -8,6 +8,7 @@
 #include "Hardware.h"
 #include "InstallQueue.h"
 #include "ModelBundles.h"
+#include "ModelUse.h"
 #include "LiveSession.h"
 #include "services/Chunker.h"
 #include "MeetingRecorder.h"
@@ -73,6 +74,7 @@ class AudioController : public QObject
     Q_PROPERTY(bool punctuate READ punctuate WRITE setPunctuate NOTIFY settingsChanged) // marks and capitals for English text that has none
     Q_PROPERTY(bool punctReady READ punctReady NOTIFY modelsChanged)
     Q_PROPERTY(QString speakerSplit READ speakerSplit WRITE setSpeakerSplit NOTIFY settingsChanged) // fewer | balanced | more
+    Q_PROPERTY(int idleMinutes READ idleMinutes WRITE setIdleMinutes NOTIFY settingsChanged) // 1 | 2 | 5 | 10: how long a language model is kept after its last use
     Q_PROPERTY(int ramLimitMb READ ramLimitMb WRITE setRamLimitMb NOTIFY settingsChanged) // 0 = no limit
     Q_PROPERTY(bool recording READ recording NOTIFY recordingChanged)
     Q_PROPERTY(QObject *live READ live NOTIFY liveChanged) // the live transcript of the meeting being recorded (null otherwise)
@@ -158,6 +160,11 @@ public:
     bool vocalsReady() const { return m_cleaner.available(Audio::Clean::Vocals); }
     bool punctuate() const { return m_settings.value(QStringLiteral("punctuate"), false).toBool(); }
     void setPunctuate(bool on) { m_settings.setValue(QStringLiteral("punctuate"), on); emit settingsChanged(); }
+    int idleMinutes() const { return Audio::ModelUse::validIdleMinutes(m_settings.value(QStringLiteral("idleMinutes"), 2).toInt()); }
+    void setIdleMinutes(int m) { m_settings.setValue(QStringLiteral("idleMinutes"), Audio::ModelUse::validIdleMinutes(m)); emit settingsChanged(); }
+    // What runs now and what it holds: {rows: [{name, text}], notchText, total} (read again every time it is asked)
+    Q_INVOKABLE QVariantMap modelMemory() const;
+    Q_INVOKABLE void freeModels() { emit freeModelsRequested(); }
     bool tidyNew() const { return m_settings.value(QStringLiteral("tidyNew"), false).toBool(); }
     void setTidyNew(bool on) { m_settings.setValue(QStringLiteral("tidyNew"), on); emit settingsChanged(); }
     QVariantList dictionary() const;
@@ -213,6 +220,8 @@ public:
     Q_INVOKABLE void rename(qlonglong id, const QString &title);
     Q_INVOKABLE void search(const QString &text);
     Q_INVOKABLE void renameSpeaker(const QString &label, const QString &name);
+    Q_INVOKABLE void moveSegmentToSpeaker(qlonglong segmentId, const QString &label); // one line said by someone else ("" = a new speaker)
+    Q_INVOKABLE void mergeSpeakers(const QString &from, const QString &to);          // two speakers that are one person
     Q_INVOKABLE void editSegment(qlonglong segmentId, const QString &text);
     Q_INVOKABLE void deleteSegment(qlonglong segmentId);
     Q_INVOKABLE void setActionDone(qlonglong actionId, bool done);
@@ -235,6 +244,7 @@ public:
     Q_INVOKABLE void removeModel(const QString &id);
 
 signals:
+    void freeModelsRequested(); // Settings: Free now
     void tidyChanged();
     void followUpReady(qlonglong id, const QString &kind, const QString &subject, const QString &text, bool polished);
     void currentChanged();
@@ -266,6 +276,7 @@ private:
     void applyNotes(qlonglong id, const Audio::Summary &s, const QString &tmpl);
     void finishJob(qlonglong id, qint64 jobId, const Audio::PipelineResult &r);
     void loadCurrent();
+    void rebuildSpeakers();
     void loadWaveform(qlonglong id);
     QString meetingDir(qlonglong id) const;
     QString readinessProblem(const QString &quality) const;

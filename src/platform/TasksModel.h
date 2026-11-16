@@ -24,6 +24,7 @@ struct Task {
     bool done = false;
     bool warned = false;         // the "soon" reminder was shown
     bool notified = false;       // the "now" reminder was shown
+    QString owner;               // who it falls to, when a source (a meeting) named someone ("" = nobody named)
 };
 
 constexpr int SoonMinutes = 15;  // the warning comes this long before the deadline
@@ -279,7 +280,7 @@ inline QByteArray toJson(const QList<Task> &list)
     QJsonArray a;
     for (const Task &t : list)
         a.append(QJsonObject{{QStringLiteral("id"), t.id}, {QStringLiteral("title"), t.title},
-                             {QStringLiteral("course"), t.course},
+                             {QStringLiteral("course"), t.course}, {QStringLiteral("owner"), t.owner},
                              {QStringLiteral("due"), t.due.isValid() ? t.due.toString(Qt::ISODate) : QString()},
                              {QStringLiteral("done"), t.done}, {QStringLiteral("warned"), t.warned},
                              {QStringLiteral("notified"), t.notified}});
@@ -295,6 +296,7 @@ inline QList<Task> fromJson(const QByteArray &json)
         t.id = o.value(QStringLiteral("id")).toString();
         t.title = o.value(QStringLiteral("title")).toString();
         t.course = o.value(QStringLiteral("course")).toString(); // older files: ""
+        t.owner = o.value(QStringLiteral("owner")).toString();   // older files: ""
         t.due = QDateTime::fromString(o.value(QStringLiteral("due")).toString(), Qt::ISODate);
         t.done = o.value(QStringLiteral("done")).toBool();
         t.warned = o.value(QStringLiteral("warned")).toBool();

@@ -9,7 +9,7 @@
 // copied twice is one entry that moves up, a pinned entry stays, old entries expire, and what is too big is not kept.
 namespace ClipboardHistoryModel {
 
-constexpr int MaxEntries = 50;
+constexpr int MaxEntries = 30;
 constexpr int MaxTextBytes = 20 * 1024;
 constexpr int MaxImageBytes = 5 * 1024 * 1024;
 

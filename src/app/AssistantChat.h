@@ -77,6 +77,9 @@ private:
     QVariantList m_messages;
     QThreadPool m_pool;
     QTimer m_idle;
+public:
+    void freeNow(); // let go of the language model now (Settings: Free now)
+private:
     std::atomic_bool m_cancel{false};
     std::unique_ptr<Audio::LlamaSession> m_session; // only touched by jobs of m_pool
     bool m_busy = false;

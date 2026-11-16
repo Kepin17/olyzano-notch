@@ -60,7 +60,7 @@ void Tasks::refresh()
     for (const Task &t : sorted(m_tasks)) {
         const DueState s = dueState(t, now);
         view << QVariantMap{{QStringLiteral("id"), t.id}, {QStringLiteral("title"), t.title},
-                            {QStringLiteral("course"), t.course}, {QStringLiteral("done"), t.done},
+                            {QStringLiteral("course"), t.course}, {QStringLiteral("owner"), t.owner}, {QStringLiteral("done"), t.done},
                             {QStringLiteral("hasDue"), t.due.isValid()},
                             {QStringLiteral("dueMs"), t.due.isValid() ? t.due.toMSecsSinceEpoch() : qint64(0)},
                             {QStringLiteral("remaining"), remaining(t.due, now)},
@@ -118,16 +118,17 @@ QStringList Tasks::courseSuggestions() const
     return out;
 }
 
-bool Tasks::add(const QString &title, const QString &dueIso, const QString &course)
+bool Tasks::add(const QString &title, const QString &dueIso, const QString &course, const QString &owner)
 {
-    const QString c = course.trimmed();
+    const QString c = course.trimmed(), who = owner.trimmed();
     const QDateTime due = QDateTime::fromString(dueIso, Qt::ISODate).toLocalTime(); // from the picker (UTC "Z" form)
     if (!due.isValid()) {
         // No hand-picked deadline: same natural-language parse as the quick field.
         if (!addQuick(title))
             return false;
-        if (!c.isEmpty() && !m_tasks.isEmpty()) {
+        if ((!c.isEmpty() || !who.isEmpty()) && !m_tasks.isEmpty()) {
             m_tasks.last().course = c;
+            m_tasks.last().owner = who;
             save();
             refresh();
         }
@@ -139,6 +140,7 @@ bool Tasks::add(const QString &title, const QString &dueIso, const QString &cour
     t.id = QUuid::createUuid().toString(QUuid::WithoutBraces);
     t.title = title.trimmed();
     t.course = c;
+    t.owner = who;
     t.due = due;
     m_tasks << t;
     save();

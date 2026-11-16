@@ -513,7 +513,7 @@ PipelineResult AudioPipeline::run(const QString &source, const QString &workDir,
         const QJsonObject saved = Json::load(file);
         const int wanted = options.stereo ? 0 : options.speakers; // a stereo recording is split by channel: the number is not asked of it
         if (saved.contains(QStringLiteral("turns")) && saved.value(QStringLiteral("stereo")).toBool() == options.stereo && saved.value(QStringLiteral("speakers")).toInt() == wanted
-            && saved.value(QStringLiteral("v")).toInt() == 2) {
+            && saved.value(QStringLiteral("v")).toInt() == 2 && saved.value(QStringLiteral("sig")).toString() == (m_diarizer ? m_diarizer->signature() : QString())) {
             remoteTurns = Json::turns(saved.value(QStringLiteral("turns")).toArray());
             localTurns = Json::turns(saved.value(QStringLiteral("localTurns")).toArray());
         } else if (!m_diarizer || !m_diarizer->available()) {
@@ -548,7 +548,7 @@ PipelineResult AudioPipeline::run(const QString &source, const QString &workDir,
                 remoteTurns.clear();
                 localTurns.clear();
                 r.warnings << QStringLiteral("The speakers could not be told apart: %1").arg(err);
-            } else if (const QString e = Json::save(file, {{QStringLiteral("v"), 2}, {QStringLiteral("stereo"), options.stereo}, {QStringLiteral("speakers"), wanted},
+            } else if (const QString e = Json::save(file, {{QStringLiteral("v"), 2}, {QStringLiteral("stereo"), options.stereo}, {QStringLiteral("speakers"), wanted}, {QStringLiteral("sig"), m_diarizer ? m_diarizer->signature() : QString()},
                                                            {QStringLiteral("turns"), Json::turns(remoteTurns)}, {QStringLiteral("localTurns"), Json::turns(localTurns)}});
                        !e.isEmpty()) {
                 r.warnings << e;

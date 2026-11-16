@@ -21,6 +21,20 @@ ScrollView {
             text: audioIntel.info.hasNotes ? "No tasks were found in this recording." : "Tasks come with the notes: download the language model to get them."
         }
         PillButton {
+            visible: (!audioIntel.notes.actions || audioIntel.notes.actions.length === 0) && !taskSuggest.busy
+            text: "Look for tasks in the talk"
+            iconName: "ai"
+            onClicked: taskSuggest.findInTranscript(audioIntel.current)
+        }
+        Text {
+            visible: taskSuggest.status !== ""
+            Layout.fillWidth: true
+            wrapMode: Text.Wrap
+            color: theme.textDim
+            font.pixelSize: 12
+            text: taskSuggest.status
+        }
+        PillButton {
             visible: !!audioIntel.notes.actions && audioIntel.notes.actions.length > 0
             text: "Add all to Tasks"
             iconName: "plus"

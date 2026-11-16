@@ -1,3 +1,4 @@
+#include "audio/ModelUse.h"
 #include "KnowledgeController.h"
 
 #include "services/GlobalSearch.h"
@@ -15,6 +16,7 @@
 #include "services/PdfText.h"
 #include "services/Retrieval.h"
 
+#include <QCryptographicHash>
 #include <QDateTime>
 #include <QFile>
 #include <QFileInfo>
@@ -26,7 +28,6 @@
 #include <QtConcurrent>
 
 namespace {
-constexpr qint64 IdleMs = 120000;
 constexpr int MaxPages = 400;
 constexpr qint64 MaxTextBytes = 256 * 1024;
 
@@ -154,7 +155,15 @@ KnowledgeController::KnowledgeController(NotchController *notch, AudioController
         m_ocr = s.value(QStringLiteral("ocr"), false).toBool();
         m_images = s.value(QStringLiteral("images"), false).toBool();
         m_forms = s.value(QStringLiteral("forms"), true).toBool();
+        m_taskIndex = s.value(QStringLiteral("tasks"), true).toBool();
+        m_clipIndex = s.value(QStringLiteral("clipboard"), false).toBool(); // what is copied may hold a password: only when asked for
     }
+    for (QTimer *t : {&m_taskSyncTimer, &m_clipSyncTimer}) {
+        t->setSingleShot(true);
+        t->setInterval(2000);
+    }
+    connect(&m_taskSyncTimer, &QTimer::timeout, this, &KnowledgeController::runTaskSync);
+    connect(&m_clipSyncTimer, &QTimer::timeout, this, &KnowledgeController::runClipSync);
     m_status = m_enabled ? tr("Waiting to look at your files…") : tr("Indexing is off");
     // looking for what changed: a little after start, then every few minutes, and when a recording is done
     m_scanTimer.setSingleShot(true);
@@ -425,12 +434,25 @@ Audio::ChatFn KnowledgeController::chatFn(int maxTokens)
     };
 }
 
+void KnowledgeController::freeNow()
+{
+    if (m_jobRunning.load())
+        return;
+    (void)QtConcurrent::run(&m_pool, [this] {
+        if (m_llm) {
+            m_llm->stop();
+            m_llm.reset();
+            m_llmTried = false;
+        }
+    });
+}
+
 void KnowledgeController::idleCheck()
 {
-    if (m_jobRunning.load() || !m_llm || !m_llmTried || QDateTime::currentMSecsSinceEpoch() - m_lastUse.load() < IdleMs)
+    if (m_jobRunning.load() || !m_llm || !m_llmTried || QDateTime::currentMSecsSinceEpoch() - m_lastUse.load() < Audio::ModelUse::idleMs())
         return;
     (void)QtConcurrent::run(&m_pool, [this] { // on the thread that uses it
-        if (m_llm && QDateTime::currentMSecsSinceEpoch() - m_lastUse.load() >= IdleMs) {
+        if (m_llm && QDateTime::currentMSecsSinceEpoch() - m_lastUse.load() >= Audio::ModelUse::idleMs()) {
             m_llm->stop();
             m_llm.reset();
             m_llmTried = false;
@@ -619,6 +641,8 @@ void KnowledgeController::ask(const QString &questionRaw, const QVariantMap &sco
         } else {
             if (kind == QLatin1String("files")) { f.kinds = {QStringLiteral("shelf")}; scopeText = tr("your files"); }
             else if (kind == QLatin1String("recordings")) { f.kinds = {QStringLiteral("meeting")}; scopeText = tr("your recordings"); }
+            else if (kind == QLatin1String("tasks")) { f.kinds = {QStringLiteral("task")}; scopeText = tr("your tasks"); }
+            else if (kind == QLatin1String("clipboard")) { f.kinds = {QStringLiteral("clipboard")}; scopeText = tr("what you copied"); }
             else f.kinds = q.kinds;
         }
         bool meaning = false;
@@ -671,7 +695,8 @@ void KnowledgeController::ask(const QString &questionRaw, const QVariantMap &sco
                 if (c.n == s.n)
                     quote = c.quote;
             const bool meeting = s.hit.kind == QLatin1String("meeting");
-            shown.append(QVariantMap{{QStringLiteral("n"), s.n}, {QStringLiteral("name"), s.hit.name}, {QStringLiteral("kind"), meeting ? QStringLiteral("recording") : QStringLiteral("file")},
+            const QString shownKind = meeting ? QStringLiteral("recording") : s.hit.kind == QLatin1String("task") ? QStringLiteral("task") : s.hit.kind == QLatin1String("clipboard") ? QStringLiteral("clipboard") : QStringLiteral("file");
+            shown.append(QVariantMap{{QStringLiteral("n"), s.n}, {QStringLiteral("name"), s.hit.name}, {QStringLiteral("kind"), shownKind},
                                      {QStringLiteral("ref"), s.hit.ref}, {QStringLiteral("page"), s.hit.page}, {QStringLiteral("startSec"), s.hit.startSec},
                                      {QStringLiteral("where"), meeting ? Audio::clock(s.hit.startSec >= 0 ? s.hit.startSec : 0) : s.hit.page > 0 ? tr("page %1").arg(s.hit.page) : QString()},
                                      {QStringLiteral("quote"), quote}, {QStringLiteral("snippet"), s.hit.text.left(300)}, {QStringLiteral("cited"), isCited},
@@ -731,6 +756,101 @@ void KnowledgeController::indexForm(const QString &id, const QString &title, con
             return;
         store.setDoc(QStringLiteral("form"), id, title, QDateTime::currentDateTimeUtc(), fingerprint, chunks);
     });
+}
+
+// A document of kind `kind` for each (ref, name, text) and none for what is not in the list: the same text again is left alone (its fingerprint).
+static void matchIndex(const QString &db, const QString &kind, const QList<std::tuple<QString, QString, QString>> &docs)
+{
+    KnowledgeStore store(uniqueName());
+    if (!store.open(db).isEmpty())
+        return;
+    QSet<QString> keep;
+    for (const auto &[ref, name, text] : docs) {
+        keep.insert(ref);
+        const QString fp = QString::fromLatin1(QCryptographicHash::hash(name.toUtf8() + '\n' + text.toUtf8(), QCryptographicHash::Sha1).toHex());
+        if (store.fingerprint(kind, ref) == fp)
+            continue;
+        store.setDoc(kind, ref, name, QDateTime::currentDateTimeUtc(), fp, Knowledge::chunkPage(0, text));
+    }
+    for (const QString &ref : store.refs(kind))
+        if (!keep.contains(ref))
+            store.removeDoc(kind, ref);
+}
+
+void KnowledgeController::setIndexTasks(bool on)
+{
+    if (on == m_taskIndex)
+        return;
+    m_taskIndex = on;
+    { QSettings st = settings(); st.setValue(QStringLiteral("tasks"), on); }
+    if (on)
+        m_taskSyncTimer.start();
+    else
+        (void)QtConcurrent::run(&m_quickPool, [db = dbPath()] { matchIndex(db, QStringLiteral("task"), {}); }); // out of the index at once
+    emit changed();
+}
+
+void KnowledgeController::setIndexClipboard(bool on)
+{
+    if (on == m_clipIndex)
+        return;
+    m_clipIndex = on;
+    { QSettings st = settings(); st.setValue(QStringLiteral("clipboard"), on); }
+    if (on)
+        m_clipSyncTimer.start();
+    else {
+        m_clipPayload.clear();
+        (void)QtConcurrent::run(&m_quickPool, [db = dbPath()] { matchIndex(db, QStringLiteral("clipboard"), {}); });
+    }
+    emit changed();
+}
+
+void KnowledgeController::syncTasks(const QVariantList &tasks)
+{
+    m_taskPayload = tasks;
+    if (m_enabled && m_taskIndex)
+        m_taskSyncTimer.start();
+}
+
+void KnowledgeController::syncClipboard(const QVariantList &texts)
+{
+    m_clipPayload = texts;
+    if (m_enabled && m_clipIndex)
+        m_clipSyncTimer.start();
+}
+
+void KnowledgeController::runTaskSync()
+{
+    if (!m_enabled || !m_taskIndex)
+        return;
+    QList<std::tuple<QString, QString, QString>> docs;
+    for (const QVariant &v : std::as_const(m_taskPayload)) {
+        const QVariantMap t = v.toMap();
+        QStringList parts{t.value(QStringLiteral("title")).toString()};
+        if (!t.value(QStringLiteral("owner")).toString().isEmpty())
+            parts << tr("For %1").arg(t.value(QStringLiteral("owner")).toString());
+        if (!t.value(QStringLiteral("course")).toString().isEmpty())
+            parts << tr("Course %1").arg(t.value(QStringLiteral("course")).toString());
+        if (t.value(QStringLiteral("hasDue")).toBool())
+            parts << tr("Due %1").arg(QLocale().toString(QDateTime::fromMSecsSinceEpoch(t.value(QStringLiteral("dueMs")).toLongLong()), QLocale::ShortFormat));
+        parts << (t.value(QStringLiteral("done")).toBool() ? tr("Done") : tr("Not done yet"));
+        docs.append({t.value(QStringLiteral("id")).toString(), t.value(QStringLiteral("title")).toString(), parts.join(QStringLiteral(". "))});
+    }
+    (void)QtConcurrent::run(&m_quickPool, [docs, db = dbPath()] { matchIndex(db, QStringLiteral("task"), docs); });
+}
+
+void KnowledgeController::runClipSync()
+{
+    if (!m_enabled || !m_clipIndex)
+        return;
+    QList<std::tuple<QString, QString, QString>> docs;
+    for (const QVariant &v : std::as_const(m_clipPayload)) {
+        const QVariantMap e = v.toMap();
+        const QString text = e.value(QStringLiteral("text")).toString();
+        if (!text.trimmed().isEmpty())
+            docs.append({e.value(QStringLiteral("id")).toString(), text.simplified().left(60), text});
+    }
+    (void)QtConcurrent::run(&m_quickPool, [docs, db = dbPath()] { matchIndex(db, QStringLiteral("clipboard"), docs); });
 }
 
 void KnowledgeController::removeForm(const QString &id)

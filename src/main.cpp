@@ -12,6 +12,7 @@
 #include "app/RecordController.h"
 #include "app/FormController.h"
 #include "app/VisionController.h"
+#include "platform/AndroidMirror.h"
 #include "app/LanguageController.h"
 #include "app/ShareController.h"
 #include "services/QrImage.h"
@@ -257,6 +258,7 @@ int main(int argc, char *argv[])
     LanguageController languages(&audioIntel);
     DocSummaryController docSummary(&controller, &audioIntel);
     VisionController vision(&controller, &audioIntel);
+    AndroidMirror androidMirror(&controller);
     MattingController matting(&controller, &audioIntel);
     RecordController recorder(&controller);
     FormController forms(&controller, &share);
@@ -305,6 +307,10 @@ int main(int argc, char *argv[])
     Updates updates;
     Assistant assistant(&launcher, &tasks, &quick, &media, &activities, &controller);
     AssistantChat assistantChat(&assistant, &tasks, &controller, &audioIntel, &knowledge);
+    QObject::connect(&tasks, &Tasks::changed, &knowledge, [&] { knowledge.syncTasks(tasks.list()); });
+    QObject::connect(&clipboardHistory, &ClipboardHistory::countChanged, &knowledge, [&] { knowledge.syncClipboard(clipboardHistory.textEntries()); });
+    QObject::connect(&knowledge, &KnowledgeController::changed, &knowledge, [&] { if (knowledge.indexClipboard()) knowledge.syncClipboard(clipboardHistory.textEntries()); });
+    QObject::connect(&audioIntel, &AudioController::freeModelsRequested, &app, [&] { knowledge.freeNow(); assistantChat.freeNow(); assistant.releaseIdle(); });
     // `notch --assistant-say "buka firefox"`: what the words would do (nothing is done); `--assistant-wav file.wav`: the same from a
     // 16 kHz mono 16-bit recording, through whisper (the model must be downloaded).
     if (const int i = app.arguments().indexOf(QStringLiteral("--assistant-say")); i >= 0 && i + 1 < app.arguments().size()) {
@@ -440,6 +446,7 @@ int main(int argc, char *argv[])
     engine.addImageProvider(QStringLiteral("mime"), makeMimeIconProvider());
     engine.addImageProvider(QStringLiteral("tray"), makeTrayIconProvider(&trayHost));
     engine.addImageProvider(QStringLiteral("qr"), new QrImageProvider);
+    engine.addImageProvider(QStringLiteral("phone"), androidMirror.makeProvider());
     engine.addImageProvider(QStringLiteral("thumb"), new ThumbImageProvider);
     engine.addImageProvider(QStringLiteral("appicon"), makeDockIconProvider(&dock));
     engine.rootContext()->setContextProperty(QStringLiteral("share"), &share);
@@ -453,6 +460,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("audioIntel"), &audioIntel);
     engine.rootContext()->setContextProperty(QStringLiteral("docSummary"), &docSummary);
     engine.rootContext()->setContextProperty(QStringLiteral("vision"), &vision);
+    engine.rootContext()->setContextProperty(QStringLiteral("androidMirror"), &androidMirror);
     engine.rootContext()->setContextProperty(QStringLiteral("matting"), &matting);
     recorder.setEngine(&engine);
     engine.rootContext()->setContextProperty(QStringLiteral("recorder"), &recorder);
@@ -712,7 +720,7 @@ int main(int argc, char *argv[])
     // `notch --shot-page file.png <timer|color|shelf|tasks|capsule>`: the open panel on that page, the same way.
     if (const int i = app.arguments().indexOf(QStringLiteral("--shot-page")); i >= 0 && i + 2 < app.arguments().size()) {
         const QString path = app.arguments().at(i + 1), page = app.arguments().at(i + 2);
-        QTimer::singleShot(1200, &app, [&windows, &app, &activities, &doomscroll, &assistant, &assistantChat, &audioIntel, &recorder, path, page] {
+        QTimer::singleShot(1200, &app, [&windows, &app, &activities, &doomscroll, &assistant, &assistantChat, &audioIntel, &recorder, &androidMirror, &engine, path, page] {
             QQuickWindow *w = windows.isEmpty() ? nullptr : windows.constBegin().value();
             if (!w)
                 return app.quit();
@@ -777,6 +785,37 @@ int main(int argc, char *argv[])
                 w->setProperty("docsPick", page.mid(tools ? 11 : 5));
                 w->setProperty("page", QStringLiteral("docs"));
                 return QTimer::singleShot(qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") > 0 ? qEnvironmentVariableIntValue("NOTCH_SHOT_DELAY") : 2200, &app, [w, &app, path] { w->grabWindow().save(path); app.quit(); });
+            }
+            if (page == QLatin1String("phone-live")) { // the real path with an adb of your own on the PATH (a script that plays one): refresh, show, touch, then a picture of the window
+                androidMirror.refresh();
+                QTimer::singleShot(1000, &app, [&androidMirror] { androidMirror.mirror(QStringLiteral("FAKE1")); });
+                QTimer::singleShot(3500, &app, [&androidMirror] {
+                    androidMirror.tap(0.5, 0.5);
+                    androidMirror.swipe(0.5, 0.8, 0.5, 0.2, 300);
+                    androidMirror.key(QStringLiteral("home"));
+                    androidMirror.typeText(QStringLiteral("hello world"));
+                    androidMirror.screenshot();
+                    androidMirror.startRecording();
+                });
+                return QTimer::singleShot(6200, &app, [&androidMirror, &engine, &app, path] {
+                    fprintf(stderr, "phone-live state=%s revision=%d frame=%dx%d recording=%d error='%s'\n", qPrintable(androidMirror.state()), androidMirror.revision(), androidMirror.frameWidth(), androidMirror.frameHeight(), androidMirror.recording(), qPrintable(androidMirror.error()));
+                    for (QObject *o : engine.rootObjects())
+                        if (o->objectName() == QLatin1String("phoneWindow"))
+                            qobject_cast<QQuickWindow *>(o)->grabWindow().save(path);
+                    androidMirror.stopRecording();
+                    QTimer::singleShot(4000, &app, &QCoreApplication::quit);
+                });
+            }
+            if (page.startsWith(QLatin1String("phone-"))) { // phone-setup | phone-setup-none (the Camera page) | phone-window (the window of its own)
+                androidMirror.debugShow(page == QLatin1String("phone-setup-none") ? QStringLiteral("none") : page == QLatin1String("phone-window") ? QStringLiteral("window") : QStringLiteral("devices"));
+                w->setProperty("cameraSection", QStringLiteral("phone"));
+                w->setProperty("page", QStringLiteral("camera"));
+                QQuickWindow *shot = w;
+                if (page == QLatin1String("phone-window"))
+                    for (QObject *o : engine.rootObjects())
+                        if (o->objectName() == QLatin1String("phoneWindow"))
+                            shot = qobject_cast<QQuickWindow *>(o);
+                return QTimer::singleShot(1800, &app, [shot, &app, path] { shot->grabWindow().save(path); app.quit(); });
             }
             if (page == QLatin1String("camera-record-test")) { // records the camera alone for a few seconds, for real, and says how it went
                 w->setProperty("cameraSection", QStringLiteral("record"));
@@ -905,6 +944,7 @@ int main(int argc, char *argv[])
         QTimer::singleShot(2500, &app, *next);
     }
     engine.loadFromModule("Notch", "Tray");
+    engine.loadFromModule("Notch", "PhoneWindow"); // the phone, in a window of its own (hidden until Camera → Phone → Show)
 #ifdef Q_OS_WIN
     // On Windows the tray icon and its right-click menu are Qt's own QSystemTrayIcon with a QMenu: the menu of Qt.labs.platform did not open there. The
     // same entries as Tray.qml (which does not make an icon on Windows); the texts are made again each time the menu opens, so they say what is true.

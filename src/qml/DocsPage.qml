@@ -80,6 +80,8 @@ Item {
 
     function openSource(s) {
         if (s.kind === "recording") { shell.audioOpen = { id: parseInt(s.ref), sec: s.startSec }; shell.page = "audio" }
+        else if (s.kind === "task") shell.page = "tasks"
+        else if (s.kind === "clipboard") shell.page = "clipboard"
         else notch.open(s.ref)
     }
 

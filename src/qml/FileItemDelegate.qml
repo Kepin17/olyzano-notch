@@ -42,7 +42,7 @@ Item {
     readonly property bool showThumbnail: isImage && available
 
     width: view ? view.tileWidth : 96
-    height: 150
+    height: 128 // three whole rows (cell 132) fit under the search line of the 620 px window
 
     component CircleButton: AbstractButton {
         HoverHandler { cursorShape: Qt.PointingHandCursor }
@@ -89,7 +89,7 @@ Item {
     Rectangle {
         id: thumb
         anchors.horizontalCenter: parent.horizontalCenter
-        y: 10
+        y: 8
         width: 64
         height: 64
         radius: theme.radiusMd
@@ -189,18 +189,18 @@ Item {
             border.width: 1.5
             LineIcon {
                 anchors.centerIn: parent
-                visible: badge.kind === "selected" || badge.kind === "kept"
-                glyph: badge.kind === "selected" ? "check" : "pin"
+                visible: badge.kind === "selected" || badge.kind === "kept" || badge.kind === "expiring"
+                glyph: badge.kind === "selected" ? "check" : badge.kind === "expiring" ? "timer" : "pin"
                 sourceSize: Qt.size(11, 11)
                 color: badge.kind === "selected" ? theme.onColor(theme.accent) : "black"
             }
             Text {
                 anchors.centerIn: parent
-                visible: badge.kind === "failed" || badge.kind === "expiring"
-                text: badge.kind === "failed" ? "!" : "·"
-                color: badge.kind === "expiring" ? "black" : "white"
-                font.pixelSize: badge.kind === "expiring" ? 9 : 10
-                font.bold: badge.kind === "failed"
+                visible: badge.kind === "failed"
+                text: "!"
+                color: "white"
+                font.pixelSize: 10
+                font.bold: true
             }
         }
 
@@ -234,7 +234,7 @@ Item {
         id: renameLoader
         active: tile.renaming
         anchors.top: thumb.bottom
-        anchors.topMargin: 6
+        anchors.topMargin: 5
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width + 24 // a bit wider than the tile: names are long
         z: 2
@@ -267,10 +267,10 @@ Item {
         id: title
         visible: !tile.renaming
         anchors.top: thumb.bottom
-        anchors.topMargin: 8
+        anchors.topMargin: 5
         anchors.horizontalCenter: parent.horizontalCenter
         width: parent.width - 8
-        height: 30
+        height: 30 // two lines of 11 px
         clip: true
         textFormat: Text.PlainText // a name can look like markup
         text: tile.name

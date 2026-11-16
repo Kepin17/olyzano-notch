@@ -69,6 +69,10 @@ public:
     bool editSegment(qint64 segmentId, const QString &text); // "" or the original text = back to the original
     bool deleteSegment(qint64 segmentId);
     bool renameSpeaker(qint64 meetingId, const QString &label, const QString &name);
+    // One line (`segmentId`) said by `label` instead (a speaker that does not exist yet is made); and every line of `from` becoming `to`'s (the speaker `from` is gone;
+    // it gives its name to `to` only when `to` has none).
+    bool setSegmentSpeaker(qint64 meetingId, qint64 segmentId, const QString &label);
+    bool mergeSpeakers(qint64 meetingId, const QString &from, const QString &to);
     QStringList speakerLabels(qint64 meetingId) const;
 
     bool saveSummary(qint64 meetingId, const Audio::Summary &s, const QString &tmpl);

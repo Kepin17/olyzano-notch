@@ -8,7 +8,7 @@ ColumnLayout {
     id: page
     required property var shell
     visible: shell.page === "camera"
-    property string section: shell.cameraSection   // camera | record
+    property string section: shell.cameraSection   // camera | record | phone
     readonly property string shown: recorder.engaged ? "record" : section // a recording or a preview in progress keeps its page
     readonly property bool modalOpen: !!view.item && view.item.modalOpen
     function recordView() { return shown === "record" && view.item && view.item.debugRun ? view.item : null }
@@ -19,7 +19,7 @@ ColumnLayout {
 
     Segmented {
         Layout.fillWidth: true
-        model: [["camera", "Camera"], ["record", "Record screen"]]
+        model: [["camera", "Camera"], ["record", "Record screen"]] // the Phone mirror is switched off for now: add ["phone", "Phone"] to bring the tab back
         value: page.shown
         enabled: !recorder.engaged
         onPicked: (v) => page.section = v
@@ -46,7 +46,7 @@ ColumnLayout {
                 width: scroller.width - (scroller.interactive ? 10 : 0)
                 height: page.shown === "record" ? holder.height : item ? item.implicitHeight : 80
                 active: page.visible || recorder.engaged // (Main.qml keeps this page loaded, out of sight, while the recorder is busy)
-                source: page.shown === "record" ? "RecordView.qml" : "CameraView.qml"
+                source: page.shown === "record" ? "RecordView.qml" : page.shown === "phone" ? "PhoneSetup.qml" : "CameraView.qml"
                 onLoaded: item.shell = page.shell
             }
         }

@@ -63,6 +63,7 @@ Notch lives at the top of your screen and keeps your files, recordings, tasks an
 ### Look & feel
 - **Hidden in full screen.** With *Hide Notch when an app is full screen* on, Notch goes into **Hidden mode** while a game or video fills the screen. You can still open it from the top edge, and it goes back to your usual mode afterwards. *Gaming mode* stays the stricter option that also mutes sounds.
 - **Screen recorder** (*Camera → Record screen*). Record the screen, one window or just the camera. Place the camera in a corner, add your microphone and the computer's sound, and get an MP4 in Files. Linux first.
+- **Show your Android phone** (*Camera → Phone*). The phone's screen opens in a window of its own that you can put anywhere and resize. Click to tap, drag to swipe, take screenshots and record it, by USB or over WiFi. Needs `adb` and `ffmpeg`; nothing is installed on the phone.
 - **A cleaner design.** Calmer buttons, cards and switches, with one clear main action on each page.
 - **AI models in one place** (*Settings → AI*). See everything Notch can download, grouped by use, and install a whole group with one click.
 

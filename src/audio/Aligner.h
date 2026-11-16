@@ -122,35 +122,71 @@ inline QList<Segment> align(const QList<Segment> &asr, QList<Turn> turns)
     return out;
 }
 
-// For a stereo recording from Notch (microphone left, the computer's sound right): the stretches where the microphone is clearly louder than
-// the computer's sound are the person at the microphone ("You"). Headphones keep the remote voices out of the microphone; with speakers they
-// leak in, which is why a channel must beat the other by `dominance` times.
-inline QList<Turn> micTurns(const QVector<float> &left, const QVector<float> &right, int rate, const QString &label, double dominance = 1.6,
-                            double mergeSeconds = 0.7, double minSeconds = 0.3)
+// The energy of every 20 ms frame, averaged over `smooth` frames so that a spike of one frame does not turn a decision round.
+inline QVector<double> frameEnergies(const QVector<float> &x, int rate, int frames, int smooth = 5)
 {
-    QList<Turn> out;
-    const int frame = std::max(1, rate / 50); // 20 ms
-    const int n = int(std::min(left.size(), right.size()) / frame);
-    auto energy = [&](const QVector<float> &x, int f) {
+    const int frame = std::max(1, rate / 50);
+    QVector<double> raw(frames), out(frames);
+    for (int f = 0; f < frames; ++f) {
         double e = 0;
         for (int i = 0; i < frame; ++i) {
             const double v = x[f * frame + i];
             e += v * v;
         }
-        return e / frame;
-    };
-    QVector<double> el(n), er(n);
-    QVector<double> sorted;
-    for (int f = 0; f < n; ++f) {
-        el[f] = energy(left, f);
-        er[f] = energy(right, f);
-        sorted.append(el[f]);
+        raw[f] = e / frame;
     }
+    const int half = smooth / 2;
+    for (int f = 0; f < frames; ++f) {
+        double sum = 0;
+        int n = 0;
+        for (int k = std::max(0, f - half); k <= std::min(frames - 1, f + half); ++k, ++n)
+            sum += raw[k];
+        out[f] = sum / std::max(1, n);
+    }
+    return out;
+}
+
+// How much of the computer's sound reaches the microphone, as microphone energy / computer energy while the computer is playing a voice. Taken from the
+// recording itself, as the median: the person at the microphone mostly listens while the other side talks, so most of those frames are only the leak.
+// Headphones: near 0. Speakers: how loud they are in the room, which is not the same from one computer to the next. 0 when the computer plays too little to tell.
+inline double leakRatio(const QVector<float> &left, const QVector<float> &right, int rate)
+{
+    const int frame = std::max(1, rate / 50);
+    const int n = int(std::min(left.size(), right.size()) / frame);
+    if (n < 50)
+        return 0;
+    const QVector<double> el = frameEnergies(left, rate, n), er = frameEnergies(right, rate, n);
+    QVector<double> sorted = er;
+    std::sort(sorted.begin(), sorted.end());
+    const double gate = std::max(sorted[sorted.size() / 10] * 4, sorted[sorted.size() * 95 / 100] * 0.02);
+    QVector<double> ratios;
+    for (int f = 0; f < n; ++f)
+        if (er[f] > gate)
+            ratios.append(el[f] / er[f]);
+    if (ratios.size() < 25) // half a second of the other side: too little to measure
+        return 0;
+    std::nth_element(ratios.begin(), ratios.begin() + ratios.size() / 2, ratios.end());
+    return ratios[ratios.size() / 2];
+}
+
+// For a stereo recording from Notch (microphone left, the computer's sound right): the stretches where the microphone is clearly louder than
+// the computer's sound are the person at the microphone ("You"). Headphones keep the remote voices out of the microphone; with speakers they
+// leak in, so the microphone must beat the computer's sound by more than the leak does (measured on this recording, see leakRatio), and at least
+// `dominance` times. A fixed number alone took the other side for "You" whenever the computer played quietly and the microphone heard the speakers.
+inline QList<Turn> micTurns(const QVector<float> &left, const QVector<float> &right, int rate, const QString &label, double dominance = 1.6,
+                            double mergeSeconds = 0.7, double minSeconds = 0.3, double leakFactor = 2.5)
+{
+    QList<Turn> out;
+    const int frame = std::max(1, rate / 50); // 20 ms
+    const int n = int(std::min(left.size(), right.size()) / frame);
     if (n == 0)
         return out;
+    const QVector<double> el = frameEnergies(left, rate, n), er = frameEnergies(right, rate, n);
+    QVector<double> sorted = el;
     std::sort(sorted.begin(), sorted.end());
     const double floorE = sorted[sorted.size() / 10], peakE = sorted[sorted.size() * 95 / 100];
     const double gate = std::max(floorE * 4, peakE * 0.02);
+    const double needed = std::max(dominance, leakFactor * leakRatio(left, right, rate));
     int start = -1, quiet = 0;
     const int mergeFrames = std::max(1, int(mergeSeconds * 50));
     auto close = [&](int endFrame) {
@@ -159,7 +195,7 @@ inline QList<Turn> micTurns(const QVector<float> &left, const QVector<float> &ri
         start = -1;
     };
     for (int f = 0; f < n; ++f) {
-        const bool mine = el[f] > gate && el[f] > dominance * er[f];
+        const bool mine = el[f] > gate && el[f] > needed * er[f];
         if (mine) {
             if (start < 0)
                 start = f;

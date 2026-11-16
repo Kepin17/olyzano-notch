@@ -43,6 +43,7 @@ public:
     Q_INVOKABLE QVariantMap addMeeting(qlonglong id);
     Q_INVOKABLE void fromMeeting(qlonglong id);   // the action items of that recording's notes
     Q_INVOKABLE void findInText(const QString &itemId, const QString &name, const QString &text, const QString &kind = QStringLiteral("image")); // text read from a picture: the language model looks for things to do
+    Q_INVOKABLE void findInTranscript(qlonglong meetingId); // a recording whose notes have no tasks: the language model reads the talk for them
     Q_INVOKABLE void findInPdf(const QString &itemId); // a PDF of the shelf: the language model reads it for things to do
     Q_INVOKABLE void accept(const QString &id);
     Q_INVOKABLE void dismiss(const QString &id);

@@ -221,6 +221,17 @@ void ClipboardHistory::ingestImage(const QImage &image)
         QFile::remove(folder() + u'/' + e.file);
 }
 
+QVariantList ClipboardHistory::textEntries() const
+{
+    QVariantList out;
+    if (!enabled())
+        return out;
+    for (const Entry &e : m_all)
+        if (!e.image)
+            out.append(QVariantMap{{QStringLiteral("id"), e.id}, {QStringLiteral("text"), e.text}});
+    return out;
+}
+
 void ClipboardHistory::expireNow()
 {
     const QList<Entry> gone = expire(m_all, maxAgeHours(), QDateTime::currentDateTimeUtc());

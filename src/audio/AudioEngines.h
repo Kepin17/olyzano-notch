@@ -48,6 +48,7 @@ public:
         : m_store(store), m_threads(std::move(threads)), m_threshold(std::move(threshold)) {}
     bool available() const override;
     QString diarize(const QString &wavPath, const std::atomic_bool *cancel, QList<Turn> *turns, int speakers = 0) override;
+    QString signature() const override { return QString::number(m_threshold(), 'f', 2); }
     static QString helperId();
 
 private:
@@ -105,10 +106,11 @@ private:
 class LlamaSession {
 public:
     // `vision`: the model that reads pictures (Qwen3-VL with its mmproj) instead of the one that writes notes
-    enum class Mode { Text, Vision, Embed };
+    // `Light`: a text session for short, simple work (translating, finding tasks): always the standard model, never the large one chosen for notes
+    enum class Mode { Text, Vision, Embed, Light };
     LlamaSession(ModelStore *store, std::function<int()> threads, bool vision = false) : m_store(store), m_threads(std::move(threads)), m_vision(vision) {}
     // `Mode::Embed`: the model that turns text into vectors of meaning (for finding what a sentence is about)
-    LlamaSession(ModelStore *store, std::function<int()> threads, Mode mode) : m_store(store), m_threads(std::move(threads)), m_vision(mode == Mode::Vision), m_embed(mode == Mode::Embed) {}
+    LlamaSession(ModelStore *store, std::function<int()> threads, Mode mode) : m_store(store), m_threads(std::move(threads)), m_vision(mode == Mode::Vision), m_embed(mode == Mode::Embed), m_light(mode == Mode::Light) {}
     ~LlamaSession() { stop(); }
     static bool available(const ModelStore *store);
     // The catalog id of the model that writes notes and answers: the one chosen (Qwen3 8B or 14B) when it is installed and this computer can run it on a
@@ -138,7 +140,7 @@ private:
     QString completeStream(const QJsonArray &messages, const QJsonObject &schema, const std::atomic_bool *cancel, int maxTokens, const std::function<void(const QString &)> &onText);
     ModelStore *m_store;
     std::function<int()> m_threads;
-    bool m_vision = false, m_embed = false;
+    bool m_vision = false, m_embed = false, m_light = false;
     QProcess m_server;
     QUrl m_base;
     QByteArray m_token;

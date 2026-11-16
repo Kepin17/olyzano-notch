@@ -158,6 +158,30 @@ private slots:
         QCOMPARE(shelf.items()->index(24, 0).data(FileItemModel::ExpiresTextRole).toString(), QStringLiteral("kept, never expires"));
     }
 
+    // A picture dragged out of a browser tab can have only a blob: address (nothing outside the tab can open it): it is told so, not "unsupported"; and when the
+    // browser hands over the picture itself, that is kept as a file.
+    void aBlobPictureIsKeptFromItsBytesOrExplained()
+    {
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        NotchController shelf(dir.path());
+        QVERIFY(shelf.start());
+        shelf.addUrls({QUrl(QStringLiteral("blob:https://example.com/1234-abcd"))});
+        QVERIFY(shelf.errorMessage().contains(QStringLiteral("browser tab")));
+        QCOMPARE(shelf.count(), 0);
+        QImage image(8, 8, QImage::Format_RGB32);
+        image.fill(Qt::red);
+        QByteArray png;
+        QBuffer buf(&png);
+        buf.open(QIODevice::WriteOnly);
+        QVERIFY(image.save(&buf, "PNG"));
+        QVERIFY(shelf.addDroppedImage(QStringLiteral("image/png"), png));
+        QTRY_COMPARE_WITH_TIMEOUT(shelf.count(), 1, 10000);
+        QVERIFY(!shelf.addDroppedImage(QStringLiteral("text/html"), QByteArray("<b>x</b>"))); // not a picture
+        QVERIFY(!shelf.addDroppedImage(QStringLiteral("image/png"), QByteArray()));            // nothing in it
+        QCOMPARE(shelf.count(), 1);
+    }
+
     // A big drop: the folder is listed and looked at on a worker, the files go on the shelf a few at a time, and the panel keeps being
     // given back to the event loop; the copy of a big file says how far it is.
     void bigDropKeepsTheEventLoopFree()

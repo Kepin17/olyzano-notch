@@ -2,6 +2,7 @@
 
 #include "EngineParse.h"
 #include "Hardware.h"
+#include "ModelUse.h"
 #include "ModelBundles.h"
 #include "Summarize.h"
 #include "SystemMemory.h"
@@ -287,6 +288,7 @@ QString LlamaSession::textModelId(const ModelStore *store)
 
 void LlamaSession::stop()
 {
+    ModelUse::Running::instance().remove(m_server.processId());
     if (m_server.state() != QProcess::NotRunning) {
         m_server.terminate();
         if (!m_server.waitForFinished(4000)) {
@@ -319,8 +321,10 @@ QString LlamaSession::gpuHelperId()
 // the failure is remembered so that the card is not tried again at every start.
 QString LlamaSession::start(const std::atomic_bool *cancel)
 {
-    QString modelId = m_embed ? QStringLiteral("embed-qwen3") : m_vision ? QStringLiteral("vision-qwen3vl") : textModelId(m_store);
-    if (m_embed ? !embedAvailable(m_store) : m_vision ? !visionAvailable(m_store) : !available(m_store))
+    // a light session takes the standard model when it is installed (it is the base of the notes bundle); else what the notes use
+    const bool standardAtHand = m_light && !m_store->path(QStringLiteral("qwen3-4b")).isEmpty() && !m_store->path(LlamaSummarizer::helperId()).isEmpty();
+    QString modelId = m_embed ? QStringLiteral("embed-qwen3") : m_vision ? QStringLiteral("vision-qwen3vl") : standardAtHand ? QStringLiteral("qwen3-4b") : textModelId(m_store);
+    if (m_embed ? !embedAvailable(m_store) : m_vision ? !visionAvailable(m_store) : standardAtHand ? false : !available(m_store))
         return m_embed ? QObject::tr("The search model is not installed") : m_vision ? QObject::tr("The picture model is not installed") : QObject::tr("The language model is not installed");
     const bool large = !m_embed && !m_vision && modelId != QLatin1String("qwen3-4b");
     if (large) { // a larger model runs wholly on the graphics card, or not at all: on the processor it would be too slow, so the standard one takes its place
@@ -398,6 +402,7 @@ QString LlamaSession::startWith(const QString &helper, int layers, const std::at
     if (!m_server.waitForStarted(15000))
         return QObject::tr("The language model program could not be started");
     m_base = QUrl(QStringLiteral("http://127.0.0.1:%1").arg(port));
+    ModelUse::Running::instance().add(m_server.processId(), m_vision ? QStringLiteral("Picture model") : m_embed ? QStringLiteral("Search model") : m_store->item(m_modelId).title);
     // loading 2.5 GB takes a while: wait for /health to say ok
     QElapsedTimer waited;
     waited.start();

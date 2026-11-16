@@ -375,6 +375,10 @@ void NotchController::addUrls(const QList<QUrl> &urls, const QString &categoryId
             startDownload(url, categoryId);
             continue;
         }
+        if (scheme == QLatin1String("blob")) { // an address that exists only inside the browser tab it came from: nothing outside can open it
+            errors << tr("This picture lives only inside the browser tab, so Notch cannot download it. Drag it again, or right-click it, choose Copy image and press Ctrl+V here.");
+            continue;
+        }
         if (!url.isLocalFile()) {
             errors << tr("%1: unsupported location").arg(url.toDisplayString());
             continue;
@@ -496,6 +500,18 @@ void NotchController::addDrop(const QList<QUrl> &urls, const QString &html, cons
         }
     }
     addUrls(clean, categoryId);
+}
+
+bool NotchController::addDroppedImage(const QString &mime, const QByteArray &bytes, const QString &categoryId)
+{
+    const QMimeType mt = QMimeDatabase().mimeTypeForName(mime);
+    if (!m_ready || bytes.isEmpty() || !mime.startsWith(QLatin1String("image/")) || !mt.isValid() || mt.preferredSuffix().isEmpty()) {
+        setError(tr("The browser did not hand over a picture that Notch can keep."));
+        return false;
+    }
+    emit sound(QStringLiteral("drop"));
+    const QString name = tr("Image") + u' ' + QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH.mm.ss")) + u'.' + mt.preferredSuffix();
+    return addBytes(name, mt.name(), bytes, tr("Dropped from a browser"), categoryId);
 }
 
 void NotchController::addLocalFile(const QString &path, const QString &categoryId, QStringList &errors)
